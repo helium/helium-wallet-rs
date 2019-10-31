@@ -13,6 +13,13 @@ suitability for use as a wallet associated with Helium crypto-tokens.
 
 ## Installation
 
+### From Binary
+
+Download the latest binary for your platform here from
+[Releases](https://github.com/helium/helium-wallet-rs/releases/latest). Unpack
+the zip file and place the `helium-wallet` binary in your `$PATH`
+somewhere.
+
 ### From Source
 
 You will need a working Rust toolchain installed to build this CLI
@@ -31,8 +38,7 @@ cd helium-wallet-rs
 cargo build --release
 ```
 
-The resulting `target/release/helium-wallet` is ready for use. A
-convenient shortcut is placed in `bin/helium-wallet`.
+The resulting `target/release/helium-wallet` is ready for use.
 
 ## Usage
 
@@ -41,7 +47,7 @@ At any time use `-h` or `--help` to get more help for a command.
 ### Create a wallet
 
 ```
-    bin/helium-wallet create basic
+    target/release/helium-wallet create basic
 ```
 
 The basic wallet will be stored in `wallet.key` after specifying an
@@ -56,7 +62,7 @@ N shards such that recovering the original key needs K distinct
 shards. This can be done by passing options to `create`:
 
 ```
-    bin/helium-wallet create sharded -n 5 -k 3
+    target/release/helium-wallet create sharded -n 5 -k 3
 ```
 
 This will create wallet.key.1 through wallet.key.5 (the base name of
@@ -66,7 +72,7 @@ When keys are sharded using `verify` will require at least K distinct
 keys:
 
 ```
-    bin/helium-wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
+    target/release/helium-wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
 ```
 
 The password will also be needed when verifying a sharded key.
@@ -88,7 +94,7 @@ iteration count and the AES-GCM authentication tag.
 ### Public Key
 
 ```
-    bin/helium-wallet info
+    target/release/helium-wallet info
 ```
 
 The wallet in `wallet.key` will be read and the public key for the

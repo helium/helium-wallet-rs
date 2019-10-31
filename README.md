@@ -22,7 +22,7 @@ somewhere.
 
 ### From Source
 
-You will need a working Rust toolchain installed to build this CLI
+You will need a working Rust tool-chain installed to build this CLI
 from source.
 
 Clone this repo:
@@ -64,7 +64,7 @@ N shards such that recovering the original key needs K distinct
 shards. This can be done by passing options to `create`:
 
 ```
-    /helium-wallet create sharded -n 5 -k 3
+    helium-wallet create sharded -n 5 -k 3
 ```
 
 This will create wallet.key.1 through wallet.key.5 (the base name of
@@ -72,12 +72,6 @@ the wallet file can be supplied with the `-o` parameter).
 
 When keys are sharded using `verify` will require at least K distinct
 keys:
-
-```
-    /helium-wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
-```
-
-The password will also be needed when verifying a sharded key.
 
 #### Implementation details
 
@@ -96,9 +90,29 @@ iteration count and the AES-GCM authentication tag.
 ### Public Key
 
 ```
-    /helium-wallet info
+    helium-wallet info
+    helium-wallet info -f my.key
+    helium-wallet info -f wallet.key.1 -f wallet.key.2 -f my.key
 ```
 
-The wallet in `wallet.key` will be read and the public key for the
-wallet displayed. Any sharded wallet file will be able to return the
-public key for the wallet without having all the shards available.
+The given wallets will be read and information about the wallet,
+including the public key, displayed. This command works for all wallet
+types.
+
+
+### Verifying
+
+Verifying a wallet takes a password and one or more wallet files and
+attempts to decrypt the wallet.
+
+The wallet is assumed to be sharded if the first file given to the
+verify command is a sharded wallet. The rest of the given files then
+also have to be wallet shards. For a sharded wallet to be verified, at
+least `K` wallet files must be passed in, where `K` is the value given
+when creating the wallet.
+
+```
+    helium-wallet verify
+    helium-wallet verify -f wallet.key
+    helium-wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
+```

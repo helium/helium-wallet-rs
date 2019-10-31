@@ -77,7 +77,7 @@ impl ReadWrite for Wallet {
         Ok(wallet)
     }
 
-    fn write(&self, writer: &mut dyn io::Write) -> Result<()> {
+    fn write(&self, writer: &mut dyn io::Write) -> Result {
         match self {
             Wallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
             Wallet::Encrypted {

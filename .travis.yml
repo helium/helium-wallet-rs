@@ -17,7 +17,7 @@ DEPLOY_TO_GITHUB: &DEPLOY_TO_GITHUB
     - git config --local user.email "hello@helium.com"
     - name="he-wallet-$TRAVIS_TAG-$TARGET"
     - mkdir $name
-    - cp target/$TARGET/release/he_wallet $name/
+    - cp target/$TARGET/release/helium-wallet $name/
     - cp README.md LICENSE $name/
     - tar czvf $name.tar.gz $name
   deploy:

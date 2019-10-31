@@ -1,5 +1,7 @@
 # he_wallet
 
+[![Build Status](https://travis-ci.com/helium/he_wallet_rs.svg?branch=master)](https://travis-ci.com/helium/he_wallet_rs)
+
 A [Helium](https://helium.com) wallet implementation in Rust.
 
 This is a simple wallet implementation that enables the creation and

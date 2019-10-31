@@ -1,0 +1,51 @@
+language: rust
+sudo: false
+
+# Cache `cargo install`ed tools, but don't cache the project's `target`
+# directory (which ends up over-caching and filling all disk space!)
+cache:
+  directories:
+    - /home/travis/.cargo
+
+GH_TOKEN: &GH_TOKEN
+    secure: b5yedFmNBGCxyQUqIxuTZ1vnHsuHSWrSNBI4lZUXK9wksqAW/LhDqFGNVa6KMGuhnLaZmtlhHcCfKyibWmCJp/qcN7JU6twf7gb2+WO8MoJzz3BSBpwPBexK+IK82mp4/1Dvlvsay5sbyFuCR7j8INRFfpbPhMLDCvMF8Kq8Q67xfMrbgAFs/1KepQD4VEZtJ+8hTqFLrl7+tR9HHIpDUKQM9+iQlVffT1tx1IO8bWPavwY4NzHzYPXXmABWxifJ+EB63qlSBTsFV/B3FtcohgFcFZKEG7uwwVnwTOcFH8Qyo270Pz6hrgvR9FgF6bh1Yk50RFTUp3oPF+6bfwwX2qqXkTEMbtjcOD2wBcQy7qyRBm64tYMjJE+W/+oFIjUEh5uRYWhelqs23KllcV8+l6gGe9SJl71OYnEgcQ+ENOwt+v2nxTYlGUtEnLfyLDfwTJ5RQgFaXf2nzC07YDFCaLGyHuN/09lhMq8L6IEl7v3RhJeAlhBNbDawv+qMDOYsxCnlZzVXWSx6Czh9XSXgyCFNg+K/nEMrZw2JowJKAAyLQV/Asg+9u6FcvThOREQvqWJaHIgGGvQjJmNy/sRxI/mOnXI6bLxWfrlwlXqWFo6of8vNqLE0v2dXOH5yPxyOyVxTSn3kVJNcmYocuwVHSpDyMgQcVy6DC2YimdZJWNA=
+
+
+DEPLOY_TO_GITHUB: &DEPLOY_TO_GITHUB
+  before_deploy:
+    - git config --local user.name "Helium CI"
+    - git config --local user.email "hello@helium.com"
+    - name="he-wallet-$TRAVIS_TAG-$TARGET"
+    - mkdir $name
+    - cp target/$TARGET/release/he_wallet $name/
+    - cp README.md LICENSE $name/
+    - tar czvf $name.tar.gz $name
+  deploy:
+    provider: releases
+    api_key: *GH_TOKEN
+    file: he-wallet-$TRAVIS_TAG-$TARGET.tar.gz
+    skip_cleanup: true
+    on:
+      branch: master
+      tags: true
+
+matrix:
+  include:
+  - name: Linux Binary
+    env: TARGET=x86_64-unknown-linux-musl
+    rust: stable
+    before_script: rustup target add $TARGET
+    script: cargo build --release --target $TARGET --locked
+    addons:
+      apt:
+        packages:
+          - musl-tools
+    <<: *DEPLOY_TO_GITHUB
+
+  - name: macOS Binary
+    env: MACOSX_DEPLOYMENT_TARGET=10.7 TARGET=x86_64-apple-darwin
+    os: osx
+    rust: stable
+    script: cargo build --release --target $TARGET --locked
+    install: true
+    <<: *DEPLOY_TO_GITHUB

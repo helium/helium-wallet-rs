@@ -12,7 +12,7 @@ use std::process;
 use std::result::Result;
 use structopt::StructOpt;
 
-/// Search for a pattern in a file and display the lines that contain it.
+/// Create and manage Helium wallets
 #[derive(Debug, StructOpt)]
 enum Cli {
     /// Get wallet information

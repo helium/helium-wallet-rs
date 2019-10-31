@@ -1,5 +1,5 @@
 [package]
-name = "he_wallet"
+name = "helium-wallet"
 version = "0.1.0"
 authors = ["Marc Nijdam <marc@helium.com>"]
 edition = "2018"

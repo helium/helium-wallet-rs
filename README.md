@@ -1,6 +1,6 @@
-# he_wallet
+# helium-wallet
 
-[![Build Status](https://travis-ci.com/helium/he_wallet_rs.svg?branch=master)](https://travis-ci.com/helium/he_wallet_rs)
+[![Build Status](https://travis-ci.com/helium/helium-wallet-rs.svg?branch=master)](https://travis-ci.com/helium/helium-wallet-rs)
 
 A [Helium](https://helium.com) wallet implementation in Rust.
 
@@ -21,18 +21,18 @@ from source.
 Clone this repo:
 
 ```
-git clone https://github.com/helium/he_wallet_rs
+git clone https://github.com/helium/helium-wallet-rs
 ```
 
 and build it using cargo:
 
 ```
-cd he_wallet_rs
+cd helium-wallet-rs
 cargo build --release
 ```
 
-The resulting `target/release/he_wallet` is ready for use. A
-convenient shortcut is placed in `bin/he_wallet`.
+The resulting `target/release/helium-wallet` is ready for use. A
+convenient shortcut is placed in `bin/helium-wallet`.
 
 ## Usage
 
@@ -41,7 +41,7 @@ At any time use `-h` or `--help` to get more help for a command.
 ### Create a wallet
 
 ```
-    bin/he_wallet create basic
+    bin/helium-wallet create basic
 ```
 
 The basic wallet will be stored in `wallet.key` after specifying an
@@ -56,7 +56,7 @@ N shards such that recovering the original key needs K distinct
 shards. This can be done by passing options to `create`:
 
 ```
-    bin/he_wallet create sharded -n 5 -k 3
+    bin/helium-wallet create sharded -n 5 -k 3
 ```
 
 This will create wallet.key.1 through wallet.key.5 (the base name of
@@ -66,7 +66,7 @@ When keys are sharded using `verify` will require at least K distinct
 keys:
 
 ```
-    bin/he_wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
+    bin/helium-wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
 ```
 
 The password will also be needed when verifying a sharded key.
@@ -88,7 +88,7 @@ iteration count and the AES-GCM authentication tag.
 ### Public Key
 
 ```
-    bin/he_wallet info
+    bin/helium-wallet info
 ```
 
 The wallet in `wallet.key` will be read and the public key for the

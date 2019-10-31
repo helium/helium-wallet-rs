@@ -51,7 +51,7 @@ impl ReadWrite for Wallet {
         }
     }
 
-    fn write(&self, writer: &mut dyn io::Write) -> Result<()> {
+    fn write(&self, writer: &mut dyn io::Write) -> Result {
         match self {
             Wallet::Basic(wallet) => {
                 writer.write_u16::<LittleEndian>(0x0001)?;
@@ -218,7 +218,7 @@ pub fn stretch_password(
     iterations: u32,
     salt: &mut Salt,
     key: &mut AESKey,
-) -> Result<()> {
+) -> Result {
     randombytes::randombytes_into(salt);
     re_stretch_password(password, iterations, *salt, key)
 }
@@ -228,7 +228,7 @@ pub fn re_stretch_password(
     iterations: u32,
     salt: Salt,
     key: &mut AESKey,
-) -> Result<()> {
+) -> Result {
     pbkdf2::pbkdf2::<Hmac<Sha256>>(password, &salt, iterations as usize, &mut key[..]);
     Ok(())
 }
@@ -240,7 +240,7 @@ pub fn encrypt_keypair(
     pubkey_bin: &mut PubKeyBin,
     encrypted: &mut Vec<u8>,
     tag: &mut Tag,
-) -> Result<()> {
+) -> Result {
     randombytes::randombytes_into(iv);
 
     let mut pubkey_writer: &mut [u8] = pubkey_bin;

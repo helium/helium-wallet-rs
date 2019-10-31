@@ -6,10 +6,9 @@ mod result;
 mod traits;
 mod wallet;
 
-use std::error::Error;
+use result::Result;
 use std::path::PathBuf;
 use std::process;
-use std::result::Result;
 use structopt::StructOpt;
 
 /// Create and manage Helium wallets
@@ -88,7 +87,7 @@ fn get_password(confirm: bool) -> std::io::Result<String> {
     builder.interact()
 }
 
-fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
+fn run(cli: Cli) -> Result {
     match cli {
         Cli::Info { files } => cmd_info::cmd_info(files),
         Cli::Verify { files } => {

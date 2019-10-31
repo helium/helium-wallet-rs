@@ -10,7 +10,7 @@ pub trait ReadWrite {
     fn read(reader: &mut dyn Read) -> Result<Self>
     where
         Self: std::marker::Sized;
-    fn write(&self, writer: &mut dyn Write) -> Result<()>;
+    fn write(&self, writer: &mut dyn Write) -> Result;
 }
 
 pub trait B58 {
@@ -24,9 +24,8 @@ pub trait Empty {
     fn empty() -> Self;
 }
 
-
 impl ReadWrite for ed25519::PublicKey {
-    fn write(&self, writer: &mut dyn io::Write) -> Result<()> {
+    fn write(&self, writer: &mut dyn io::Write) -> Result {
         writer.write_all(&[KEYTYPE_ED25519])?;
         writer.write_all(&self.0)?;
         Ok(())

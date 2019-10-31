@@ -7,7 +7,7 @@ use crate::{
 };
 use std::{fs::OpenOptions, path::PathBuf};
 
-pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) -> Result<()> {
+pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) -> Result {
     let keypair = Keypair::gen_keypair();
     let wallet = Wallet::Basic(basic::Wallet::Decrypted {
         keypair,
@@ -32,7 +32,7 @@ pub fn cmd_sharded(
     iterations: u32,
     output: PathBuf,
     force: bool,
-) -> Result<()> {
+) -> Result {
     let keypair = Keypair::gen_keypair();
 
     let wallet = Wallet::Sharded(sharded::Wallet::Decrypted {

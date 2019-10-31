@@ -61,7 +61,7 @@ impl fmt::Debug for Keypair {
 }
 
 impl ReadWrite for Keypair {
-    fn write(&self, writer: &mut dyn io::Write) -> Result<()> {
+    fn write(&self, writer: &mut dyn io::Write) -> Result {
         writer.write_all(&[KEYTYPE_ED25519])?;
         writer.write_all(&self.secret.0)?;
         writer.write_all(&self.public.0)?;

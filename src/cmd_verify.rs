@@ -6,7 +6,7 @@ use crate::{
 };
 use std::{fs, path::PathBuf};
 
-pub fn cmd_verify(files: Vec<PathBuf>, password: &str) -> Result<()> {
+pub fn cmd_verify(files: Vec<PathBuf>, password: &str) -> Result {
     let first_file = files.first().expect("At least one file expected");
     let is_sharded = {
         let mut reader = fs::File::open(first_file)?;
@@ -50,7 +50,7 @@ fn print_wallet(
     sharded: bool,
     files: Vec<PathBuf>,
     verify: Option<Result<Wallet>>,
-) -> Result<()> {
+) -> Result {
     let file_names: Vec<String> = files.iter().map(|pb| pb.display().to_string()).collect();
     println!("Address: {}", public_key.to_b58()?);
     println!("Sharded: {}", sharded);
@@ -58,7 +58,7 @@ fn print_wallet(
     if let Some(result) = verify {
         let msg = match result {
             Ok(_) => "true".to_string(),
-            Err(m) => m.to_string()
+            Err(m) => m.to_string(),
         };
         println!("Verify: {}", msg);
     };

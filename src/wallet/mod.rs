@@ -243,14 +243,14 @@ pub fn encrypt_keypair(
 ) -> Result {
     randombytes::randombytes_into(iv);
 
-    let mut pubkey_writer: &mut [u8] = pubkey_bin;
+    let mut pubkey_writer: &mut [u8] = &mut pubkey_bin.0;
     keypair.public.write(&mut pubkey_writer)?;
 
     use aead::generic_array::GenericArray;
     let aead = Aes256Gcm::new(*GenericArray::from_slice(key));
 
     keypair.write(encrypted)?;
-    match aead.encrypt_in_place_detached(iv.as_ref().into(), pubkey_bin, encrypted) {
+    match aead.encrypt_in_place_detached(iv.as_ref().into(), &pubkey_bin.0, encrypted) {
         Err(_) => Err("Failed to encrypt wallet".into()),
         Ok(gtag) => {
             tag.copy_from_slice(&gtag);

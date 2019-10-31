@@ -30,14 +30,14 @@ pub fn cmd_verify(files: Vec<PathBuf>, password: &str) -> Result {
         )?;
         Ok(())
     } else {
-        for file in files.iter() {
+        for file in files {
             let mut reader = fs::File::open(&file)?;
             let enc_wallet = Wallet::read(&mut reader)?;
             let result = wallet::Wallet::decrypt_basic(password.as_bytes(), &enc_wallet);
             print_wallet(
                 enc_wallet.public_key(),
                 is_sharded,
-                vec![file.clone()],
+                vec![file],
                 Some(result),
             )?;
         }

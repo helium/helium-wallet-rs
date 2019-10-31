@@ -19,7 +19,7 @@ pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) 
         .write(true)
         .create(true)
         .create_new(!force)
-        .open(output.clone())?;
+        .open(&output)?;
 
     enc_wallet[0].write(&mut writer)?;
     crate::cmd_verify::cmd_verify(vec![output], password)

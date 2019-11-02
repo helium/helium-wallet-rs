@@ -3,13 +3,13 @@ use crate::{
     keypair::Keypair,
     result::Result,
     traits::ReadWrite,
-    wallet::{basic, sharded, Wallet},
+    wallet::{basic::BasicWallet, sharded::ShardedWallet, Wallet},
 };
 use std::{fs::OpenOptions, path::PathBuf};
 
 pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) -> Result {
     let keypair = Keypair::gen_keypair();
-    let wallet = Wallet::Basic(basic::Wallet::Decrypted {
+    let wallet = Wallet::Basic(BasicWallet::Decrypted {
         keypair,
         iterations,
     });
@@ -35,7 +35,7 @@ pub fn cmd_sharded(
 ) -> Result {
     let keypair = Keypair::gen_keypair();
 
-    let wallet = Wallet::Sharded(sharded::Wallet::Decrypted {
+    let wallet = Wallet::Sharded(ShardedWallet::Decrypted {
         iterations,
         keypair,
         key_share_count,

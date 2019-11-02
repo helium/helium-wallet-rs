@@ -7,7 +7,7 @@ use crate::{
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::{fmt, io};
 
-pub enum Wallet {
+pub enum BasicWallet {
     Decrypted {
         keypair: Keypair,
         iterations: u32,
@@ -22,21 +22,21 @@ pub enum Wallet {
     },
 }
 
-impl fmt::Display for Wallet {
+impl fmt::Display for BasicWallet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Wallet::Encrypted { public_key, .. } => {
+            BasicWallet::Encrypted { public_key, .. } => {
                 write!(f, "Basic({})", public_key.to_b58().unwrap())
             }
-            Wallet::Decrypted { keypair, .. } => {
+            BasicWallet::Decrypted { keypair, .. } => {
                 write!(f, "Basic({})", keypair.public.to_b58().unwrap())
             }
         }
     }
 }
 
-impl ReadWrite for Wallet {
-    fn read(reader: &mut dyn io::Read) -> Result<Wallet> {
+impl ReadWrite for BasicWallet {
+    fn read(reader: &mut dyn io::Read) -> Result<BasicWallet> {
         let public_key = PublicKey::read(reader)?;
         let mut iv = [0; 12];
         reader.read_exact(&mut iv)?;
@@ -47,7 +47,7 @@ impl ReadWrite for Wallet {
         reader.read_exact(&mut tag)?;
         let mut encrypted = Vec::new();
         reader.read_to_end(&mut encrypted)?;
-        let wallet = Wallet::Encrypted {
+        let wallet = BasicWallet::Encrypted {
             public_key,
             iv,
             salt,
@@ -60,8 +60,8 @@ impl ReadWrite for Wallet {
 
     fn write(&self, writer: &mut dyn io::Write) -> Result {
         match self {
-            Wallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
-            Wallet::Encrypted {
+            BasicWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
+            BasicWallet::Encrypted {
                 public_key,
                 iv,
                 salt,
@@ -81,11 +81,11 @@ impl ReadWrite for Wallet {
     }
 }
 
-impl Wallet {
+impl BasicWallet {
     pub fn encrypt(&self, password: &AESKey, salt: Salt) -> Result<Self> {
         match self {
-            Wallet::Encrypted { .. } => Err("not an decrypted wallet".into()),
-            Wallet::Decrypted {
+            BasicWallet::Encrypted { .. } => Err("not an decrypted wallet".into()),
+            BasicWallet::Decrypted {
                 iterations,
                 keypair,
             } => {
@@ -101,7 +101,7 @@ impl Wallet {
                     &mut encrypted,
                     &mut tag,
                 )?;
-                let wallet = Wallet::Encrypted {
+                let wallet = BasicWallet::Encrypted {
                     iterations: *iterations,
                     public_key: keypair.public,
                     salt,
@@ -115,10 +115,10 @@ impl Wallet {
         }
     }
 
-    pub fn decrypt(&self, password: &AESKey) -> Result<Wallet> {
+    pub fn decrypt(&self, password: &AESKey) -> Result<BasicWallet> {
         match self {
-            Wallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
-            Wallet::Encrypted {
+            BasicWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
+            BasicWallet::Encrypted {
                 iterations,
                 iv,
                 encrypted,
@@ -127,7 +127,7 @@ impl Wallet {
                 ..
             } => {
                 let keypair = wallet::decrypt_keypair(encrypted, &password, public_key, iv, tag)?;
-                Ok(Wallet::Decrypted {
+                Ok(BasicWallet::Decrypted {
                     keypair,
                     iterations: *iterations,
                 })
@@ -137,8 +137,8 @@ impl Wallet {
 
     pub fn public_key(&self) -> &PublicKey {
         match self {
-            Wallet::Encrypted { public_key, .. } => public_key,
-            Wallet::Decrypted { keypair, .. } => &keypair.public,
+            BasicWallet::Encrypted { public_key, .. } => public_key,
+            BasicWallet::Decrypted { keypair, .. } => &keypair.public,
         }
     }
 }

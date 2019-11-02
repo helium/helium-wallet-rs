@@ -7,7 +7,7 @@ use crate::{
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::{fmt, io};
 
-pub enum Wallet {
+pub enum ShardedWallet {
     Decrypted {
         keypair: Keypair,
         iterations: u32,
@@ -27,21 +27,21 @@ pub enum Wallet {
     },
 }
 
-impl fmt::Display for Wallet {
+impl fmt::Display for ShardedWallet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Wallet::Encrypted { public_key, .. } => {
+            ShardedWallet::Encrypted { public_key, .. } => {
                 write!(f, "Sharded({})", public_key.to_b58().unwrap())
             }
-            Wallet::Decrypted { keypair, .. } => {
+            ShardedWallet::Decrypted { keypair, .. } => {
                 write!(f, "Sharded({})", keypair.public.to_b58().unwrap())
             }
         }
     }
 }
 
-impl ReadWrite for Wallet {
-    fn read(reader: &mut dyn io::Read) -> Result<Wallet> {
+impl ReadWrite for ShardedWallet {
+    fn read(reader: &mut dyn io::Read) -> Result<ShardedWallet> {
         let key_share_count = reader.read_u8()?;
         let recovery_threshold = reader.read_u8()?;
 
@@ -63,7 +63,7 @@ impl ReadWrite for Wallet {
 
         let mut encrypted = Vec::new();
         reader.read_to_end(&mut encrypted)?;
-        let wallet = Wallet::Encrypted {
+        let wallet = ShardedWallet::Encrypted {
             recovery_threshold,
             key_share_count,
             key_share,
@@ -79,8 +79,8 @@ impl ReadWrite for Wallet {
 
     fn write(&self, writer: &mut dyn io::Write) -> Result {
         match self {
-            Wallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
-            Wallet::Encrypted {
+            ShardedWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
+            ShardedWallet::Encrypted {
                 recovery_threshold,
                 key_share_count,
                 key_share,
@@ -106,11 +106,11 @@ impl ReadWrite for Wallet {
     }
 }
 
-impl Wallet {
-    pub fn encrypt(&self, password: &AESKey, salt: Salt) -> Result<Wallet> {
+impl ShardedWallet {
+    pub fn encrypt(&self, password: &AESKey, salt: Salt) -> Result<ShardedWallet> {
         match self {
-            Wallet::Encrypted { .. } => Err("not an decrypted wallet".into()),
-            Wallet::Decrypted {
+            ShardedWallet::Encrypted { .. } => Err("not an decrypted wallet".into()),
+            ShardedWallet::Decrypted {
                 iterations,
                 keypair,
                 key_share_count,
@@ -129,7 +129,7 @@ impl Wallet {
                     &mut tag,
                 )?;
 
-                let wallet = Wallet::Encrypted {
+                let wallet = ShardedWallet::Encrypted {
                     key_share_count: *key_share_count,
                     recovery_threshold: *recovery_threshold,
                     iterations: *iterations,
@@ -145,10 +145,10 @@ impl Wallet {
         }
     }
 
-    pub fn decrypt(&self, password: &AESKey) -> Result<Wallet> {
+    pub fn decrypt(&self, password: &AESKey) -> Result<ShardedWallet> {
         match self {
-            Wallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
-            Wallet::Encrypted {
+            ShardedWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
+            ShardedWallet::Encrypted {
                 iterations,
                 iv,
                 encrypted,
@@ -159,7 +159,7 @@ impl Wallet {
                 ..
             } => {
                 let keypair = wallet::decrypt_keypair(encrypted, password, public_key, iv, tag)?;
-                Ok(Wallet::Decrypted {
+                Ok(ShardedWallet::Decrypted {
                     keypair,
                     iterations: *iterations,
                     key_share_count: *key_share_count,
@@ -169,10 +169,10 @@ impl Wallet {
         }
     }
 
-    pub fn with_key_share(&self, share: &[u8]) -> Result<Wallet> {
+    pub fn with_key_share(&self, share: &[u8]) -> Result<ShardedWallet> {
         match self {
-            Wallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
-            Wallet::Encrypted {
+            ShardedWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
+            ShardedWallet::Encrypted {
                 public_key,
                 iv,
                 salt,
@@ -185,7 +185,7 @@ impl Wallet {
             } => {
                 let mut key_share = [0u8; 33];
                 key_share.copy_from_slice(share);
-                let wallet = Wallet::Encrypted {
+                let wallet = ShardedWallet::Encrypted {
                     public_key: *public_key,
                     iv: *iv,
                     salt: *salt,
@@ -203,8 +203,8 @@ impl Wallet {
 
     pub fn public_key(&self) -> &PublicKey {
         match self {
-            Wallet::Encrypted { public_key, .. } => public_key,
-            Wallet::Decrypted { keypair, .. } => &keypair.public,
+            ShardedWallet::Encrypted { public_key, .. } => public_key,
+            ShardedWallet::Decrypted { keypair, .. } => &keypair.public,
         }
     }
 }

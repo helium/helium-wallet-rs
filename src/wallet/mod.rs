@@ -22,17 +22,19 @@ pub type SSSKey = [u8; 32];
 type HmacSha256 = Hmac<Sha256>;
 
 mod basic_wallet;
+use basic_wallet::BasicWallet;
 pub mod basic {
     pub use crate::wallet::basic_wallet::*;
 }
 mod sharded_wallet;
+use sharded_wallet::ShardedWallet;
 pub mod sharded {
     pub use crate::wallet::sharded_wallet::*;
 }
 
 pub enum Wallet {
-    Basic(basic::Wallet),
-    Sharded(sharded::Wallet),
+    Basic(BasicWallet),
+    Sharded(ShardedWallet),
 }
 
 impl ReadWrite for Wallet {
@@ -40,11 +42,11 @@ impl ReadWrite for Wallet {
         let kind = reader.read_u16::<LittleEndian>()?;
         match kind {
             0x0001 => {
-                let wallet = basic::Wallet::read(reader)?;
+                let wallet = BasicWallet::read(reader)?;
                 Ok(Wallet::Basic(wallet))
             }
             0x0101 => {
-                let wallet = sharded::Wallet::read(reader)?;
+                let wallet = ShardedWallet::read(reader)?;
                 Ok(Wallet::Sharded(wallet))
             }
             _ => Err(format!("Invalid wallet type {}", kind).into()),
@@ -83,8 +85,8 @@ impl Wallet {
     pub fn encrypt(&self, password: &[u8]) -> Result<Vec<Wallet>> {
         match self {
             Wallet::Basic(wallet) => match wallet {
-                basic::Wallet::Encrypted { .. } => Err("Wallet already encrypted".into()),
-                basic::Wallet::Decrypted { .. } => {
+                BasicWallet::Encrypted { .. } => Err("Wallet already encrypted".into()),
+                BasicWallet::Decrypted { .. } => {
                     let mut salt = Salt::default();
                     let aes_key = self.derive_aes_key(password, Some(&mut salt))?;
                     let enc_wallet = wallet.encrypt(&aes_key, salt)?;
@@ -92,8 +94,8 @@ impl Wallet {
                 }
             },
             Wallet::Sharded(sh) => match sh {
-                sharded::Wallet::Encrypted { .. } => Err("Wallet already encrypted".into()),
-                sharded::Wallet::Decrypted {
+                ShardedWallet::Encrypted { .. } => Err("Wallet already encrypted".into()),
+                ShardedWallet::Decrypted {
                     recovery_threshold,
                     key_share_count,
                     ..
@@ -137,16 +139,16 @@ impl Wallet {
     fn derive_aes_key(&self, password: &[u8], out_salt: Option<&mut Salt>) -> Result<AESKey> {
         let mut aes_key = AESKey::default();
         match self {
-            Wallet::Basic(basic::Wallet::Encrypted {
+            Wallet::Basic(BasicWallet::Encrypted {
                 salt, iterations, ..
             }) => re_stretch_password(password, *iterations, *salt, &mut aes_key)?,
-            Wallet::Basic(basic::Wallet::Decrypted { iterations, .. }) => {
+            Wallet::Basic(BasicWallet::Decrypted { iterations, .. }) => {
                 stretch_password(password, *iterations, out_salt.unwrap(), &mut aes_key)?
             }
-            Wallet::Sharded(sharded::Wallet::Encrypted {
+            Wallet::Sharded(ShardedWallet::Encrypted {
                 salt, iterations, ..
             }) => re_stretch_password(password, *iterations, *salt, &mut aes_key)?,
-            Wallet::Sharded(sharded::Wallet::Decrypted { iterations, .. }) => {
+            Wallet::Sharded(ShardedWallet::Decrypted { iterations, .. }) => {
                 stretch_password(password, *iterations, out_salt.unwrap(), &mut aes_key)?
             }
         };
@@ -161,7 +163,7 @@ impl Wallet {
     pub fn decrypt_sharded(password: &[u8], shards: &[Wallet]) -> Result<Wallet> {
         let first_wallet = shards.first().expect("No wallet shards provided");
         let (k, n, aes_key) = match first_wallet {
-            Wallet::Sharded(sharded::Wallet::Encrypted {
+            Wallet::Sharded(ShardedWallet::Encrypted {
                 recovery_threshold,
                 key_share_count,
                 ..
@@ -178,7 +180,7 @@ impl Wallet {
         let mut key_shares = Vec::new();
         for shard in shards {
             match shard {
-                Wallet::Sharded(sharded::Wallet::Encrypted {
+                Wallet::Sharded(ShardedWallet::Encrypted {
                     recovery_threshold,
                     key_share_count,
                     key_share,

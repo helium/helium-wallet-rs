@@ -281,7 +281,7 @@ dependencies = [
  "hmac 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "pbkdf2 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "shamirsecretsharing 0.1.3 (git+https://github.com/madninja/sss-rs?branch=madninja/have_libsodium)",
+ "shamirsecretsharing 0.1.4 (git+https://github.com/dsprenkels/sss-rs)",
  "sodiumoxide 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "structopt 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -473,8 +473,8 @@ dependencies = [
 
 [[package]]
 name = "shamirsecretsharing"
-version = "0.1.3"
-source = "git+https://github.com/madninja/sss-rs?branch=madninja/have_libsodium#03a8bbbada55c7034ad5c66cf3c054ca8459d75e"
+version = "0.1.4"
+source = "git+https://github.com/dsprenkels/sss-rs#0516716f0f87b4d0522d61df78b0d35275ca7694"
 dependencies = [
  "cc 1.0.45 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.62 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -714,7 +714,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum rle-decode-fast 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cabe4fa914dec5870285fa7f71f602645da47c486e68486d2b4ceb4a343e90ac"
 "checksum serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)" = "9796c9b7ba2ffe7a9ce53c2287dfc48080f4b2b362fcc245a259b3a7201119dd"
 "checksum sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7b4d8bfd0e469f417657573d8451fb33d16cfe0989359b93baf3a1ffc639543d"
-"checksum shamirsecretsharing 0.1.3 (git+https://github.com/madninja/sss-rs?branch=madninja/have_libsodium)" = "<none>"
+"checksum shamirsecretsharing 0.1.4 (git+https://github.com/dsprenkels/sss-rs)" = "<none>"
 "checksum sodiumoxide 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "585232e78a4fc18133eef9946d3080befdf68b906c51b621531c37e91787fa2b"
 "checksum strsim 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 "checksum structopt 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "3fe8d3289b63ef2f196d89e7701f986583c0895e764b78f052a55b9b5d34d84a"

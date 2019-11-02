@@ -15,4 +15,4 @@ sha2 = "0.8.0"
 pbkdf2 = {version = "0.3.0", default-features=false }
 aead = "0.1.1"
 aes-gcm = "0.1.0"
-shamirsecretsharing = {git = "https://github.com/madninja/sss-rs", branch="madninja/have_libsodium", features=["have_libsodium"]}
+shamirsecretsharing = {git = "https://github.com/dsprenkels/sss-rs", branch="master", features=["have_libsodium"]}

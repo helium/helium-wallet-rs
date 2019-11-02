@@ -16,3 +16,4 @@ pbkdf2 = {version = "0.3.0", default-features=false }
 aead = "0.1.1"
 aes-gcm = "0.1.0"
 shamirsecretsharing = {git = "https://github.com/dsprenkels/sss-rs", branch="master", features=["have_libsodium"]}
+helium-api = { git = "https://github.com/helium/helium-api-rs"}

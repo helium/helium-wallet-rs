@@ -1,4 +1,6 @@
+mod cmd_balance;
 mod cmd_create;
+mod cmd_hotspots;
 mod cmd_info;
 mod cmd_verify;
 mod keypair;
@@ -6,9 +8,13 @@ mod result;
 mod traits;
 mod wallet;
 
-use result::Result;
+use crate::{
+    traits::{ReadWrite, B58},
+    wallet::Wallet,
+    result::Result
+};
 use std::path::PathBuf;
-use std::process;
+use std::{fs, process};
 use structopt::StructOpt;
 
 /// Create and manage Helium wallets
@@ -21,11 +27,29 @@ enum Cli {
     },
     /// Verify an encypted wallet
     Verify {
+        /// File(s) to verify
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
         files: Vec<PathBuf>,
     },
     /// Create a new wallet
     Create(CreateCmd),
+    /// Get the balance for a wallet
+    Balance {
+        /// Wallet(s) to read addresses from
+        #[structopt(short = "f", long = "file")]
+        files: Vec<PathBuf>,
+        /// Addresses to get balances for
+        #[structopt(short = "a", long = "address")]
+        addresses: Vec<String>,
+    },
+    Hotspots {
+        /// Wallet(s) to read addresses from
+        #[structopt(short = "f", long = "file")]
+        files: Vec<PathBuf>,
+        /// Addresses to get balances for
+        #[structopt(short = "a", long = "address")]
+        addresses: Vec<String>,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -119,5 +143,28 @@ fn run(cli: Cli) -> Result {
                 force,
             )
         }
+        Cli::Balance { files, addresses } => {
+            cmd_balance::cmd_balance(collect_addresses(files, addresses)?)
+        }
+        Cli::Hotspots { files, addresses } => {
+            cmd_hotspots::cmd_hotspots(collect_addresses(files, addresses)?)
+        }
     }
+}
+
+fn collect_addresses(files: Vec<PathBuf>, addresses: Vec<String>) -> Result<Vec<String>> {
+    // If no files or addresses are given use the default wallet
+    let file_list = if files.len() == 0 && addresses.len() == 0 {
+        vec![PathBuf::from("wallet.key")]
+    } else {
+        files
+    };
+    let mut address_list = addresses.clone();
+    for file in file_list {
+        let mut reader = fs::File::open(&file)?;
+        let enc_wallet = Wallet::read(&mut reader)?;
+        address_list.push(enc_wallet.public_key().to_b58()?);
+    }
+    println!("ADDR {:?}", address_list);
+    Ok(address_list)
 }

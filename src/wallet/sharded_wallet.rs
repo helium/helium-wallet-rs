@@ -1,7 +1,7 @@
 use crate::{
     keypair::{Keypair, PubKeyBin, PublicKey},
     result::Result,
-    traits::{Empty, ReadWrite, B58},
+    traits::{ReadWrite, B58},
     wallet::{self, AESKey, Salt, Tag, IV},
 };
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -116,7 +116,7 @@ impl Wallet {
                 key_share_count,
                 recovery_threshold,
             } => {
-                let mut pubkey_bin = PubKeyBin::empty();;
+                let mut pubkey_bin = PubKeyBin::default();
                 let mut iv = IV::default();
                 let mut tag = Tag::default();
                 let mut encrypted = Vec::new();

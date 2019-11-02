@@ -1,6 +1,6 @@
 use crate::{
     result::Result,
-    traits::{Empty, ReadWrite, B58},
+    traits::{ReadWrite, B58},
 };
 use byteorder::ReadBytesExt;
 use sodiumoxide::crypto::sign::ed25519;
@@ -11,7 +11,15 @@ pub const KEYTYPE_ED25519: u8 = 1;
 
 pub use ed25519::PublicKey;
 pub use ed25519::SecretKey;
-pub type PubKeyBin = [u8; 33];
+
+// Newtype to allow us to `impl Default` on a 33 element array.
+pub struct PubKeyBin(pub(crate) [u8; 33]);
+
+impl Default for PubKeyBin {
+    fn default() -> Self {
+        PubKeyBin([0; 33])
+    }
+}
 
 pub struct Keypair {
     pub public: PublicKey,
@@ -24,12 +32,6 @@ fn init() {
             panic!("Failed to intialize sodium {:?}", e)
         }
     })
-}
-
-impl Empty for PubKeyBin {
-    fn empty() -> Self {
-        [0; 33]
-    }
 }
 
 impl Keypair {

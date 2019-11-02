@@ -20,10 +20,6 @@ pub trait B58 {
         Self: std::marker::Sized;
 }
 
-pub trait Empty {
-    fn empty() -> Self;
-}
-
 impl ReadWrite for ed25519::PublicKey {
     fn write(&self, writer: &mut dyn io::Write) -> Result {
         writer.write_all(&[KEYTYPE_ED25519])?;

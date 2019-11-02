@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate prettytable;
 mod cmd_balance;
 mod cmd_create;
 mod cmd_hotspots;
@@ -165,6 +167,5 @@ fn collect_addresses(files: Vec<PathBuf>, addresses: Vec<String>) -> Result<Vec<
         let enc_wallet = Wallet::read(&mut reader)?;
         address_list.push(enc_wallet.public_key().to_b58()?);
     }
-    println!("ADDR {:?}", address_list);
     Ok(address_list)
 }

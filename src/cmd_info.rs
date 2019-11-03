@@ -21,7 +21,10 @@ fn print_wallets(wallets: Vec<Wallet>) {
 
     table.add_row(row!["Address", "Sharded"]);
     for wallet in wallets {
-        let address = wallet.public_key().to_b58().unwrap_or("unknown".to_string());
+        let address = wallet
+            .public_key()
+            .to_b58()
+            .unwrap_or_else(|_| "unknown".to_string());
         table.add_row(row![address, wallet.is_sharded()]);
     }
     table.printstd();

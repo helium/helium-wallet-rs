@@ -18,12 +18,13 @@ fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>) {
     table.set_titles(row!["Address", "Name", "City", "State", "Score"]);
 
     for (address, result) in results {
+        #[allow(clippy::unused_unit)]
         match result {
             Ok(hotspots) => {
                 for hotspot in hotspots {
                     table.add_row(row![
                         hotspot.address,
-                        hotspot.name.unwrap_or("uknown".to_string()),
+                        hotspot.name.unwrap_or_else(|| "uknown".to_string()),
                         hotspot.short_city,
                         hotspot.short_state,
                         hotspot.score

@@ -156,7 +156,7 @@ fn run(cli: Cli) -> Result {
 
 fn collect_addresses(files: Vec<PathBuf>, addresses: Vec<String>) -> Result<Vec<String>> {
     // If no files or addresses are given use the default wallet
-    let file_list = if files.len() == 0 && addresses.len() == 0 {
+    let file_list = if files.is_empty()&& addresses.is_empty() {
         vec![PathBuf::from("wallet.key")]
     } else {
         files

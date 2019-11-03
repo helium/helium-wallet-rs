@@ -43,7 +43,7 @@ fn print_results(results: Vec<(Wallet, Result<Wallet>)>) {
         let address = enc_wallet
             .public_key()
             .to_b58()
-            .unwrap_or("unknown".to_string());
+            .unwrap_or_else(|_| "unknown".to_string());
         table.add_row(row![address, enc_wallet.is_sharded(), result.is_ok()]);
     }
     table.printstd();

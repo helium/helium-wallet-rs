@@ -40,7 +40,7 @@ matrix:
       apt:
         packages:
           - musl-tools
-          - openssl-dev
+          - libssl-dev
     <<: *DEPLOY_TO_GITHUB
 
   - name: macOS Binary

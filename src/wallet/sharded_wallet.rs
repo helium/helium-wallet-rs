@@ -1,11 +1,20 @@
 use crate::{
-    keypair::{Keypair, PubKeyBin, PublicKey},
+    keypair::{Keypair, PublicKey},
     result::Result,
     traits::{ReadWrite, B58},
-    wallet::{self, AESKey, Salt, Tag, IV},
+    wallet::{
+        self, re_stretch_password, stretch_password, AESKey, SSSKey, Salt, Tag, Wallet, IV,
+        WALLET_TYPE_BYTES_SHARDED,
+    },
 };
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+use shamirsecretsharing::hazmat::create_keyshares;
+use sodiumoxide::randombytes;
 use std::{fmt, io};
+
+type HmacSha256 = Hmac<Sha256>;
 
 pub enum ShardedWallet {
     Decrypted {
@@ -91,6 +100,7 @@ impl ReadWrite for ShardedWallet {
                 tag,
                 encrypted,
             } => {
+                writer.write_u16::<LittleEndian>(WALLET_TYPE_BYTES_SHARDED)?;
                 writer.write_u8(*key_share_count)?;
                 writer.write_u8(*recovery_threshold)?;
                 writer.write_all(key_share)?;
@@ -106,46 +116,8 @@ impl ReadWrite for ShardedWallet {
     }
 }
 
-impl ShardedWallet {
-    pub fn encrypt(&self, password: &AESKey, salt: Salt) -> Result<ShardedWallet> {
-        match self {
-            ShardedWallet::Encrypted { .. } => Err("not an decrypted wallet".into()),
-            ShardedWallet::Decrypted {
-                iterations,
-                keypair,
-                key_share_count,
-                recovery_threshold,
-            } => {
-                let mut pubkey_bin = PubKeyBin::default();
-                let mut iv = IV::default();
-                let mut tag = Tag::default();
-                let mut encrypted = Vec::new();
-                wallet::encrypt_keypair(
-                    keypair,
-                    password,
-                    &mut iv,
-                    &mut pubkey_bin,
-                    &mut encrypted,
-                    &mut tag,
-                )?;
-
-                let wallet = ShardedWallet::Encrypted {
-                    key_share_count: *key_share_count,
-                    recovery_threshold: *recovery_threshold,
-                    iterations: *iterations,
-                    public_key: keypair.public,
-                    salt,
-                    iv,
-                    tag,
-                    encrypted,
-                    key_share: [0; 33],
-                };
-                Ok(wallet)
-            }
-        }
-    }
-
-    pub fn decrypt(&self, password: &AESKey) -> Result<ShardedWallet> {
+impl Wallet for ShardedWallet {
+    fn decrypt(&mut self, password: &[u8; 32]) -> Result<()> {
         match self {
             ShardedWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
             ShardedWallet::Encrypted {
@@ -159,17 +131,78 @@ impl ShardedWallet {
                 ..
             } => {
                 let keypair = wallet::decrypt_keypair(encrypted, password, public_key, iv, tag)?;
-                Ok(ShardedWallet::Decrypted {
+                *self = ShardedWallet::Decrypted {
                     keypair,
                     iterations: *iterations,
                     key_share_count: *key_share_count,
                     recovery_threshold: *recovery_threshold,
-                })
+                };
+                Ok(())
             }
         }
     }
 
-    pub fn with_key_share(&self, share: &[u8]) -> Result<ShardedWallet> {
+    fn encrypt(&mut self, password: &AESKey, salt: Salt) -> Result<()> {
+        match self {
+            ShardedWallet::Encrypted { .. } => Err("not an decrypted wallet".into()),
+            ShardedWallet::Decrypted {
+                iterations,
+                keypair,
+                key_share_count,
+                recovery_threshold,
+            } => {
+                let (iv, tag, encrypted) = wallet::encrypt_keypair(keypair, password)?;
+
+                *self = ShardedWallet::Encrypted {
+                    key_share_count: *key_share_count,
+                    recovery_threshold: *recovery_threshold,
+                    iterations: *iterations,
+                    public_key: keypair.public,
+                    salt,
+                    iv,
+                    tag,
+                    encrypted,
+                    key_share: [0; 33],
+                };
+                Ok(())
+            }
+        }
+    }
+
+    fn public_key(&self) -> &PublicKey {
+        match self {
+            ShardedWallet::Encrypted { public_key, .. } => public_key,
+            ShardedWallet::Decrypted { keypair, .. } => &keypair.public,
+        }
+    }
+
+    fn derive_aes_key(&self, password: &[u8], out_salt: Option<&mut Salt>) -> Result<AESKey> {
+        let mut aes_key = AESKey::default();
+        match self {
+            ShardedWallet::Encrypted {
+                salt, iterations, ..
+            } => re_stretch_password(password, *iterations, *salt, &mut aes_key)?,
+            ShardedWallet::Decrypted { iterations, .. } => {
+                stretch_password(password, *iterations, out_salt.unwrap(), &mut aes_key)?
+            }
+        };
+        Ok(aes_key)
+    }
+}
+
+impl ShardedWallet {
+    pub fn num_shards(&self) -> u8 {
+        match self {
+            ShardedWallet::Decrypted {
+                key_share_count, ..
+            } => *key_share_count,
+            ShardedWallet::Encrypted {
+                key_share_count, ..
+            } => *key_share_count,
+        }
+    }
+
+    fn with_key_share(&self, share: &[u8]) -> Result<ShardedWallet> {
         match self {
             ShardedWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
             ShardedWallet::Encrypted {
@@ -201,10 +234,41 @@ impl ShardedWallet {
         }
     }
 
-    pub fn public_key(&self) -> &PublicKey {
-        match self {
-            ShardedWallet::Encrypted { public_key, .. } => public_key,
-            ShardedWallet::Decrypted { keypair, .. } => &keypair.public,
+    pub fn create(
+        iterations: u32,
+        key_share_count: u8,
+        recovery_threshold: u8,
+        password: &[u8],
+    ) -> Result<Vec<ShardedWallet>> {
+        let keypair = Keypair::gen_keypair();
+        let mut wallet = ShardedWallet::Decrypted {
+            iterations,
+            keypair,
+            key_share_count,
+            recovery_threshold,
+        };
+        let mut salt = Salt::default();
+        let mut aes_key = AESKey::default();
+        stretch_password(password, iterations, &mut salt, &mut aes_key)?;
+        let mut sss_key = SSSKey::default();
+        randombytes::randombytes_into(&mut sss_key);
+        let final_key = derive_sharded_aes_key(&sss_key, &aes_key)?;
+        let key_shares = create_keyshares(&sss_key, key_share_count, recovery_threshold)?;
+        wallet.encrypt(&final_key, salt)?;
+        let mut wallets = Vec::with_capacity(key_shares.len());
+        for key_share in key_shares {
+            let wallet_share = wallet.with_key_share(&key_share)?;
+            wallets.push(wallet_share);
         }
+        Ok(wallets)
     }
+}
+
+pub fn derive_sharded_aes_key(sss_key: &SSSKey, aes_key: &AESKey) -> Result<AESKey> {
+    let mut hmac = match HmacSha256::new_varkey(sss_key) {
+        Err(_) => return Err("Failed to initialize hmac".into()),
+        Ok(m) => m,
+    };
+    hmac.input(aes_key);
+    Ok(hmac.result().code().into())
 }

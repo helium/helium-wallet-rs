@@ -1,8 +1,11 @@
 use crate::{
-    keypair::{Keypair, PubKeyBin, PublicKey},
+    keypair::{Keypair, PublicKey},
     result::Result,
     traits::{ReadWrite, B58},
-    wallet::{self, AESKey, Salt, Tag, IV},
+    wallet::{
+        self, re_stretch_password, stretch_password, AESKey, Salt, Tag, Wallet, IV,
+        WALLET_TYPE_BYTES_BASIC,
+    },
 };
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::{fmt, io};
@@ -69,6 +72,7 @@ impl ReadWrite for BasicWallet {
                 tag,
                 encrypted,
             } => {
+                writer.write_u16::<LittleEndian>(WALLET_TYPE_BYTES_BASIC)?;
                 public_key.write(writer)?;
                 writer.write_all(iv)?;
                 writer.write_all(salt)?;
@@ -82,40 +86,22 @@ impl ReadWrite for BasicWallet {
 }
 
 impl BasicWallet {
-    pub fn encrypt(&self, password: &AESKey, salt: Salt) -> Result<Self> {
-        match self {
-            BasicWallet::Encrypted { .. } => Err("not an decrypted wallet".into()),
-            BasicWallet::Decrypted {
-                iterations,
-                keypair,
-            } => {
-                let mut pubkey_bin = PubKeyBin::default();
-                let mut iv = IV::default();
-                let mut tag = Tag::default();
-                let mut encrypted = Vec::new();
-                wallet::encrypt_keypair(
-                    keypair,
-                    password,
-                    &mut iv,
-                    &mut pubkey_bin,
-                    &mut encrypted,
-                    &mut tag,
-                )?;
-                let wallet = BasicWallet::Encrypted {
-                    iterations: *iterations,
-                    public_key: keypair.public,
-                    salt,
-                    iv,
-                    tag,
-                    encrypted,
-                };
-
-                Ok(wallet)
-            }
-        }
+    pub fn create(iterations: u32, password: &[u8]) -> Result<BasicWallet> {
+        let keypair = Keypair::gen_keypair();
+        let mut wallet = BasicWallet::Decrypted {
+            keypair,
+            iterations,
+        };
+        let mut salt = Salt::default();
+        let mut aes_key = AESKey::default();
+        stretch_password(password, iterations, &mut salt, &mut aes_key)?;
+        wallet.encrypt(&aes_key, salt)?;
+        Ok(wallet)
     }
+}
 
-    pub fn decrypt(&self, password: &AESKey) -> Result<BasicWallet> {
+impl Wallet for BasicWallet {
+    fn decrypt(&mut self, password: &[u8; 32]) -> Result<()> {
         match self {
             BasicWallet::Decrypted { .. } => Err("not an encrypted wallet".into()),
             BasicWallet::Encrypted {
@@ -126,19 +112,54 @@ impl BasicWallet {
                 tag,
                 ..
             } => {
-                let keypair = wallet::decrypt_keypair(encrypted, &password, public_key, iv, tag)?;
-                Ok(BasicWallet::Decrypted {
+                let keypair = wallet::decrypt_keypair(encrypted, password, public_key, iv, tag)?;
+                *self = BasicWallet::Decrypted {
                     keypair,
                     iterations: *iterations,
-                })
+                };
+                Ok(())
             }
         }
     }
 
-    pub fn public_key(&self) -> &PublicKey {
+    fn encrypt(&mut self, password: &AESKey, salt: Salt) -> Result<()> {
+        match self {
+            BasicWallet::Encrypted { .. } => Err("Wallet already encrypted".into()),
+            BasicWallet::Decrypted {
+                iterations,
+                keypair,
+            } => {
+                let (iv, tag, encrypted) = wallet::encrypt_keypair(keypair, password)?;
+                *self = BasicWallet::Encrypted {
+                    iterations: *iterations,
+                    public_key: keypair.public,
+                    salt,
+                    iv,
+                    tag,
+                    encrypted,
+                };
+                Ok(())
+            }
+        }
+    }
+
+    fn public_key(&self) -> &PublicKey {
         match self {
             BasicWallet::Encrypted { public_key, .. } => public_key,
             BasicWallet::Decrypted { keypair, .. } => &keypair.public,
         }
+    }
+
+    fn derive_aes_key(&self, password: &[u8], out_salt: Option<&mut Salt>) -> Result<AESKey> {
+        let mut aes_key = AESKey::default();
+        match self {
+            BasicWallet::Encrypted {
+                salt, iterations, ..
+            } => re_stretch_password(password, *iterations, *salt, &mut aes_key)?,
+            BasicWallet::Decrypted { iterations, .. } => {
+                stretch_password(password, *iterations, out_salt.unwrap(), &mut aes_key)?
+            }
+        };
+        Ok(aes_key)
     }
 }

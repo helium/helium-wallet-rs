@@ -1,19 +1,13 @@
 use crate::{
     cmd_verify,
-    keypair::Keypair,
     result::Result,
     traits::ReadWrite,
-    wallet::{basic::BasicWallet, sharded::ShardedWallet, Wallet},
+    wallet::{basic::BasicWallet, sharded::ShardedWallet},
 };
 use std::{fs::OpenOptions, path::PathBuf};
 
 pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) -> Result {
-    let keypair = Keypair::gen_keypair();
-    let wallet = Wallet::Basic(BasicWallet::Decrypted {
-        keypair,
-        iterations,
-    });
-    let enc_wallet = wallet.encrypt(password.as_bytes())?;
+    let enc_wallet = BasicWallet::create(iterations, password.as_bytes())?;
 
     let mut writer = OpenOptions::new()
         .write(true)
@@ -21,7 +15,7 @@ pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) 
         .create_new(!force)
         .open(output.clone())?;
 
-    enc_wallet[0].write(&mut writer)?;
+    enc_wallet.write(&mut writer)?;
     crate::cmd_verify::cmd_verify(vec![output], password)
 }
 
@@ -33,22 +27,20 @@ pub fn cmd_sharded(
     output: PathBuf,
     force: bool,
 ) -> Result {
-    let keypair = Keypair::gen_keypair();
-
-    let wallet = Wallet::Sharded(ShardedWallet::Decrypted {
+    let enc_wallets = ShardedWallet::create(
         iterations,
-        keypair,
         key_share_count,
         recovery_threshold,
-    });
-    let enc_wallets = wallet.encrypt(password.as_bytes())?;
-
+        password.as_bytes(),
+    )?;
+    println!("num wallet {}", enc_wallets.len());
     use std::ffi::OsStr;
     let extension: &str = output
         .extension()
         .unwrap_or_else(|| OsStr::new(""))
         .to_str()
         .unwrap();
+
     let mut filenames = Vec::new();
     for (i, w) in enc_wallets.iter().enumerate() {
         let mut filename = output.clone();
@@ -62,5 +54,6 @@ pub fn cmd_sharded(
             .open(filename)?;
         w.write(&mut writer)?;
     }
+
     cmd_verify::cmd_verify(filenames, password)
 }

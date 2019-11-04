@@ -1,55 +1,65 @@
 use crate::{
-    keypair::PublicKey,
     result::Result,
     traits::{ReadWrite, B58},
-    wallet::{self, Wallet},
+    wallet::{self, WalletReadWrite, Wallet},
+    keypair::PublicKey,
 };
 use std::{fs, path::PathBuf};
 
 pub fn cmd_verify(files: Vec<PathBuf>, password: &str) -> Result {
     let first_file = files.first().expect("At least one file expected");
-    let is_sharded = {
-        let mut reader = fs::File::open(first_file)?;
-        let wallet = Wallet::read(&mut reader)?;
-        wallet.is_sharded()
-    };
+    let mut reader = fs::File::open(first_file)?;
+    let wallet_type = WalletReadWrite::read(&mut reader)?;
 
-    if is_sharded {
-        let mut enc_wallets = Vec::new();
-        for file in files.iter() {
-            let mut reader = fs::File::open(&file)?;
-            let enc_wallet = Wallet::read(&mut reader)?;
-            enc_wallets.push(enc_wallet);
-        }
-        let result = wallet::Wallet::decrypt_sharded(password.as_bytes(), &enc_wallets);
-        print_wallet(
-            enc_wallets.first().unwrap().public_key(),
-            is_sharded,
-            files,
-            Some(result),
-        )?;
-        Ok(())
-    } else {
-        for file in files.iter() {
-            let mut reader = fs::File::open(&file)?;
-            let enc_wallet = Wallet::read(&mut reader)?;
-            let result = wallet::Wallet::decrypt_basic(password.as_bytes(), &enc_wallet);
+    match wallet_type {
+        WalletReadWrite::Sharded(first_wallet) => {
+            let mut enc_wallets = Vec::new();
+            for file in files.iter() {
+                let mut reader = fs::File::open(&file)?;
+                let enc_wallet = WalletReadWrite::read(&mut reader)?;
+                match enc_wallet {
+                    WalletReadWrite::Sharded(wallet) => {
+                        enc_wallets.push(wallet);
+                    }
+                    WalletReadWrite::Basic(_) => panic!("Basic wallet file mixed with sharded"),
+                }
+            }
+            let result = wallet::decrypt_sharded(password.as_bytes(), enc_wallets);
             print_wallet(
-                enc_wallet.public_key(),
-                is_sharded,
-                vec![file.clone()],
+                first_wallet.public_key(),
+                true,
+                files,
                 Some(result),
             )?;
         }
-        Ok(())
+        WalletReadWrite::Basic(_) => {
+            for file in files.iter() {
+                let mut reader = fs::File::open(&file)?;
+                let enc_wallet = WalletReadWrite::read(&mut reader)?;
+                match enc_wallet {
+                    WalletReadWrite::Basic(wallet) => {
+                        let public_key = wallet.public_key().clone();
+                        let result = wallet::decrypt_basic(password.as_bytes(), wallet);
+                        print_wallet(
+                            &public_key,
+                            false,
+                            vec![file.clone()],
+                            Some(result),
+                        )?;
+                    }
+                    WalletReadWrite::Sharded(_) => panic!("Sharded wallet file mixed with basic"),
+                }
+            }
+        }
     }
+    Ok(())
 }
 
-fn print_wallet(
+fn print_wallet<W: Wallet>(
     public_key: &PublicKey,
     sharded: bool,
     files: Vec<PathBuf>,
-    verify: Option<Result<Wallet>>,
+    verify: Option<Result<W>>,
 ) -> Result {
     let file_names: Vec<String> = files.iter().map(|pb| pb.display().to_string()).collect();
     println!("Address: {}", public_key.to_b58()?);

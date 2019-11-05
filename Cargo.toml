@@ -18,3 +18,11 @@ aes-gcm = "0.1.0"
 shamirsecretsharing = {version="0.1.4", features=["have_libsodium"]}
 prettytable-rs = "0.6"
 helium-api = { git = "https://github.com/helium/helium-api-rs"}
+# Add openssl-sys as a direct dependency so it can be cross compiled to
+# x86_64-unknown-linux-musl using the "vendored" feature below
+openssl-sys = "*"
+
+[features]
+# Force openssl-sys to staticly link in the openssl library. Necessary when
+# cross compiling to x86_64-unknown-linux-musl.
+vendored = ["openssl-sys/vendored"]

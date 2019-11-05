@@ -1,19 +1,22 @@
 #[macro_use]
 extern crate prettytable;
+#[macro_use]
+extern crate lazy_static;
 mod cmd_balance;
 mod cmd_create;
 mod cmd_hotspots;
 mod cmd_info;
 mod cmd_verify;
 mod keypair;
+mod mnemonic;
 mod result;
 mod traits;
 mod wallet;
 
 use crate::{
+    result::Result,
     traits::{ReadWrite, B58},
     wallet::Wallet,
-    result::Result
 };
 use std::path::PathBuf;
 use std::{fs, process};
@@ -70,6 +73,10 @@ pub enum CreateCmd {
         #[structopt(short = "i", long = "iterations", default_value = "1000000")]
         /// Number of PBKDF2 interations
         iterations: u32,
+
+        #[structopt(long)]
+        /// Use seed words to create the wallet
+        seed: bool,
     },
 
     Sharded {
@@ -92,6 +99,10 @@ pub enum CreateCmd {
         #[structopt(short = "k", long = "required-shards", default_value = "3")]
         /// Number of shards required to recover the key
         recovery_threshold: u8,
+
+        #[structopt(long)]
+        /// Use seed words to create the wallet
+        seed: bool,
     },
 }
 
@@ -113,6 +124,25 @@ fn get_password(confirm: bool) -> std::io::Result<String> {
     builder.interact()
 }
 
+fn get_seed_words() -> Result<Vec<String>> {
+    use dialoguer::Input;
+    let split_str = |s: String| s.split_whitespace().map(|w| w.to_string()).collect();
+    let word_string = Input::<String>::new()
+        .with_prompt("Seed Words")
+        .validate_with(move |v: &str| {
+            let word_list = split_str(v.to_string());
+            match mnemonic::mnemonic_to_entropy(word_list) {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err)
+            }
+        })
+        .interact()?;
+    Ok(word_string
+        .split_whitespace()
+        .map(|w| w.to_string())
+        .collect())
+}
+
 fn run(cli: Cli) -> Result {
     match cli {
         Cli::Info { files } => cmd_info::cmd_info(files),
@@ -124,9 +154,11 @@ fn run(cli: Cli) -> Result {
             output,
             force,
             iterations,
+            seed,
         }) => {
+            let seed_words = if seed { Some(get_seed_words()?) } else { None };
             let pass = get_password(true)?;
-            cmd_create::cmd_basic(&pass, iterations, output, force)
+            cmd_create::cmd_basic(&pass, iterations, output, force, seed_words)
         }
         Cli::Create(CreateCmd::Sharded {
             output,
@@ -134,7 +166,9 @@ fn run(cli: Cli) -> Result {
             iterations,
             key_share_count,
             recovery_threshold,
+            seed,
         }) => {
+            let seed_words = if seed { Some(get_seed_words()?) } else { None };
             let pass = get_password(true)?;
             cmd_create::cmd_sharded(
                 &pass,
@@ -143,6 +177,7 @@ fn run(cli: Cli) -> Result {
                 iterations,
                 output,
                 force,
+                seed_words,
             )
         }
         Cli::Balance { files, addresses } => {
@@ -156,7 +191,7 @@ fn run(cli: Cli) -> Result {
 
 fn collect_addresses(files: Vec<PathBuf>, addresses: Vec<String>) -> Result<Vec<String>> {
     // If no files or addresses are given use the default wallet
-    let file_list = if files.is_empty()&& addresses.is_empty() {
+    let file_list = if files.is_empty() && addresses.is_empty() {
         vec![PathBuf::from("wallet.key")]
     } else {
         files

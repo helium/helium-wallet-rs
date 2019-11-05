@@ -1,14 +1,21 @@
 use crate::{
     cmd_verify,
-    keypair::Keypair,
+    keypair::{Keypair, Seed},
+    mnemonic::mnemonic_to_entropy,
     result::Result,
     traits::ReadWrite,
     wallet::{basic, sharded, Wallet},
 };
 use std::{fs::OpenOptions, path::PathBuf};
 
-pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) -> Result {
-    let keypair = Keypair::gen_keypair();
+pub fn cmd_basic(
+    password: &str,
+    iterations: u32,
+    output: PathBuf,
+    force: bool,
+    seed_words: Option<Vec<String>>,
+) -> Result {
+    let keypair = gen_keypair(seed_words)?;
     let wallet = Wallet::Basic(basic::Wallet::Decrypted {
         keypair,
         iterations,
@@ -22,7 +29,8 @@ pub fn cmd_basic(password: &str, iterations: u32, output: PathBuf, force: bool) 
         .open(output.clone())?;
 
     enc_wallet[0].write(&mut writer)?;
-    crate::cmd_verify::cmd_verify(vec![output], password)
+    crate::cmd_verify::cmd_verify(vec![output], password)?;
+    Ok(())
 }
 
 pub fn cmd_sharded(
@@ -32,8 +40,9 @@ pub fn cmd_sharded(
     iterations: u32,
     output: PathBuf,
     force: bool,
+    seed_words: Option<Vec<String>>,
 ) -> Result {
-    let keypair = Keypair::gen_keypair();
+    let keypair = gen_keypair(seed_words)?;
 
     let wallet = Wallet::Sharded(sharded::Wallet::Decrypted {
         iterations,
@@ -63,4 +72,14 @@ pub fn cmd_sharded(
         w.write(&mut writer)?;
     }
     cmd_verify::cmd_verify(filenames, password)
+}
+
+fn gen_keypair(seed_words: Option<Vec<String>>) -> Result<Keypair> {
+    match seed_words {
+        Some(words) => {
+            let entropy = mnemonic_to_entropy(words)?;
+            Ok(Keypair::gen_keypair_from_seed(&Seed(entropy)))
+        }
+        None => Ok(Keypair::gen_keypair()),
+    }
 }

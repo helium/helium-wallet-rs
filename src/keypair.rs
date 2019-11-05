@@ -11,6 +11,7 @@ pub const KEYTYPE_ED25519: u8 = 1;
 
 pub use ed25519::PublicKey;
 pub use ed25519::SecretKey;
+pub use ed25519::Seed;
 
 // Newtype to allow us to `impl Default` on a 33 element array.
 pub struct PubKeyBin(pub(crate) [u8; 33]);
@@ -27,17 +28,22 @@ pub struct Keypair {
 }
 
 fn init() {
-    START.call_once(|| {
-        if let Err(e) = sodiumoxide::init() {
-            panic!("Failed to intialize sodium {:?}", e)
-        }
-    })
+    START.call_once(|| sodiumoxide::init().expect("Failed to intialize sodium"))
 }
 
 impl Keypair {
     pub fn gen_keypair() -> Keypair {
         init();
         let (pk, sk) = ed25519::gen_keypair();
+        Keypair {
+            public: pk,
+            secret: sk,
+        }
+    }
+
+    pub fn gen_keypair_from_seed(seed: &Seed) -> Keypair {
+        init();
+        let (pk, sk) = ed25519::keypair_from_seed(seed);
         Keypair {
             public: pk,
             secret: sk,

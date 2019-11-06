@@ -24,12 +24,11 @@ pub fn cmd_verify(files: Vec<PathBuf>, password: &str) -> Result {
         let result = wallet::Wallet::decrypt_sharded(password.as_bytes(), &enc_wallets);
         results.push((first_wallet, result));
     } else {
-        for file in files.iter() {
-            let mut reader = fs::File::open(&file)?;
-            let enc_wallet = Wallet::read(&mut reader)?;
-            let result = wallet::Wallet::decrypt_basic(password.as_bytes(), &enc_wallet);
-            results.push((enc_wallet, result));
-        }
+        let file = files.first().expect("Missing wallet filename");
+        let mut reader = fs::File::open(&file)?;
+        let enc_wallet = Wallet::read(&mut reader)?;
+        let result = wallet::Wallet::decrypt_basic(password.as_bytes(), &enc_wallet);
+        results.push((enc_wallet, result));
     };
     print_results(results);
     Ok(())
@@ -38,7 +37,7 @@ pub fn cmd_verify(files: Vec<PathBuf>, password: &str) -> Result {
 fn print_results(results: Vec<(Wallet, Result<Wallet>)>) {
     let mut table = Table::new();
     table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-    table.set_titles(row!["Address", "Sharded", "Verify"]);
+    table.set_titles(row!["Address", "Sharded", "Verify", "Seed"]);
     for (enc_wallet, result) in results {
         let address = enc_wallet
             .public_key()

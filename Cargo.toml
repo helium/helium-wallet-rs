@@ -3,6 +3,7 @@ name = "helium-wallet"
 version = "0.1.0"
 authors = ["Marc Nijdam <marc@helium.com>"]
 edition = "2018"
+build = "build.rs"
 
 [dependencies]
 byteorder = "1.3.2"
@@ -17,6 +18,8 @@ aead = "0.1.1"
 aes-gcm = "0.1.0"
 shamirsecretsharing = {version="0.1.4", features=["have_libsodium"]}
 prettytable-rs = "0.6"
+lazy_static = "1"
+regex = "1"
 helium-api = { git = "https://github.com/helium/helium-api-rs"}
 # Add openssl-sys as a direct dependency so it can be cross compiled to
 # x86_64-unknown-linux-musl using the "vendored" feature below

@@ -99,6 +99,24 @@ The given wallets will be read and information about the wallet,
 including the public key, displayed. This command works for all wallet
 types.
 
+### Displaying
+
+Displaying information for one or more wallets without needing its
+password can be done using;
+
+
+```
+    helium-wallet info
+```
+
+To display a QR code for the public key of the given wallet use:
+
+```
+    helium-wallet info --qr
+```
+
+This is useful for sending tokens to the wallet from the mobile
+wallet.
 
 ### Verifying
 

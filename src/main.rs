@@ -27,8 +27,13 @@ use structopt::StructOpt;
 enum Cli {
     /// Get wallet information
     Info {
+        /// File(s) to print information on
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
         files: Vec<PathBuf>,
+
+        /// Display QR code for a given single wallet.
+        #[structopt(long = "qr")]
+        qr_code: bool,
     },
     /// Verify an encypted wallet
     Verify {
@@ -50,12 +55,13 @@ enum Cli {
     /// Get the hotspots for a wallet
     Hotspots {
         /// Wallet(s) to read addresses from
-              #[structopt(short = "f", long = "file")]
-              files: Vec<PathBuf>,
+        #[structopt(short = "f", long = "file")]
+        files: Vec<PathBuf>,
+
         /// Addresses to get balances for
-              #[structopt(short = "a", long = "address")]
-              addresses: Vec<String>,
-              },
+        #[structopt(short = "a", long = "address")]
+        addresses: Vec<String>,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -134,7 +140,7 @@ fn get_seed_words() -> Result<Vec<String>> {
             let word_list = split_str(v.to_string());
             match mnemonic::mnemonic_to_entropy(word_list) {
                 Ok(_) => Ok(()),
-                Err(err) => Err(err)
+                Err(err) => Err(err),
             }
         })
         .interact()?;
@@ -146,7 +152,7 @@ fn get_seed_words() -> Result<Vec<String>> {
 
 fn run(cli: Cli) -> Result {
     match cli {
-        Cli::Info { files } => cmd_info::cmd_info(files),
+        Cli::Info { files, qr_code } => cmd_info::cmd_info(files, qr_code),
         Cli::Verify { files } => {
             let pass = get_password(false)?;
             cmd_verify::cmd_verify(files, &pass)

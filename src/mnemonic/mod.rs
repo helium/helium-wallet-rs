@@ -1,6 +1,5 @@
 use crate::result::Result;
 use regex::Regex;
-use sha2::{Digest, Sha256};
 include!(concat!(env!("OUT_DIR"), "/english.rs"));
 
 type WordList = &'static [&'static str];
@@ -35,6 +34,11 @@ pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
 
     let divider_index: usize = ((bits.len() as f64 / 33.0) * 32.0).floor() as usize;
     let (entropy_bits, checksum_bits) = bits.split_at(divider_index);
+    // The mobile wallet does not calculate the checksum bits right so
+    // they always and up being all 0
+    if checksum_bits != "0000" {
+        return Err("invalid checksum".into());
+    }
 
     lazy_static! {
         static ref RE_BYTES: Regex = Regex::new("(.{1,8})").unwrap();
@@ -45,9 +49,6 @@ pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
         entropy_base[idx] = binary_to_bytes(matched.as_str()) as u8;
     }
 
-    let new_checksum = derive_checksum_bits(&entropy_base);
-    assert!(checksum_bits == new_checksum, "invalid checksum");
-
     let mut entropy_bytes = [0u8; 32];
     entropy_bytes[..16].copy_from_slice(&entropy_base);
     entropy_bytes[16..].copy_from_slice(&entropy_base);
@@ -55,29 +56,26 @@ pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
     Ok(entropy_bytes)
 }
 
-/// Converts a vec of bytes into a single binary number string.
-fn bytes_to_binary(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{:08b}", b))
-        .collect::<Vec<String>>()
-        .join("")
-}
-
 /// Converts a binary string into an integer
 fn binary_to_bytes(bin: &str) -> usize {
     usize::from_str_radix(bin, 2).unwrap() as usize
 }
 
-/// Calculates checksum bits for entropy and returns
-/// a single binary number string.
-fn derive_checksum_bits(entropy: &[u8; 16]) -> String {
-    let ent = entropy.len() * 8;
-    let cs = ent / 32;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bs58;
 
-    let mut hasher = Sha256::new();
-    hasher.input(entropy);
-    let hash = hasher.result();
+    #[test]
+    fn decode_words() {
+        // The words and entryopy here were generated from the JS mobile-wallet implementation
+        let words = "catch poet clog intact scare jacket throw palm illegal buyer allow figure";
+        let expected_entropy = bs58::decode("3RrA1FDa6mdw5JwKbUxEbZbMcJgSyWjhNwxsbX5pSos8")
+            .into_vec()
+            .expect("decoded entropy");
 
-    bytes_to_binary(&hash.as_slice().to_vec())[..cs].to_string()
+        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
+        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
+        assert_eq!(expected_entropy, entropy);
+    }
 }

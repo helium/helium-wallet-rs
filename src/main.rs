@@ -47,14 +47,15 @@ enum Cli {
         #[structopt(short = "a", long = "address")]
         addresses: Vec<String>,
     },
+    /// Get the hotspots for a wallet
     Hotspots {
         /// Wallet(s) to read addresses from
-        #[structopt(short = "f", long = "file")]
-        files: Vec<PathBuf>,
+              #[structopt(short = "f", long = "file")]
+              files: Vec<PathBuf>,
         /// Addresses to get balances for
-        #[structopt(short = "a", long = "address")]
-        addresses: Vec<String>,
-    },
+              #[structopt(short = "a", long = "address")]
+              addresses: Vec<String>,
+              },
 }
 
 #[derive(Debug, StructOpt)]

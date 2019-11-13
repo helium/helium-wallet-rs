@@ -4,7 +4,7 @@ use crate::{
     mnemonic::mnemonic_to_entropy,
     result::Result,
     traits::ReadWrite,
-    wallet::{basic, sharded, Wallet},
+    wallet::{Wallet, BasicFormat, ShardedFormat},
 };
 use std::{fs::OpenOptions, path::PathBuf};
 
@@ -16,11 +16,8 @@ pub fn cmd_basic(
     seed_words: Option<Vec<String>>,
 ) -> Result {
     let keypair = gen_keypair(seed_words)?;
-    let wallet = Wallet::Basic(basic::Wallet::Decrypted {
-        keypair,
-        iterations,
-    });
-    let enc_wallet = wallet.encrypt(password.as_bytes())?;
+    let mut format = BasicFormat::default();
+    let wallet = Wallet::from_keypair(&keypair, password.as_bytes(), iterations, &mut format)?;
 
     let mut writer = OpenOptions::new()
         .write(true)
@@ -28,8 +25,8 @@ pub fn cmd_basic(
         .create_new(!force)
         .open(output.clone())?;
 
-    enc_wallet[0].write(&mut writer)?;
-    crate::cmd_verify::cmd_verify(vec![output], password)?;
+    wallet.write(&mut writer)?;
+    crate::cmd_verify::cmd_verify(&wallet, password)?;
     Ok(())
 }
 
@@ -43,14 +40,8 @@ pub fn cmd_sharded(
     seed_words: Option<Vec<String>>,
 ) -> Result {
     let keypair = gen_keypair(seed_words)?;
-
-    let wallet = Wallet::Sharded(sharded::Wallet::Decrypted {
-        iterations,
-        keypair,
-        key_share_count,
-        recovery_threshold,
-    });
-    let enc_wallets = wallet.encrypt(password.as_bytes())?;
+    let mut format = ShardedFormat {key_share_count, recovery_threshold, key_shares: vec![]};
+    let mut wallet = Wallet::from_keypair(&keypair, password.as_bytes(), iterations, &mut format)?;
 
     use std::ffi::OsStr;
     let extension: &str = output
@@ -59,7 +50,7 @@ pub fn cmd_sharded(
         .to_str()
         .unwrap();
     let mut filenames = Vec::new();
-    for (i, w) in enc_wallets.iter().enumerate() {
+    for (i, share) in format.key_shares.iter().enumerate() {
         let mut filename = output.clone();
         let share_extension = format!("{}.{}", extension, (i + 1).to_string());
         filename.set_extension(share_extension);
@@ -69,9 +60,11 @@ pub fn cmd_sharded(
             .create(true)
             .create_new(!force)
             .open(filename)?;
-        w.write(&mut writer)?;
+        wallet.format = Box::new(ShardedFormat{key_shares: vec![share.clone()], ..format});
+        wallet.write(&mut writer)?;
     }
-    cmd_verify::cmd_verify(filenames, password)
+    wallet.format = Box::new(format);
+    cmd_verify::cmd_verify(&wallet, password)
 }
 
 fn gen_keypair(seed_words: Option<Vec<String>>) -> Result<Keypair> {

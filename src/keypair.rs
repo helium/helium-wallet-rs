@@ -14,11 +14,30 @@ pub use ed25519::SecretKey;
 pub use ed25519::Seed;
 
 // Newtype to allow us to `impl Default` on a 33 element array.
+#[derive(Clone, Copy)]
 pub struct PubKeyBin(pub(crate) [u8; 33]);
 
 impl Default for PubKeyBin {
     fn default() -> Self {
         PubKeyBin([0; 33])
+    }
+}
+
+impl From<&PublicKey> for PubKeyBin {
+    fn from(pubkey: &PublicKey) -> Self {
+        let mut buf= PubKeyBin::default();
+        buf.0[0] = KEYTYPE_ED25519;
+        buf.0[1..].copy_from_slice(&pubkey.0);
+        buf
+    }
+}
+
+impl Into<PublicKey> for PubKeyBin {
+    fn into(self) -> PublicKey {
+        assert!(self.0[0] == KEYTYPE_ED25519);
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&self.0[1..]);
+        PublicKey(buf)
     }
 }
 
@@ -48,6 +67,10 @@ impl Keypair {
             public: pk,
             secret: sk,
         }
+    }
+
+    pub fn sign(&self, data: &[u8]) -> Vec<u8> {
+        ed25519::sign(data, &self.secret)
     }
 }
 

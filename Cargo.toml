@@ -22,6 +22,9 @@ lazy_static = "1"
 regex = "1"
 qr2term = "0.1"
 helium-api = { git = "https://github.com/helium/helium-api-rs"}
+helium-proto = { git = "https://github.com/helium/proto", branch = "madninja/rust_prost"}
+prost = "0.5"
+
 # Add openssl-sys as a direct dependency so it can be cross compiled to
 # x86_64-unknown-linux-musl using the "vendored" feature below
 openssl-sys = "*"

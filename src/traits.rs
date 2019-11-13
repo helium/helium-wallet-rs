@@ -1,9 +1,7 @@
-use crate::keypair::KEYTYPE_ED25519;
+use crate::keypair::{PubKeyBin, PublicKey, KEYTYPE_ED25519};
 use crate::result::Result;
 use bs58;
-use byteorder::ReadBytesExt;
 use io::{Read, Write};
-use sodiumoxide::crypto::sign::ed25519;
 use std::io;
 
 pub trait ReadWrite {
@@ -20,40 +18,66 @@ pub trait B58 {
         Self: std::marker::Sized;
 }
 
-impl ReadWrite for ed25519::PublicKey {
+impl ReadWrite for PublicKey {
     fn write(&self, writer: &mut dyn io::Write) -> Result {
-        writer.write_all(&[KEYTYPE_ED25519])?;
+        let pubkey_bin: PubKeyBin = self.into();
+        pubkey_bin.write(writer)
+    }
+
+    fn read(reader: &mut dyn Read) -> Result<PublicKey> {
+        let pubkey_bin = PubKeyBin::read(reader)?;
+        if pubkey_bin.0[0] != KEYTYPE_ED25519 {
+            return Err(format!("Invalid key type {}", pubkey_bin.0[0]).into());
+        }
+        let pubkey: PublicKey = pubkey_bin.into();
+        Ok(pubkey)
+    }
+}
+
+impl B58 for PublicKey {
+    fn to_b58(&self) -> Result<String> {
+        let pubkey_bin: PubKeyBin = self.into();
+        pubkey_bin.to_b58()
+    }
+
+    fn from_b58(b58: String) -> Result<PublicKey> {
+        let pubkey_bin = PubKeyBin::from_b58(b58)?;
+
+        if pubkey_bin.0[0] != KEYTYPE_ED25519 {
+            return Err(format!("Invalid key type {}", pubkey_bin.0[0]).into());
+        }
+        let pubkey: PublicKey = pubkey_bin.into();
+        Ok(pubkey)
+    }
+}
+
+impl ReadWrite for PubKeyBin {
+    fn write(&self, writer: &mut dyn io::Write) -> Result {
         writer.write_all(&self.0)?;
         Ok(())
     }
 
-    fn read(reader: &mut dyn Read) -> Result<ed25519::PublicKey> {
-        let key_type = reader.read_u8()?;
-        if key_type != KEYTYPE_ED25519 {
-            return Err(format!("Invalid public key type {}", key_type).into());
-        }
-        let mut pk_buf = [0; 32];
-        reader.read_exact(&mut pk_buf)?;
-        Ok(ed25519::PublicKey(pk_buf))
+    fn read(reader: &mut dyn Read) -> Result<Self> {
+        let mut pubkey_bin = PubKeyBin::default();
+        reader.read_exact(&mut pubkey_bin.0)?;
+        Ok(pubkey_bin)
     }
 }
 
-impl B58 for ed25519::PublicKey {
+impl B58 for PubKeyBin {
     fn to_b58(&self) -> Result<String> {
-        let mut payload = vec![0, KEYTYPE_ED25519];
-        payload.write_all(&self.0)?;
-        Ok(bs58::encode(payload).with_check().into_string())
+        // First 0 value is the "version" number defined for addresses
+        // in libp2p
+        let mut data = [0u8; 34];
+        data[1..].copy_from_slice(&self.0);
+        Ok(bs58::encode(data.as_ref()).with_check().into_string())
     }
 
-    fn from_b58(b58: String) -> Result<ed25519::PublicKey> {
-        let binary = bs58::decode(b58).with_check(Some(0)).into_vec()?;
-        if binary[1] != KEYTYPE_ED25519 {
-            return Err(format!("Invalid key type {}", binary[1]).into());
-        }
-
-        let mut body = &binary[2..];
-        let mut key_bytes: [u8; 32] = [0; 32];
-        body.read_exact(&mut key_bytes)?;
-        Ok(ed25519::PublicKey(key_bytes))
+    fn from_b58(b58: String) -> Result<Self> {
+        // First 0 value is the version byte
+        let data = bs58::decode(b58).with_check(Some(0)).into_vec()?;
+        let mut pubkey_bin = PubKeyBin::default();
+        pubkey_bin.0.copy_from_slice(&data[1..]);
+        Ok(pubkey_bin)
     }
 }

@@ -52,7 +52,7 @@ impl KeyShare {
 
 impl fmt::Debug for KeyShare {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "KeyShare({:?})", self.0.to_vec())
+        f.debug_tuple("KeyShare").field(&&self.0[..]).finish()
     }
 }
 

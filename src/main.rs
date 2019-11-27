@@ -6,6 +6,7 @@ mod cmd_balance;
 mod cmd_create;
 mod cmd_hotspots;
 mod cmd_info;
+mod cmd_pay;
 mod cmd_verify;
 mod keypair;
 mod mnemonic;
@@ -15,7 +16,7 @@ mod wallet;
 
 use crate::{
     result::Result,
-    traits::{ReadWrite, B58},
+    traits::{ReadWrite},
     wallet::Wallet,
 };
 use std::path::PathBuf;
@@ -61,6 +62,18 @@ enum Cli {
         /// Addresses to get balances for
         #[structopt(short = "a", long = "address")]
         addresses: Vec<String>,
+    },
+    /// Pay tokens to a given address
+    Pay {
+        /// Wallet to use as the payer
+        #[structopt(short = "f", long = "file")]
+        file: PathBuf,
+
+        /// Address of the payee
+        address: String,
+
+        /// Number of tokens so send
+        amount: u64,
     },
 }
 
@@ -152,10 +165,14 @@ fn get_seed_words() -> Result<Vec<String>> {
 
 fn run(cli: Cli) -> Result {
     match cli {
-        Cli::Info { files, qr_code } => cmd_info::cmd_info(files, qr_code),
+        Cli::Info { files, qr_code } => {
+            let wallet = load_wallet(files)?;
+            cmd_info::cmd_info(&wallet, qr_code)
+        }
         Cli::Verify { files } => {
             let pass = get_password(false)?;
-            cmd_verify::cmd_verify(files, &pass)
+            let wallet = load_wallet(files)?;
+            cmd_verify::cmd_verify(&wallet, &pass)
         }
         Cli::Create(CreateCmd::Basic {
             output,
@@ -193,6 +210,15 @@ fn run(cli: Cli) -> Result {
         Cli::Hotspots { files, addresses } => {
             cmd_hotspots::cmd_hotspots(collect_addresses(files, addresses)?)
         }
+        Cli::Pay {
+            address,
+            amount,
+            file,
+        } => {
+            let pass = get_password(false)?;
+            let wallet = load_wallet(vec![file])?;
+            cmd_pay::cmd_pay(&wallet, &pass, address, amount)
+        }
     }
 }
 
@@ -207,7 +233,27 @@ fn collect_addresses(files: Vec<PathBuf>, addresses: Vec<String>) -> Result<Vec<
     for file in file_list {
         let mut reader = fs::File::open(&file)?;
         let enc_wallet = Wallet::read(&mut reader)?;
-        address_list.push(enc_wallet.public_key().to_b58()?);
+        address_list.push(enc_wallet.address()?);
     }
     Ok(address_list)
+}
+
+fn load_wallet(files: Vec<PathBuf>) -> Result<Wallet> {
+    let mut files_iter = files.iter();
+    let mut first_wallet = match files_iter.next() {
+        Some(path) => {
+            let mut reader = fs::File::open(path)?;
+            Wallet::read(&mut reader)?
+        }
+        None => return Err("At least one wallet file expected".into()),
+    };
+
+    for path in files_iter {
+        let mut reader = fs::File::open(path)?;
+        let w = Wallet::read(&mut reader)?;
+        let w_format = w.format.as_sharded_format()?;
+        first_wallet.format.absorb_key_shares(&w_format)?;
+    }
+
+    Ok(first_wallet)
 }

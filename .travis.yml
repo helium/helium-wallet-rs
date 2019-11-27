@@ -14,7 +14,7 @@ DEPLOY_TO_GITHUB: &DEPLOY_TO_GITHUB
   before_deploy:
     - git config --local user.name "Helium CI"
     - git config --local user.email "hello@helium.com"
-    - name="he-wallet-$TRAVIS_TAG-$TARGET"
+    - name="helium-wallet-$TRAVIS_TAG-$TARGET"
     - mkdir $name
     - cp target/$TARGET/release/helium-wallet $name/
     - cp README.md LICENSE $name/
@@ -22,7 +22,7 @@ DEPLOY_TO_GITHUB: &DEPLOY_TO_GITHUB
   deploy:
     provider: releases
     api_key: *GH_TOKEN
-    file: he-wallet-$TRAVIS_TAG-$TARGET.tar.gz
+    file: helium-wallet-$TRAVIS_TAG-$TARGET.tar.gz
     skip_cleanup: true
     on:
       branch: master

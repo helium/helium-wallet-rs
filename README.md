@@ -134,3 +134,16 @@ when creating the wallet.
     helium-wallet verify -f wallet.key
     helium-wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
 ```
+
+### Sending Tokens
+
+To send tokens to other accounts use:
+
+```
+    helium-wallet pay <address> <bones>
+```
+
+Where `<address>` is the wallet address for the wallet you want to
+send tokens, and `<bones>` is the number of tokens you want to send.
+
+**NOTE:** One `HNT` is 1,000,000 `bones`.

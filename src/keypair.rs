@@ -32,6 +32,18 @@ impl From<&PublicKey> for PubKeyBin {
     }
 }
 
+impl PubKeyBin {
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.0.to_vec()
+    }
+
+    pub fn from_vec(data: &[u8]) -> Self {
+        let mut result= PubKeyBin::default();
+        result.0.copy_from_slice(&data);
+        result
+    }
+}
+
 impl Into<PublicKey> for PubKeyBin {
     fn into(self) -> PublicKey {
         assert!(self.0[0] == KEYTYPE_ED25519);
@@ -71,6 +83,10 @@ impl Keypair {
 
     pub fn sign(&self, data: &[u8]) -> Vec<u8> {
         ed25519::sign(data, &self.secret)
+    }
+
+    pub fn pubkey_bin(&self) -> PubKeyBin {
+        PubKeyBin::from(&self.public)
     }
 }
 

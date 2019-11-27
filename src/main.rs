@@ -2,6 +2,7 @@
 extern crate prettytable;
 #[macro_use]
 extern crate lazy_static;
+
 mod cmd_balance;
 mod cmd_create;
 mod cmd_hotspots;
@@ -14,11 +15,7 @@ mod result;
 mod traits;
 mod wallet;
 
-use crate::{
-    result::Result,
-    traits::{ReadWrite},
-    wallet::Wallet,
-};
+use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use std::path::PathBuf;
 use std::{fs, process};
 use structopt::StructOpt;
@@ -44,11 +41,14 @@ enum Cli {
     },
     /// Create a new wallet
     Create(CreateCmd),
-    /// Get the balance for a wallet
+    /// Get the balance for a wallet. The balance is given in bones,
+    /// which is the smallest denomination for HNT. 1 HNT is 1_000_000
+    /// bones
     Balance {
         /// Wallet(s) to read addresses from
         #[structopt(short = "f", long = "file")]
         files: Vec<PathBuf>,
+
         /// Addresses to get balances for
         #[structopt(short = "a", long = "address")]
         addresses: Vec<String>,
@@ -63,16 +63,18 @@ enum Cli {
         #[structopt(short = "a", long = "address")]
         addresses: Vec<String>,
     },
-    /// Pay tokens to a given address
+    /// Pay a number of bones to a given address. Note that 1 HNT is
+    /// 1_000_000 bones
     Pay {
         /// Wallet to use as the payer
-        #[structopt(short = "f", long = "file")]
-        file: PathBuf,
+        #[structopt(short = "f", long = "file", default_value = "wallet.key")]
+        files: Vec<PathBuf>,
 
         /// Address of the payee
         address: String,
 
-        /// Number of tokens so send
+        /// Number of bones so send
+        #[structopt(name = "bones")]
         amount: u64,
     },
 }
@@ -213,10 +215,10 @@ fn run(cli: Cli) -> Result {
         Cli::Pay {
             address,
             amount,
-            file,
+            files,
         } => {
             let pass = get_password(false)?;
-            let wallet = load_wallet(vec![file])?;
+            let wallet = load_wallet(files)?;
             cmd_pay::cmd_pay(&wallet, &pass, address, amount)
         }
     }

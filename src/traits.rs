@@ -1,6 +1,7 @@
-use crate::keypair::{PubKeyBin, PublicKey, KEYTYPE_ED25519};
+use crate::keypair::{Keypair, PubKeyBin, PublicKey, KEYTYPE_ED25519};
 use crate::result::Result;
 use bs58;
+use helium_proto::{txn::*, Message};
 use io::{Read, Write};
 use std::io;
 
@@ -79,5 +80,18 @@ impl B58 for PubKeyBin {
         let mut pubkey_bin = PubKeyBin::default();
         pubkey_bin.0.copy_from_slice(&data[1..]);
         Ok(pubkey_bin)
+    }
+}
+
+pub trait Sign {
+    fn sign(&mut self, keypair: &Keypair) -> Result;
+}
+
+impl Sign for TxnPaymentV1 {
+    fn sign(&mut self, keypair: &Keypair) -> Result {
+        let mut buf = vec![];
+        self.encode(&mut buf)?;
+        self.signature = keypair.sign(&buf);
+        Ok(())
     }
 }

@@ -146,4 +146,4 @@ To send tokens to other accounts use:
 Where `<address>` is the wallet address for the wallet you want to
 send tokens, and `<bones>` is the number of tokens you want to send.
 
-**NOTE:** One `HNT` is 1,000,000 `bones`.
+**NOTE:** One `HNT` is 100,000,000 `bones`.

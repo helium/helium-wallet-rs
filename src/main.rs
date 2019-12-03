@@ -42,7 +42,7 @@ enum Cli {
     /// Create a new wallet
     Create(CreateCmd),
     /// Get the balance for a wallet. The balance is given in bones,
-    /// which is the smallest denomination for HNT. 1 HNT is 1_000_000
+    /// which is the smallest denomination for HNT. 1 HNT is 100_000_000
     /// bones
     Balance {
         /// Wallet(s) to read addresses from
@@ -64,7 +64,7 @@ enum Cli {
         addresses: Vec<String>,
     },
     /// Pay a number of bones to a given address. Note that 1 HNT is
-    /// 1_000_000 bones
+    /// 100_000_000 bones
     Pay {
         /// Wallet to use as the payer
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
@@ -73,7 +73,7 @@ enum Cli {
         /// Address of the payee
         address: String,
 
-        /// Number of bones so send
+        /// Number of bones to send
         #[structopt(name = "bones")]
         amount: u64,
     },

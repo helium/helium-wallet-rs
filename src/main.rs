@@ -14,6 +14,7 @@ mod mnemonic;
 mod result;
 mod traits;
 mod wallet;
+mod ledger_api;
 
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use std::path::PathBuf;
@@ -25,6 +26,10 @@ use structopt::StructOpt;
 enum Cli {
     /// Get wallet information
     Info {
+        /// Whether to use Ledger
+        #[structopt(short = "l", long = "ledger")]
+        ledger: bool,
+
         /// File(s) to print information on
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
         files: Vec<PathBuf>,
@@ -66,6 +71,10 @@ enum Cli {
     /// Pay a number of bones to a given address. Note that 1 HNT is
     /// 100_000_000 bones
     Pay {
+        /// Whether to use Ledger
+        #[structopt(short = "l", long = "ledger")]
+        ledger: bool,
+
         /// Wallet to use as the payer
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
         files: Vec<PathBuf>,
@@ -165,11 +174,17 @@ fn get_seed_words() -> Result<Vec<String>> {
         .collect())
 }
 
+
+
 fn run(cli: Cli) -> Result {
     match cli {
-        Cli::Info { files, qr_code } => {
-            let wallet = load_wallet(files)?;
-            cmd_info::cmd_info(&wallet, qr_code)
+        Cli::Info { ledger, files, qr_code } => {
+            if ledger {
+                ledger_api::load_wallet()
+            } else {
+                let wallet = load_wallet(files)?;
+                cmd_info::cmd_info(&wallet, qr_code)
+            }
         }
         Cli::Verify { files } => {
             let pass = get_password(false)?;
@@ -213,13 +228,18 @@ fn run(cli: Cli) -> Result {
             cmd_hotspots::cmd_hotspots(collect_addresses(files, addresses)?)
         }
         Cli::Pay {
+            ledger,
             address,
             amount,
             files,
         } => {
-            let pass = get_password(false)?;
-            let wallet = load_wallet(files)?;
-            cmd_pay::cmd_pay(&wallet, &pass, address, amount)
+            if ledger {
+                ledger_api::pay(address, amount)
+            } else {
+                let wallet = load_wallet(files)?;
+                let pass = get_password(false)?;
+                cmd_pay::cmd_pay(&wallet, &pass, address, amount)
+            }
         }
     }
 }

@@ -14,8 +14,15 @@ pub fn cmd_info(wallet: &Wallet, qr_code: bool) -> Result {
 
 fn print_wallet(wallet: &Wallet) {
     let mut table = Table::new();
-    table.add_row(row!["Address", "Sharded"]);
+    table.add_row(row!["Address", "Type"]);
     let address = wallet.address().unwrap_or_else(|_| "unknown".to_string());
-    table.add_row(row![address, wallet.is_sharded()]);
+
+    let wallet_type = if wallet.is_sharded() {
+        "Sharded"
+    } else {
+        "Monolithic"
+    };
+
+    table.add_row(row![address, wallet_type]);
     table.printstd();
 }

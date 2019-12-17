@@ -50,6 +50,10 @@ enum Cli {
     /// which is the smallest denomination for HNT. 1 HNT is 100_000_000
     /// bones
     Balance {
+        /// Whether to use Ledger
+        #[structopt(short = "l", long = "ledger")]
+        ledger: bool,
+
         /// Wallet(s) to read addresses from
         #[structopt(short = "f", long = "file")]
         files: Vec<PathBuf>,
@@ -75,6 +79,10 @@ enum Cli {
         #[structopt(short = "l", long = "ledger")]
         ledger: bool,
 
+        /// Whether to parse amount as bones
+        #[structopt(short = "b", long = "bones")]
+        bones: bool,
+
         /// Wallet to use as the payer
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
         files: Vec<PathBuf>,
@@ -82,9 +90,9 @@ enum Cli {
         /// Address of the payee
         address: String,
 
-        /// Number of bones to send
-        #[structopt(name = "bones")]
-        amount: u64,
+        /// Amount to send (assumed as HNT)
+        #[structopt(name = "amount")]
+        amount: String,
     },
 }
 
@@ -223,24 +231,67 @@ fn run(cli: Cli) -> Result {
                 seed_words,
             )
         }
-        Cli::Balance { files, addresses } => {
-            cmd_balance::cmd_balance(collect_addresses(files, addresses)?)
+        Cli::Balance { ledger, files, addresses } => {
+            let addresses = if ledger {
+                ledger_api::get_address()?
+            } else {
+                collect_addresses(files, addresses)?
+            };
+            cmd_balance::cmd_balance(addresses)
         }
         Cli::Hotspots { files, addresses } => {
             cmd_hotspots::cmd_hotspots(collect_addresses(files, addresses)?)
         }
         Cli::Pay {
             ledger,
+            bones,
             address,
-            amount,
+            mut amount,
             files,
         } => {
+
+            let amount_in_bones = if bones {
+                amount.parse::<u64>().expect("Bones flag (-b --bones) has been given, but values cannot be parsed as u64. Is this a decimal value?")
+            } else {
+                if let Some(index) = amount.find(".") {
+
+                    let mut digits_after_decimal = amount.len() - index;
+                    // make sure there are not too many decimals
+                    if digits_after_decimal > 8 {
+                        panic!("More than 8 digits exist after the decimal value, which cannot be expressed in Bones!")
+                    }
+
+                    // squash the decimal
+                    let copy = amount.clone();
+                    amount.replace_range(index.., &copy[index+1..]);
+
+                    // make sure there are no more decimals
+                    if let Some(_) = amount.find(".") {
+                        panic!("Multiple decimals in HNT value! Input error")
+                    }
+
+                    while digits_after_decimal <= 8 {
+                        amount.push_str("0");
+                        digits_after_decimal+=1;
+
+                    }
+                } else {
+                    amount.push_str("00000000");
+                };
+                amount.parse::<u64>()?
+            };
+
+            println!("Creating transaction for:");
+            println!("      {:0.*} HNT", 8, (amount_in_bones as f64) / 100000000.0);
+            println!("        =");
+            println!("       {:} Bones", amount_in_bones);
+
             if ledger {
-                ledger_api::pay(address, amount)
+                ledger_api::pay(address, amount_in_bones)
             } else {
                 let wallet = load_wallet(files)?;
                 let pass = get_password(false)?;
-                cmd_pay::cmd_pay(&wallet, &pass, address, amount)
+                cmd_pay::cmd_pay(&wallet, &pass, address, amount_in_bones)
             }
         }
     }

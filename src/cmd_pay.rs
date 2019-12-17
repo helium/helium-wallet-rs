@@ -7,6 +7,7 @@ use crate::{
 use helium_api::Client;
 use helium_proto::txn::{TxnPaymentV1, Wrapper};
 use prettytable::Table;
+use prost::Message;
 
 pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: u64) -> Result {
     let client = Client::new();
@@ -30,13 +31,33 @@ pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: u64) -> R
     Ok(())
 }
 
-fn print_txn(txn: &TxnPaymentV1) {
+use sha2::{Digest, Sha256};
+
+pub fn print_txn(txn: &TxnPaymentV1) {
+
+    let mut txn_copy = txn.clone();
+    // clear the signature so we can compute the hash
+    txn_copy.signature = Vec::new();
+
+    let mut hasher = Sha256::new();
+    // write input message
+    let mut buf = Vec::new();
+
+    txn_copy.encode(&mut buf).unwrap();
+    hasher.input(buf.as_slice());
+    let result = hasher.result();
+
+    let mut data = [0u8; 33];
+    data[0] = 0;
+    data[1..].copy_from_slice(&result);
+
     let mut table = Table::new();
-    table.add_row(row!["Payee", "Amount", "Nonce"]);
+    table.add_row(row!["Payee", "Amount", "Nonce", "Txn Hash"]);
     table.add_row(row![
         PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
         txn.amount,
-        txn.nonce
+        txn.nonce,
+        bs58::encode(data.as_ref()).with_check().into_string()
     ]);
     table.printstd();
 }

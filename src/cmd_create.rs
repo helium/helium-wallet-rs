@@ -4,7 +4,7 @@ use crate::{
     mnemonic::mnemonic_to_entropy,
     result::Result,
     traits::ReadWrite,
-    wallet::{Wallet, BasicFormat, ShardedFormat},
+    wallet::{BasicFormat, ShardedFormat, Wallet},
 };
 use std::{fs::OpenOptions, path::PathBuf};
 
@@ -40,7 +40,11 @@ pub fn cmd_sharded(
     seed_words: Option<Vec<String>>,
 ) -> Result {
     let keypair = gen_keypair(seed_words)?;
-    let mut format = ShardedFormat {key_share_count, recovery_threshold, key_shares: vec![]};
+    let mut format = ShardedFormat {
+        key_share_count,
+        recovery_threshold,
+        key_shares: vec![],
+    };
     let mut wallet = Wallet::from_keypair(&keypair, password.as_bytes(), iterations, &mut format)?;
 
     use std::ffi::OsStr;
@@ -60,7 +64,10 @@ pub fn cmd_sharded(
             .create(true)
             .create_new(!force)
             .open(filename)?;
-        wallet.format = Box::new(ShardedFormat{key_shares: vec![share.clone()], ..format});
+        wallet.format = Box::new(ShardedFormat {
+            key_shares: vec![share.clone()],
+            ..format
+        });
         wallet.write(&mut writer)?;
     }
     wallet.format = Box::new(format);

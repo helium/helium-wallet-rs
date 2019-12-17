@@ -33,6 +33,10 @@ pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: u64) -> R
 fn print_txn(txn: &TxnPaymentV1) {
     let mut table = Table::new();
     table.add_row(row!["Payee", "Amount", "Nonce"]);
-    table.add_row(row![PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(), txn.amount, txn.nonce]);
+    table.add_row(row![
+        PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
+        txn.amount,
+        txn.nonce
+    ]);
     table.printstd();
 }

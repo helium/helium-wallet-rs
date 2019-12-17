@@ -10,11 +10,11 @@ mod cmd_info;
 mod cmd_pay;
 mod cmd_verify;
 mod keypair;
+mod ledger_api;
 mod mnemonic;
 mod result;
 mod traits;
 mod wallet;
-mod ledger_api;
 
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use std::path::PathBuf;
@@ -174,11 +174,13 @@ fn get_seed_words() -> Result<Vec<String>> {
         .collect())
 }
 
-
-
 fn run(cli: Cli) -> Result {
     match cli {
-        Cli::Info { ledger, files, qr_code } => {
+        Cli::Info {
+            ledger,
+            files,
+            qr_code,
+        } => {
             if ledger {
                 ledger_api::load_wallet()
             } else {

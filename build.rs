@@ -17,7 +17,6 @@ fn read_wordlist(dir: Result<DirEntry>) -> Result<(OsString, Vec<String>)> {
     Ok((path.file_stem().unwrap().to_os_string(), words))
 }
 
-
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let wordlist_paths = fs::read_dir(Path::new("src/mnemonic/wordlists")).unwrap();
@@ -29,7 +28,8 @@ fn main() {
             dest_file,
             "pub const WORDS_{}: WordList = &[\n",
             lang.to_str().unwrap().to_uppercase()
-        ).unwrap();
+        )
+        .unwrap();
         for word in words {
             write!(dest_file, "\"{}\",\n", word).unwrap();
         }

@@ -9,6 +9,7 @@ mod cmd_hotspots;
 mod cmd_info;
 mod cmd_pay;
 mod cmd_verify;
+mod hnt;
 mod keypair;
 mod ledger_api;
 mod mnemonic;
@@ -20,6 +21,8 @@ use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use std::path::PathBuf;
 use std::{fs, process};
 use structopt::StructOpt;
+use hnt::Hnt;
+use std::str::FromStr;
 
 /// Create and manage Helium wallets
 #[derive(Debug, StructOpt)]
@@ -250,53 +253,31 @@ fn run(cli: Cli) -> Result {
             ledger,
             bones,
             address,
-            mut amount,
+            amount,
             files,
         } => {
-            let amount_in_bones = if bones {
-                amount.parse::<u64>().expect("Bones flag (-b --bones) has been given, but values cannot be parsed as u64. Is this a decimal value?")
+
+            let hnt = if bones {
+                Hnt::from_bones(amount.parse::<u64>().expect("Bones flag (-b --bones) has been given, but values cannot be parsed as u64. Is this a decimal value?"))?
             } else {
-                if let Some(index) = amount.find(".") {
-                    let mut digits_after_decimal = amount.len() - index;
-                    // make sure there are not too many decimals
-                    if digits_after_decimal > 8 {
-                        panic!("More than 8 digits exist after the decimal value, which cannot be expressed in Bones!")
-                    }
-
-                    // squash the decimal
-                    let copy = amount.clone();
-                    amount.replace_range(index.., &copy[index + 1..]);
-
-                    // make sure there are no more decimals
-                    if let Some(_) = amount.find(".") {
-                        panic!("Multiple decimals in HNT value! Input error")
-                    }
-
-                    while digits_after_decimal <= 8 {
-                        amount.push_str("0");
-                        digits_after_decimal += 1;
-                    }
-                } else {
-                    amount.push_str("00000000");
-                };
-                amount.parse::<u64>()?
+                Hnt::from_str(&amount)?
             };
 
             println!("Creating transaction for:");
             println!(
                 "      {:0.*} HNT",
                 8,
-                (amount_in_bones as f64) / 100000000.0
+                hnt.get_decimal()
             );
             println!("        =");
-            println!("       {:} Bones", amount_in_bones);
+            println!("       {:} Bones", hnt.to_bones());
 
             if ledger {
-                ledger_api::pay(address, amount_in_bones)
+                ledger_api::pay(address, hnt.to_bones())
             } else {
                 let wallet = load_wallet(files)?;
                 let pass = get_password(false)?;
-                cmd_pay::cmd_pay(&wallet, &pass, address, amount_in_bones)
+                cmd_pay::cmd_pay(&wallet, &pass, address, hnt.to_bones())
             }
         }
     }

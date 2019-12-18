@@ -8,6 +8,7 @@ use helium_api::Client;
 use helium_proto::txn::{TxnPaymentV1, Wrapper};
 use prettytable::Table;
 use prost::Message;
+use sha2::{Digest, Sha256};
 
 pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: u64) -> Result {
     let client = Client::new();
@@ -30,8 +31,6 @@ pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: u64) -> R
 
     Ok(())
 }
-
-use sha2::{Digest, Sha256};
 
 pub fn print_txn(txn: &TxnPaymentV1) {
     let mut txn_copy = txn.clone();

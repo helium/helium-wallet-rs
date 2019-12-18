@@ -53,7 +53,7 @@ enum Cli {
     /// which is the smallest denomination for HNT. 1 HNT is 100_000_000
     /// bones
     Balance {
-        /// Whether to use Ledger
+        /// Use Ledger hardware wallet
         #[structopt(short = "l", long = "ledger")]
         ledger: bool,
 
@@ -75,10 +75,10 @@ enum Cli {
         #[structopt(short = "a", long = "address")]
         addresses: Vec<String>,
     },
-    /// Pay a number of bones to a given address. Note that 1 HNT is
-    /// 100_000_000 bones
+    /// Pay a number of bones to a given address. Note that amount
+    /// is parsed HNT by default and that 1 HNT is 100_000_000 bones
     Pay {
-        /// Whether to use Ledger
+        /// Use Ledger hardware wallet
         #[structopt(short = "l", long = "ledger")]
         ledger: bool,
 

@@ -26,8 +26,6 @@ helium-api = { git = "https://github.com/helium/helium-api-rs"}
 helium-proto = { git = "https://github.com/helium/proto" }
 prost = "0.5"
 ledger = "0.1.0"
-ascii = { version = "0.8", default-features = false }
-
 
 # Add openssl-sys as a direct dependency so it can be cross compiled to
 # x86_64-unknown-linux-musl using the "vendored" feature below

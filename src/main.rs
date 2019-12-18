@@ -231,7 +231,11 @@ fn run(cli: Cli) -> Result {
                 seed_words,
             )
         }
-        Cli::Balance { ledger, files, addresses } => {
+        Cli::Balance {
+            ledger,
+            files,
+            addresses,
+        } => {
             let addresses = if ledger {
                 ledger_api::get_address()?
             } else {
@@ -249,12 +253,10 @@ fn run(cli: Cli) -> Result {
             mut amount,
             files,
         } => {
-
             let amount_in_bones = if bones {
                 amount.parse::<u64>().expect("Bones flag (-b --bones) has been given, but values cannot be parsed as u64. Is this a decimal value?")
             } else {
                 if let Some(index) = amount.find(".") {
-
                     let mut digits_after_decimal = amount.len() - index;
                     // make sure there are not too many decimals
                     if digits_after_decimal > 8 {
@@ -263,7 +265,7 @@ fn run(cli: Cli) -> Result {
 
                     // squash the decimal
                     let copy = amount.clone();
-                    amount.replace_range(index.., &copy[index+1..]);
+                    amount.replace_range(index.., &copy[index + 1..]);
 
                     // make sure there are no more decimals
                     if let Some(_) = amount.find(".") {
@@ -272,8 +274,7 @@ fn run(cli: Cli) -> Result {
 
                     while digits_after_decimal <= 8 {
                         amount.push_str("0");
-                        digits_after_decimal+=1;
-
+                        digits_after_decimal += 1;
                     }
                 } else {
                     amount.push_str("00000000");
@@ -282,7 +283,11 @@ fn run(cli: Cli) -> Result {
             };
 
             println!("Creating transaction for:");
-            println!("      {:0.*} HNT", 8, (amount_in_bones as f64) / 100000000.0);
+            println!(
+                "      {:0.*} HNT",
+                8,
+                (amount_in_bones as f64) / 100000000.0
+            );
             println!("        =");
             println!("       {:} Bones", amount_in_bones);
 

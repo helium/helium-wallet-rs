@@ -34,7 +34,6 @@ pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: u64) -> R
 use sha2::{Digest, Sha256};
 
 pub fn print_txn(txn: &TxnPaymentV1) {
-
     let mut txn_copy = txn.clone();
     // clear the signature so we can compute the hash
     txn_copy.signature = Vec::new();

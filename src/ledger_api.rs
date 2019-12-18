@@ -59,9 +59,9 @@ fn transform_u64_to_array_of_u8(x: u64) -> [u8; 8] {
     return [b1, b2, b3, b4, b5, b6, b7, b8];
 }
 
+use super::cmd_pay::print_txn;
 use helium_proto::txn::{TxnPaymentV1, Wrapper};
 use prost::Message;
-use super::cmd_pay::print_txn;
 
 pub fn pay(payee: String, amount: u64) -> Result {
     let ledger = LedgerApp::new()?;
@@ -76,7 +76,10 @@ pub fn pay(payee: String, amount: u64) -> Result {
     let nonce: u64 = account.nonce + 1;
 
     if account.balance < amount {
-        println!("Account balance insufficient. {} Bones on account but attempting to send {}", account.balance, amount);
+        println!(
+            "Account balance insufficient. {} Bones on account but attempting to send {}",
+            account.balance, amount
+        );
         return Ok(());
     }
 

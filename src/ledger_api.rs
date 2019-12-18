@@ -6,9 +6,9 @@ use helium_api::Client;
 
 use super::traits::B58;
 use crate::result::Result;
+use byteorder::{LittleEndian as LE, WriteBytesExt};
 use keypair::PubKeyBin;
 use prettytable::Table;
-use byteorder::{LittleEndian as LE, WriteBytesExt};
 
 const INS_GET_PUBLIC_KEY: u8 = 0x02;
 const INS_SIGN_PAYMENT_TXN: u8 = 0x08;
@@ -16,7 +16,7 @@ const INS_SIGN_PAYMENT_TXN: u8 = 0x08;
 // This parameter indicates whether the ledgers screen display the public key or not
 // Thus, the `pay` function can do the Adpu transaction quietly to get the public key
 enum PubkeyDisplay {
-    Off = 0 ,
+    Off = 0,
     On = 1,
 }
 

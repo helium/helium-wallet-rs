@@ -18,11 +18,11 @@ mod traits;
 mod wallet;
 
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
+use hnt::Hnt;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::{fs, process};
 use structopt::StructOpt;
-use hnt::Hnt;
-use std::str::FromStr;
 
 /// Create and manage Helium wallets
 #[derive(Debug, StructOpt)]
@@ -256,7 +256,6 @@ fn run(cli: Cli) -> Result {
             amount,
             files,
         } => {
-
             let hnt = if bones {
                 Hnt::from_bones(amount.parse::<u64>().expect("Bones flag (-b --bones) has been given, but values cannot be parsed as u64. Is this a decimal value?"))?
             } else {
@@ -264,11 +263,7 @@ fn run(cli: Cli) -> Result {
             };
 
             println!("Creating transaction for:");
-            println!(
-                "      {:0.*} HNT",
-                8,
-                hnt.get_decimal()
-            );
+            println!("      {:0.*} HNT", 8, hnt.get_decimal());
             println!("        =");
             println!("       {:} Bones", hnt.to_bones());
 

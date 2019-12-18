@@ -9,7 +9,8 @@ use crate::result::Result;
 use byteorder::{LittleEndian as LE, WriteBytesExt};
 use keypair::PubKeyBin;
 use prettytable::Table;
-
+use std::error;
+use std::fmt;
 const INS_GET_PUBLIC_KEY: u8 = 0x02;
 const INS_SIGN_PAYMENT_TXN: u8 = 0x08;
 
@@ -18,6 +19,12 @@ const INS_SIGN_PAYMENT_TXN: u8 = 0x08;
 enum PubkeyDisplay {
     Off = 0,
     On = 1,
+}
+
+#[derive(Debug)]
+enum Error {
+    CouldNotFindLedger,
+    AppNotRunning,
 }
 
 fn exchange_tx_get_pubkey(ledger: &LedgerApp, display: PubkeyDisplay) -> Result<PubKeyBin> {
@@ -30,7 +37,7 @@ fn exchange_tx_get_pubkey(ledger: &LedgerApp, display: PubkeyDisplay) -> Result<
         data: Vec::new(),
     };
 
-    let public_key_result = ledger.exchange(get_public_key)?;
+    let public_key_result = read_from_ledger(ledger, get_public_key)?;
     // TODO: verify validity before returning by checking the sha256 checksum
     Ok(PubKeyBin::from_vec(&public_key_result.data[1..34]))
 }
@@ -80,7 +87,7 @@ pub fn pay(payee: String, amount: u64) -> Result {
     data.push(0);
     data.extend(payee_bin.0.iter());
 
-    let exchange_pay_tx = ApduCommand {
+    let exchange_pay_txn = ApduCommand {
         cla: 0xe0,
         ins: INS_SIGN_PAYMENT_TXN,
         p1: 0x00,
@@ -89,9 +96,9 @@ pub fn pay(payee: String, amount: u64) -> Result {
         data,
     };
 
-    let exchange_pay_tx_result = ledger.exchange(exchange_pay_tx)?;
+    let exchange_pay_tx_result = read_from_ledger(&ledger, exchange_pay_txn)?;
 
-    if exchange_pay_tx_result.data.len() == 0 {
+    if exchange_pay_tx_result.data.len() == 1 {
         println!("Transaction not confirmed");
         return Ok(());
     }
@@ -111,4 +118,41 @@ pub fn get_address() -> Result<Vec<String>> {
     let keypair = exchange_tx_get_pubkey(&ledger, PubkeyDisplay::Off)?;
     ret.push(keypair.to_b58()?);
     Ok(ret)
+}
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::CouldNotFindLedger => {
+                write!(f, "Could not find ledger. Is it disconnected or locked?")
+            }
+            Error::AppNotRunning => write!(
+                f,
+                "Ledger is running but Helium application does not appear to be running"
+            ),
+        }
+    }
+}
+
+fn read_from_ledger(
+    ledger: &LedgerApp,
+    command: ApduCommand,
+) -> std::result::Result<ledger::ApduAnswer, Error> {
+    let exchange = ledger.exchange(command);
+
+    if let Ok(answer) = exchange {
+        if answer.data.len() == 0 {
+            Err(Error::AppNotRunning)
+        } else {
+            Ok(answer)
+        }
+    } else {
+        Err(Error::CouldNotFindLedger)
+    }
 }

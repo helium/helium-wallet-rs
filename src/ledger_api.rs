@@ -12,19 +12,18 @@ use prettytable::Table;
 const INS_GET_PUBLIC_KEY: u8 = 0x02;
 const INS_SIGN_PAYMENT_TXN: u8 = 0x08;
 
+// This parameter indicates whether the ledgers screen display the public key or not
+// Thus, the `pay` function can do the Adpu transaction quietly to get the public key
 enum PubkeyDisplay {
-    Off,
-    On,
+    Off = 0 ,
+    On = 1,
 }
 
 fn exchange_tx_get_pubkey(ledger: &LedgerApp, display: PubkeyDisplay) -> Result<PubKeyBin> {
     let get_public_key = ApduCommand {
         cla: 0xe0,
         ins: INS_GET_PUBLIC_KEY,
-        p1: match display {
-            PubkeyDisplay::On => 0x01,
-            PubkeyDisplay::Off => 0x00,
-        },
+        p1: display as u8,
         p2: 0x00,
         length: 0,
         data: Vec::new(),

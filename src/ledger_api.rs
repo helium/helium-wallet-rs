@@ -145,15 +145,13 @@ fn read_from_ledger(
     ledger: &LedgerApp,
     command: ApduCommand,
 ) -> std::result::Result<ledger::ApduAnswer, Error> {
-    let exchange = ledger.exchange(command);
+    let answer = ledger
+        .exchange(command)
+        .or(Err(Error::CouldNotFindLedger))?;
 
-    if let Ok(answer) = exchange {
-        if answer.data.len() == 0 {
-            Err(Error::AppNotRunning)
-        } else {
-            Ok(answer)
-        }
+    if answer.data.is_empty() {
+        Err(Error::AppNotRunning)
     } else {
-        Err(Error::CouldNotFindLedger)
+        Ok(answer)
     }
 }

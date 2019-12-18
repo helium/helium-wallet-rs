@@ -31,7 +31,7 @@ DEPLOY_TO_GITHUB: &DEPLOY_TO_GITHUB
 matrix:
   include:
   - name: Linux Binary
-    env: TARGET=x86_64-unknown-linux-gnu
+    env: TARGET=x86_64-unknown-linux-musl
     rust: stable
     before_script:
       - sudo apt-get install libudev-dev

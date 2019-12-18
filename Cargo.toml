@@ -25,7 +25,7 @@ qr2term = "0.1"
 helium-api = { git = "https://github.com/helium/helium-api-rs"}
 helium-proto = { git = "https://github.com/helium/proto" }
 prost = "0.5"
-ledger = "0.1.0"
+ledger = { version = "0.2.5", git = "https://github.com/lthiery/ledger-rs", rev = "c3826a33495d0e1a55d9dde28dd6be2ee28db8a2"}
 rust_decimal = "1.0.3"
 
 # Add openssl-sys as a direct dependency so it can be cross compiled to

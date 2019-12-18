@@ -8,6 +8,7 @@ use super::traits::B58;
 use crate::result::Result;
 use keypair::PubKeyBin;
 use prettytable::Table;
+use byteorder::{LittleEndian as LE, WriteBytesExt};
 
 const INS_GET_PUBLIC_KEY: u8 = 0x02;
 const INS_SIGN_PAYMENT_TXN: u8 = 0x08;
@@ -46,18 +47,6 @@ pub fn load_wallet() -> Result {
     Ok(())
 }
 
-fn transform_u64_to_array_of_u8(x: u64) -> [u8; 8] {
-    let b8: u8 = ((x >> 56) & 0xff) as u8;
-    let b7: u8 = ((x >> 48) & 0xff) as u8;
-    let b6: u8 = ((x >> 40) & 0xff) as u8;
-    let b5: u8 = ((x >> 32) & 0xff) as u8;
-    let b4: u8 = ((x >> 24) & 0xff) as u8;
-    let b3: u8 = ((x >> 16) & 0xff) as u8;
-    let b2: u8 = ((x >> 8) & 0xff) as u8;
-    let b1: u8 = (x & 0xff) as u8;
-    return [b1, b2, b3, b4, b5, b6, b7, b8];
-}
-
 use super::cmd_pay::print_txn;
 use helium_proto::txn::{TxnPaymentV1, Wrapper};
 use prost::Message;
@@ -83,13 +72,13 @@ pub fn pay(payee: String, amount: u64) -> Result {
     }
 
     // serlialize payee
-    let payee_bin = PubKeyBin::from_b58(payee)?.to_vec();
-    data.extend(&transform_u64_to_array_of_u8(amount));
-    data.extend(&transform_u64_to_array_of_u8(fee));
-    data.extend(&transform_u64_to_array_of_u8(nonce));
+    let payee_bin = PubKeyBin::from_b58(payee)?;
+    data.write_u64::<LE>(amount)?;
+    data.write_u64::<LE>(fee)?;
+    data.write_u64::<LE>(nonce)?;
 
     data.push(0);
-    data.extend(payee_bin.as_slice());
+    data.extend(payee_bin.0.iter());
 
     let exchange_pay_tx = ApduCommand {
         cla: 0xe0,

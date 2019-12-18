@@ -5,7 +5,7 @@ use super::*;
 use helium_api::Client;
 
 use super::traits::B58;
-use crate::result::Result;
+use crate::{hnt::Hnt, result::Result};
 use byteorder::{LittleEndian as LE, WriteBytesExt};
 use keypair::PubKeyBin;
 use prettytable::Table;
@@ -58,7 +58,7 @@ use super::cmd_pay::print_txn;
 use helium_proto::txn::{TxnPaymentV1, Wrapper};
 use prost::Message;
 
-pub fn pay(payee: String, amount: u64) -> Result {
+pub fn pay(payee: String, amount: Hnt) -> Result {
     let ledger = LedgerApp::new()?;
     let client = Client::new();
     let fee: u64 = 0;
@@ -70,17 +70,18 @@ pub fn pay(payee: String, amount: u64) -> Result {
     let account = client.get_account(&keypair.to_b58()?)?;
     let nonce: u64 = account.nonce + 1;
 
-    if account.balance < amount {
+    if account.balance < amount.to_bones() {
         println!(
             "Account balance insufficient. {} Bones on account but attempting to send {}",
-            account.balance, amount
+            account.balance,
+            amount.to_bones()
         );
         return Ok(());
     }
 
     // serlialize payee
     let payee_bin = PubKeyBin::from_b58(payee)?;
-    data.write_u64::<LE>(amount)?;
+    data.write_u64::<LE>(amount.to_bones())?;
     data.write_u64::<LE>(fee)?;
     data.write_u64::<LE>(nonce)?;
 

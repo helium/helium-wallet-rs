@@ -1,4 +1,5 @@
 use crate::{
+    hnt::Hnt,
     keypair::PubKeyBin,
     result::Result,
     traits::{Sign, B58},
@@ -10,14 +11,14 @@ use prettytable::Table;
 use prost::Message;
 use sha2::{Digest, Sha256};
 
-pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: u64) -> Result {
+pub fn cmd_pay(wallet: &Wallet, password: &str, payee: String, amount: Hnt) -> Result {
     let client = Client::new();
 
     let keypair = wallet.to_keypair(password.as_bytes())?;
     let account = client.get_account(&keypair.public.to_b58()?)?;
 
     let mut txn = TxnPaymentV1 {
-        amount,
+        amount: amount.to_bones(),
         fee: 0,
         payee: PubKeyBin::from_b58(payee)?.to_vec(),
         payer: keypair.pubkey_bin().to_vec(),

@@ -20,7 +20,6 @@ mod wallet;
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use hnt::Hnt;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::{fs, process};
 use structopt::StructOpt;
 
@@ -82,10 +81,6 @@ enum Cli {
         #[structopt(short = "l", long = "ledger")]
         ledger: bool,
 
-        /// Whether to parse amount as bones
-        #[structopt(short = "b", long = "bones")]
-        bones: bool,
-
         /// Wallet to use as the payer
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
         files: Vec<PathBuf>,
@@ -93,9 +88,9 @@ enum Cli {
         /// Address of the payee
         address: String,
 
-        /// Amount to send (assumed as HNT)
+        /// Amount of HNT to transfer to payee
         #[structopt(name = "amount")]
-        amount: String,
+        amount: Hnt,
     },
 }
 
@@ -251,28 +246,21 @@ fn run(cli: Cli) -> Result {
         }
         Cli::Pay {
             ledger,
-            bones,
             address,
             amount,
             files,
         } => {
-            let hnt = if bones {
-                Hnt::from_bones(amount.parse::<u64>().expect("Bones flag (-b --bones) has been given, but values cannot be parsed as u64. Is this a decimal value?"))?
-            } else {
-                Hnt::from_str(&amount)?
-            };
-
             println!("Creating transaction for:");
-            println!("      {:0.*} HNT", 8, hnt.get_decimal());
+            println!("      {:0.*} HNT", 8, amount.get_decimal());
             println!("        =");
-            println!("       {:} Bones", hnt.to_bones());
+            println!("       {:} Bones", amount.to_bones());
 
             if ledger {
-                ledger_api::pay(address, hnt.to_bones())
+                ledger_api::pay(address, amount)
             } else {
                 let wallet = load_wallet(files)?;
                 let pass = get_password(false)?;
-                cmd_pay::cmd_pay(&wallet, &pass, address, hnt.to_bones())
+                cmd_pay::cmd_pay(&wallet, &pass, address, amount)
             }
         }
     }

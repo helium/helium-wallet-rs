@@ -3,6 +3,7 @@ use rust_decimal::Decimal;
 use std::str::FromStr;
 use std::{error, fmt};
 
+#[derive(Clone, Copy, Debug)]
 pub struct Hnt {
     data: Decimal,
 }
@@ -13,7 +14,9 @@ impl FromStr for Hnt {
     type Err = HntFromStrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let data = Decimal::from_str(s).unwrap();
+        let data = Decimal::from_str(s)
+            .or_else(|_| Decimal::from_scientific(s))
+            .unwrap();
         if data.scale() > 8 {
             Err(HntFromStrError { data })
         } else {
@@ -30,15 +33,6 @@ impl Hnt {
             }
         }
         panic!("Hnt has been constructed with invalid data")
-    }
-
-    pub fn from_bones(bones: u64) -> Result<Hnt, HntFromBonesError> {
-        let maybe_u64 = Decimal::from_u64(bones);
-        if let Some(data) = maybe_u64 {
-            Ok(Hnt { data })
-        } else {
-            Err(HntFromBonesError)
-        }
     }
 
     pub fn get_decimal(&self) -> Decimal {

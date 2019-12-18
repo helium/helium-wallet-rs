@@ -64,7 +64,7 @@ pub fn pay(payee: String, amount: u64) -> Result {
     let fee: u64 = 0;
     let mut data: Vec<u8> = Vec::new();
 
-    println!("Communicating with Ledger - confirm it is unlocked and follow prompts on screen");
+    println!("Communicating with Ledger - follow prompts on screen");
     // get nonce
     let keypair = exchange_tx_get_pubkey(&ledger, PubkeyDisplay::Off)?;
     let account = client.get_account(&keypair.to_b58()?)?;

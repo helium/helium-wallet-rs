@@ -29,7 +29,7 @@ use structopt::StructOpt;
 enum Cli {
     /// Get wallet information
     Info {
-        /// Whether to use Ledger
+        /// Use Ledger hardware wallet
         #[structopt(short = "l", long = "ledger")]
         ledger: bool,
 

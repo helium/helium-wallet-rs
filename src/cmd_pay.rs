@@ -46,7 +46,6 @@ pub fn print_txn(txn: &TxnPaymentV1) {
     let result = hasher.result();
 
     let mut data = [0u8; 33];
-    data[0] = 0;
     data[1..].copy_from_slice(&result);
 
     let mut table = Table::new();

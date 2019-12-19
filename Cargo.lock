@@ -697,7 +697,6 @@ dependencies = [
  "aes-gcm",
  "bs58",
  "byteorder",
- "bytes",
  "dialoguer",
  "helium-api",
  "helium-proto",
@@ -907,7 +906,8 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 [[package]]
 name = "ledger"
 version = "0.2.5"
-source = "git+https://github.com/lthiery/ledger-rs?rev=c3826a33495d0e1a55d9dde28dd6be2ee28db8a2#c3826a33495d0e1a55d9dde28dd6be2ee28db8a2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c9a2f47929b010a64a4bf9cdfe03b0d02175d44db0b91e16283f5a4a731d52c"
 dependencies = [
  "byteorder",
  "cfg-if",

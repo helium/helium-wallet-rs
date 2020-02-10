@@ -3,7 +3,7 @@ use helium_api::{Account, Client};
 use prettytable::{format, Table};
 
 pub fn cmd_balance(addresses: Vec<String>) -> Result {
-    let client = Client::new();
+    let client = Client::default();
     let mut results = Vec::with_capacity(addresses.len());
     for address in addresses {
         results.push((address.to_string(), client.get_account(&address)));

@@ -1,7 +1,7 @@
 use crate::keypair::{Keypair, PubKeyBin, PublicKey, KEYTYPE_ED25519};
 use crate::result::Result;
 use bs58;
-use helium_proto::{txn::*, Message};
+use helium_proto::{Message, BlockchainTxnPaymentV1};
 use io::{Read, Write};
 use std::io;
 
@@ -87,7 +87,7 @@ pub trait Sign {
     fn sign(&mut self, keypair: &Keypair) -> Result;
 }
 
-impl Sign for TxnPaymentV1 {
+impl Sign for BlockchainTxnPaymentV1 {
     fn sign(&mut self, keypair: &Keypair) -> Result {
         let mut buf = vec![];
         self.encode(&mut buf)?;

@@ -140,10 +140,26 @@ when creating the wallet.
 To send tokens to other accounts use:
 
 ```
-    helium-wallet pay <address> <bones>
+    helium-wallet pay <address> --hnt <hnt> [--hash]
 ```
 
 Where `<address>` is the wallet address for the wallet you want to
-send tokens, and `<bones>` is the number of tokens you want to send.
+send tokens `<hnt>` is the number of HNT you want to send. Since 1 HNT
+is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
+precision.
 
-**NOTE:** One `HNT` is 100,000,000 `bones`.
+If specified, `--hash` will only print out the resulting transaction
+hash once the transaction has been submitted. This can be useful for
+non-interactive commands or scripts that automate payment.
+
+
+### Environment Variables
+
+The following environment variables are supported:
+
+* `HELIUM_API_URL` - The API URL to use for commands that need API
+  access, for example sending tokens.
+
+* `HELIUM_WALLET_PASSWORD` - The password to use to decrypt the
+  wallet. Useful for scripting or other non-interactive commands, but
+  use with care.

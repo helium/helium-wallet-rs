@@ -1,7 +1,7 @@
 use crate::keypair::{Keypair, PubKeyBin, PublicKey, KEYTYPE_ED25519};
 use crate::result::Result;
 use bs58;
-use helium_proto::{Message, BlockchainTxnPaymentV1};
+use helium_proto::{BlockchainTxnPaymentV1, Message};
 use io::{Read, Write};
 use std::io;
 

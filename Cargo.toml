@@ -21,7 +21,8 @@ prettytable-rs = "0.6"
 lazy_static = "1"
 regex = "1"
 qr2term = "0.1"
-helium-api = { git = "https://github.com/helium/helium-api-rs" }
+serde_json = "1"
+helium-api = { git = "https://github.com/helium/helium-api-rs", tag="0.2.0" }
 helium-proto = { git = "https://github.com/helium/proto" }
 
 # Add openssl-sys as a direct dependency so it can be cross compiled to

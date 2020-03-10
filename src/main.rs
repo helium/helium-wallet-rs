@@ -16,8 +16,8 @@ mod traits;
 mod wallet;
 
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
-use std::path::PathBuf;
-use std::{fs, process};
+use helium_api::Hnt;
+use std::{env, fs, path::PathBuf, process};
 use structopt::StructOpt;
 
 /// Create and manage Helium wallets
@@ -41,9 +41,8 @@ enum Cli {
     },
     /// Create a new wallet
     Create(CreateCmd),
-    /// Get the balance for a wallet. The balance is given in bones,
-    /// which is the smallest denomination for HNT. 1 HNT is 100_000_000
-    /// bones
+    /// Get the balance for a wallet. The balance is given in HNT and
+    /// has a precision of 8 decimals.
     Balance {
         /// Wallet(s) to read addresses from
         #[structopt(short = "f", long = "file")]
@@ -59,12 +58,12 @@ enum Cli {
         #[structopt(short = "f", long = "file")]
         files: Vec<PathBuf>,
 
-        /// Addresses to get balances for
+        /// Addresses to get hotspots for
         #[structopt(short = "a", long = "address")]
         addresses: Vec<String>,
     },
-    /// Pay a number of bones to a given address. Note that 1 HNT is
-    /// 100_000_000 bones
+    /// Pay a number of HNT to a given address. Note that HNT only goes
+    /// to 8 decimals of precision.
     Pay {
         /// Wallet to use as the payer
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
@@ -73,9 +72,13 @@ enum Cli {
         /// Address of the payee
         address: String,
 
-        /// Number of bones to send
-        #[structopt(name = "bones")]
-        amount: u64,
+        /// Number of hnt to send
+        #[structopt(long)]
+        hnt: Hnt,
+
+        /// Only outpout the submitted transaction hash.
+        #[structopt(long)]
+        hash: bool,
     },
 }
 
@@ -137,13 +140,18 @@ fn main() {
 }
 
 fn get_password(confirm: bool) -> std::io::Result<String> {
-    use dialoguer::PasswordInput;
-    let mut builder = PasswordInput::new();
-    builder.with_prompt("Password");
-    if confirm {
-        builder.with_confirmation("Confirm password", "Passwords do not match");
-    };
-    builder.interact()
+    match env::var("HELIUM_WALLET_PASSWORD") {
+        Ok(str) => Ok(str),
+        _ => {
+            use dialoguer::PasswordInput;
+            let mut builder = PasswordInput::new();
+            builder.with_prompt("Password");
+            if confirm {
+                builder.with_confirmation("Confirm password", "Passwords do not match");
+            };
+            builder.interact()
+        }
+    }
 }
 
 fn get_seed_words() -> Result<Vec<String>> {
@@ -207,21 +215,26 @@ fn run(cli: Cli) -> Result {
             )
         }
         Cli::Balance { files, addresses } => {
-            cmd_balance::cmd_balance(collect_addresses(files, addresses)?)
+            cmd_balance::cmd_balance(api_url(), collect_addresses(files, addresses)?)
         }
         Cli::Hotspots { files, addresses } => {
-            cmd_hotspots::cmd_hotspots(collect_addresses(files, addresses)?)
+            cmd_hotspots::cmd_hotspots(api_url(), collect_addresses(files, addresses)?)
         }
         Cli::Pay {
             address,
-            amount,
+            hnt,
             files,
+            hash,
         } => {
             let pass = get_password(false)?;
             let wallet = load_wallet(files)?;
-            cmd_pay::cmd_pay(&wallet, &pass, address, amount)
+            cmd_pay::cmd_pay(api_url(), &wallet, &pass, address, hnt.to_bones(), hash)
         }
     }
+}
+
+fn api_url() -> String {
+    env::var("HELIUM_API_URL").unwrap_or_else(|_| helium_api::DEFAULT_BASE_URL.to_string())
 }
 
 fn collect_addresses(files: Vec<PathBuf>, addresses: Vec<String>) -> Result<Vec<String>> {

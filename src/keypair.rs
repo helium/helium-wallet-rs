@@ -25,7 +25,7 @@ impl Default for PubKeyBin {
 
 impl From<&PublicKey> for PubKeyBin {
     fn from(pubkey: &PublicKey) -> Self {
-        let mut buf= PubKeyBin::default();
+        let mut buf = PubKeyBin::default();
         buf.0[0] = KEYTYPE_ED25519;
         buf.0[1..].copy_from_slice(&pubkey.0);
         buf
@@ -38,7 +38,7 @@ impl PubKeyBin {
     }
 
     pub fn from_vec(data: &[u8]) -> Self {
-        let mut result= PubKeyBin::default();
+        let mut result = PubKeyBin::default();
         result.0.copy_from_slice(&data);
         result
     }

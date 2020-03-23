@@ -14,6 +14,7 @@ pub fn cmd_pay(
     wallet: &Wallet,
     password: &str,
     payees: Vec<Payee>,
+    commit: bool,
     hash: bool,
 ) -> Result {
     let client = Client::new_with_base_url(url);
@@ -40,10 +41,14 @@ pub fn cmd_pay(
     txn.sign(&keypair)?;
     let wrapped_txn = Txn::PaymentV2(txn.clone());
 
-    let status = client.submit_txn(wrapped_txn)?;
+    let status = if commit {
+        Some(client.submit_txn(wrapped_txn)?)
+    } else {
+        None
+    };
 
     if hash {
-        println!("{}", status.hash);
+        println!("{}", status.map_or("none".to_string(), |s| s.hash));
     } else {
         print_txn(&txn, &status);
     }
@@ -51,18 +56,23 @@ pub fn cmd_pay(
     Ok(())
 }
 
-fn print_txn(txn: &BlockchainTxnPaymentV2, status: &PendingTxnStatus) {
+fn print_txn(txn: &BlockchainTxnPaymentV2, status: &Option<PendingTxnStatus>) {
     let mut table = Table::new();
-    table.add_row(row!["Payee", "Amount", "Nonce", "Hash"]);
+    table.add_row(row!["Payee", "Amount"]);
     for payment in txn.payments.clone() {
         table.add_row(row![
             PubKeyBin::from_vec(&payment.payee).to_b58().unwrap(),
-            payment.amount,
-            txn.nonce,
-            status.hash
+            Hnt::from_bones(payment.amount)
         ]);
-    };
+    }
     table.printstd();
+
+    if status.is_some() {
+        ptable!(
+            ["Nonce", "Hash"],
+            [txn.nonce, status.as_ref().map_or("none", |s| &s.hash)]
+        );
+    }
 }
 
 #[derive(Debug)]
@@ -80,7 +90,7 @@ impl FromStr for Payee {
             .ok_or_else(|| format!("invalid KEY=value: missing `=`  in `{}`", s))?;
         Ok(Payee {
             address: s[..pos].to_string(),
-            amount: s[pos + 1..].parse()?,
+            amount: s[pos + 2..].parse()?,
         })
     }
 }

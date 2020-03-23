@@ -16,9 +16,9 @@ mod traits;
 mod wallet;
 
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
+use cmd_pay::Payee;
 use std::{env, fs, path::PathBuf, process};
 use structopt::StructOpt;
-use cmd_pay::Payee;
 
 /// Create and manage Helium wallets
 #[derive(Debug, StructOpt)]
@@ -63,15 +63,21 @@ enum Cli {
         addresses: Vec<String>,
     },
     /// Send one or more payments to given addresses. Note that HNT
-    /// only goes to 8 decimals of precision.
+    /// only goes to 8 decimals of precision. The payment is not
+    /// submitted to the system unless the '--commit' option is
+    /// given.
     Pay {
         /// Wallet to use as the payer
         #[structopt(short = "f", long = "file", default_value = "wallet.key")]
         files: Vec<PathBuf>,
 
         /// Address and amount of HNT to send in <address>=<amount> format.
-        #[structopt(long = "payee", short = "p", name="payee=hnt")]
+        #[structopt(long = "payee", short = "p", name = "payee=hnt", required = true)]
         payees: Vec<Payee>,
+
+        /// Commit the payment to the API
+        #[structopt(long)]
+        commit: bool,
 
         /// Only outpout the submitted transaction hash.
         #[structopt(long)]
@@ -220,11 +226,12 @@ fn run(cli: Cli) -> Result {
         Cli::Pay {
             payees,
             files,
+            commit,
             hash,
         } => {
             let pass = get_password(false)?;
             let wallet = load_wallet(files)?;
-            cmd_pay::cmd_pay(api_url(), &wallet, &pass, payees, hash)
+            cmd_pay::cmd_pay(api_url(), &wallet, &pass, payees, commit, hash)
         }
     }
 }

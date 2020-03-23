@@ -23,7 +23,7 @@ pub fn cmd_basic(
         .write(true)
         .create(true)
         .create_new(!force)
-        .open(output.clone())?;
+        .open(output)?;
 
     wallet.write(&mut writer)?;
     crate::cmd_verify::cmd_verify(&wallet, password)?;

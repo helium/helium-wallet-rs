@@ -24,14 +24,14 @@ fn main() {
         let (lang, words) = read_wordlist(path).unwrap();
         let dest_path = Path::new(&out_dir).join(lang.clone()).with_extension(&"rs");
         let mut dest_file = File::create(&dest_path).unwrap();
-        write!(
+        writeln!(
             dest_file,
-            "pub const WORDS_{}: WordList = &[\n",
+            "pub const WORDS_{}: WordList = &[",
             lang.to_str().unwrap().to_uppercase()
         )
         .unwrap();
         for word in words {
-            write!(dest_file, "\"{}\",\n", word).unwrap();
+            writeln!(dest_file, "\"{}\",", word).unwrap();
         }
         write!(dest_file, "];").unwrap();
     }

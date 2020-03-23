@@ -233,20 +233,19 @@ fn api_url() -> String {
     env::var("HELIUM_API_URL").unwrap_or_else(|_| helium_api::DEFAULT_BASE_URL.to_string())
 }
 
-fn collect_addresses(files: Vec<PathBuf>, addresses: Vec<String>) -> Result<Vec<String>> {
+fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<String>) -> Result<Vec<String>> {
     // If no files or addresses are given use the default wallet
     let file_list = if files.is_empty() && addresses.is_empty() {
         vec![PathBuf::from("wallet.key")]
     } else {
         files
     };
-    let mut address_list = addresses.clone();
     for file in file_list {
         let mut reader = fs::File::open(&file)?;
         let enc_wallet = Wallet::read(&mut reader)?;
-        address_list.push(enc_wallet.address()?);
+        addresses.push(enc_wallet.address()?);
     }
-    Ok(address_list)
+    Ok(addresses)
 }
 
 fn load_wallet(files: Vec<PathBuf>) -> Result<Wallet> {

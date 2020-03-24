@@ -11,6 +11,7 @@ structopt = "0.3.2"
 dialoguer = "0.4.0"
 bs58 = {version = "0.3.0", features=["check"]}
 sodiumoxide = "0.2.5"
+hex = "0.4.2"
 hmac = "0.7.1"
 sha2 = "0.8.0"
 pbkdf2 = {version = "0.3.0", default-features=false }

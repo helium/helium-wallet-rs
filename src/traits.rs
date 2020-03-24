@@ -1,7 +1,7 @@
 use crate::keypair::{Keypair, PubKeyBin, PublicKey, KEYTYPE_ED25519};
 use crate::result::Result;
 use bs58;
-use helium_proto::{BlockchainTxnPaymentV1, BlockchainTxnPaymentV2, Message};
+use helium_proto::{BlockchainTxnPaymentV1, BlockchainTxnPaymentV2, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Message};
 use io::{Read, Write};
 use std::io;
 
@@ -97,6 +97,24 @@ impl Sign for BlockchainTxnPaymentV1 {
 }
 
 impl Sign for BlockchainTxnPaymentV2 {
+    fn sign(&mut self, keypair: &Keypair) -> Result {
+        let mut buf = vec![];
+        self.encode(&mut buf)?;
+        self.signature = keypair.sign(&buf);
+        Ok(())
+    }
+}
+
+impl Sign for BlockchainTxnCreateHtlcV1 {
+    fn sign(&mut self, keypair: &Keypair) -> Result {
+        let mut buf = vec![];
+        self.encode(&mut buf)?;
+        self.signature = keypair.sign(&buf);
+        Ok(())
+    }
+}
+
+impl Sign for BlockchainTxnRedeemHtlcV1 {
     fn sign(&mut self, keypair: &Keypair) -> Result {
         let mut buf = vec![];
         self.encode(&mut buf)?;

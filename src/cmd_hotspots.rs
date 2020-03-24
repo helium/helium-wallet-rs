@@ -29,9 +29,9 @@ fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>) {
                     table.add_row(row![
                         hotspot.address,
                         hotspot.name.unwrap_or_else(|| "unknown".to_string()),
-                        hotspot.location.unwrap_or_else(|| "uknown".to_string()),
-                        hotspot.geocode.short_city.unwrap_or_else(|| "uknown".to_string()),
-                        hotspot.geocode.short_state.unwrap_or_else(|| "uknown".to_string()),
+                        hotspot.location.unwrap_or_else(|| "uknnown".to_string()),
+                        hotspot.geocode.short_city.unwrap_or_else(|| "unknown".to_string()),
+                        hotspot.geocode.short_state.unwrap_or_else(|| "unknown".to_string()),
                         hotspot.score
                     ]);
                 }

@@ -6,9 +6,9 @@ extern crate lazy_static;
 mod cmd_balance;
 mod cmd_create;
 mod cmd_hotspots;
+mod cmd_htlc;
 mod cmd_info;
 mod cmd_pay;
-mod cmd_htlc;
 mod cmd_verify;
 mod keypair;
 mod mnemonic;
@@ -18,9 +18,9 @@ mod wallet;
 
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use cmd_pay::Payee;
+use helium_api::Hnt;
 use std::{env, fs, path::PathBuf, process};
 use structopt::StructOpt;
-use helium_api::Hnt;
 
 /// Create and manage Helium wallets
 #[derive(Debug, StructOpt)]
@@ -141,7 +141,7 @@ pub enum CreateCmd {
 #[derive(Debug, StructOpt)]
 /// Create or Redeem from an HTLC address
 pub enum HtlcCmd {
-    /// Creates a new HTLC address with a specified hashlock and timelock (in block height), and transfers a value of tokens to it. 
+    /// Creates a new HTLC address with a specified hashlock and timelock (in block height), and transfers a value of tokens to it.
     /// The transaction is not submitted to the system unless the '--commit' option is given.
     Create {
         /// Wallet to use as the payer
@@ -300,7 +300,17 @@ fn run(cli: Cli) -> Result {
         }) => {
             let pass = get_password(false)?;
             let wallet = load_wallet(files)?;
-            cmd_htlc::cmd_create(api_url(), &wallet, &pass, payee, hashlock, timelock, hnt.to_bones(), commit, hash)
+            cmd_htlc::cmd_create(
+                api_url(),
+                &wallet,
+                &pass,
+                payee,
+                hashlock,
+                timelock,
+                hnt.to_bones(),
+                commit,
+                hash,
+            )
         }
         Cli::Htlc(HtlcCmd::Redeem {
             address,

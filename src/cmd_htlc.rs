@@ -1,5 +1,5 @@
 use crate::{
-    keypair::{PubKeyBin, Keypair},
+    keypair::{Keypair, PubKeyBin},
     result::Result,
     traits::{Sign, B58},
     wallet::Wallet,
@@ -12,7 +12,7 @@ pub fn cmd_create(
     url: String,
     wallet: &Wallet,
     password: &str,
-    payee: String,    
+    payee: String,
     hashlock: String,
     timelock: u64,
     amount: u64,
@@ -96,7 +96,7 @@ pub fn cmd_redeem(
     txn.sign(&keypair)?;
     let wrapped_txn = Txn::RedeemHtlc(txn.clone());
 
-    let status = client.submit_txn(wrapped_txn)?;   
+    let status = client.submit_txn(wrapped_txn)?;
 
     if hash {
         println!("{}", status.hash);

@@ -8,6 +8,7 @@ use helium_api::{Client, PendingTxnStatus};
 use helium_proto::{BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Txn};
 use prettytable::Table;
 
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_create(
     url: String,
     wallet: &Wallet,

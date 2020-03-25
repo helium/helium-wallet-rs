@@ -15,7 +15,9 @@ pub fn cmd_hotspots(url: String, addresses: Vec<String>) -> Result {
 fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>) {
     let mut table = Table::new();
     table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-    table.set_titles(row!["Address", "Name", "Location", "City", "State", "Score"]);
+    table.set_titles(row![
+        "Address", "Name", "Location", "City", "State", "Score"
+    ]);
 
     for (address, result) in results {
         #[allow(clippy::unused_unit)]
@@ -29,9 +31,15 @@ fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>) {
                     table.add_row(row![
                         hotspot.address,
                         hotspot.name.unwrap_or_else(|| "unknown".to_string()),
-                        hotspot.location.unwrap_or_else(|| "uknown".to_string()),
-                        hotspot.geocode.short_city.unwrap_or_else(|| "uknown".to_string()),
-                        hotspot.geocode.short_state.unwrap_or_else(|| "uknown".to_string()),
+                        hotspot.location.unwrap_or_else(|| "uknnown".to_string()),
+                        hotspot
+                            .geocode
+                            .short_city
+                            .unwrap_or_else(|| "unknown".to_string()),
+                        hotspot
+                            .geocode
+                            .short_state
+                            .unwrap_or_else(|| "unknown".to_string()),
                         hotspot.score
                     ]);
                 }

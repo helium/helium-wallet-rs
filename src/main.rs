@@ -6,6 +6,7 @@ extern crate lazy_static;
 mod cmd_balance;
 mod cmd_create;
 mod cmd_hotspots;
+mod cmd_htlc;
 mod cmd_info;
 mod cmd_pay;
 mod cmd_verify;
@@ -17,6 +18,7 @@ mod wallet;
 
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use cmd_pay::Payee;
+use helium_api::Hnt;
 use std::{env, fs, path::PathBuf, process};
 use structopt::StructOpt;
 
@@ -83,6 +85,8 @@ enum Cli {
         #[structopt(long)]
         hash: bool,
     },
+    /// Create or Redeem from an HTLC address
+    Htlc(HtlcCmd),
 }
 
 #[derive(Debug, StructOpt)]
@@ -131,6 +135,58 @@ pub enum CreateCmd {
         #[structopt(long)]
         /// Use seed words to create the wallet
         seed: bool,
+    },
+}
+
+#[derive(Debug, StructOpt)]
+/// Create or Redeem from an HTLC address
+pub enum HtlcCmd {
+    /// Creates a new HTLC address with a specified hashlock and timelock (in block height), and transfers a value of tokens to it.
+    /// The transaction is not submitted to the system unless the '--commit' option is given.
+    Create {
+        /// Wallet to use as the payer
+        #[structopt(short = "f", long = "file", default_value = "wallet.key")]
+        files: Vec<PathBuf>,
+
+        /// The address of the intended payee for this HTLC
+        payee: String,
+
+        /// Number of hnt to send
+        #[structopt(long)]
+        hnt: Hnt,
+
+        /// A hex encoded SHA256 digest of a secret value (called a preimage) that locks this contract
+        #[structopt(short = "h", long = "hashlock")]
+        hashlock: String,
+
+        /// A specific blockheight after which the payer (you) can redeem their tokens
+        #[structopt(short = "t", long = "timelock")]
+        timelock: u64,
+
+        /// Commit the payment to the API
+        #[structopt(long)]
+        commit: bool,
+
+        /// Only output the submitted transaction hash.
+        #[structopt(long)]
+        hash: bool,
+    },
+    /// Redeem the balance from an HTLC address with the specified preimage for the hashlock
+    Redeem {
+        /// Wallet to use as the payer
+        #[structopt(short = "f", long = "file", default_value = "wallet.key")]
+        files: Vec<PathBuf>,
+
+        /// Address of the HTLC contract to redeem from
+        address: String,
+
+        /// The preimage used to create the hashlock for this contract address
+        #[structopt(short = "p", long = "preimage")]
+        preimage: String,
+
+        /// Only output the submitted transaction hash.
+        #[structopt(long)]
+        hash: bool,
     },
 }
 
@@ -232,6 +288,39 @@ fn run(cli: Cli) -> Result {
             let pass = get_password(false)?;
             let wallet = load_wallet(files)?;
             cmd_pay::cmd_pay(api_url(), &wallet, &pass, payees, commit, hash)
+        }
+        Cli::Htlc(HtlcCmd::Create {
+            payee,
+            hashlock,
+            timelock,
+            hnt,
+            files,
+            commit,
+            hash,
+        }) => {
+            let pass = get_password(false)?;
+            let wallet = load_wallet(files)?;
+            cmd_htlc::cmd_create(
+                api_url(),
+                &wallet,
+                &pass,
+                payee,
+                hashlock,
+                timelock,
+                hnt.to_bones(),
+                commit,
+                hash,
+            )
+        }
+        Cli::Htlc(HtlcCmd::Redeem {
+            address,
+            preimage,
+            files,
+            hash,
+        }) => {
+            let pass = get_password(false)?;
+            let wallet = load_wallet(files)?;
+            cmd_htlc::cmd_redeem(api_url(), &wallet, &pass, address, preimage, hash)
         }
     }
 }

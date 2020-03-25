@@ -33,8 +33,14 @@ matrix:
   - name: Linux Binary
     env: TARGET=x86_64-unknown-linux-musl
     rust: stable
-    before_script: rustup target add $TARGET
-    script: cargo build --release --target $TARGET --locked --features vendored
+    before_script:
+      - rustup target add $TARGET
+      - rustup component add rustfmt
+      - rustup component add clippy
+    script:
+      - cargo fmt -- --check
+      - cargo build --release --target $TARGET --locked --features vendored
+      - cargo clippy -- --deny=clippy::all
     addons:
       apt:
         packages:
@@ -46,6 +52,12 @@ matrix:
     env: MACOSX_DEPLOYMENT_TARGET=10.7 TARGET=x86_64-apple-darwin
     os: osx
     rust: stable
-    script: cargo build --release --target $TARGET --locked
+    before_script:
+      - rustup component add rustfmt
+      - rustup component add clippy
+    script:
+      - cargo fmt -- --check
+      - cargo build --release --target $TARGET --locked
+      - cargo clippy -- --deny=clippy::all
     install: true
     <<: *DEPLOY_TO_GITHUB

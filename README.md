@@ -140,11 +140,11 @@ when creating the wallet.
 To send tokens to other accounts use:
 
 ```
-    helium-wallet pay <address> --hnt <hnt> [--hash]
+    helium-wallet pay -p<payee>=<hnt> [--hash]
 ```
 
-Where `<address>` is the wallet address for the wallet you want to
-send tokens `<hnt>` is the number of HNT you want to send. Since 1 HNT
+Where `<payee>` is the wallet address for the wallet you want to
+send tokens to, `<hnt>` is the number of HNT you want to send. Since 1 HNT
 is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
 precision.
 

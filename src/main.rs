@@ -1,24 +1,10 @@
-#[macro_use]
-extern crate prettytable;
-#[macro_use]
-extern crate lazy_static;
-
-mod cmd_balance;
-mod cmd_create;
-mod cmd_hotspots;
-mod cmd_htlc;
-mod cmd_info;
-mod cmd_pay;
-mod cmd_verify;
-mod keypair;
-mod mnemonic;
-mod result;
-mod traits;
-mod wallet;
-
 use crate::{result::Result, traits::ReadWrite, wallet::Wallet};
 use cmd_pay::Payee;
 use helium_api::Hnt;
+use helium_wallet::{
+    cmd_balance, cmd_create, cmd_hotspots, cmd_htlc, cmd_info, cmd_pay, cmd_verify, mnemonic,
+    result, traits, wallet,
+};
 use std::{env, fs, path::PathBuf, process};
 use structopt::StructOpt;
 

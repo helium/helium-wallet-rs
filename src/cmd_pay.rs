@@ -90,7 +90,7 @@ impl FromStr for Payee {
             .ok_or_else(|| format!("invalid KEY=value: missing `=`  in `{}`", s))?;
         Ok(Payee {
             address: s[..pos].to_string(),
-            amount: s[pos + 2..].parse()?,
+            amount: s[pos + 1..].parse()?,
         })
     }
 }

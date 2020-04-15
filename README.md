@@ -46,6 +46,20 @@ folder.
 
 At any time use `-h` or `--help` to get more help for a command.
 
+### Global options
+
+Global options _precede_ the actual command on the command line.
+
+The following global options are supported
+
+* `-f` / `--file` can be used once or multiple times to specify either
+  shard files for a wallet or multiple wallets if the command supports
+  it. If not specified a file called `wallet.key` is assumed to be the
+  wallet to use for the command.
+
+* `--format json|table` can be used to set the output of the command
+  to either a tabular format or a json output.
+
 ### Create a wallet
 
 ```
@@ -91,8 +105,8 @@ iteration count and the AES-GCM authentication tag.
 
 ```
     helium-wallet info
-    helium-wallet info -f my.key
-    helium-wallet info -f wallet.key.1 -f wallet.key.2 -f my.key
+    helium-wallet -f my.key info
+    helium-wallet -f wallet.key.1 -f wallet.key.2 -f my.key info
 ```
 
 The given wallets will be read and information about the wallet,
@@ -131,8 +145,8 @@ when creating the wallet.
 
 ```
     helium-wallet verify
-    helium-wallet verify -f wallet.key
-    helium-wallet verify -f wallet.key.1 -f wallet.key.2 -f wallet.key.5
+    helium-wallet -f wallet.key verify
+    helium-wallet -f wallet.key.1 -f wallet.key.2 -f wallet.key.5 verify
 ```
 
 ### Sending Tokens
@@ -140,7 +154,9 @@ when creating the wallet.
 To send tokens to other accounts use:
 
 ```
-    helium-wallet pay -p<payee>=<hnt> [--hash]
+    helium-wallet pay -p<payee>=<hnt>
+    helium-wallet -p<payee>=<hnt> --commit
+
 ```
 
 Where `<payee>` is the wallet address for the wallet you want to
@@ -148,9 +164,10 @@ send tokens to, `<hnt>` is the number of HNT you want to send. Since 1 HNT
 is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
 precision.
 
-If specified, `--hash` will only print out the resulting transaction
-hash once the transaction has been submitted. This can be useful for
-non-interactive commands or scripts that automate payment.
+The default behavior of the `pay` command is to print out what the
+intended payment is going to be _without_ submiting it to the
+blockchain.  In the second example the `--commit` option commits the
+actual payment to the API for processing by the blockchain.
 
 
 ### Environment Variables

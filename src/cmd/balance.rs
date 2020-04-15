@@ -1,9 +1,10 @@
 use crate::{
-    cmd::{api_url, collect_addresses, Opts},
+    cmd::{api_url, collect_addresses, Opts, OutputFormat},
     result::Result,
 };
 use helium_api::{Account, Client, Hnt};
 use prettytable::{format, Table};
+use serde_json::json;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -22,31 +23,49 @@ impl Cmd {
         for address in collect_addresses(opts.files, self.addresses.clone())? {
             results.push((address.to_string(), client.get_account(&address)));
         }
-        print_results(results);
-        Ok(())
+        print_results(results, opts.format)
     }
 }
 
-fn print_results(results: Vec<(String, Result<Account>)>) {
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-    table.set_titles(row![
-        "Address",
-        "Balance",
-        "Data Credits",
-        "Security Tokens"
-    ]);
-
-    for (address, result) in results {
-        match result {
-            Ok(account) => table.add_row(row![
-                address,
-                Hnt::from_bones(account.balance),
-                account.dc_balance,
-                account.sec_balance
-            ]),
-            Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
-        };
+fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) -> Result {
+    match format {
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+            table.set_titles(row![
+                "Address",
+                "Balance",
+                "Data Credits",
+                "Security Tokens"
+            ]);
+            for (address, result) in results {
+                match result {
+                    Ok(account) => table.add_row(row![
+                        address,
+                        Hnt::from_bones(account.balance),
+                        account.dc_balance,
+                        account.sec_balance
+                    ]),
+                    Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
+                };
+            }
+            table.printstd();
+            Ok(())
+        }
+        OutputFormat::Json => {
+            let mut rows = Vec::with_capacity(results.len());
+            for (address, result) in results {
+                if let Ok(account) = result {
+                    rows.push(json!({
+                        "address": address,
+                        "dc_balance": account.dc_balance,
+                        "sec_balance": account.sec_balance,
+                        "balance": Hnt::from_bones(account.balance),
+                    }));
+                };
+            }
+            println!("{}", serde_json::to_string_pretty(&rows)?);
+            Ok(())
+        }
     }
-    table.printstd();
 }

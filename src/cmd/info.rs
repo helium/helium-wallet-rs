@@ -1,10 +1,11 @@
 use crate::{
-    cmd::{load_wallet, Opts},
+    cmd::{load_wallet, Opts, OutputFormat},
     result::Result,
     wallet::Wallet,
 };
 use prettytable::Table;
 use qr2term::print_qr;
+use serde_json::json;
 use structopt::StructOpt;
 
 /// Get wallet information
@@ -21,27 +22,29 @@ impl Cmd {
         if self.qr_code {
             let address = wallet.address()?;
             print_qr(&address)?;
+            Ok(())
         } else {
-            print_wallet(&wallet);
+            print_wallet(&wallet, opts.format)
         }
-        Ok(())
     }
 }
 
-pub fn cmd_info(wallet: &Wallet, qr_code: bool) -> Result {
-    if qr_code {
-        let address = wallet.address()?;
-        print_qr(&address)?;
-    } else {
-        print_wallet(wallet);
-    }
-    Ok(())
-}
-
-fn print_wallet(wallet: &Wallet) {
-    let mut table = Table::new();
-    table.add_row(row!["Address", "Sharded"]);
+fn print_wallet(wallet: &Wallet, format: OutputFormat) -> Result {
     let address = wallet.address().unwrap_or_else(|_| "unknown".to_string());
-    table.add_row(row![address, wallet.is_sharded()]);
-    table.printstd();
+    match format {
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            table.add_row(row!["Address", "Sharded"]);
+            table.add_row(row![address, wallet.is_sharded()]);
+            table.printstd();
+        }
+        OutputFormat::Json => {
+            let table = json!({
+                "address": address,
+                "sharded": wallet.is_sharded()
+            });
+            println!("{}", serde_json::to_string_pretty(&table)?);
+        }
+    };
+    Ok(())
 }

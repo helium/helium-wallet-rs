@@ -28,7 +28,7 @@ pub enum Cmd {
 fn main() {
     let cli = Cli::from_args();
     if let Err(e) = run(cli) {
-        println!("error: {}", e);
+        eprintln!("error: {}", e);
         process::exit(1);
     }
 }

@@ -12,7 +12,7 @@ pub mod verify;
 
 arg_enum! {
     #[derive(Debug)]
-    enum OutputFormat {
+    pub enum OutputFormat {
         Table,
         Json,
     }

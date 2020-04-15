@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{get_password, get_seed_words, Opts},
+    cmd::{get_password, get_seed_words, verify, Opts},
     keypair::{Keypair, Seed},
     mnemonic::mnemonic_to_entropy,
     result::Result,
@@ -74,7 +74,7 @@ impl Cmd {
 }
 
 impl Basic {
-    pub fn run(&self, _opts: Opts) -> Result {
+    pub fn run(&self, opts: Opts) -> Result {
         let seed_words = if self.seed {
             Some(get_seed_words()?)
         } else {
@@ -93,13 +93,12 @@ impl Basic {
             .open(self.output.clone())?;
 
         wallet.write(&mut writer)?;
-        //    crate::cmd_verify::cmd_verify(&wallet, password)?;
-        Ok(())
+        verify::print_result(&wallet, true, opts.format)
     }
 }
 
 impl Sharded {
-    pub fn run(&self, _opts: Opts) -> Result {
+    pub fn run(&self, opts: Opts) -> Result {
         let seed_words = if self.seed {
             Some(get_seed_words()?)
         } else {
@@ -141,8 +140,7 @@ impl Sharded {
             wallet.write(&mut writer)?;
         }
         wallet.format = Box::new(format);
-        // cmd_verify::cmd_verify(&wallet, password)
-        Ok(())
+        verify::print_result(&wallet, true, opts.format)
     }
 }
 

@@ -73,16 +73,13 @@ fn api_url() -> String {
 }
 
 fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<String>) -> Result<Vec<String>> {
-    // If no files or addresses are given use the default wallet
-    let file_list = if files.is_empty() && addresses.is_empty() {
-        vec![PathBuf::from("wallet.key")]
-    } else {
-        files
-    };
-    for file in file_list {
-        let mut reader = fs::File::open(&file)?;
-        let enc_wallet = Wallet::read(&mut reader)?;
-        addresses.push(enc_wallet.address()?);
+    // Any given addresses override _all_ the file parameters
+    if addresses.is_empty() {
+        for file in files {
+            let mut reader = fs::File::open(&file)?;
+            let enc_wallet = Wallet::read(&mut reader)?;
+            addresses.push(enc_wallet.address()?);
+        }
     }
     Ok(addresses)
 }

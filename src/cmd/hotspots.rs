@@ -1,15 +1,30 @@
-use crate::result::Result;
+use crate::{
+    cmd::{api_url, collect_addresses, Opts},
+    result::Result,
+};
 use helium_api::{Client, Hotspot};
 use prettytable::{format, Table};
+use structopt::StructOpt;
 
-pub fn cmd_hotspots(url: String, addresses: Vec<String>) -> Result {
-    let client = Client::new_with_base_url(url);
-    let mut results: Vec<(String, Result<Vec<Hotspot>>)> = Vec::with_capacity(addresses.len());
-    for address in addresses {
-        results.push((address.to_string(), client.get_hotspots(&address)));
+/// Get the hotspots for a wallet
+#[derive(Debug, StructOpt)]
+pub struct Cmd {
+    /// Addresses to get hotspots for
+    #[structopt(short = "a", long = "address")]
+    addresses: Vec<String>,
+}
+
+impl Cmd {
+    pub fn run(&self, opts: Opts) -> Result {
+        let client = Client::new_with_base_url(api_url());
+        let mut results: Vec<(String, Result<Vec<Hotspot>>)> =
+            Vec::with_capacity(self.addresses.len());
+        for address in collect_addresses(opts.files, self.addresses.clone())? {
+            results.push((address.to_string(), client.get_hotspots(&address)));
+        }
+        print_results(results);
+        Ok(())
     }
-    print_results(results);
-    Ok(())
 }
 
 fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>) {

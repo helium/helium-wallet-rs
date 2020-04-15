@@ -70,6 +70,10 @@ The basic wallet will be stored in `wallet.key` after specifying an
 encryption password on the command line. Options exist to specify the
 wallet output file and to force overwriting an existing wallet.
 
+A `--seed` option followed by space seprated mnemonic words can be
+used to construct the keys for the wallet.
+
+
 ### Create a sharded wallet
 
 Sharding wallet keys is supported via [Shamir's Secret
@@ -85,7 +89,10 @@ This will create wallet.key.1 through wallet.key.5 (the base name of
 the wallet file can be supplied with the `-o` parameter).
 
 When keys are sharded using `verify` will require at least K distinct
-keys:
+keys.
+
+A `--seed` option followed by space seprated mnemonic words can be
+used to construct the keys for the wallet.
 
 #### Implementation details
 

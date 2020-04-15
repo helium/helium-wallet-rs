@@ -32,7 +32,7 @@ pub struct Basic {
     iterations: u32,
 
     #[structopt(long)]
-    /// Use seed words to create the wallet
+    /// Use space separated seed words to create the wallet
     seed: bool,
 }
 
@@ -60,7 +60,7 @@ pub struct Sharded {
     recovery_threshold: u8,
 
     #[structopt(long)]
-    /// Use seed words to create the wallet
+    /// Use space separated seed words to create the wallet
     seed: bool,
 }
 

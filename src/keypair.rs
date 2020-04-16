@@ -82,7 +82,7 @@ impl Keypair {
     }
 
     pub fn sign(&self, data: &[u8]) -> Vec<u8> {
-        ed25519::sign(data, &self.secret)
+        ed25519::sign_detached(data, &self.secret).0.to_vec()
     }
 
     pub fn pubkey_bin(&self) -> PubKeyBin {

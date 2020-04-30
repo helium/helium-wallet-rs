@@ -21,7 +21,7 @@ arg_enum! {
 /// Common options for most wallet commands
 #[derive(Debug, StructOpt)]
 pub struct Opts {
-    /// File(s) to use. Use as "-f=<file> [-f=<file] .."
+    /// File(s) to use
     #[structopt(short = "f", long = "file", default_value = "wallet.key")]
     files: Vec<PathBuf>,
 

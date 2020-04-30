@@ -52,10 +52,13 @@ Global options _precede_ the actual command on the command line.
 
 The following global options are supported
 
-* `-f` / `--file` can be used once or multiple times to specify either
+* `-f=<file>` / `--file=<file>` can be used once or multiple times to specify either
   shard files for a wallet or multiple wallets if the command supports
   it. If not specified a file called `wallet.key` is assumed to be the
   wallet to use for the command.
+
+  *NOTE*: Due to a library bug this option requires an equal sign to
+  be used to specify filenames.
 
 * `--format json|table` can be used to set the output of the command
   to either a tabular format or a json output.
@@ -112,8 +115,8 @@ iteration count and the AES-GCM authentication tag.
 
 ```
     helium-wallet info
-    helium-wallet -f my.key info
-    helium-wallet -f wallet.key.1 -f wallet.key.2 -f my.key info
+    helium-wallet -f=my.key info
+    helium-wallet -f=wallet.key.1 -f=wallet.key.2 -f=my.key info
 ```
 
 The given wallets will be read and information about the wallet,
@@ -152,8 +155,8 @@ when creating the wallet.
 
 ```
     helium-wallet verify
-    helium-wallet -f wallet.key verify
-    helium-wallet -f wallet.key.1 -f wallet.key.2 -f wallet.key.5 verify
+    helium-wallet -f=wallet.key verify
+    helium-wallet -f=wallet.key.1 -f=wallet.key.2 -f=wallet.key.5 verify
 ```
 
 ### Sending Tokens

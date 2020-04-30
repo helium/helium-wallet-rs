@@ -22,7 +22,12 @@ arg_enum! {
 #[derive(Debug, StructOpt)]
 pub struct Opts {
     /// File(s) to use
-    #[structopt(short = "f", long = "file", default_value = "wallet.key")]
+    #[structopt(
+        short = "f",
+        long = "file",
+        number_of_values(1),
+        default_value = "wallet.key"
+    )]
     files: Vec<PathBuf>,
 
     /// Output formwat to use

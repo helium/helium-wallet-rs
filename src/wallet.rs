@@ -7,7 +7,6 @@ use aead::NewAead;
 use aes_gcm::Aes256Gcm;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use hmac::{Hmac, Mac};
-use pbkdf2;
 use sha2::Sha256;
 use shamirsecretsharing::hazmat::{combine_keyshares, create_keyshares};
 use sodiumoxide::randombytes;

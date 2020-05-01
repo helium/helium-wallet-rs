@@ -1,6 +1,5 @@
 use crate::keypair::{Keypair, PubKeyBin, PublicKey, KEYTYPE_ED25519};
 use crate::result::Result;
-use bs58;
 use helium_proto::{
     BlockchainTxnCreateHtlcV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2,
     BlockchainTxnRedeemHtlcV1, Message,

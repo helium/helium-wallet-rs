@@ -2,10 +2,10 @@ use crate::{
     cmd::{api_url, get_password, load_wallet, Opts, OutputFormat},
     keypair::{Keypair, PubKeyBin},
     result::Result,
-    traits::{Sign, B58},
+    traits::{Sign, Signer, TxnEnvelope, B58, B64},
 };
 use helium_api::{Client, Hnt, PendingTxnStatus};
-use helium_proto::{BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Txn};
+use helium_proto::{BlockchainTxn, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1};
 use prettytable::Table;
 use serde_json::json;
 use structopt::StructOpt;
@@ -54,6 +54,10 @@ pub struct Redeem {
     /// Only output the submitted transaction hash.
     #[structopt(long)]
     hash: bool,
+
+    /// Commit the payment to the API
+    #[structopt(long)]
+    commit: bool,
 }
 
 impl Cmd {
@@ -78,29 +82,29 @@ impl Create {
         let mut txn = BlockchainTxnCreateHtlcV1 {
             amount: self.hnt.to_bones(),
             fee: 0,
-            payee: PubKeyBin::from_b58(self.payee.clone())?.to_vec(),
-            payer: keypair.pubkey_bin().to_vec(),
-            address: address.to_vec(),
+            payee: PubKeyBin::from_b58(&self.payee)?.into(),
+            payer: keypair.pubkey_bin().into(),
+            address: address.into(),
             hashlock: hex::decode(self.hashlock.clone()).unwrap(),
             timelock: self.timelock,
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
-        txn.sign(&keypair)?;
-        let wrapped_txn = Txn::CreateHtlc(txn.clone());
+        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
 
         let status = if self.commit {
-            Some(client.submit_txn(wrapped_txn)?)
+            Some(client.submit_txn(&envelope)?)
         } else {
             None
         };
 
-        print_create_txn(&txn, &status, opts.format)
+        print_create_txn(&txn, &envelope, &status, opts.format)
     }
 }
 
 fn print_create_txn(
     txn: &BlockchainTxnCreateHtlcV1,
+    envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
     format: OutputFormat,
 ) -> Result {
@@ -131,6 +135,8 @@ fn print_create_txn(
                 "amount": txn.amount,
                 "hashlock": hex::encode(&txn.hashlock),
                 "timelock": txn.timelock,
+                "hash": status.as_ref().map(|s| &s.hash),
+                "txn": envelope.to_b64()?,
             });
             println!("{}", serde_json::to_string_pretty(&table)?);
         }
@@ -147,23 +153,28 @@ impl Redeem {
 
         let mut txn = BlockchainTxnRedeemHtlcV1 {
             fee: 0,
-            payee: keypair.pubkey_bin().to_vec(),
-            address: PubKeyBin::from_b58(self.address.clone())?.to_vec(),
+            payee: keypair.pubkey_bin().into(),
+            address: PubKeyBin::from_b58(&self.address)?.into(),
             preimage: self.preimage.clone().into_bytes(),
             signature: Vec::new(),
         };
-        txn.sign(&keypair)?;
-        let wrapped_txn = Txn::RedeemHtlc(txn.clone());
 
-        let status = client.submit_txn(wrapped_txn)?;
+        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
 
-        print_redeem_txn(&txn, &status, opts.format)
+        let status = if self.commit {
+            Some(client.submit_txn(&envelope)?)
+        } else {
+            None
+        };
+
+        print_redeem_txn(&txn, &envelope, &status, opts.format)
     }
 }
 
 fn print_redeem_txn(
     txn: &BlockchainTxnRedeemHtlcV1,
-    status: &PendingTxnStatus,
+    envelope: &BlockchainTxn,
+    status: &Option<PendingTxnStatus>,
     format: OutputFormat,
 ) -> Result {
     match format {
@@ -174,11 +185,19 @@ fn print_redeem_txn(
                 PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
                 PubKeyBin::from_vec(&txn.address).to_b58().unwrap(),
                 std::str::from_utf8(&txn.preimage).unwrap(),
-                status.hash
+                status.as_ref().map_or("none", |s| &s.hash)
             ]);
             table.printstd();
         }
-        OutputFormat::Json => {}
+        OutputFormat::Json => {
+            let table = json!({
+                "address": PubKeyBin::from_vec(&txn.address).to_b58()?,
+                "payee": PubKeyBin::from_vec(&txn.payee).to_b58()?,
+                "hash": status.as_ref().map(|s| &s.hash),
+                "txn": envelope.to_b64()?,
+            });
+            println!("{}", serde_json::to_string_pretty(&table)?);
+        }
     };
     Ok(())
 }

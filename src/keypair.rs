@@ -4,7 +4,7 @@ use crate::{
 };
 use byteorder::ReadBytesExt;
 use sodiumoxide::crypto::sign::ed25519;
-use std::{fmt, io};
+use std::{fmt, io, str::FromStr};
 
 static START: std::sync::Once = std::sync::Once::new();
 pub const KEYTYPE_ED25519: u8 = 1;
@@ -12,6 +12,7 @@ pub const KEYTYPE_ED25519: u8 = 1;
 pub use ed25519::PublicKey;
 pub use ed25519::SecretKey;
 pub use ed25519::Seed;
+use ed25519::Signature;
 
 // Newtype to allow us to `impl Default` on a 33 element array.
 #[derive(Clone, Copy)]
@@ -50,6 +51,44 @@ impl Into<PublicKey> for PubKeyBin {
         let mut buf = [0u8; 32];
         buf.copy_from_slice(&self.0[1..]);
         PublicKey(buf)
+    }
+}
+
+impl Into<Vec<u8>> for PubKeyBin {
+    fn into(self) -> Vec<u8> {
+        self.to_vec()
+    }
+}
+
+impl PartialEq for PubKeyBin {
+    fn eq(&self, other: &Self) -> bool {
+        use std::cmp::Ordering::Equal;
+        self.0.cmp(&other.0) == Equal
+    }
+}
+
+impl FromStr for PubKeyBin {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self> {
+        PubKeyBin::from_b58(s)
+    }
+}
+
+impl fmt::Debug for PubKeyBin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.to_b58() {
+            Ok(s) => f.write_str(&s),
+            Err(_e) => Err(fmt::Error),
+        }
+    }
+}
+
+impl fmt::Display for PubKeyBin {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.to_b58() {
+            Ok(s) => f.write_str(&s),
+            Err(_e) => Err(fmt::Error),
+        }
     }
 }
 
@@ -138,6 +177,24 @@ impl ReadWrite for Keypair {
 impl PartialEq for Keypair {
     fn eq(&self, other: &Self) -> bool {
         self.public == other.public && self.secret == other.secret
+    }
+}
+
+pub trait Verify {
+    fn verify(&self, message: &[u8], signature: &[u8]) -> Result;
+}
+
+impl Verify for PublicKey {
+    fn verify(&self, message: &[u8], signature: &[u8]) -> Result {
+        if let Some(sig) = Signature::from_slice(signature) {
+            if ed25519::verify_detached(&sig, message, self) {
+                Ok(())
+            } else {
+                Err("Sigmature does not verify".into())
+            }
+        } else {
+            Err("Invalid signature".into())
+        }
     }
 }
 

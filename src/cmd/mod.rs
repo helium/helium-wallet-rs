@@ -1,4 +1,10 @@
-use crate::{mnemonic, result::Result, traits::ReadWrite, wallet::Wallet};
+use crate::{
+    keypair::PubKeyBin,
+    mnemonic,
+    result::Result,
+    traits::{ReadWrite, B58},
+    wallet::Wallet,
+};
 use std::{env, fs, path::PathBuf};
 use structopt::{clap::arg_enum, StructOpt};
 
@@ -7,6 +13,8 @@ pub mod create;
 pub mod hotspots;
 pub mod htlc;
 pub mod info;
+pub mod onboard;
+pub mod oui;
 pub mod pay;
 pub mod verify;
 
@@ -62,8 +70,8 @@ fn get_password(confirm: bool) -> std::io::Result<String> {
     match env::var("HELIUM_WALLET_PASSWORD") {
         Ok(str) => Ok(str),
         _ => {
-            use dialoguer::PasswordInput;
-            let mut builder = PasswordInput::new();
+            use dialoguer::Password;
+            let mut builder = Password::new();
             builder.with_prompt("Password");
             if confirm {
                 builder.with_confirmation("Confirm password", "Passwords do not match");
@@ -106,4 +114,15 @@ fn get_seed_words() -> Result<Vec<String>> {
         .split_whitespace()
         .map(|w| w.to_string())
         .collect())
+}
+
+pub fn get_payer(staking_address: PubKeyBin, payer: &Option<String>) -> Result<Option<PubKeyBin>> {
+    match payer {
+        Some(s) if s == "staking" => Ok(Some(staking_address)),
+        Some(s) => {
+            let address = PubKeyBin::from_b58(&s)?;
+            Ok(Some(address))
+        }
+        None => Ok(None),
+    }
 }

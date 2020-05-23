@@ -2,10 +2,10 @@ use crate::{
     cmd::{api_url, get_password, load_wallet, Opts, OutputFormat},
     keypair::PubKeyBin,
     result::Result,
-    traits::{Sign, B58},
+    traits::{Sign, Signer, TxnEnvelope, B58, B64},
 };
 use helium_api::{Client, Hnt, PendingTxnStatus};
-use helium_proto::{BlockchainTxnPaymentV2, Payment, Txn};
+use helium_proto::{BlockchainTxn, BlockchainTxnPaymentV2, Payment};
 use prettytable::Table;
 use serde_json::json;
 use std::str::FromStr;
@@ -40,7 +40,7 @@ impl Cmd {
             .iter()
             .map(|p| {
                 Ok(Payment {
-                    payee: PubKeyBin::from_b58(p.address.clone())?.to_vec(),
+                    payee: PubKeyBin::from_b58(&p.address)?.into(),
                     amount: p.amount.to_bones(),
                 })
             })
@@ -48,26 +48,25 @@ impl Cmd {
         let mut txn = BlockchainTxnPaymentV2 {
             fee: 0,
             payments: payments?,
-            payer: keypair.pubkey_bin().to_vec(),
+            payer: keypair.pubkey_bin().into(),
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
-        txn.sign(&keypair)?;
-        let wrapped_txn = Txn::PaymentV2(txn.clone());
 
+        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
         let status = if self.commit {
-            Some(client.submit_txn(wrapped_txn.clone())?)
+            Some(client.submit_txn(&envelope)?)
         } else {
             None
         };
 
-        print_txn(&txn, wrapped_txn, &status, opts.format)
+        print_txn(&txn, &envelope, &status, opts.format)
     }
 }
 
 fn print_txn(
     txn: &BlockchainTxnPaymentV2,
-    wrapped_txn: Txn,
+    envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
     format: OutputFormat,
 ) -> Result {
@@ -104,14 +103,14 @@ fn print_txn(
                 json!({
                     "payments": payments,
                     "nonce": txn.nonce,
-                    "hash": status.as_ref().map_or("none", |s| &s.hash),
-                    "txn": Client::txn_to_b64(wrapped_txn)?,
+                    "hash": status.as_ref().map(|s| &s.hash),
+                    "txn": envelope.to_b64()?,
 
                 })
             } else {
                 json!({
                     "payments": payments,
-                    "txn": Client::txn_to_b64(wrapped_txn)?,
+                    "txn": envelope.to_b64()?,
                 })
             };
             println!("{}", serde_json::to_string_pretty(&table)?);

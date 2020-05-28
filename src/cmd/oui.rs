@@ -5,8 +5,7 @@ use crate::{
     staking,
     traits::{Sign, Signer, TxnEnvelope, B58, B64},
 };
-use helium_api::{Client, PendingTxnStatus};
-use helium_proto::{BlockchainTxn, BlockchainTxnOuiV1, Txn};
+use helium_api::{BlockchainTxn, BlockchainTxnOuiV1, Client, PendingTxnStatus, Txn};
 use serde_json::json;
 use structopt::StructOpt;
 

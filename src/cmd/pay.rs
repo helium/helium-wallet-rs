@@ -4,8 +4,7 @@ use crate::{
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, B58, B64},
 };
-use helium_api::{Client, Hnt, PendingTxnStatus};
-use helium_proto::{BlockchainTxn, BlockchainTxnPaymentV2, Payment};
+use helium_api::{BlockchainTxn, BlockchainTxnPaymentV2, Client, Hnt, Payment, PendingTxnStatus};
 use prettytable::Table;
 use serde_json::json;
 use std::str::FromStr;

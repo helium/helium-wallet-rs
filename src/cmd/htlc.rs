@@ -4,8 +4,10 @@ use crate::{
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, B58, B64},
 };
-use helium_api::{Client, Hnt, PendingTxnStatus};
-use helium_proto::{BlockchainTxn, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1};
+use helium_api::{
+    BlockchainTxn, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Client, Hnt,
+    PendingTxnStatus,
+};
 use prettytable::Table;
 use serde_json::json;
 use structopt::StructOpt;

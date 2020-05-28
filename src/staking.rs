@@ -3,7 +3,7 @@ use crate::{
     result::Result,
     traits::{B58, B64},
 };
-use helium_proto::BlockchainTxn;
+use helium_api::BlockchainTxn;
 use std::time::Duration;
 
 /// The default timeout for API requests

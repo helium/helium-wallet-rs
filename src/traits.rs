@@ -1,9 +1,9 @@
 use crate::keypair::{Keypair, PubKeyBin, PublicKey, Verify, KEYTYPE_ED25519};
 use crate::result::Result;
-use helium_proto::{
+use helium_api::{
     BlockchainTxn, BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1,
     BlockchainTxnCreateHtlcV1, BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2,
-    BlockchainTxnRedeemHtlcV1, Message, Txn,
+    BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, Message, Txn,
 };
 use io::{Read, Write};
 use std::io;
@@ -109,6 +109,14 @@ impl B64 for BlockchainTxn {
 
 pub trait TxnEnvelope {
     fn in_envelope(&self) -> BlockchainTxn;
+}
+
+impl TxnEnvelope for BlockchainTxnPriceOracleV1 {
+    fn in_envelope(&self) -> BlockchainTxn {
+        BlockchainTxn {
+            txn: Some(Txn::PriceOracleSubmission(self.clone())),
+        }
+    }
 }
 
 impl TxnEnvelope for BlockchainTxnOuiV1 {
@@ -236,6 +244,10 @@ impl Sign for BlockchainTxn {
                 t.sign(keypair, signer)?;
                 Ok(self)
             }
+            Some(Txn::PriceOracleSubmission(t)) => {
+                t.sign(keypair, signer)?;
+                Ok(self)
+            }
             _ => Err("Unsupported transaction for signing".into()),
         }
     }
@@ -246,6 +258,27 @@ impl Sign for BlockchainTxn {
     }
     fn get_signature(&self, _signer: Signer) -> Result<Vec<u8>> {
         Err("Invalid transaction".into())
+    }
+}
+
+impl Sign for BlockchainTxnPriceOracleV1 {
+    fn clear_signatures(&mut self) {
+        self.signature = vec![]
+    }
+
+    fn set_signature(&mut self, signer: Signer, signature: Vec<u8>) -> Result {
+        match signer {
+            Signer::Owner => self.signature = signature,
+            _ => return Err("Invalid signer".into()),
+        };
+        Ok(())
+    }
+
+    fn get_signature(&self, signer: Signer) -> Result<Vec<u8>> {
+        match signer {
+            Signer::Owner => Ok(self.signature.clone()),
+            _ => Err("Invalid signer".into()),
+        }
     }
 }
 

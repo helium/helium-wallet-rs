@@ -34,14 +34,15 @@ fn print_wallet(wallet: &Wallet, format: OutputFormat) -> Result {
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
-            table.add_row(row!["Address", "Sharded"]);
-            table.add_row(row![address, wallet.is_sharded()]);
+            table.add_row(row!["Address", "Sharded", "PWHash"]);
+            table.add_row(row![address, wallet.is_sharded(), wallet.pwhash()]);
             table.printstd();
         }
         OutputFormat::Json => {
             let table = json!({
                 "address": address,
-                "sharded": wallet.is_sharded()
+                "sharded": wallet.is_sharded(),
+                "pwhash": wallet.pwhash().to_string(),
             });
             println!("{}", serde_json::to_string_pretty(&table)?);
         }

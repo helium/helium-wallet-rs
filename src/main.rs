@@ -1,5 +1,7 @@
 use helium_wallet::{
-    cmd::{balance, create, hotspots, htlc, info, onboard, oracle, oui, pay, verify, Opts},
+    cmd::{
+        balance, create, hotspots, htlc, info, onboard, oracle, oui, pay, upgrade, verify, Opts,
+    },
     result::Result,
 };
 use std::process;
@@ -21,6 +23,7 @@ pub enum Cmd {
     Balance(balance::Cmd),
     Hotspots(hotspots::Cmd),
     Create(create::Cmd),
+    Upgrade(upgrade::Cmd),
     Pay(pay::Cmd),
     Htlc(htlc::Cmd),
     Oui(oui::Cmd),
@@ -43,6 +46,7 @@ fn run(cli: Cli) -> Result {
         Cmd::Balance(cmd) => cmd.run(cli.opts),
         Cmd::Hotspots(cmd) => cmd.run(cli.opts),
         Cmd::Create(cmd) => cmd.run(cli.opts),
+        Cmd::Upgrade(cmd) => cmd.run(cli.opts),
         Cmd::Pay(cmd) => cmd.run(cli.opts),
         Cmd::Htlc(cmd) => cmd.run(cli.opts),
         Cmd::Oui(cmd) => cmd.run(cli.opts),

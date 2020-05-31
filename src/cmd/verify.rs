@@ -15,7 +15,7 @@ impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
-        let result = wallet.to_keypair(password.as_bytes());
+        let result = wallet.decrypt(password.as_bytes());
         print_result(&wallet, result.is_ok(), opts.format)
     }
 }
@@ -26,8 +26,8 @@ pub fn print_result(wallet: &Wallet, result: bool, format: OutputFormat) -> Resu
         OutputFormat::Table => {
             let mut table = Table::new();
             table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-            table.set_titles(row!["Address", "Sharded", "Verify"]);
-            table.add_row(row![address, wallet.is_sharded(), result]);
+            table.set_titles(row!["Address", "Sharded", "Verify", "PWHash"]);
+            table.add_row(row![address, wallet.is_sharded(), result, wallet.pwhash()]);
             table.printstd();
             Ok(())
         }
@@ -35,7 +35,8 @@ pub fn print_result(wallet: &Wallet, result: bool, format: OutputFormat) -> Resu
             let table = json!({
                 "address": address,
                 "sharded": wallet.is_sharded(),
-                "verify": result
+                "verify": result,
+                "pwhash": wallet.pwhash().to_string()
             });
             println!("{}", serde_json::to_string_pretty(&table)?);
             Ok(())

@@ -1,24 +1,24 @@
 use crate::{
-    cmd::{get_file_extension, get_password, get_seed_words, verify, Opts},
+    cmd::{get_file_extension, get_password, load_wallet, open_output_file, verify, Opts},
     format::{self, Format},
-    keypair::{Keypair, Seed},
-    mnemonic::mnemonic_to_entropy,
     pwhash::PWHash,
     result::Result,
     wallet::Wallet,
 };
-use std::{fs, io, path::PathBuf};
+use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-/// Create a new wallet
+/// Upgrade a wallet to the latest supported version of the given
+/// format. The same password is used to decrypt the old and encrypt
+/// the new wallet.
 pub enum Cmd {
     Basic(Basic),
     Sharded(Sharded),
 }
 
 #[derive(Debug, StructOpt)]
-/// Create a new basic wallet
+/// Upgrade to the latest basic wallet format
 pub struct Basic {
     #[structopt(short, long, default_value = "wallet.key")]
     /// Output file to store the key in
@@ -27,14 +27,10 @@ pub struct Basic {
     #[structopt(long)]
     /// Overwrite an existing file
     force: bool,
-
-    #[structopt(long)]
-    /// Use space separated seed words to create the wallet
-    seed: bool,
 }
 
 #[derive(Debug, StructOpt)]
-/// Create a new sharded wallet
+/// Upgrade to the latest sharded wallet format
 pub struct Sharded {
     #[structopt(short, long, default_value = "wallet.key")]
     /// Output file to store the key in
@@ -51,10 +47,6 @@ pub struct Sharded {
     #[structopt(short = "k", long = "required-shards", default_value = "3")]
     /// Number of shards required to recover the key
     recovery_threshold: u8,
-
-    #[structopt(long)]
-    /// Use space separated seed words to create the wallet
-    seed: bool,
 }
 
 impl Cmd {
@@ -68,33 +60,26 @@ impl Cmd {
 
 impl Basic {
     pub fn run(&self, opts: Opts) -> Result {
-        let seed_words = if self.seed {
-            Some(get_seed_words()?)
-        } else {
-            None
-        };
-        let password = get_password(true)?;
-        let keypair = gen_keypair(seed_words)?;
+        let password = get_password(false)?;
+        let wallet = load_wallet(opts.files)?;
+        let keypair = wallet.decrypt(password.as_bytes())?;
+
         let format = format::Basic {
             pwhash: PWHash::argon2id13_default(),
         };
-        let wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Basic(format))?;
+        let new_wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Basic(format))?;
         let mut writer = open_output_file(&self.output, !self.force)?;
-        wallet.write(&mut writer)?;
-        verify::print_result(&wallet, true, opts.format)
+        new_wallet.write(&mut writer)?;
+        verify::print_result(&new_wallet, true, opts.format)
     }
 }
 
 impl Sharded {
     pub fn run(&self, opts: Opts) -> Result {
-        let seed_words = if self.seed {
-            Some(get_seed_words()?)
-        } else {
-            None
-        };
-        let password = get_password(true)?;
+        let password = get_password(false)?;
+        let wallet = load_wallet(opts.files)?;
+        let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let keypair = gen_keypair(seed_words)?;
         let format = format::Sharded {
             key_share_count: self.key_share_count,
             recovery_threshold: self.recovery_threshold,
@@ -113,22 +98,4 @@ impl Sharded {
         }
         verify::print_result(&wallet, true, opts.format)
     }
-}
-
-fn gen_keypair(seed_words: Option<Vec<String>>) -> Result<Keypair> {
-    match seed_words {
-        Some(words) => {
-            let entropy = mnemonic_to_entropy(words)?;
-            Ok(Keypair::gen_keypair_from_seed(&Seed(entropy)))
-        }
-        None => Ok(Keypair::gen_keypair()),
-    }
-}
-
-fn open_output_file(filename: &PathBuf, create: bool) -> io::Result<fs::File> {
-    fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .create_new(create)
-        .open(filename)
 }

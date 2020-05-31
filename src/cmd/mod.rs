@@ -1,11 +1,5 @@
-use crate::{
-    keypair::PubKeyBin,
-    mnemonic,
-    result::Result,
-    traits::{ReadWrite, B58},
-    wallet::Wallet,
-};
-use std::{env, fs, path::PathBuf};
+use crate::{keypair::PubKeyBin, mnemonic, result::Result, traits::B58, wallet::Wallet};
+use std::{env, fs, io, path::PathBuf};
 use structopt::{clap::arg_enum, StructOpt};
 
 pub mod balance;
@@ -17,6 +11,7 @@ pub mod onboard;
 pub mod oracle;
 pub mod oui;
 pub mod pay;
+pub mod upgrade;
 pub mod verify;
 
 arg_enum! {
@@ -60,8 +55,7 @@ fn load_wallet(files: Vec<PathBuf>) -> Result<Wallet> {
     for path in files_iter {
         let mut reader = fs::File::open(path)?;
         let w = Wallet::read(&mut reader)?;
-        let w_format = w.format.as_sharded_format()?;
-        first_wallet.format.absorb_key_shares(&w_format)?;
+        first_wallet.absorb_shard(&w)?;
     }
 
     Ok(first_wallet)
@@ -126,4 +120,22 @@ pub fn get_payer(staking_address: PubKeyBin, payer: &Option<String>) -> Result<O
         }
         None => Ok(None),
     }
+}
+
+pub fn open_output_file(filename: &PathBuf, create: bool) -> io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .create_new(create)
+        .open(filename)
+}
+
+pub fn get_file_extension(filename: &PathBuf) -> String {
+    use std::ffi::OsStr;
+    filename
+        .extension()
+        .unwrap_or_else(|| OsStr::new(""))
+        .to_str()
+        .unwrap()
+        .to_string()
 }

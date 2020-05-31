@@ -77,7 +77,7 @@ impl Create {
         let wallet = load_wallet(opts.files)?;
         let client = Client::new_with_base_url(api_url());
 
-        let keypair = wallet.to_keypair(password.as_bytes())?;
+        let keypair = wallet.decrypt(password.as_bytes())?;
         let account = client.get_account(&keypair.public.to_b58()?)?;
         let address = Keypair::gen_keypair().pubkey_bin();
 
@@ -150,7 +150,7 @@ impl Redeem {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
-        let keypair = wallet.to_keypair(password.as_bytes())?;
+        let keypair = wallet.decrypt(password.as_bytes())?;
         let client = Client::new_with_base_url(api_url());
 
         let mut txn = BlockchainTxnRedeemHtlcV1 {

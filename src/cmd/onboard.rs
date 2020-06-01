@@ -33,7 +33,7 @@ impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
-        let keypair = wallet.to_keypair(password.as_bytes())?;
+        let keypair = wallet.decrypt(password.as_bytes())?;
         // let staking_address = get_staking_address()?;
         // Now decode the given transaction
         let mut envelope = BlockchainTxn::from_b64(&self.read_txn()?)?;

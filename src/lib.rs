@@ -8,8 +8,10 @@ extern crate lazy_static;
 extern crate serde_json;
 
 pub mod cmd;
+pub mod format;
 pub mod keypair;
 pub mod mnemonic;
+pub mod pwhash;
 pub mod result;
 pub mod staking;
 pub mod traits;

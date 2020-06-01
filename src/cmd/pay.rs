@@ -31,7 +31,7 @@ impl Cmd {
 
         let client = Client::new_with_base_url(api_url());
 
-        let keypair = wallet.to_keypair(password.as_bytes())?;
+        let keypair = wallet.decrypt(password.as_bytes())?;
         let account = client.get_account(&keypair.public.to_b58()?)?;
 
         let payments: Result<Vec<Payment>> = self

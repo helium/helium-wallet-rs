@@ -82,7 +82,7 @@ impl Create {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
-        let keypair = wallet.to_keypair(password.as_bytes())?;
+        let keypair = wallet.decrypt(password.as_bytes())?;
 
         let api_client = Client::new_with_base_url(api_url());
         let staking_client = staking::Client::default();

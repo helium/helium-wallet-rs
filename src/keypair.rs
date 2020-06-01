@@ -230,7 +230,7 @@ mod tests {
     fn roundtrip_b58_public_key() {
         let pk = Keypair::gen_keypair().public;
         let encoded = pk.to_b58().expect("Failed to encode public key");
-        let decoded = PublicKey::from_b58(encoded).expect("Failed to decode public key");
+        let decoded = PublicKey::from_b58(&encoded).expect("Failed to decode public key");
         assert_eq!(pk, decoded);
     }
 }

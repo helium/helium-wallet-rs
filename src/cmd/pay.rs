@@ -52,7 +52,7 @@ impl Cmd {
             signature: Vec::new(),
         };
 
-        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
+        let envelope = txn.sign(&keypair, Signer::Payer)?.in_envelope();
         let status = if self.commit {
             Some(client.submit_txn(&envelope)?)
         } else {

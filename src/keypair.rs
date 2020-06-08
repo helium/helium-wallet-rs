@@ -92,6 +92,7 @@ impl fmt::Display for PubKeyBin {
     }
 }
 
+#[derive(PartialEq)]
 pub struct Keypair {
     pub public: PublicKey,
     pub secret: SecretKey,
@@ -171,12 +172,6 @@ impl ReadWrite for Keypair {
             public: PublicKey(pk_buf),
             secret: SecretKey(sk_buf),
         })
-    }
-}
-
-impl PartialEq for Keypair {
-    fn eq(&self, other: &Self) -> bool {
-        self.public == other.public && self.secret == other.secret
     }
 }
 

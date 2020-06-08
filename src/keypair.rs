@@ -3,16 +3,13 @@ use crate::{
     traits::{ReadWrite, B58},
 };
 use byteorder::ReadBytesExt;
+use ed25519::Signature;
+pub use ed25519::{PublicKey, SecretKey, Seed};
 use sodiumoxide::crypto::sign::ed25519;
 use std::{fmt, io, str::FromStr};
 
 static START: std::sync::Once = std::sync::Once::new();
 pub const KEYTYPE_ED25519: u8 = 1;
-
-pub use ed25519::PublicKey;
-pub use ed25519::SecretKey;
-pub use ed25519::Seed;
-use ed25519::Signature;
 
 // Newtype to allow us to `impl Default` on a 33 element array.
 #[derive(Clone, Copy)]

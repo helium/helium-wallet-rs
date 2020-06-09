@@ -3,16 +3,13 @@ use crate::{
     traits::{ReadWrite, B58},
 };
 use byteorder::ReadBytesExt;
+use ed25519::Signature;
+pub use ed25519::{PublicKey, SecretKey, Seed};
 use sodiumoxide::crypto::sign::ed25519;
 use std::{fmt, io, str::FromStr};
 
 static START: std::sync::Once = std::sync::Once::new();
 pub const KEYTYPE_ED25519: u8 = 1;
-
-pub use ed25519::PublicKey;
-pub use ed25519::SecretKey;
-pub use ed25519::Seed;
-use ed25519::Signature;
 
 // Newtype to allow us to `impl Default` on a 33 element array.
 #[derive(Clone, Copy)]
@@ -45,18 +42,18 @@ impl PubKeyBin {
     }
 }
 
-impl Into<PublicKey> for PubKeyBin {
-    fn into(self) -> PublicKey {
-        assert!(self.0[0] == KEYTYPE_ED25519);
+impl From<PubKeyBin> for PublicKey {
+    fn from(pkb: PubKeyBin) -> PublicKey {
+        assert!(pkb.0[0] == KEYTYPE_ED25519);
         let mut buf = [0u8; 32];
-        buf.copy_from_slice(&self.0[1..]);
-        PublicKey(buf)
+        buf.copy_from_slice(&pkb.0[1..]);
+        Self(buf)
     }
 }
 
-impl Into<Vec<u8>> for PubKeyBin {
-    fn into(self) -> Vec<u8> {
-        self.to_vec()
+impl From<PubKeyBin> for Vec<u8> {
+    fn from(pkb: PubKeyBin) -> Vec<u8> {
+        pkb.to_vec()
     }
 }
 
@@ -92,6 +89,7 @@ impl fmt::Display for PubKeyBin {
     }
 }
 
+#[derive(PartialEq)]
 pub struct Keypair {
     pub public: PublicKey,
     pub secret: SecretKey,
@@ -171,12 +169,6 @@ impl ReadWrite for Keypair {
             public: PublicKey(pk_buf),
             secret: SecretKey(sk_buf),
         })
-    }
-}
-
-impl PartialEq for Keypair {
-    fn eq(&self, other: &Self) -> bool {
-        self.public == other.public && self.secret == other.secret
     }
 }
 

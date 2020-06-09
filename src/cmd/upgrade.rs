@@ -86,16 +86,16 @@ impl Sharded {
             pwhash: PWHash::argon2id13_default(),
             key_shares: vec![],
         };
-        let wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Sharded(format))?;
+        let new_wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Sharded(format))?;
 
         let extension = get_file_extension(&self.output);
-        for (i, shard) in wallet.shards()?.iter().enumerate() {
+        for (i, shard) in new_wallet.shards()?.iter().enumerate() {
             let mut filename = self.output.clone();
             let share_extension = format!("{}.{}", extension, (i + 1).to_string());
             filename.set_extension(share_extension);
             let mut writer = open_output_file(&filename, !self.force)?;
             shard.write(&mut writer)?;
         }
-        verify::print_result(&wallet, true, opts.format)
+        verify::print_result(&new_wallet, true, opts.format)
     }
 }

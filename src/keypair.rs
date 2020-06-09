@@ -42,18 +42,18 @@ impl PubKeyBin {
     }
 }
 
-impl Into<PublicKey> for PubKeyBin {
-    fn into(self) -> PublicKey {
-        assert!(self.0[0] == KEYTYPE_ED25519);
+impl From<PubKeyBin> for PublicKey {
+    fn from(pkb: PubKeyBin) -> PublicKey {
+        assert!(pkb.0[0] == KEYTYPE_ED25519);
         let mut buf = [0u8; 32];
-        buf.copy_from_slice(&self.0[1..]);
-        PublicKey(buf)
+        buf.copy_from_slice(&pkb.0[1..]);
+        Self(buf)
     }
 }
 
-impl Into<Vec<u8>> for PubKeyBin {
-    fn into(self) -> Vec<u8> {
-        self.to_vec()
+impl From<PubKeyBin> for Vec<u8> {
+    fn from(pkb: PubKeyBin) -> Vec<u8> {
+        pkb.to_vec()
     }
 }
 

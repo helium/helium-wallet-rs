@@ -1,8 +1,9 @@
 use crate::{
-    cmd::{load_wallet, Opts, OutputFormat},
+    cmd::{api_url, load_wallet, Opts, OutputFormat},
     result::Result,
     wallet::Wallet,
 };
+use helium_api::{Account, Client, Hnt};
 use prettytable::Table;
 use qr2term::print_qr;
 use serde_json::json;
@@ -24,25 +25,31 @@ impl Cmd {
             print_qr(&address)?;
             Ok(())
         } else {
-            print_wallet(&wallet, opts.format)
+            let client = Client::new_with_base_url(api_url());
+            let account = client.get_account(&wallet.address()?)?;
+            print_wallet(&wallet, &account, opts.format)
         }
     }
 }
 
-fn print_wallet(wallet: &Wallet, format: OutputFormat) -> Result {
-    let address = wallet.address().unwrap_or_else(|_| "unknown".to_string());
+fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Result {
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
-            table.add_row(row!["Address", "Sharded", "PWHash"]);
-            table.add_row(row![address, wallet.is_sharded(), wallet.pwhash()]);
+            table.add_row(row!["Key", "Value"]);
+            table.add_row(row!["Address", account.address]);
+            table.add_row(row!["Sharded", wallet.is_sharded()]);
+            table.add_row(row!["PWHash", wallet.pwhash()]);
+            table.add_row(row!["Balance", Hnt::from_bones(account.balance)]);
+            table.add_row(row!["DC Balance", account.dc_balance]);
+            table.add_row(row!["Securities Balance", account.sec_balance]);
             table.printstd();
         }
         OutputFormat::Json => {
             let table = json!({
-                "address": address,
                 "sharded": wallet.is_sharded(),
                 "pwhash": wallet.pwhash().to_string(),
+                "account": account,
             });
             println!("{}", serde_json::to_string_pretty(&table)?);
         }

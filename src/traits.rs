@@ -3,7 +3,8 @@ use crate::result::Result;
 use helium_api::{
     BlockchainTxn, BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1,
     BlockchainTxnCreateHtlcV1, BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2,
-    BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, Message, Txn,
+    BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, BlockchainTxnSecurityExchangeV1,
+    Message, Txn,
 };
 use io::{Read, Write};
 use std::io;
@@ -159,6 +160,14 @@ impl TxnEnvelope for BlockchainTxnPaymentV2 {
     }
 }
 
+impl TxnEnvelope for BlockchainTxnSecurityExchangeV1 {
+    fn in_envelope(&self) -> BlockchainTxn {
+        BlockchainTxn {
+            txn: Some(Txn::SecurityExchange(self.clone())),
+        }
+    }
+}
+
 pub trait TxnPayer {
     fn payer(&self) -> Result<Option<PubKeyBin>>;
 }
@@ -245,6 +254,10 @@ impl Sign for BlockchainTxn {
                 Ok(self)
             }
             Some(Txn::PriceOracleSubmission(t)) => {
+                t.sign(keypair, signer)?;
+                Ok(self)
+            }
+            Some(Txn::SecurityExchange(t)) => {
                 t.sign(keypair, signer)?;
                 Ok(self)
             }
@@ -436,6 +449,27 @@ impl Sign for BlockchainTxnOuiV1 {
             Signer::Owner => Ok(self.owner_signature.clone()),
             Signer::Payer => Ok(self.payer_signature.clone()),
             _ => Err("Unsupported signer".into()),
+        }
+    }
+}
+
+impl Sign for BlockchainTxnSecurityExchangeV1 {
+    fn clear_signatures(&mut self) {
+        self.signature = vec![]
+    }
+
+    fn set_signature(&mut self, signer: Signer, signature: Vec<u8>) -> Result {
+        match signer {
+            Signer::Payer => self.signature = signature,
+            _ => return Err("Invalid signer".into()),
+        };
+        Ok(())
+    }
+
+    fn get_signature(&self, signer: Signer) -> Result<Vec<u8>> {
+        match signer {
+            Signer::Payer => Ok(self.signature.clone()),
+            _ => Err("Invalid signer".into()),
         }
     }
 }

@@ -50,7 +50,7 @@ impl Transfer {
             payer: keypair.pubkey_bin().into(),
             payee: PubKeyBin::from_b58(&self.payee)?.into(),
             amount: self.amount,
-            nonce: account.speculative_sec_nonce,
+            nonce: account.speculative_sec_nonce + 1,
             fee: 0,
             signature: vec![],
         };

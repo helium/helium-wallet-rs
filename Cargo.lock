@@ -691,14 +691,14 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.2.6"
+version = "1.2.7"
 dependencies = [
  "aead",
  "aes-gcm",
- "base64 0.12.1",
+ "base64 0.10.1",
  "bs58",
  "byteorder",
- "bytes 0.5.4",
+ "bytes 0.4.12",
  "console",
  "dialoguer",
  "helium-api",

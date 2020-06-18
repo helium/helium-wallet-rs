@@ -24,7 +24,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
 
     let mut bit_vec = Vec::with_capacity(words.len());
     for word in words.iter() {
-        let idx_bits = match wordlist.iter().position(|s| *s == word) {
+        let idx_bits = match wordlist.iter().position(|s| *s == word.to_lowercase()) {
             Some(idx) => format!("{:011b}", idx),
             _ => return Err(format!("Seed word {} not found in wordlist", word).into()),
         };

@@ -1,6 +1,6 @@
 [package]
 name = "helium-wallet"
-version = "1.2.7"
+version = "1.2.8"
 authors = ["Helium <info@helium.com>"]
 edition = "2018"
 build = "build.rs"
@@ -44,8 +44,7 @@ serde =  "1"
 serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
-# helium-api = { git = "https://github.com/helium/helium-api-rs", tag="1.1.1" }
-helium-api = { git = "https://github.com/helium/helium-api-rs", branch="madninja/get_vars" }
+helium-api = { git = "https://github.com/helium/helium-api-rs", tag="1.1.2" }
 
 # Add openssl-sys as a direct dependency so it can be cross compiled to
 # x86_64-unknown-linux-musl using the "vendored" feature below

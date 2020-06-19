@@ -661,8 +661,8 @@ dependencies = [
 
 [[package]]
 name = "helium-api"
-version = "1.1.1"
-source = "git+https://github.com/helium/helium-api-rs?branch=madninja/get_vars#14a1978e04c5226c50ee9791273c40ab1edea42a"
+version = "1.1.2"
+source = "git+https://github.com/helium/helium-api-rs?tag=1.1.2#57b302c99cbbb4b63d0dd70b2859184fef3e59c6"
 dependencies = [
  "base64",
  "helium-proto",
@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.2.7"
+version = "1.2.8"
 dependencies = [
  "aead",
  "aes-gcm",

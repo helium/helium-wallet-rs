@@ -4,7 +4,7 @@ use crate::{
     staking,
     traits::{Sign, Signer, TxnPayer, B64},
 };
-use helium_api::{BlockchainTxn, PendingTxnStatus};
+use helium_api::{BlockchainTxn, PendingTxnStatus, Txn};
 use serde_json::json;
 use std::io;
 use structopt::StructOpt;
@@ -37,7 +37,15 @@ impl Cmd {
         // let staking_address = get_staking_address()?;
         // Now decode the given transaction
         let mut envelope = BlockchainTxn::from_b64(&self.read_txn()?)?;
-        envelope.sign(&keypair, Signer::Owner)?;
+        match &mut envelope.txn {
+            Some(Txn::AddGateway(t)) => {
+                t.sign(&keypair, Signer::Owner)?;
+            }
+            Some(Txn::AssertLocation(t)) => {
+                t.sign(&keypair, Signer::Owner)?;
+            }
+            _ => return Err("Unsupported transaction for onboarding".into()),
+        };
 
         // Check staking address
         let staking_client = staking::Client::default();

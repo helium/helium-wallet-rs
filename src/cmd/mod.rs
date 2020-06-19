@@ -13,6 +13,7 @@ pub mod oui;
 pub mod pay;
 pub mod securities;
 pub mod upgrade;
+pub mod vars;
 pub mod verify;
 
 arg_enum! {

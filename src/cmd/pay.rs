@@ -81,12 +81,12 @@ fn print_txn(
             }
             table.printstd();
 
-            if status.is_some() {
-                ptable!(
-                    ["Nonce", "Hash"],
-                    [txn.nonce, status.as_ref().map_or("none", |s| &s.hash)]
-                );
-            }
+            ptable!(
+                ["Key", "Value"],
+                ["Fee", txn.fee],
+                ["Nonce", txn.nonce],
+                ["Hash", status.as_ref().map_or("none", |s| &s.hash)]
+            );
 
             Ok(())
         }
@@ -101,6 +101,7 @@ fn print_txn(
             let table = if status.is_some() {
                 json!({
                     "payments": payments,
+                    "fee": txn.fee,
                     "nonce": txn.nonce,
                     "hash": status.as_ref().map(|s| &s.hash),
                     "txn": envelope.to_b64()?,
@@ -109,6 +110,8 @@ fn print_txn(
             } else {
                 json!({
                     "payments": payments,
+                    "fee": txn.fee,
+                    "nonce": txn.nonce,
                     "txn": envelope.to_b64()?,
                 })
             };

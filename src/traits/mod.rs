@@ -3,7 +3,7 @@ pub use self::b64::B64;
 pub use self::read_write::ReadWrite;
 pub use self::sign::{Sign, Signer};
 pub use self::txn_envelope::TxnEnvelope;
-pub use self::txn_fee::TxnFee;
+pub use self::txn_fee::{TxnFee, TxnFeeConfig};
 pub use self::txn_payer::TxnPayer;
 
 pub mod b58;

@@ -1,4 +1,11 @@
-use crate::{keypair::PubKeyBin, mnemonic, result::Result, traits::B58, wallet::Wallet};
+use crate::{
+    keypair::PubKeyBin,
+    mnemonic,
+    result::Result,
+    traits::{TxnFeeConfig, B58},
+    wallet::Wallet,
+};
+use helium_api::Client;
 use std::{env, fs, io, path::PathBuf};
 use structopt::{clap::arg_enum, StructOpt};
 
@@ -121,6 +128,14 @@ pub fn get_payer(staking_address: PubKeyBin, payer: &Option<String>) -> Result<O
             Ok(Some(address))
         }
         None => Ok(None),
+    }
+}
+
+pub fn get_txn_fees(client: &Client) -> Result<TxnFeeConfig> {
+    let vars = client.get_vars()?;
+    match vars["txn_fees"].as_bool() {
+        Some(true) => Ok(TxnFeeConfig::legacy()),
+        _ => Ok(TxnFeeConfig::legacy()),
     }
 }
 

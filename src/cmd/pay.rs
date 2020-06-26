@@ -1,8 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, load_wallet, Opts, OutputFormat},
+    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts, OutputFormat},
     keypair::PubKeyBin,
     result::Result,
-    traits::{Sign, Signer, TxnEnvelope, B58, B64},
+    traits::{Sign, Signer, TxnEnvelope, TxnFee, B58, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnPaymentV2, Client, Hnt, Payment, PendingTxnStatus};
 use prettytable::Table;
@@ -51,7 +51,7 @@ impl Cmd {
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
-
+        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
         let envelope = txn.sign(&keypair, Signer::Payer)?.in_envelope();
         let status = if self.commit {
             Some(client.submit_txn(&envelope)?)

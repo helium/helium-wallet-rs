@@ -9,6 +9,8 @@ use serde_derive::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TxnFeeConfig {
+    // whether transaction fees are active
+    txn_fees: bool,
     // a mutliplier which will be applied to the txn fee of all txns, in order
     // to make their DC costs meaningful
     txn_fee_multiplier: u64,
@@ -20,9 +22,6 @@ pub struct TxnFeeConfig {
     staking_fee_txn_add_gateway_v1: u64,
     // the staking fee in DC for asserting a location
     staking_fee_txn_assert_location_v1: u64,
-
-    #[serde(skip)]
-    dc_payload_size: usize,
 }
 
 pub const LEGACY_STAKING_FEE: u64 = 1;
@@ -31,13 +30,19 @@ pub const LEGACY_TXN_FEE: u64 = 0;
 impl TxnFeeConfig {
     pub fn legacy() -> Self {
         Self {
+            txn_fees: false,
             txn_fee_multiplier: 0,
             staking_fee_txn_oui_v1: LEGACY_STAKING_FEE,
             staking_fee_txn_oui_v1_per_address: 0,
             staking_fee_txn_add_gateway_v1: LEGACY_STAKING_FEE,
             staking_fee_txn_assert_location_v1: LEGACY_STAKING_FEE,
+        }
+    }
 
-            dc_payload_size: 1,
+    pub fn dc_payload_size(&self) -> usize {
+        match self.txn_fees {
+            true => 24,
+            false => 1,
         }
     }
 }
@@ -51,11 +56,12 @@ pub trait TxnStakingFee {
 }
 
 fn calculate_txn_fee(payload_size: usize, config: &TxnFeeConfig) -> u64 {
-    if payload_size <= config.dc_payload_size {
+    let dc_payload_size = config.dc_payload_size();
+    if payload_size <= dc_payload_size {
         1
     } else {
         // integer div/ceil from: https://stackoverflow.com/a/2745086
-        ((payload_size + config.dc_payload_size - 1) / config.dc_payload_size) as u64
+        ((payload_size + dc_payload_size - 1) / dc_payload_size) as u64
     }
 }
 
@@ -69,7 +75,7 @@ macro_rules! payer_sig_clear {
         } else {
             $txn.payer_signature = vec![0; TXN_FEE_SIGNATURE_SIZE]
         };
-    }
+    };
 }
 
 macro_rules! impl_txn_fee {
@@ -159,7 +165,7 @@ mod tests {
     impl TxnFeeConfig {
         pub fn active() -> Self {
             Self {
-                dc_payload_size: 24,
+                txn_fees: true,
                 txn_fee_multiplier: 5000,
                 staking_fee_txn_add_gateway_v1: STAKING_FEE_ADD_GATEWAY,
                 staking_fee_txn_assert_location_v1: STAKING_FEE_ASSERT_LOCATION,

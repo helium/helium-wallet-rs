@@ -1,9 +1,9 @@
 use crate::{
-    cmd::{api_url, get_password, get_payer, load_wallet, Opts, OutputFormat},
+    cmd::{api_url, get_password, get_payer, get_txn_fees, load_wallet, Opts, OutputFormat},
     keypair::PubKeyBin,
     result::Result,
     staking,
-    traits::{Sign, Signer, TxnEnvelope, B58, B64},
+    traits::{Sign, Signer, TxnEnvelope, TxnFee, TxnStakingFee, B58, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnOuiV1, Client, PendingTxnStatus, Txn};
 use serde_json::json;
@@ -109,6 +109,8 @@ impl Create {
             requested_subnet_size: self.subnet_size,
             filter: base64::decode(&self.filter)?,
         };
+        txn.fee = txn.txn_fee(&get_txn_fees(&api_client)?)?;
+        txn.staking_fee = txn.txn_staking_fee(&get_txn_fees(&api_client)?)?;
 
         let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
 

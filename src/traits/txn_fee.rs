@@ -326,5 +326,4 @@ mod tests {
         assert_txn_fee!(txn, &fee_config, 45_000);
         assert_txn_staking_fee!(txn, &fee_config, expected_staking_fee);
     }
-
 }

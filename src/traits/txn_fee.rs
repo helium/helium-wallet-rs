@@ -40,9 +40,10 @@ impl TxnFeeConfig {
     }
 
     pub fn dc_payload_size(&self) -> usize {
-        match self.txn_fees {
-            true => 24,
-            false => 1,
+        if self.txn_fees {
+            24
+        } else {
+            1
         }
     }
 }

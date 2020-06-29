@@ -135,11 +135,11 @@ pub fn get_txn_fees(client: &Client) -> Result<TxnFeeConfig> {
     let vars = client.get_vars()?;
     if vars.contains_key("txn_fees") {
         match vars["txn_fees"].as_bool() {
-            Some(true) => Ok(TxnFeeConfig::legacy()),
-            _ => {
+            Some(true) => {
                 let config: TxnFeeConfig = serde_json::from_value(serde_json::Value::Object(vars))?;
                 Ok(config)
-            }
+            },
+            _ => Ok(TxnFeeConfig::legacy()),
         }
     } else {
         Ok(TxnFeeConfig::legacy())

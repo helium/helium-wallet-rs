@@ -138,7 +138,7 @@ pub fn get_txn_fees(client: &Client) -> Result<TxnFeeConfig> {
             Some(true) => {
                 let config: TxnFeeConfig = serde_json::from_value(serde_json::Value::Object(vars))?;
                 Ok(config)
-            },
+            }
             _ => Ok(TxnFeeConfig::legacy()),
         }
     } else {

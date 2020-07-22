@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{get_password, load_wallet, Opts, OutputFormat},
+    cmd::{get_password, load_wallet, print_json, print_table, Opts, OutputFormat},
     result::Result,
     wallet::Wallet,
 };
@@ -28,8 +28,7 @@ pub fn print_result(wallet: &Wallet, result: bool, format: OutputFormat) -> Resu
             table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
             table.set_titles(row!["Address", "Sharded", "Verify", "PWHash"]);
             table.add_row(row![address, wallet.is_sharded(), result, wallet.pwhash()]);
-            table.printstd();
-            Ok(())
+            print_table(&table)
         }
         OutputFormat::Json => {
             let table = json!({
@@ -38,8 +37,7 @@ pub fn print_result(wallet: &Wallet, result: bool, format: OutputFormat) -> Resu
                 "verify": result,
                 "pwhash": wallet.pwhash().to_string()
             });
-            println!("{}", serde_json::to_string_pretty(&table)?);
-            Ok(())
+            print_json(&table)
         }
     }
 }

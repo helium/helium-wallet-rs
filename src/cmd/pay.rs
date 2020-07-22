@@ -1,5 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts, OutputFormat},
+    cmd::{
+        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, print_table,
+        status_json, status_str, Opts, OutputFormat,
+    },
     keypair::PubKeyBin,
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, TxnFee, B58, B64},
@@ -79,16 +82,16 @@ fn print_txn(
                     Hnt::from_bones(payment.amount)
                 ]);
             }
-            table.printstd();
+            print_table(&table)?;
 
             ptable!(
                 ["Key", "Value"],
                 ["Fee", txn.fee],
                 ["Nonce", txn.nonce],
-                ["Hash", status.as_ref().map_or("none", |s| &s.hash)]
+                ["Hash", status_str(status)]
             );
 
-            Ok(())
+            print_footer(status)
         }
         OutputFormat::Json => {
             let mut payments = Vec::with_capacity(txn.payments.len());
@@ -98,25 +101,14 @@ fn print_txn(
                     "amount": Hnt::from_bones(payment.amount),
                 }))
             }
-            let table = if status.is_some() {
-                json!({
-                    "payments": payments,
-                    "fee": txn.fee,
-                    "nonce": txn.nonce,
-                    "hash": status.as_ref().map(|s| &s.hash),
-                    "txn": envelope.to_b64()?,
-
-                })
-            } else {
-                json!({
-                    "payments": payments,
-                    "fee": txn.fee,
-                    "nonce": txn.nonce,
-                    "txn": envelope.to_b64()?,
-                })
-            };
-            println!("{}", serde_json::to_string_pretty(&table)?);
-            Ok(())
+            let table = json!({
+                "payments": payments,
+                "fee": txn.fee,
+                "nonce": txn.nonce,
+                "hash": status_json(status),
+                "txn": envelope.to_b64()?,
+            });
+            print_json(&table)
         }
     }
 }

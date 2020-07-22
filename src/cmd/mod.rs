@@ -172,8 +172,13 @@ pub fn print_footer(status: &Option<PendingTxnStatus>) -> Result {
     Ok(())
 }
 
-pub fn print_json(value: &serde_json::Value) -> Result {
-    println!("{}", serde_json::to_string_pretty(&value)?);
+pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+pub fn print_table(table: &prettytable::Table) -> Result {
+    table.printstd();
     Ok(())
 }
 

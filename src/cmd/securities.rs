@@ -1,5 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts, OutputFormat},
+    cmd::{
+        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
+        status_str, Opts, OutputFormat,
+    },
     keypair::PubKeyBin,
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, TxnFee, B58, B64},
@@ -81,36 +84,26 @@ fn print_txn(
                     txn.amount
                 ]
             );
-            if status.is_some() {
-                ptable!(
-                    ["Nonce", "Hash"],
-                    [txn.nonce, status.as_ref().map_or("none", |s| &s.hash)]
-                );
-            }
+            ptable!(
+                ["Key", "Value"],
+                ["Nonce", txn.nonce],
+                ["Hash", status_str(status)]
+            );
 
-            Ok(())
+            print_footer(status)
         }
         OutputFormat::Json => {
             let transfer = json!({
                     "payee": PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
                     "amount": txn.amount,
             });
-            let table = if status.is_some() {
-                json!({
-                    "transfer": transfer,
-                    "nonce": txn.nonce,
-                    "hash": status.as_ref().map(|s| &s.hash),
-                    "txn": envelope.to_b64()?,
-
-                })
-            } else {
-                json!({
-                    "transfer": transfer,
-                    "txn": envelope.to_b64()?,
-                })
-            };
-            println!("{}", serde_json::to_string_pretty(&table)?);
-            Ok(())
+            let table = json!({
+                "transfer": transfer,
+                "nonce": txn.nonce,
+                "hash": status_json(status),
+                "txn": envelope.to_b64()?,
+            });
+            print_json(&table)
         }
     }
 }

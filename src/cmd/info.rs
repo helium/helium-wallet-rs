@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{api_url, load_wallet, Opts, OutputFormat},
+    cmd::{api_url, load_wallet, print_json, print_table, Opts, OutputFormat},
     result::Result,
     wallet::Wallet,
 };
@@ -43,7 +43,7 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             table.add_row(row!["Balance", Hnt::from_bones(account.balance)]);
             table.add_row(row!["DC Balance", account.dc_balance]);
             table.add_row(row!["Securities Balance", account.sec_balance]);
-            table.printstd();
+            print_table(&table)
         }
         OutputFormat::Json => {
             let table = json!({
@@ -51,8 +51,7 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
                 "pwhash": wallet.pwhash().to_string(),
                 "account": account,
             });
-            println!("{}", serde_json::to_string_pretty(&table)?);
+            print_json(&table)
         }
-    };
-    Ok(())
+    }
 }

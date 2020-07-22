@@ -1,5 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts, OutputFormat},
+    cmd::{
+        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
+        status_str, Opts, OutputFormat,
+    },
     keypair::{Keypair, PubKeyBin},
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, TxnFee, B58, B64},
@@ -8,7 +11,6 @@ use helium_api::{
     BlockchainTxn, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Client, Hnt,
     PendingTxnStatus,
 };
-use prettytable::Table;
 use serde_json::json;
 use structopt::StructOpt;
 
@@ -113,23 +115,17 @@ fn print_create_txn(
 ) -> Result {
     match format {
         OutputFormat::Table => {
-            let mut table = Table::new();
-            table.add_row(row!["Address", "Payee", "Amount", "Hashlock", "Timelock"]);
-            table.add_row(row![
-                PubKeyBin::from_vec(&txn.address).to_b58()?,
-                PubKeyBin::from_vec(&txn.payee).to_b58()?,
-                txn.amount,
-                hex::encode(&txn.hashlock),
-                txn.timelock
-            ]);
-            table.printstd();
-
-            if status.is_some() {
-                ptable!(
-                    ["Nonce", "Hash"],
-                    [txn.nonce, status.as_ref().map_or("none", |s| &s.hash)]
-                );
-            }
+            ptable!(
+                ["Key", "Value"],
+                ["Address", PubKeyBin::from_vec(&txn.address).to_b58()?],
+                ["Payee", PubKeyBin::from_vec(&txn.payee).to_b58()?],
+                ["Amount", txn.amount],
+                ["Hashlock", hex::encode(&txn.hashlock)],
+                ["Timelock", txn.timelock],
+                ["Nonce", txn.nonce],
+                ["Hash", status_str(status)]
+            );
+            print_footer(status)
         }
         OutputFormat::Json => {
             let table = json!({
@@ -138,13 +134,13 @@ fn print_create_txn(
                 "amount": txn.amount,
                 "hashlock": hex::encode(&txn.hashlock),
                 "timelock": txn.timelock,
-                "hash": status.as_ref().map(|s| &s.hash),
+                "nonce": txn.nonce,
+                "hash": status_json(status),
                 "txn": envelope.to_b64()?,
             });
-            println!("{}", serde_json::to_string_pretty(&table)?);
+            print_json(&table)
         }
-    };
-    Ok(())
+    }
 }
 
 impl Redeem {
@@ -183,25 +179,23 @@ fn print_redeem_txn(
 ) -> Result {
     match format {
         OutputFormat::Table => {
-            let mut table = Table::new();
-            table.add_row(row!["Payee", "Address", "Preimage", "Hash"]);
-            table.add_row(row![
-                PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
-                PubKeyBin::from_vec(&txn.address).to_b58().unwrap(),
-                std::str::from_utf8(&txn.preimage).unwrap(),
-                status.as_ref().map_or("none", |s| &s.hash)
-            ]);
-            table.printstd();
+            ptable!(
+                ["Key", "Value"],
+                ["Payee", PubKeyBin::from_vec(&txn.payee).to_b58()?],
+                ["Address", PubKeyBin::from_vec(&txn.address).to_b58()?],
+                ["Preimage", std::str::from_utf8(&txn.preimage)?],
+                ["Hash", status_str(status)]
+            );
+            print_footer(status)
         }
         OutputFormat::Json => {
             let table = json!({
                 "address": PubKeyBin::from_vec(&txn.address).to_b58()?,
                 "payee": PubKeyBin::from_vec(&txn.payee).to_b58()?,
-                "hash": status.as_ref().map(|s| &s.hash),
+                "hash": status_json(status),
                 "txn": envelope.to_b64()?,
             });
-            println!("{}", serde_json::to_string_pretty(&table)?);
+            print_json(&table)
         }
-    };
-    Ok(())
+    }
 }

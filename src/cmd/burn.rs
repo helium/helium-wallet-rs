@@ -7,39 +7,31 @@ use crate::{
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, TxnFee, B58, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnSecurityExchangeV1, Client, PendingTxnStatus};
+use helium_api::{BlockchainTxn, BlockchainTxnTokenBurnV1, Client, Hnt, PendingTxnStatus};
 use serde_json::json;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-/// Work with security tokens
-pub enum Cmd {
-    Transfer(Transfer),
-}
-
-#[derive(Debug, StructOpt)]
-/// Transfer security tokens to the given target account
-pub struct Transfer {
-    /// The address of the recipient of the security tokens
+/// Burn HNT to Data Credits (DC) from this wallet to given payees wallet.
+pub struct Cmd {
+    /// Account address to send the resulting DC to.
+    #[structopt(long)]
     payee: String,
 
-    /// The number of security tokens to transfer
-    amount: u64,
+    /// Memo field to include. Provide as a base64 encoded string
+    #[structopt(long)]
+    memo: Option<String>,
 
-    /// Commit the transfter to the API
+    /// Amount of HNT to burn to DC
+    #[structopt(long)]
+    amount: Hnt,
+
+    /// Commit the payment to the API
     #[structopt(long)]
     commit: bool,
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
-        match self {
-            Cmd::Transfer(cmd) => cmd.run(opts),
-        }
-    }
-}
-
-impl Transfer {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
@@ -48,14 +40,19 @@ impl Transfer {
 
         let keypair = wallet.decrypt(password.as_bytes())?;
         let account = client.get_account(&keypair.public.to_b58()?)?;
+        let memo = match &self.memo {
+            None => 0,
+            Some(s) => u64::from_b64(&s)?,
+        };
 
-        let mut txn = BlockchainTxnSecurityExchangeV1 {
-            payer: keypair.pubkey_bin().into(),
-            payee: PubKeyBin::from_b58(&self.payee)?.into(),
-            amount: self.amount,
-            nonce: account.speculative_sec_nonce + 1,
+        let mut txn = BlockchainTxnTokenBurnV1 {
             fee: 0,
-            signature: vec![],
+            payee: PubKeyBin::from_b58(&self.payee)?.into(),
+            amount: self.amount.to_bones(),
+            payer: keypair.pubkey_bin().into(),
+            memo,
+            nonce: account.speculative_nonce + 1,
+            signature: Vec::new(),
         };
         txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
         let envelope = txn.sign(&keypair, Signer::Payer)?.in_envelope();
@@ -70,7 +67,7 @@ impl Transfer {
 }
 
 fn print_txn(
-    txn: &BlockchainTxnSecurityExchangeV1,
+    txn: &BlockchainTxnTokenBurnV1,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
     format: OutputFormat,
@@ -78,30 +75,25 @@ fn print_txn(
     match format {
         OutputFormat::Table => {
             ptable!(
-                ["Payee", "Amount"],
-                [
-                    PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
-                    txn.amount
-                ]
-            );
-            ptable!(
                 ["Key", "Value"],
+                ["Payee", PubKeyBin::from_vec(&txn.payee).to_b58().unwrap()],
+                ["Memo", txn.memo.to_b64()?],
+                ["Amount", Hnt::from_bones(txn.amount)],
+                ["Fee", txn.fee],
                 ["Nonce", txn.nonce],
                 ["Hash", status_str(status)]
             );
-
             print_footer(status)
         }
         OutputFormat::Json => {
-            let transfer = json!({
-                    "payee": PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
-                    "amount": txn.amount,
-            });
             let table = json!({
-                "transfer": transfer,
+                "payee": PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
+                "amount": Hnt::from_bones(txn.amount),
+                "memo": txn.memo.to_b64()?,
+                "fee": txn.fee,
                 "nonce": txn.nonce,
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": envelope.to_b64()?
             });
             print_json(&table)
         }

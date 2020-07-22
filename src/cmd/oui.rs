@@ -1,5 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, get_payer, get_txn_fees, load_wallet, Opts, OutputFormat},
+    cmd::{
+        api_url, get_password, get_payer, get_txn_fees, load_wallet, print_footer, print_json,
+        status_json, status_str, Opts, OutputFormat,
+    },
     keypair::PubKeyBin,
     result::Result,
     staking,
@@ -159,23 +162,21 @@ fn print_txn(
     match format {
         OutputFormat::Table => {
             ptable!(
-                ["Reqeuested Subnet Size", "Addresses"],
+                ["Key", "Value"],
+                ["Reqeuested Subnet Size", txn.requested_subnet_size],
                 [
-                    txn.requested_subnet_size,
+                    "Addresses",
                     txn.addresses
                         .clone()
                         .into_iter()
                         .map(|v| PubKeyBin::from_vec(&v).to_string())
                         .collect::<Vec<String>>()
                         .join("\n")
-                ]
+                ],
+                ["Hash", status_str(status)]
             );
 
-            if status.is_some() {
-                ptable!(["Hash"], [status.as_ref().map_or("none", |s| &s.hash)]);
-            }
-
-            Ok(())
+            print_footer(status)
         }
         OutputFormat::Json => {
             let table = json!({
@@ -186,12 +187,11 @@ fn print_txn(
                     .collect::<Vec<String>>(),
                 "requested_subnet_size": txn.requested_subnet_size,
                 "payer": PubKeyBin::from_vec(&txn.payer).to_b58().unwrap(),
-                "hash": status.as_ref().map(|s| &s.hash),
+                "hash": status_json(status),
                 "txn": envelope.to_b64()?,
             });
 
-            println!("{}", serde_json::to_string_pretty(&table)?);
-            Ok(())
+            print_json(&table)
         }
     }
 }

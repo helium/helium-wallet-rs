@@ -1,5 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, load_wallet, Opts, OutputFormat},
+    cmd::{
+        api_url, get_password, load_wallet, print_footer, print_json, status_json, status_str,
+        Opts, OutputFormat,
+    },
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, B64},
 };
@@ -79,25 +82,22 @@ fn print_txn(
     match format {
         OutputFormat::Table => {
             ptable!(
-                ["Block Height", "Price"],
-                [txn.block_height, Price::from_millis(txn.price)]
+                ["Key", "Value"],
+                ["Block Height", txn.block_height],
+                ["Price", Price::from_millis(txn.price)],
+                ["Hash", status_str(status)]
             );
 
-            if status.is_some() {
-                ptable!(["Hash"], [status.as_ref().map_or("none", |s| &s.hash)]);
-            }
-
-            Ok(())
+            print_footer(status)
         }
         OutputFormat::Json => {
             let table = json!({
                 "price": txn.price,
                 "block_height": txn.block_height,
                 "txn": encoded,
-                "hash": status.as_ref().map(|s| &s.hash)
+                "hash": status_json(status)
             });
-            println!("{}", serde_json::to_string_pretty(&table)?);
-            Ok(())
+            print_json(&table)
         }
     }
 }

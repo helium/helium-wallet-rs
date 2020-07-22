@@ -5,11 +5,12 @@ use crate::{
     traits::{TxnFeeConfig, B58},
     wallet::Wallet,
 };
-use helium_api::Client;
+use helium_api::{Client, PendingTxnStatus};
 use std::{env, fs, io, path::PathBuf};
 use structopt::{clap::arg_enum, StructOpt};
 
 pub mod balance;
+pub mod burn;
 pub mod create;
 pub mod hotspots;
 pub mod htlc;
@@ -162,4 +163,29 @@ pub fn get_file_extension(filename: &PathBuf) -> String {
         .to_str()
         .unwrap()
         .to_string()
+}
+
+pub fn print_footer(status: &Option<PendingTxnStatus>) -> Result {
+    if status.is_none() {
+        println!("\nPreview mode: use —commit to submit the transaction to the network");
+    };
+    Ok(())
+}
+
+pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+pub fn print_table(table: &prettytable::Table) -> Result {
+    table.printstd();
+    Ok(())
+}
+
+pub fn status_str(status: &Option<PendingTxnStatus>) -> &str {
+    status.as_ref().map_or("none", |s| &s.hash)
+}
+
+pub fn status_json(status: &Option<PendingTxnStatus>) -> serde_json::Value {
+    status.as_ref().map_or(json!(null), |s| json!(s.hash))
 }

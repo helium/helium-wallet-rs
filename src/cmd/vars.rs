@@ -1,5 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, load_wallet, Opts, OutputFormat},
+    cmd::{
+        api_url, get_password, load_wallet, print_footer, print_json, print_table, status_json,
+        status_str, Opts, OutputFormat,
+    },
     result::Result,
     traits::{Sign, Signer, TxnEnvelope, B64},
 };
@@ -103,7 +106,8 @@ fn print_txn(
                 let value = decode_var(&var)?;
                 table.add_row(row![var.name, serde_json::to_string_pretty(&value)?]);
             }
-            table.printstd();
+            print_table(&table)?;
+
             // Handle unsets
             let mut table = Table::new();
             table.add_row(row!["Unset"]);
@@ -111,15 +115,15 @@ fn print_txn(
                 let name = String::from_utf8(var.to_vec())?;
                 table.add_row(row![name]);
             }
-            table.printstd();
+            print_table(&table)?;
 
-            if status.is_some() {
-                ptable!(
-                    ["Nonce", "Hash"],
-                    [txn.nonce, status.as_ref().map_or("none", |s| &s.hash)]
-                );
-            }
-            Ok(())
+            ptable!(
+                ["Key", "Value"],
+                ["Nonce", txn.nonce],
+                ["Hash", status_str(status)]
+            );
+
+            print_footer(status)
         }
         OutputFormat::Json => {
             let mut sets = Vec::with_capacity(txn.vars.len());
@@ -134,22 +138,14 @@ fn print_txn(
                 unsets.push(json!(String::from_utf8(var.to_vec())?));
             }
 
-            let table = if status.is_some() {
-                json!({
-                    "sets": sets,
-                    "unsets": unsets,
-                    "hash": status.as_ref().map(|s| &s.hash),
-                    "txn": envelope.to_b64()?
-                })
-            } else {
-                json!({
-                    "sets": sets,
-                    "unsets": unsets,
-                    "txn": envelope.to_b64()?
-                })
-            };
-            println!("{}", serde_json::to_string_pretty(&table)?);
-            Ok(())
+            let table = json!({
+                "sets": sets,
+                "unsets": unsets,
+                "hash": status_json(status),
+                "txn": envelope.to_b64()?
+            });
+
+            print_json(&table)
         }
     }
 }
@@ -162,13 +158,9 @@ fn print_vars(vars: &serde_json::Map<String, serde_json::Value>, format: OutputF
             for (name, value) in vars.iter() {
                 table.add_row(row![name, serde_json::to_string_pretty(&value)?]);
             }
-            table.printstd();
-            Ok(())
+            print_table(&table)
         }
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&vars)?);
-            Ok(())
-        }
+        OutputFormat::Json => print_json(&vars),
     }
 }
 

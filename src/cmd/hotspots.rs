@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{api_url, collect_addresses, Opts, OutputFormat},
+    cmd::{api_url, collect_addresses, print_json, print_table, Opts, OutputFormat},
     result::Result,
 };
 use helium_api::{Client, Hotspot};
@@ -66,7 +66,7 @@ fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>, format: OutputFor
                     }
                 };
             }
-            table.printstd();
+            print_table(&table)
         }
         OutputFormat::Json => {
             let mut table = Vec::with_capacity(results.len());
@@ -98,8 +98,7 @@ fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>, format: OutputFor
                     "hotspots": table_hotspots,
                 }));
             }
-            println!("{}", serde_json::to_string_pretty(&table)?);
+            print_json(&table)
         }
-    };
-    Ok(())
+    }
 }

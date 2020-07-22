@@ -1,5 +1,7 @@
 use crate::{
-    cmd::{api_url, get_password, get_payer, load_wallet, Opts, OutputFormat},
+    cmd::{
+        api_url, get_password, get_payer, load_wallet, print_json, status_json, Opts, OutputFormat,
+    },
     result::Result,
     staking,
     traits::{Sign, Signer, TxnPayer, B64},
@@ -112,10 +114,9 @@ fn print_txn(
         OutputFormat::Json => {
             let table = json!({
                 "txn": encoded,
-                "hash": status.as_ref().map(|s| &s.hash)
+                "hash": status_json(status)
             });
-            println!("{}", serde_json::to_string_pretty(&table)?);
-            Ok(())
+            print_json(&table)
         }
     }
 }

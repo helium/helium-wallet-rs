@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{api_url, collect_addresses, Opts, OutputFormat},
+    cmd::{api_url, collect_addresses, print_json, print_table, Opts, OutputFormat},
     result::Result,
 };
 use helium_api::{Account, Client, Hnt};
@@ -49,8 +49,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                     Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
                 };
             }
-            table.printstd();
-            Ok(())
+            print_table(&table)
         }
         OutputFormat::Json => {
             let mut rows = Vec::with_capacity(results.len());
@@ -64,8 +63,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                     }));
                 };
             }
-            println!("{}", serde_json::to_string_pretty(&rows)?);
-            Ok(())
+            print_json(&rows)
         }
     }
 }

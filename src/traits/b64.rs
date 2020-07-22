@@ -25,7 +25,7 @@ impl B64 for BlockchainTxn {
 
 impl B64 for u64 {
     fn to_b64(&self) -> Result<String> {
-        Ok(base64::encode(self.to_le_bytes()))
+        Ok(base64::encode(&self.to_le_bytes()))
     }
 
     fn from_b64(b64: &str) -> Result<Self> {

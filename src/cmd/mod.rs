@@ -167,7 +167,7 @@ pub fn get_file_extension(filename: &PathBuf) -> String {
 
 pub fn print_footer(status: &Option<PendingTxnStatus>) -> Result {
     if status.is_none() {
-        println!("\nPreview mode: use —commit to submit the transaction to the network");
+        println!("\nPreview mode: use --commit to submit the transaction to the network");
     };
     Ok(())
 }

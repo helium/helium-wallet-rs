@@ -8,7 +8,7 @@ This is a simple wallet implementation that enables the creation and
 use of an encrypted wallet.
 
 **NOTE:** This wallet is _not_ the absolute safest way to create and
-store a private key. No guarantees are implied as to it's safety and
+store a private key. No guarantees are implied as to its safety and
 suitability for use as a wallet associated with Helium crypto-tokens.
 
 ## Installation

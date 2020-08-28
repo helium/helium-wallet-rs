@@ -23,8 +23,8 @@ pub enum Cmd {
 /// Construct an oracle price report and optionally commit it to the
 /// Helium Blockchain.
 pub struct Report {
-    /// The oracle price to report. Specify in USD or supply one of
-    /// the supported price lookup services ("coingecko", "bilaxy").
+    /// The oracle price to report. Specify in USD or supply one of the
+    /// supported price lookup services ("coingecko", "bilaxy", "binance").
     #[structopt(long)]
     price: Price,
 
@@ -145,6 +145,14 @@ impl Price {
         Price::from_str(amount.as_str().ok_or("No USD value found")?)
     }
 
+    fn from_binance() -> Result<Self> {
+        let mut response =
+            reqwest::get("https://api.binance.us/api/v3/ticker/price?symbol=HNTUSD")?;
+        let json: serde_json::Value = response.json()?;
+        let amount = &json["price"];
+        Price::from_str(amount.as_str().ok_or("No USD value found")?)
+    }
+
     fn to_millis(self) -> u64 {
         if let Some(scaled_dec) = self.0.checked_mul(USD_TO_PRICE_SCALAR.into()) {
             if let Some(num) = scaled_dec.to_u64() {
@@ -170,6 +178,7 @@ impl FromStr for Price {
         match s {
             "coingecko" => Price::from_coingecko(),
             "bilaxy" => Price::from_bilaxy(),
+            "binance" => Price::from_binance(),
             _ => {
                 let data = Decimal::from_str(s).or_else(|_| Decimal::from_scientific(s))?;
                 Ok(Price(

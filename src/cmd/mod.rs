@@ -19,6 +19,7 @@ pub mod onboard;
 pub mod oracle;
 pub mod oui;
 pub mod pay;
+pub mod request;
 pub mod securities;
 pub mod upgrade;
 pub mod vars;

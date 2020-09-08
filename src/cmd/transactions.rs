@@ -124,7 +124,7 @@ impl Rowify for Transaction {
                 else {
                     (
                         Cell::new(payment.payer.as_str()),
-                        Cell::new(format!("{: >21}", payment.amount).as_str()),
+                        Cell::new(format!("{}", payment.amount).as_str()),
                     )
                 };
 
@@ -176,7 +176,7 @@ impl Rowify for Transaction {
                         }
                         (
                             Cell::new(payment_v2.payer.as_str()),
-                            Cell::new(format!("{: >21}", amount).as_str()),
+                            Cell::new(format!("{}", amount).as_str()),
                         )
                     }
                 };

@@ -1,14 +1,12 @@
 use crate::{
-    cmd::{
-        api_url, load_wallet, print_table, Opts,
-    },
+    cmd::{api_url, load_wallet, print_table, Opts},
     result::Result,
 };
-use helium_api::{Client};
-use prettytable::{Cell, Row, Table};
-use structopt::StructOpt;
-use std::fs::File;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use helium_api::Client;
+use prettytable::{Cell, Row, Table};
+use std::fs::File;
+use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Print recent transactions and pending
@@ -23,12 +21,11 @@ pub struct Cmd {
 
     /// output csv
     #[structopt(long)]
-    csv: bool
+    csv: bool,
 }
 
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
-
         let address = if let Some(address) = &self.address {
             String::from(address)
         } else {
@@ -46,7 +43,14 @@ impl Cmd {
         }
 
         let mut table = Table::new();
-        table.add_row(row!["Type", "Date", "Block", "Hash", "Counterparty", "Bones"]);
+        table.add_row(row![
+            "Type",
+            "Date",
+            "Block",
+            "Hash",
+            "Counterparty",
+            "Bones"
+        ]);
         if let Some(transactions) = transactions {
             for txn in transactions {
                 table.add_row(txn.into_row(&address));
@@ -61,7 +65,8 @@ impl Cmd {
                         if let Some(transactions) = transactions {
                             for txn in transactions {
                                 table.add_row(txn.into_row(&address));
-                            }                        }
+                            }
+                        }
                         errors = 0;
                         cursor = new_cursor;
                     }
@@ -71,13 +76,12 @@ impl Cmd {
                         if errors <= 3 {
                             println!("Error as occured");
                             use std::{thread, time};
-                            errors+=1;
+                            errors += 1;
                             thread::sleep(time::Duration::from_secs(1));
                         }
                         // if this has happend 3 times in a row, give up
                         else {
                             panic!("Error fetching account transactions: {}", e)
-
                         }
                     }
                 }
@@ -87,10 +91,13 @@ impl Cmd {
 
         if self.csv {
             let time: DateTime<Utc> = Utc::now();
-            let out = File::create(format!("{}_{}.csv", address, time.format("%Y-%m-%d_%H-%M-%S").to_string()))?;
+            let out = File::create(format!(
+                "{}_{}.csv",
+                address,
+                time.format("%Y-%m-%d_%H-%M-%S").to_string()
+            ))?;
             table.to_csv(out)?;
         }
-
 
         Ok(())
     }
@@ -107,16 +114,23 @@ impl Rowify for Transaction {
         match self {
             Transaction::PaymentV1(payment) => {
                 // This account is paying HNT
-                let(counterparty, amount) = if account == payment.payer {
-                    (Cell::new(payment.payee.as_str()), Cell::new(format!("-{}", payment.amount).as_str()))
+                let (counterparty, amount) = if account == payment.payer {
+                    (
+                        Cell::new(payment.payee.as_str()),
+                        Cell::new(format!("-{}", payment.amount).as_str()),
+                    )
                 }
                 // this account is receiving HNT
                 else {
-                    (Cell::new(payment.payer.as_str()), Cell::new(format!("{: >21}", payment.amount).as_str()))
+                    (
+                        Cell::new(payment.payer.as_str()),
+                        Cell::new(format!("{: >21}", payment.amount).as_str()),
+                    )
                 };
 
-                let timestamp =  DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(payment.time as i64,0), Utc
+                let timestamp = DateTime::<Utc>::from_utc(
+                    NaiveDateTime::from_timestamp(payment.time as i64, 0),
+                    Utc,
                 );
 
                 Row::new(vec![
@@ -127,17 +141,16 @@ impl Rowify for Transaction {
                     counterparty,
                     amount,
                 ])
-            },
+            }
             Transaction::PaymentV2(payment_v2) => {
-                let timestamp =  DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(payment_v2.time as i64,0), Utc
+                let timestamp = DateTime::<Utc>::from_utc(
+                    NaiveDateTime::from_timestamp(payment_v2.time as i64, 0),
+                    Utc,
                 );
                 // This account is paying HNT
-                let(counterparty, amount) = if account == payment_v2.payer {
-
+                let (counterparty, amount) = if account == payment_v2.payer {
                     let counterparty = if payment_v2.payments.len() == 1 {
                         Cell::new(payment_v2.payments[0].payee.as_str())
-
                     } else {
                         Cell::new(format!("{: <52}", "many_payees").as_str())
                     };
@@ -161,7 +174,10 @@ impl Rowify for Transaction {
                                 amount += payment.amount;
                             }
                         }
-                        (Cell::new(payment_v2.payer.as_str()), Cell::new(format!("{: >21}", amount).as_str()))
+                        (
+                            Cell::new(payment_v2.payer.as_str()),
+                            Cell::new(format!("{: >21}", amount).as_str()),
+                        )
                     }
                 };
 
@@ -171,12 +187,13 @@ impl Rowify for Transaction {
                     Cell::new(format!("{}", payment_v2.height).as_str()),
                     Cell::new(payment_v2.hash.as_str()),
                     counterparty,
-                    amount
+                    amount,
                 ])
-            },
+            }
             Transaction::RewardsV1(reward) => {
-                let timestamp =  DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(reward.time as i64,0), Utc
+                let timestamp = DateTime::<Utc>::from_utc(
+                    NaiveDateTime::from_timestamp(reward.time as i64, 0),
+                    Utc,
                 );
                 let mut total = 0;
 
@@ -188,7 +205,7 @@ impl Rowify for Transaction {
                         Reward::PocChallengees(data) => data.amount,
                         Reward::PocChallengers(data) => data.amount,
                         Reward::PocWitnesses(data) => data.amount,
-                        Reward::Consensus(data) =>  data.amount,
+                        Reward::Consensus(data) => data.amount,
                     };
                 }
                 Row::new(vec![
@@ -199,10 +216,11 @@ impl Rowify for Transaction {
                     Cell::new(format!("{: <52}", "rewards").as_str()),
                     Cell::new(format!("{}", total).as_str()),
                 ])
-            },
+            }
             Transaction::TokenBurnV1(burn) => {
-                let timestamp =  DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(burn.time as i64,0), Utc
+                let timestamp = DateTime::<Utc>::from_utc(
+                    NaiveDateTime::from_timestamp(burn.time as i64, 0),
+                    Utc,
                 );
 
                 // This account is burning HNT
@@ -223,7 +241,7 @@ impl Rowify for Transaction {
                     Cell::new(burn.payee.as_str()),
                     amount,
                 ])
-            },
+            }
             Transaction::AddGatewayV1(_) => Row::new(vec![
                 Cell::new(format!("{: <25}", "AddGatewayV1").as_str()),
                 Cell::new(""),

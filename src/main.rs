@@ -1,7 +1,7 @@
 use helium_wallet::{
     cmd::{
         balance, burn, create, hotspots, htlc, info, onboard, oracle, oui, pay, request,
-        securities, upgrade, vars, verify, Opts,
+        securities, transactions, upgrade, vars, verify, Opts,
     },
     result::Result,
 };
@@ -34,6 +34,7 @@ pub enum Cmd {
     Burn(burn::Cmd),
     Vars(vars::Cmd),
     Request(request::Cmd),
+    Transactions(transactions::Cmd),
 }
 
 fn main() {
@@ -61,5 +62,6 @@ fn run(cli: Cli) -> Result {
         Cmd::Burn(cmd) => cmd.run(cli.opts),
         Cmd::Vars(cmd) => cmd.run(cli.opts),
         Cmd::Request(cmd) => cmd.run(cli.opts),
+        Cmd::Transactions(cmd) => cmd.run(cli.opts),
     }
 }

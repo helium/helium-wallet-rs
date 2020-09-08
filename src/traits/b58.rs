@@ -33,7 +33,8 @@ impl B58 for PubKeyBin {
         // in libp2p
         let mut data = [0u8; 34];
         data[1..].copy_from_slice(&self.0);
-        Ok(bs58::encode(data.as_ref()).with_check().into_string())
+        let reference: &[u8] = data.as_ref();
+        Ok(bs58::encode(reference).with_check().into_string())
     }
 
     fn from_b58(b58: &str) -> Result<Self> {

@@ -21,6 +21,7 @@ pub mod oui;
 pub mod pay;
 pub mod request;
 pub mod securities;
+pub mod transactions;
 pub mod upgrade;
 pub mod vars;
 pub mod verify;

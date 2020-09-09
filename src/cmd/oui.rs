@@ -6,7 +6,7 @@ use crate::{
     keypair::PubKeyBin,
     result::Result,
     staking,
-    traits::{Sign, Signer, TxnEnvelope, TxnFee, TxnStakingFee, B58, B64},
+    traits::{Sign, Signer, TxnEnvelope, TxnFee, TxnStakingFee, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnOuiV1, Client, PendingTxnStatus, Txn};
 use serde_json::json;
@@ -31,11 +31,6 @@ pub struct Create {
     /// Initial device membership filter in base64 encoded form
     #[structopt(long)]
     filter: String,
-
-    /// The requested OUI. This needs to be one larger than the
-    /// current OUI on the blockchain.
-    #[structopt(long)]
-    oui: u64,
 
     /// Requested subnet size. Must be a value between 8 and 65,536
     /// and a power of two.
@@ -104,7 +99,7 @@ impl Create {
                 .collect(),
             owner: keypair.pubkey_bin().into(),
             payer: payer.map_or(vec![], |v| v.to_vec()),
-            oui: self.oui,
+            oui: api_client.get_last_oui()?,
             fee: 0,
             staking_fee: 1,
             owner_signature: vec![],
@@ -163,6 +158,7 @@ fn print_txn(
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
+                ["Requested OUI", txn.oui + 1],
                 ["Reqeuested Subnet Size", txn.requested_subnet_size],
                 [
                     "Addresses",
@@ -180,13 +176,13 @@ fn print_txn(
         }
         OutputFormat::Json => {
             let table = json!({
+                "requested_oui": txn.oui + 1,
                 "addresses": txn.addresses
                     .clone()
                     .into_iter()
                     .map(|v| PubKeyBin::from_vec(&v).to_string())
                     .collect::<Vec<String>>(),
                 "requested_subnet_size": txn.requested_subnet_size,
-                "payer": PubKeyBin::from_vec(&txn.payer).to_b58().unwrap(),
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
             });

@@ -74,7 +74,7 @@ impl Cmd {
                         // if this has happened less than 3 times,
                         // back off the API and wait
                         if errors <= 3 {
-                            println!("Error as occured");
+                            println!("Error has occurred");
                             use std::{thread, time};
                             errors += 1;
                             thread::sleep(time::Duration::from_secs(1));

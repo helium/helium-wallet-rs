@@ -79,6 +79,9 @@ impl Create {
             nonce: self.nonce,
             unsets: self.unset.iter().map(|v| v.as_bytes().to_vec()).collect(),
             cancels: vec![],
+            multi_key_proofs: vec![],
+            multi_keys: vec![],
+            multi_proofs: vec![],
         };
 
         let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();

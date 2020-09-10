@@ -114,16 +114,16 @@ impl Rowify for Transaction {
         match self {
             Transaction::PaymentV1(payment) => {
                 // This account is paying HNT
-                let (counterparty, amount) = if account == payment.payer {
+                let (counterparty, amount) = if payment.payer == account {
                     (
-                        Cell::new(payment.payee.as_str()),
+                        Cell::new(&payment.payee.to_string()),
                         Cell::new(format!("-{}", payment.amount).as_str()),
                     )
                 }
                 // this account is receiving HNT
                 else {
                     (
-                        Cell::new(payment.payer.as_str()),
+                        Cell::new(&payment.payer.to_string()),
                         Cell::new(format!("{}", payment.amount).as_str()),
                     )
                 };
@@ -148,9 +148,9 @@ impl Rowify for Transaction {
                     Utc,
                 );
                 // This account is paying HNT
-                let (counterparty, amount) = if account == payment_v2.payer {
+                let (counterparty, amount) = if payment_v2.payer == account {
                     let counterparty = if payment_v2.payments.len() == 1 {
-                        Cell::new(payment_v2.payments[0].payee.as_str())
+                        Cell::new(&payment_v2.payments[0].payee.to_string())
                     } else {
                         Cell::new(format!("{: <52}", "many_payees").as_str())
                     };
@@ -170,12 +170,12 @@ impl Rowify for Transaction {
                         let mut amount = 0;
 
                         for payment in &payment_v2.payments {
-                            if account == payment.payee {
+                            if payment.payee == account {
                                 amount += payment.amount;
                             }
                         }
                         (
-                            Cell::new(payment_v2.payer.as_str()),
+                            Cell::new(&payment_v2.payer.to_string()),
                             Cell::new(format!("{}", amount).as_str()),
                         )
                     }
@@ -212,7 +212,7 @@ impl Rowify for Transaction {
                     Cell::new(format!("{: <25}", "RewardsV1").as_str()),
                     Cell::new(&timestamp.to_rfc3339()),
                     Cell::new(format!("{}", reward.height).as_str()),
-                    Cell::new(reward.hash.as_str()),
+                    Cell::new(&reward.hash.to_string()),
                     Cell::new(format!("{: <52}", "rewards").as_str()),
                     Cell::new(format!("{}", total).as_str()),
                 ])
@@ -224,7 +224,7 @@ impl Rowify for Transaction {
                 );
 
                 // This account is burning HNT
-                let amount = if account == burn.payer {
+                let amount = if burn.payer == account {
                     Cell::new(format!("-{}", burn.amount).as_str())
                 }
                 // This account is not burning any HNT,
@@ -237,8 +237,8 @@ impl Rowify for Transaction {
                     Cell::new(format!("{: <25}", "TokenBurnV1").as_str()),
                     Cell::new(&timestamp.to_rfc3339()),
                     Cell::new(format!("{}", burn.height).as_str()),
-                    Cell::new(burn.hash.as_str()),
-                    Cell::new(burn.payee.as_str()),
+                    Cell::new(&burn.hash.to_string()),
+                    Cell::new(&burn.payee.to_string()),
                     amount,
                 ])
             }

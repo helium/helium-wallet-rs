@@ -35,17 +35,16 @@ jobs:
         args: -- -Dclippy::all
 
     - name: Build
-      run: cargo build --all --release && strip target/release/helium-wallet
+      run: cargo build --all --release && strip target/release/helium-wallet && tar zcvf helium-wallet-x86_64-linux.tar.gz target/release/helium-wallet
 
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: helium-wallet-{{ github.ref }}-x86_64-unknown-linux
         files: |
           README.md
           LICENSE
-          target/release/helium-wallet
+          helium-wallet-x86_64-linux.tar.gz
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -67,16 +66,13 @@ jobs:
         access_token: ${{ github.token }}
 
     - name: Build
-      run: cargo build --all --release && strip target/release/helium-wallet
+      run: cargo build --all --release && strip target/release/helium-wallet && tar zcvf helium-wallet-x86_64-macos.tar.gz target/release/helium-wallet 
 
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: helium-wallet-{{ github.ref }}-x86_64-apple-darwin
         files: |
-          README.md
-          LICENSE
-          target/release/helium-wallet
+          helium-wallet-x86_64-macos.tar.gz
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

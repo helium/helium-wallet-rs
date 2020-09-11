@@ -305,10 +305,10 @@ macro_rules! into_row {
                     common.1,
                     common.2,
                     Cell::new(&counterparty),
-                    Cell::new(&difference.bones.to_string()),
-                    Cell::new(&balance.bones.to_string()),
-                    Cell::new(&difference.dc.to_string()),
-                    Cell::new(&balance.dc.to_string()),
+                    Cell::new(format!("{:>21}", &difference.bones.to_string()).as_str()),
+                    Cell::new(format!("{:>21}", (&balance.bones.to_string())).as_str()),
+                    Cell::new(format!("{:>21}", (&difference.dc.to_string())).as_str()),
+                    Cell::new(format!("{:>21}", (&balance.dc.to_string())).as_str()),
                 ])
             }
         }

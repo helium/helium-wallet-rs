@@ -3,7 +3,7 @@ use crate::{
     result::Result,
 };
 use chrono::{DateTime, Utc};
-use helium_api::Client;
+use helium_api::{transactions::Pubkey, Client};
 use prettytable::Table;
 use std::fs::File;
 use structopt::StructOpt;
@@ -115,8 +115,10 @@ impl Cmd {
 
         let mut balance = Balance { bones: 0, dc: 0 };
 
+        let pubkey = Pubkey::from_vec(bs58::decode(&address).into_vec().unwrap());
+
         for transaction in all_transactions {
-            table.add_row(transaction.into_row(&address, &mut balance, &client));
+            table.add_row(transaction.into_row(&pubkey, &mut balance, &client));
         }
 
         print_table(&table)?;

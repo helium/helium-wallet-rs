@@ -6,52 +6,49 @@ use helium_api::Client;
 use prettytable::{Cell, Row};
 
 pub trait IntoRow {
-    fn into_row(&self, account: &str, balance: &mut Balance, client: &Client) -> Row;
+    fn into_row(&self, account: &Pubkey, balance: &mut Balance, client: &Client) -> Row;
 }
 
 trait GetBalanceDifference {
     fn get_balance_difference(
         &self,
-        account: &str,
+        account: &Pubkey,
         balance: &mut Balance,
         client: &Client,
     ) -> Difference;
 }
 
-
-fn txn_cost(balance: &Balance, fee: u64, height: u64, client: &Client) -> Difference {
-    if balance.dc <= fee {
-        Difference {
-            counterparty: None,
-            bones: 0,
-            dc: - (fee as isize)
-        }
-    } else {
-        let (oracle_price, _) = client
-            .get_oracle_price_at_height(height as usize)
-            .unwrap();
-        Difference {
-            counterparty: None,
-            bones: - ((fee / oracle_price) as isize),
-            dc: 0
-        }
-    }
-}
+// fn txn_cost(balance: &Balance, fee: u64, height: u64, client: &Client) -> Difference {
+//     if balance.dc <= fee {
+//         Difference {
+//             counterparty: None,
+//             bones: 0,
+//             dc: -(fee as isize),
+//         }
+//     } else {
+//         let (oracle_price, _) = client.get_oracle_price_at_height(height as usize).unwrap();
+//         Difference {
+//             counterparty: None,
+//             bones: -((fee / oracle_price) as isize),
+//             dc: 0,
+//         }
+//     }
+// }
 
 impl GetBalanceDifference for PaymentV1 {
     fn get_balance_difference(
         &self,
-        account: &str,
+        account: &Pubkey,
         _balance: &mut Balance,
         _client: &Client,
     ) -> Difference {
         let counterparty = Some(self.payee.clone().to_string());
         // This account is paying HNT
-        if self.payer == account {
+        if self.payer == *account {
             Difference {
                 counterparty,
-                bones: (self.amount as isize) * -1,
-                dc: 0, //TODO calculate fee
+                bones: -(self.amount as isize),
+                dc: 0,
             }
         }
         // this account is receiving HNT
@@ -68,12 +65,12 @@ impl GetBalanceDifference for PaymentV1 {
 impl GetBalanceDifference for PaymentV2 {
     fn get_balance_difference(
         &self,
-        account: &str,
+        account: &Pubkey,
         _balance: &mut Balance,
         _client: &Client,
     ) -> Difference {
         // This account is paying HNT
-        if self.payer == account {
+        if self.payer == *account {
             let counterparty = Some(if self.payments.len() == 1 {
                 self.payments[0].payee.to_string()
             } else {
@@ -94,7 +91,7 @@ impl GetBalanceDifference for PaymentV2 {
             let counterparty = Some(self.payer.to_string());
             let mut bones = 0;
             for payment in &self.payments {
-                if payment.payee == account {
+                if payment.payee == *account {
                     bones += payment.amount as isize;
                 }
             }
@@ -110,7 +107,7 @@ impl GetBalanceDifference for PaymentV2 {
 impl GetBalanceDifference for RewardsV1 {
     fn get_balance_difference(
         &self,
-        _account: &str,
+        _account: &Pubkey,
         _balance: &mut Balance,
         _client: &Client,
     ) -> Difference {
@@ -134,16 +131,15 @@ impl GetBalanceDifference for RewardsV1 {
     }
 }
 
-
 impl GetBalanceDifference for TokenBurnV1 {
     fn get_balance_difference(
         &self,
-        account: &str,
+        account: &Pubkey,
         _balance: &mut Balance,
         client: &Client,
     ) -> Difference {
         // This account is burning HNT
-        let (bones, counterparty) = if self.payer == account {
+        let (bones, counterparty) = if self.payer == *account {
             (-(self.amount as isize), Some(self.payee.to_string()))
         }
         // This account is not burning any HNT,
@@ -153,7 +149,7 @@ impl GetBalanceDifference for TokenBurnV1 {
         };
 
         // This account is receiving DC
-        let dc = if  self.payee == account {
+        let dc = if self.payee == *account {
             let (oracle_price, _) = client
                 .get_oracle_price_at_height(self.height as usize)
                 .unwrap();
@@ -173,7 +169,7 @@ impl GetBalanceDifference for TokenBurnV1 {
 }
 
 impl IntoRow for Transaction {
-    fn into_row(&self, account: &str, balance: &mut Balance, client: &Client) -> Row {
+    fn into_row(&self, account: &Pubkey, balance: &mut Balance, client: &Client) -> Row {
         match self {
             Transaction::PaymentV1(payment) => payment.into_row(account, balance, client),
             Transaction::PaymentV2(payment_v2) => payment_v2.into_row(account, balance, client),
@@ -181,7 +177,7 @@ impl IntoRow for Transaction {
             Transaction::TokenBurnV1(burn) => {
                 println!("{:?}", burn);
                 burn.into_row(account, balance, client)
-            },
+            }
             Transaction::AddGatewayV1(add_gateway) => {
                 add_gateway.into_row(account, balance, client)
             }
@@ -261,7 +257,7 @@ macro_rules! dummy_difference {
         impl GetBalanceDifference for $txn {
             fn get_balance_difference(
                 &self,
-                _account: &str,
+                _account: &Pubkey,
                 _balance: &mut Balance,
                 _client: &Client,
             ) -> Difference {
@@ -288,7 +284,7 @@ macro_rules! into_row {
         }
 
         impl IntoRow for $Txn {
-            fn into_row(&self, account: &str, balance: &mut Balance, client: &Client) -> Row {
+            fn into_row(&self, account: &Pubkey, balance: &mut Balance, client: &Client) -> Row {
                 let common = self.get_common_rows();
                 let difference = self.get_balance_difference(account, balance, client);
 

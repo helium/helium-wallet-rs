@@ -72,7 +72,7 @@ impl Cmd {
                     }
                     Err(e) => {
                         // if this has happened less than 3 times,
-                        // back off the API and wait
+                        // back off the API and wait before trying again
                         if errors <= 3 {
                             println!("Error has occurred");
                             use std::{thread, time};

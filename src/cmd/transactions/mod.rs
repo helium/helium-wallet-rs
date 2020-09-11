@@ -2,11 +2,11 @@ use crate::{
     cmd::{api_url, load_wallet, print_table, Opts},
     result::Result,
 };
+use chrono::{DateTime, Utc};
 use helium_api::Client;
 use prettytable::Table;
 use std::fs::File;
 use structopt::StructOpt;
-use chrono::{DateTime, Utc};
 
 mod accounting;
 use accounting::IntoRow;
@@ -27,6 +27,24 @@ pub struct Cmd {
     csv: bool,
 }
 
+pub struct Balance {
+    bones: u64,
+    dc: u64,
+}
+
+struct Difference {
+    counterparty: Option<String>,
+    bones: isize,
+    dc: isize,
+}
+
+impl Balance {
+    fn update(&mut self, diff: &Difference) {
+        self.bones = (self.bones as isize + diff.bones) as u64;
+        self.dc = (self.dc as isize + diff.dc) as u64;
+    }
+}
+
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let address = if let Some(address) = &self.address {
@@ -45,19 +63,10 @@ impl Cmd {
             println!("Fetching recent transactions for {}", address);
         }
 
-        let mut table = Table::new();
-        table.add_row(row![
-            "Type",
-            "Date",
-            "Block",
-            "Hash",
-            "Counterparty",
-            "Bones"
-        ]);
+        let mut all_transactions = Vec::new();
+
         if let Some(transactions) = transactions {
-            for txn in transactions {
-                table.add_row(txn.into_row(&address));
-            }
+            all_transactions.extend(transactions);
         }
 
         if self.all {
@@ -66,16 +75,14 @@ impl Cmd {
                 match client.get_more_account_transactions(&address, &actual_cursor) {
                     Ok((transactions, new_cursor)) => {
                         if let Some(transactions) = transactions {
-                            for txn in transactions {
-                                table.add_row(txn.into_row(&address));
-                            }
+                            all_transactions.extend(transactions);
                         }
                         errors = 0;
                         cursor = new_cursor;
                     }
                     Err(e) => {
                         // if this has happened less than 3 times,
-                        // back off the API and wait before trying again
+                        // back off the API and wait
                         if errors <= 3 {
                             println!("Error has occurred");
                             use std::{thread, time};
@@ -90,6 +97,28 @@ impl Cmd {
                 }
             }
         }
+
+        all_transactions.reverse();
+
+        let mut table = Table::new();
+        table.add_row(row![
+            "Type",
+            "Date",
+            "Block",
+            "Hash",
+            "Counterparty",
+            "+/- Bones",
+            "New Balance B",
+            "+/- DC",
+            "New Balance DC",
+        ]);
+
+        let mut balance = Balance { bones: 0, dc: 0 };
+
+        for transaction in all_transactions {
+            table.add_row(transaction.into_row(&address, &mut balance, &client));
+        }
+
         print_table(&table)?;
 
         if self.csv {
@@ -105,5 +134,3 @@ impl Cmd {
         Ok(())
     }
 }
-
-

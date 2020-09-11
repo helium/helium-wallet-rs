@@ -1,319 +1,366 @@
-use helium_api::transactions::{Reward, Transaction};
-use prettytable::{Cell, Row};
+use super::{Balance, Difference};
 use chrono::{DateTime, NaiveDateTime, Utc};
+use helium_api::transactions::*;
+use helium_api::transactions::{Reward, Transaction};
+use helium_api::Client;
+use prettytable::{Cell, Row};
 
 pub trait IntoRow {
-    fn into_row(&self, account: &str) -> Row;
+    fn into_row(&self, account: &str, balance: &mut Balance, client: &Client) -> Row;
 }
 
-impl IntoRow for Transaction {
-    fn into_row(&self, account: &str) -> Row {
-        match self {
-            Transaction::PaymentV1(payment) => {
-                // This account is paying HNT
-                let (counterparty, amount) = if payment.payer == account {
-                    (
-                        Cell::new(&payment.payee.to_string()),
-                        Cell::new(format!("-{}", payment.amount).as_str()),
-                    )
-                }
-                // this account is receiving HNT
-                else {
-                    (
-                        Cell::new(&payment.payer.to_string()),
-                        Cell::new(format!("{}", payment.amount).as_str()),
-                    )
-                };
+trait GetBalanceDifference {
+    fn get_balance_difference(
+        &self,
+        account: &str,
+        balance: &mut Balance,
+        client: &Client,
+    ) -> Difference;
+}
 
-                let timestamp = DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(payment.time as i64, 0),
-                    Utc,
-                );
 
-                Row::new(vec![
-                    Cell::new(format!("{: <25}", "PaymentV1").as_str()),
-                    Cell::new(&timestamp.to_rfc3339()),
-                    Cell::new(format!("{}", payment.height).as_str()),
-                    Cell::new(payment.hash.as_str()),
-                    counterparty,
-                    amount,
-                ])
-            }
-            Transaction::PaymentV2(payment_v2) => {
-                let timestamp = DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(payment_v2.time as i64, 0),
-                    Utc,
-                );
-                // This account is paying HNT
-                let (counterparty, amount) = if payment_v2.payer == account {
-                    let counterparty = if payment_v2.payments.len() == 1 {
-                        Cell::new(&payment_v2.payments[0].payee.to_string())
-                    } else {
-                        Cell::new(format!("{: <52}", "many_payees").as_str())
-                    };
-
-                    let amount = {
-                        let mut total = 0;
-                        for payment in &payment_v2.payments {
-                            total += payment.amount;
-                        }
-                        total
-                    };
-                    (counterparty, Cell::new(format!("-{}", amount).as_str()))
-                }
-                // this account is receiving HNT
-                else {
-                    {
-                        let mut amount = 0;
-
-                        for payment in &payment_v2.payments {
-                            if payment.payee == account {
-                                amount += payment.amount;
-                            }
-                        }
-                        (
-                            Cell::new(&payment_v2.payer.to_string()),
-                            Cell::new(format!("{}", amount).as_str()),
-                        )
-                    }
-                };
-
-                Row::new(vec![
-                    Cell::new(format!("{: <25}", "PaymentV2").as_str()),
-                    Cell::new(&timestamp.to_rfc3339()),
-                    Cell::new(format!("{}", payment_v2.height).as_str()),
-                    Cell::new(payment_v2.hash.as_str()),
-                    counterparty,
-                    amount,
-                ])
-            }
-            Transaction::RewardsV1(reward) => {
-                let timestamp = DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(reward.time as i64, 0),
-                    Utc,
-                );
-                let mut total = 0;
-
-                // summate rewards for all reward types
-                for reward in &reward.rewards {
-                    total += match reward {
-                        Reward::Securities(data) => data.amount,
-                        Reward::DataCredits(data) => data.amount,
-                        Reward::PocChallengees(data) => data.amount,
-                        Reward::PocChallengers(data) => data.amount,
-                        Reward::PocWitnesses(data) => data.amount,
-                        Reward::Consensus(data) => data.amount,
-                    };
-                }
-                Row::new(vec![
-                    Cell::new(format!("{: <25}", "RewardsV1").as_str()),
-                    Cell::new(&timestamp.to_rfc3339()),
-                    Cell::new(format!("{}", reward.height).as_str()),
-                    Cell::new(&reward.hash.to_string()),
-                    Cell::new(format!("{: <52}", "rewards").as_str()),
-                    Cell::new(format!("{}", total).as_str()),
-                ])
-            }
-            Transaction::TokenBurnV1(burn) => {
-                let timestamp = DateTime::<Utc>::from_utc(
-                    NaiveDateTime::from_timestamp(burn.time as i64, 0),
-                    Utc,
-                );
-
-                // This account is burning HNT
-                let amount = if burn.payer == account {
-                    Cell::new(format!("-{}", burn.amount).as_str())
-                }
-                // This account is not burning any HNT,
-                // so it must just be receiving the DC
-                else {
-                    Cell::new(format!("{}", 0).as_str())
-                };
-
-                Row::new(vec![
-                    Cell::new(format!("{: <25}", "TokenBurnV1").as_str()),
-                    Cell::new(&timestamp.to_rfc3339()),
-                    Cell::new(format!("{}", burn.height).as_str()),
-                    Cell::new(&burn.hash.to_string()),
-                    Cell::new(&burn.payee.to_string()),
-                    amount,
-                ])
-            }
-            Transaction::AddGatewayV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "AddGatewayV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::AssertLocationV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "AssertLocationV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::CoinbaseV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "CoinbaseV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::CreateHtlcV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "CreateHtlcV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::GenGatewayV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "GenGatewayV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::ConsensusGroupV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "ConsensusGroupV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::OuiV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "OuiV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::PocReceiptsV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "PocReceiptsV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::PocRequestV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "PocRequestV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::RedeemHtlcV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "RedeemHtlcV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::SecurityCoinbaseV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "SecurityCoinbaseV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::RoutingV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "RoutingV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::SecurityExchangeV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "SecurityExchangeV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::VarsV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "VarsV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::DcCoinbaseV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "DcCoinbaseV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::TokenBurnExchangeRateV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "TokenBurnExchangeRateV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::BundleV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "BundleV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::StateChannelOpenV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "StateChannelOpenV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::UpdateGatewayOuiV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "UpdateGatewayOuiV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::StateChannelCloseV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "StateChannelCloseV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::PriceOracleV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "PriceOracleV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
-            Transaction::GenPriceOracleV1(_) => Row::new(vec![
-                Cell::new(format!("{: <25}", "GenPriceOracleV1").as_str()),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]),
+fn txn_cost(balance: &Balance, fee: u64, height: u64, client: &Client) -> Difference {
+    if balance.dc <= fee {
+        Difference {
+            counterparty: None,
+            bones: 0,
+            dc: - (fee as isize)
+        }
+    } else {
+        let (oracle_price, _) = client
+            .get_oracle_price_at_height(height as usize)
+            .unwrap();
+        Difference {
+            counterparty: None,
+            bones: - ((fee / oracle_price) as isize),
+            dc: 0
         }
     }
 }
+
+impl GetBalanceDifference for PaymentV1 {
+    fn get_balance_difference(
+        &self,
+        account: &str,
+        _balance: &mut Balance,
+        _client: &Client,
+    ) -> Difference {
+        let counterparty = Some(self.payee.clone().to_string());
+        // This account is paying HNT
+        if self.payer == account {
+            Difference {
+                counterparty,
+                bones: (self.amount as isize) * -1,
+                dc: 0, //TODO calculate fee
+            }
+        }
+        // this account is receiving HNT
+        else {
+            Difference {
+                counterparty,
+                bones: self.amount as isize,
+                dc: 0,
+            }
+        }
+    }
+}
+
+impl GetBalanceDifference for PaymentV2 {
+    fn get_balance_difference(
+        &self,
+        account: &str,
+        _balance: &mut Balance,
+        _client: &Client,
+    ) -> Difference {
+        // This account is paying HNT
+        if self.payer == account {
+            let counterparty = Some(if self.payments.len() == 1 {
+                self.payments[0].payee.to_string()
+            } else {
+                "many_payees".to_string()
+            });
+            let mut bones = 0;
+            for payment in &self.payments {
+                bones -= payment.amount as isize;
+            }
+            Difference {
+                counterparty,
+                bones,
+                dc: 0,
+            }
+        }
+        // this account is receiving HNT
+        else {
+            let counterparty = Some(self.payer.to_string());
+            let mut bones = 0;
+            for payment in &self.payments {
+                if payment.payee == account {
+                    bones += payment.amount as isize;
+                }
+            }
+            Difference {
+                counterparty,
+                bones,
+                dc: 0,
+            }
+        }
+    }
+}
+
+impl GetBalanceDifference for RewardsV1 {
+    fn get_balance_difference(
+        &self,
+        _account: &str,
+        _balance: &mut Balance,
+        _client: &Client,
+    ) -> Difference {
+        let mut bones = 0;
+        // summate rewards for all reward types
+        for reward in &self.rewards {
+            bones += match reward {
+                Reward::Securities(data) => data.amount,
+                Reward::DataCredits(data) => data.amount,
+                Reward::PocChallengees(data) => data.amount,
+                Reward::PocChallengers(data) => data.amount,
+                Reward::PocWitnesses(data) => data.amount,
+                Reward::Consensus(data) => data.amount,
+            } as isize;
+        }
+        Difference {
+            counterparty: Some("Rewards".to_string()),
+            bones,
+            dc: 0,
+        }
+    }
+}
+
+
+impl GetBalanceDifference for TokenBurnV1 {
+    fn get_balance_difference(
+        &self,
+        account: &str,
+        _balance: &mut Balance,
+        client: &Client,
+    ) -> Difference {
+        // This account is burning HNT
+        let (bones, counterparty) = if self.payer == account {
+            (-(self.amount as isize), Some(self.payee.to_string()))
+        }
+        // This account is not burning any HNT,
+        // so it must just be receiving the DC
+        else {
+            (self.amount as isize, Some(self.payer.to_string()))
+        };
+
+        // This account is receiving DC
+        let dc = if  self.payee == account {
+            let (oracle_price, _) = client
+                .get_oracle_price_at_height(self.height as usize)
+                .unwrap();
+            (self.amount * oracle_price / 100000000000) as isize
+        }
+        // This account is not receiving HNT
+        else {
+            0
+        };
+
+        Difference {
+            counterparty,
+            bones,
+            dc,
+        }
+    }
+}
+
+impl IntoRow for Transaction {
+    fn into_row(&self, account: &str, balance: &mut Balance, client: &Client) -> Row {
+        match self {
+            Transaction::PaymentV1(payment) => payment.into_row(account, balance, client),
+            Transaction::PaymentV2(payment_v2) => payment_v2.into_row(account, balance, client),
+            Transaction::RewardsV1(reward) => reward.into_row(account, balance, client),
+            Transaction::TokenBurnV1(burn) => {
+                println!("{:?}", burn);
+                burn.into_row(account, balance, client)
+            },
+            Transaction::AddGatewayV1(add_gateway) => {
+                add_gateway.into_row(account, balance, client)
+            }
+            Transaction::AssertLocationV1(assert_location) => {
+                assert_location.into_row(account, balance, client)
+            }
+            Transaction::CoinbaseV1(coinbase) => coinbase.into_row(account, balance, client),
+            Transaction::CreateHtlcV1(create_htlc) => {
+                create_htlc.into_row(account, balance, client)
+            }
+
+            Transaction::GenGatewayV1(gen_gateway) => {
+                gen_gateway.into_row(account, balance, client)
+            }
+            Transaction::ConsensusGroupV1(consensus_group) => {
+                consensus_group.into_row(account, balance, client)
+            }
+            Transaction::OuiV1(oui) => oui.into_row(account, balance, client),
+            Transaction::PocReceiptsV1(poc_receipts) => {
+                poc_receipts.into_row(account, balance, client)
+            }
+            Transaction::PocRequestV1(poc_request) => {
+                poc_request.into_row(account, balance, client)
+            }
+            Transaction::RedeemHtlcV1(redeem_htlc) => {
+                redeem_htlc.into_row(account, balance, client)
+            }
+            Transaction::SecurityCoinbaseV1(security_coinbase) => {
+                security_coinbase.into_row(account, balance, client)
+            }
+            Transaction::RoutingV1(routing) => routing.into_row(account, balance, client),
+            Transaction::SecurityExchangeV1(security_exchange) => {
+                security_exchange.into_row(account, balance, client)
+            }
+            Transaction::VarsV1(vars) => vars.into_row(account, balance, client),
+
+            Transaction::DcCoinbaseV1(dc_coinbase) => {
+                dc_coinbase.into_row(account, balance, client)
+            }
+            Transaction::TokenBurnExchangeRateV1(token_burn_exchange_rate) => {
+                token_burn_exchange_rate.into_row(account, balance, client)
+            }
+            Transaction::BundleV1(bundle) => bundle.into_row(account, balance, client),
+
+            Transaction::StateChannelOpenV1(state_channel_open) => {
+                state_channel_open.into_row(account, balance, client)
+            }
+
+            Transaction::UpdateGatewayOuiV1(update_gateway_oui) => {
+                update_gateway_oui.into_row(account, balance, client)
+            }
+
+            Transaction::StateChannelCloseV1(state_channel_close) => {
+                state_channel_close.into_row(account, balance, client)
+            }
+            Transaction::PriceOracleV1(price_oracle) => {
+                price_oracle.into_row(account, balance, client)
+            }
+
+            Transaction::GenPriceOracleV1(gen_price_oracle) => {
+                gen_price_oracle.into_row(account, balance, client)
+            }
+        }
+    }
+}
+
+pub trait GetCommonRows {
+    fn get_common_rows(&self) -> (Cell, Cell, Cell);
+}
+
+fn utc_timestamp_from_epoch(time: usize) -> DateTime<Utc> {
+    DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(time as i64, 0), Utc)
+}
+
+macro_rules! dummy_difference {
+    ($txn:ident) => {
+        impl GetBalanceDifference for $txn {
+            fn get_balance_difference(
+                &self,
+                _account: &str,
+                _balance: &mut Balance,
+                _client: &Client,
+            ) -> Difference {
+                Difference {
+                    counterparty: None,
+                    bones: 0,
+                    dc: 0,
+                }
+            }
+        }
+    };
+}
+
+macro_rules! into_row {
+    ($Txn:ident, $Label:expr) => {
+        impl GetCommonRows for $Txn {
+            fn get_common_rows(&self) -> (Cell, Cell, Cell) {
+                (
+                    Cell::new(&utc_timestamp_from_epoch(self.time).to_rfc3339()),
+                    Cell::new(format!("{}", self.height).as_str()),
+                    Cell::new(&self.hash.to_string()),
+                )
+            }
+        }
+
+        impl IntoRow for $Txn {
+            fn into_row(&self, account: &str, balance: &mut Balance, client: &Client) -> Row {
+                let common = self.get_common_rows();
+                let difference = self.get_balance_difference(account, balance, client);
+
+                let counterparty = if let Some(counterparty) = &difference.counterparty {
+                    counterparty.as_str()
+                } else {
+                    "NA"
+                };
+
+                balance.update(&difference);
+                Row::new(vec![
+                    Cell::new(format!("{: <25}", $Label).as_str()),
+                    common.0,
+                    common.1,
+                    common.2,
+                    Cell::new(&counterparty),
+                    Cell::new(&difference.bones.to_string()),
+                    Cell::new(&balance.bones.to_string()),
+                    Cell::new(&difference.dc.to_string()),
+                    Cell::new(&balance.dc.to_string()),
+                ])
+            }
+        }
+    };
+}
+
+into_row!(AddGatewayV1, "AddGatewayV1");
+into_row!(AssertLocationV1, "AssertLocationV1");
+into_row!(CoinbaseV1, "CoinbaseV1");
+into_row!(CreateHtlcV1, "CreateHtlcV1");
+into_row!(GenGatewayV1, "GenGatewayV1");
+into_row!(ConsensusGroupV1, "ConsensusGroupV1");
+into_row!(OuiV1, "OuiV1");
+into_row!(PaymentV1, "PaymentV1");
+into_row!(PocReceiptsV1, "PocReceiptsV1");
+into_row!(PocRequestV1, "PocRequestV1");
+into_row!(RedeemHtlcV1, "RedeemHtlcV1");
+into_row!(SecurityCoinbaseV1, "SecurityCoinbaseV1");
+into_row!(RoutingV1, "RoutingV1");
+into_row!(SecurityExchangeV1, "SecurityExchangeV1");
+into_row!(VarsV1, "VarsV1");
+into_row!(RewardsV1, "RewardsV1");
+into_row!(TokenBurnV1, "TokenBurnV1");
+into_row!(DcCoinbaseV1, "DcCoinbaseV1");
+into_row!(TokenBurnExchangeRateV1, "TokenBurnExchangeRateV1");
+into_row!(StateChannelOpenV1, "StateChannelOpenV1");
+into_row!(UpdateGatewayOuiV1, "UpdateGatewayOuiV1");
+into_row!(StateChannelCloseV1, "StateChannelCloseV1");
+into_row!(PaymentV2, "PaymentV2");
+into_row!(PriceOracleV1, "PriceOracleV1");
+into_row!(GenPriceOracleV1, "GenPriceOracleV1");
+into_row!(BundleV1, "BundleV1");
+
+dummy_difference!(AddGatewayV1);
+dummy_difference!(AssertLocationV1);
+dummy_difference!(CoinbaseV1);
+dummy_difference!(CreateHtlcV1);
+dummy_difference!(GenGatewayV1);
+dummy_difference!(ConsensusGroupV1);
+dummy_difference!(OuiV1);
+dummy_difference!(PocReceiptsV1);
+dummy_difference!(PocRequestV1);
+dummy_difference!(RedeemHtlcV1);
+dummy_difference!(SecurityCoinbaseV1);
+dummy_difference!(RoutingV1);
+dummy_difference!(SecurityExchangeV1);
+dummy_difference!(VarsV1);
+dummy_difference!(DcCoinbaseV1);
+dummy_difference!(TokenBurnExchangeRateV1);
+dummy_difference!(StateChannelOpenV1);
+dummy_difference!(UpdateGatewayOuiV1);
+dummy_difference!(StateChannelCloseV1);
+dummy_difference!(PriceOracleV1);
+dummy_difference!(GenPriceOracleV1);
+dummy_difference!(BundleV1);

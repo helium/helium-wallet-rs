@@ -45,10 +45,6 @@ serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
 helium-api = { git = "https://github.com/helium/helium-api-rs", branch = "lthiery/transactions-take-two" }
-<<<<<<< HEAD
-=======
-#helium-api = { path = "../helium-api-rs"}
->>>>>>> wip
 chrono = "0.4"
 
 # Add openssl-sys as a direct dependency so it can be cross compiled to

@@ -27,22 +27,11 @@ pub struct Cmd {
     csv: bool,
 }
 
-pub struct Balance {
-    bones: u64,
-    dc: u64,
-}
-
 struct Difference {
     counterparty: Option<String>,
     bones: isize,
     dc: isize,
-}
-
-impl Balance {
-    fn update(&mut self, diff: &Difference) {
-        self.bones = (self.bones as isize + diff.bones) as u64;
-        self.dc = (self.dc as isize + diff.dc) as u64;
-    }
+    fee: u64,
 }
 
 impl Cmd {
@@ -108,17 +97,14 @@ impl Cmd {
             "Hash",
             "Counterparty",
             "+/- Bones",
-            "New Balance B",
             "+/- DC",
-            "New Balance DC",
+            "Fee",
         ]);
-
-        let mut balance = Balance { bones: 0, dc: 0 };
 
         let pubkey = Pubkey::from_vec(bs58::decode(&address).into_vec().unwrap());
 
         for transaction in all_transactions {
-            table.add_row(transaction.into_row(&pubkey, &mut balance, &client));
+            table.add_row(transaction.into_row(&pubkey, &client));
         }
 
         print_table(&table)?;

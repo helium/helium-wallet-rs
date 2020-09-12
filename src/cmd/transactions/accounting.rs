@@ -10,25 +10,12 @@ pub trait IntoRow {
 }
 
 trait GetDifference {
-    fn get_difference(
-        &self,
-        account: &Pubkey,
-        client: &Client,
-    ) -> Difference;
+    fn get_difference(&self, account: &Pubkey, client: &Client) -> Difference;
 }
 
 impl GetDifference for PaymentV1 {
-    fn get_difference(
-        &self,
-        account: &Pubkey,
-        _client: &Client,
-    ) -> Difference {
-
-        let fee = if let Some(fee) = self.fee {
-            fee
-        } else {
-            0
-        };
+    fn get_difference(&self, account: &Pubkey, _client: &Client) -> Difference {
+        let fee = if let Some(fee) = self.fee { fee } else { 0 };
 
         let counterparty = Some(self.payee.clone().to_string());
         // This account is paying HNT
@@ -53,17 +40,8 @@ impl GetDifference for PaymentV1 {
 }
 
 impl GetDifference for PaymentV2 {
-    fn get_difference(
-        &self,
-        account: &Pubkey,
-        _client: &Client,
-    ) -> Difference {
-
-        let fee = if let Some(fee) = self.fee {
-            fee
-        } else {
-            0
-        };
+    fn get_difference(&self, account: &Pubkey, _client: &Client) -> Difference {
+        let fee = if let Some(fee) = self.fee { fee } else { 0 };
 
         // This account is paying HNT
         if self.payer == *account {
@@ -103,11 +81,7 @@ impl GetDifference for PaymentV2 {
 }
 
 impl GetDifference for RewardsV1 {
-    fn get_difference(
-        &self,
-        _account: &Pubkey,
-        _client: &Client,
-    ) -> Difference {
+    fn get_difference(&self, _account: &Pubkey, _client: &Client) -> Difference {
         let mut bones = 0;
         // summate rewards for all reward types
         for reward in &self.rewards {
@@ -131,11 +105,7 @@ impl GetDifference for RewardsV1 {
 }
 
 impl GetDifference for TokenBurnV1 {
-    fn get_difference(
-        &self,
-        account: &Pubkey,
-        client: &Client,
-    ) -> Difference {
+    fn get_difference(&self, account: &Pubkey, client: &Client) -> Difference {
         // This account is burning HNT
         let (bones, counterparty) = if self.payer == *account {
             (-(self.amount as isize), Some(self.payee.to_string()))
@@ -158,17 +128,13 @@ impl GetDifference for TokenBurnV1 {
             0
         };
 
-        let fee = if let Some(fee) = self.fee {
-            fee
-        } else {
-            0
-        };
+        let fee = if let Some(fee) = self.fee { fee } else { 0 };
 
         Difference {
             counterparty,
             bones,
             dc,
-            fee
+            fee,
         }
     }
 }
@@ -176,74 +142,58 @@ impl GetDifference for TokenBurnV1 {
 impl IntoRow for Transaction {
     fn into_row(&self, account: &Pubkey, client: &Client) -> Row {
         match self {
-            Transaction::PaymentV1(payment) => payment.into_row(account,  client),
-            Transaction::PaymentV2(payment_v2) => payment_v2.into_row(account,  client),
-            Transaction::RewardsV1(reward) => reward.into_row(account,  client),
+            Transaction::PaymentV1(payment) => payment.into_row(account, client),
+            Transaction::PaymentV2(payment_v2) => payment_v2.into_row(account, client),
+            Transaction::RewardsV1(reward) => reward.into_row(account, client),
             Transaction::TokenBurnV1(burn) => {
                 println!("{:?}", burn);
-                burn.into_row(account,  client)
+                burn.into_row(account, client)
             }
-            Transaction::AddGatewayV1(add_gateway) => {
-                add_gateway.into_row(account,  client)
-            }
+            Transaction::AddGatewayV1(add_gateway) => add_gateway.into_row(account, client),
             Transaction::AssertLocationV1(assert_location) => {
-                assert_location.into_row(account,  client)
+                assert_location.into_row(account, client)
             }
-            Transaction::CoinbaseV1(coinbase) => coinbase.into_row(account,  client),
-            Transaction::CreateHtlcV1(create_htlc) => {
-                create_htlc.into_row(account,  client)
-            }
+            Transaction::CoinbaseV1(coinbase) => coinbase.into_row(account, client),
+            Transaction::CreateHtlcV1(create_htlc) => create_htlc.into_row(account, client),
 
-            Transaction::GenGatewayV1(gen_gateway) => {
-                gen_gateway.into_row(account,  client)
-            }
+            Transaction::GenGatewayV1(gen_gateway) => gen_gateway.into_row(account, client),
             Transaction::ConsensusGroupV1(consensus_group) => {
-                consensus_group.into_row(account,  client)
+                consensus_group.into_row(account, client)
             }
-            Transaction::OuiV1(oui) => oui.into_row(account,  client),
-            Transaction::PocReceiptsV1(poc_receipts) => {
-                poc_receipts.into_row(account,  client)
-            }
-            Transaction::PocRequestV1(poc_request) => {
-                poc_request.into_row(account,  client)
-            }
-            Transaction::RedeemHtlcV1(redeem_htlc) => {
-                redeem_htlc.into_row(account,  client)
-            }
+            Transaction::OuiV1(oui) => oui.into_row(account, client),
+            Transaction::PocReceiptsV1(poc_receipts) => poc_receipts.into_row(account, client),
+            Transaction::PocRequestV1(poc_request) => poc_request.into_row(account, client),
+            Transaction::RedeemHtlcV1(redeem_htlc) => redeem_htlc.into_row(account, client),
             Transaction::SecurityCoinbaseV1(security_coinbase) => {
-                security_coinbase.into_row(account,  client)
+                security_coinbase.into_row(account, client)
             }
-            Transaction::RoutingV1(routing) => routing.into_row(account,  client),
+            Transaction::RoutingV1(routing) => routing.into_row(account, client),
             Transaction::SecurityExchangeV1(security_exchange) => {
-                security_exchange.into_row(account,  client)
+                security_exchange.into_row(account, client)
             }
-            Transaction::VarsV1(vars) => vars.into_row(account,  client),
+            Transaction::VarsV1(vars) => vars.into_row(account, client),
 
-            Transaction::DcCoinbaseV1(dc_coinbase) => {
-                dc_coinbase.into_row(account,  client)
-            }
+            Transaction::DcCoinbaseV1(dc_coinbase) => dc_coinbase.into_row(account, client),
             Transaction::TokenBurnExchangeRateV1(token_burn_exchange_rate) => {
-                token_burn_exchange_rate.into_row(account,  client)
+                token_burn_exchange_rate.into_row(account, client)
             }
-            Transaction::BundleV1(bundle) => bundle.into_row(account,  client),
+            Transaction::BundleV1(bundle) => bundle.into_row(account, client),
 
             Transaction::StateChannelOpenV1(state_channel_open) => {
-                state_channel_open.into_row(account,  client)
+                state_channel_open.into_row(account, client)
             }
 
             Transaction::UpdateGatewayOuiV1(update_gateway_oui) => {
-                update_gateway_oui.into_row(account,  client)
+                update_gateway_oui.into_row(account, client)
             }
 
             Transaction::StateChannelCloseV1(state_channel_close) => {
-                state_channel_close.into_row(account,  client)
+                state_channel_close.into_row(account, client)
             }
-            Transaction::PriceOracleV1(price_oracle) => {
-                price_oracle.into_row(account,  client)
-            }
+            Transaction::PriceOracleV1(price_oracle) => price_oracle.into_row(account, client),
 
             Transaction::GenPriceOracleV1(gen_price_oracle) => {
-                gen_price_oracle.into_row(account,  client)
+                gen_price_oracle.into_row(account, client)
             }
         }
     }
@@ -260,11 +210,7 @@ fn utc_timestamp_from_epoch(time: usize) -> DateTime<Utc> {
 macro_rules! dummy_difference {
     ($txn:ident) => {
         impl GetDifference for $txn {
-            fn get_difference(
-                &self,
-                _account: &Pubkey,
-                _client: &Client,
-            ) -> Difference {
+            fn get_difference(&self, _account: &Pubkey, _client: &Client) -> Difference {
                 Difference {
                     counterparty: None,
                     bones: 0,
@@ -291,7 +237,7 @@ macro_rules! into_row {
         impl IntoRow for $Txn {
             fn into_row(&self, account: &Pubkey, client: &Client) -> Row {
                 let common = self.get_common_rows();
-                let difference = self.get_difference(account,  client);
+                let difference = self.get_difference(account, client);
 
                 let counterparty = if let Some(counterparty) = &difference.counterparty {
                     counterparty.as_str()

@@ -737,10 +737,8 @@ dependencies = [
 [[package]]
 name = "helium-api"
 version = "1.1.2"
-source = "git+https://github.com/helium/helium-api-rs?branch=lthiery/transactions-take-two#0ca50c3b4b05da0f4e38ce0513f16857c0b3f793"
 dependencies = [
  "base64 0.12.3",
- "bs58",
  "helium-proto",
  "reqwest",
  "rust_decimal",
@@ -752,11 +750,13 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto#70bef52c9d0cfb3982da6f476983ca478d7f477f"
 dependencies = [
+ "base64 0.12.3",
+ "bs58",
  "bytes 0.4.12",
  "prost",
  "prost-build",
+ "serde",
 ]
 
 [[package]]

@@ -1,13 +1,15 @@
+mod types;
+pub use types::*;
+
 use crate::{
     cmd::{api_url, load_wallet, print_table, Opts},
     result::Result,
 };
 use chrono::{DateTime, Utc};
-use helium_api::{transactions::Pubkey, Client};
+use helium_api::Client;
 use prettytable::Table;
 use std::fs::File;
 use structopt::StructOpt;
-
 mod accounting;
 use accounting::IntoRow;
 
@@ -37,7 +39,7 @@ struct Difference {
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let address = if let Some(address) = &self.address {
-            String::from(address)
+            address.clone()
         } else {
             load_wallet(opts.files)?.address()?
         };
@@ -56,11 +58,14 @@ impl Cmd {
 
         if let Some(transactions) = transactions {
             all_transactions.extend(transactions);
+            println!("got some");
         }
 
         if self.all {
             let mut errors = 0;
             while let Some(actual_cursor) = &cursor {
+                println!("has cursor {}", actual_cursor);
+
                 match client.get_more_account_transactions(&address, &actual_cursor) {
                     Ok((transactions, new_cursor)) => {
                         if let Some(transactions) = transactions {
@@ -101,10 +106,8 @@ impl Cmd {
             "Fee",
         ]);
 
-        let pubkey = Pubkey::from_vec(bs58::decode(&address).into_vec().unwrap());
-
         for transaction in all_transactions {
-            table.add_row(transaction.into_row(&pubkey, &client));
+            table.add_row(transaction.into_row(&Address::from_str(&address)?, &client));
         }
 
         print_table(&table)?;

@@ -66,7 +66,7 @@ impl Cmd {
                 // Staking server is paying. On commit have it sign
                 // then submit to API
                 let status = if self.commit {
-                    let onboarding_key = self.onboarding.as_ref().unwrap();
+                    let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
                     envelope = staking_client.sign(&onboarding_key, &envelope)?;
                     Some(api_client.submit_txn(&envelope)?)
                 } else {

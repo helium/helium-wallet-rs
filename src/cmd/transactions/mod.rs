@@ -58,14 +58,11 @@ impl Cmd {
 
         if let Some(transactions) = transactions {
             all_transactions.extend(transactions);
-            println!("got some");
         }
 
         if self.all {
             let mut errors = 0;
             while let Some(actual_cursor) = &cursor {
-                println!("has cursor {}", actual_cursor);
-
                 match client.get_more_account_transactions(&address, &actual_cursor) {
                     Ok((transactions, new_cursor)) => {
                         if let Some(transactions) = transactions {
@@ -76,14 +73,14 @@ impl Cmd {
                     }
                     Err(e) => {
                         // if this has happened less than 3 times,
-                        // back off the API and wait
+                        // back off the API and try again
                         if errors <= 3 {
                             println!("Error has occurred");
                             use std::{thread, time};
                             errors += 1;
                             thread::sleep(time::Duration::from_secs(1));
                         }
-                        // if this has happend 3 times in a row, give up
+                        // if this has happened 3 times in a row, give up
                         else {
                             panic!("Error fetching account transactions: {}", e)
                         }

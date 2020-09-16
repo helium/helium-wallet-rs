@@ -2,7 +2,7 @@ mod types;
 pub use types::*;
 
 use crate::{
-    cmd::{api_url, load_wallet, print_table, Opts},
+    cmd::{api_url, load_wallet, print_table, Opts, OutputFormat},
     result::Result,
 };
 use chrono::{DateTime, Utc};
@@ -103,11 +103,18 @@ impl Cmd {
             "Fee",
         ]);
 
-        for transaction in all_transactions {
+        for transaction in &all_transactions {
             table.add_row(transaction.into_row(&Address::from_str(&address)?, &client));
         }
 
-        print_table(&table)?;
+        match opts.format {
+            OutputFormat::Table => print_table(&table)?,
+            OutputFormat::Json => {
+                for transaction in all_transactions {
+                    println!("{}", serde_json::to_string(&transaction)?)
+                }
+            }
+        }
 
         if self.csv {
             let time: DateTime<Utc> = Utc::now();

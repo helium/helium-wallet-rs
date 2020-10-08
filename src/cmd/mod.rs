@@ -15,6 +15,7 @@ pub mod create;
 pub mod hotspots;
 pub mod htlc;
 pub mod info;
+pub mod multisig;
 pub mod onboard;
 pub mod oracle;
 pub mod oui;

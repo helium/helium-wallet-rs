@@ -1,14 +1,11 @@
 use crate::{
-    cmd::{
-        api_url, get_password, load_wallet, print_footer, print_json, print_table, status_json,
-        status_str, Opts, OutputFormat,
-    },
+    cmd::{api_url, multisig::Artifact, print_json, Opts},
+    keypair::PubKeyBin,
     result::Result,
-    traits::{Sign, Signer, TxnEnvelope, B64},
+    traits::{ToJson, TxnEnvelope},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnVarsV1, BlockchainVarV1, Client, PendingTxnStatus};
-use prettytable::Table;
-use std::str::FromStr;
+use helium_api::{BlockchainTxnVarsV1, BlockchainVarV1, Client};
+use std::{convert::TryInto, str::FromStr};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -25,24 +22,29 @@ pub struct Current {}
 #[derive(Debug, StructOpt)]
 /// Create a chain variable transaction
 pub struct Create {
-    #[structopt(long, default_value = "0")]
-    version_predicate: u32,
-
     /// Variables to set
-    #[structopt(long, name = "name=value", number_of_values(1))]
+    #[structopt(long, name = "name=value")]
     set: Vec<VarSet>,
 
     /// Variables to unset
-    #[structopt(long, name = "name", number_of_values(1))]
+    #[structopt(long, name = "name")]
     unset: Vec<String>,
+
+    /// Variables to cancel
+    #[structopt(long, name = "name")]
+    cancel: Vec<String>,
+
+    /// Signing keys to set
+    #[structopt(long, name = "key")]
+    key: Vec<PubKeyBin>,
 
     /// The nonce to use
     #[structopt(long, number_of_values(1))]
-    nonce: u32,
+    nonce: Option<u32>,
 
-    /// Commit the variables to the API
+    /// Return the encoded transaction for signing
     #[structopt(long)]
-    commit: bool,
+    txn: bool,
 }
 
 impl Cmd {
@@ -55,137 +57,49 @@ impl Cmd {
 }
 
 impl Current {
-    pub fn run(&self, opts: Opts) -> Result {
-        let client = Client::new_with_base_url(api_url());
-        let vars = client.get_vars()?;
-        print_vars(&vars, opts.format)
+    pub fn run(&self, _opts: Opts) -> Result {
+        print_json(&get_vars()?)
     }
+}
+
+fn get_vars() -> Result<serde_json::Map<String, serde_json::Value>> {
+    let client = Client::new_with_base_url(api_url());
+    client.get_vars()
 }
 
 impl Create {
-    pub fn run(&self, opts: Opts) -> Result {
-        let password = get_password(false)?;
-        let wallet = load_wallet(opts.files)?;
+    pub fn run(&self, _opts: Opts) -> Result {
         let client = Client::new_with_base_url(api_url());
-
-        let keypair = wallet.decrypt(password.as_bytes())?;
-
+        let vars = client.get_vars()?;
         let mut txn = BlockchainTxnVarsV1 {
-            version_predicate: self.version_predicate,
-            master_key: keypair.pubkey_bin().into(),
+            version_predicate: 0,
+            master_key: vec![],
             proof: vec![],
             key_proof: vec![],
-            vars: self.set.iter().map(|v| v.var.clone()).collect(),
-            nonce: self.nonce,
+            vars: self.set.iter().map(|v| v.0.clone()).collect(),
+            nonce: self.nonce.unwrap_or_else(|| {
+                vars.get("nonce")
+                    .map_or(0, |v| v.as_u64().unwrap_or(0).try_into().unwrap())
+            }),
             unsets: self.unset.iter().map(|v| v.as_bytes().to_vec()).collect(),
-            cancels: vec![],
+            cancels: self.cancel.iter().map(|v| v.as_bytes().to_vec()).collect(),
+            multi_key_proofs: vec![],
+            multi_proofs: vec![],
+            multi_keys: self.key.iter().map(|v| v.to_vec()).collect(),
         };
 
-        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
+        txn.multi_keys.dedup_by(|a, b| a == b);
+
+        if self.txn {
+            print_json(&Artifact::from_txn(&txn.in_envelope())?)
         } else {
-            None
-        };
-
-        print_txn(&txn, &envelope, &status, opts.format)
-    }
-}
-
-fn print_txn(
-    txn: &BlockchainTxnVarsV1,
-    envelope: &BlockchainTxn,
-    status: &Option<PendingTxnStatus>,
-    format: OutputFormat,
-) -> Result {
-    match format {
-        OutputFormat::Table => {
-            let mut table = Table::new();
-            table.add_row(row!["Set", "Value"]);
-            for var in &txn.vars {
-                let value = decode_var(&var)?;
-                table.add_row(row![var.name, serde_json::to_string_pretty(&value)?]);
-            }
-            print_table(&table)?;
-
-            // Handle unsets
-            let mut table = Table::new();
-            table.add_row(row!["Unset"]);
-            for var in &txn.unsets {
-                let name = String::from_utf8(var.to_vec())?;
-                table.add_row(row![name]);
-            }
-            print_table(&table)?;
-
-            ptable!(
-                ["Key", "Value"],
-                ["Nonce", txn.nonce],
-                ["Hash", status_str(status)]
-            );
-
-            print_footer(status)
+            print_json(&txn.to_json()?)
         }
-        OutputFormat::Json => {
-            let mut sets = Vec::with_capacity(txn.vars.len());
-            for var in &txn.vars {
-                sets.push(json!({
-                    "name": var.name,
-                    "value": decode_var(var)?
-                }));
-            }
-            let mut unsets = Vec::with_capacity(txn.unsets.len());
-            for var in &txn.unsets {
-                unsets.push(json!(String::from_utf8(var.to_vec())?));
-            }
-
-            let table = json!({
-                "sets": sets,
-                "unsets": unsets,
-                "hash": status_json(status),
-                "txn": envelope.to_b64()?
-            });
-
-            print_json(&table)
-        }
-    }
-}
-
-fn print_vars(vars: &serde_json::Map<String, serde_json::Value>, format: OutputFormat) -> Result {
-    match format {
-        OutputFormat::Table => {
-            let mut table = Table::new();
-            table.add_row(row!["Name", "Value"]);
-            for (name, value) in vars.iter() {
-                table.add_row(row![name, serde_json::to_string_pretty(&value)?]);
-            }
-            print_table(&table)
-        }
-        OutputFormat::Json => print_json(&vars),
-    }
-}
-
-fn decode_var(var: &BlockchainVarV1) -> Result<serde_json::Value> {
-    match &var.r#type[..] {
-        "integer" => {
-            let value: i64 = String::from_utf8(var.value.to_vec())?.parse::<i64>()?;
-            Ok(json!(value))
-        }
-        "float" => {
-            let value: f64 = String::from_utf8(var.value.to_vec())?.parse::<f64>()?;
-            Ok(json!(value))
-        }
-        "string" => {
-            let value: String = String::from_utf8(var.value.to_vec())?;
-            Ok(json!(value))
-        }
-        _ => Err(format!("Invalid variable {:?}", var).into()),
     }
 }
 
 #[derive(Debug)]
-pub struct VarSet {
-    var: BlockchainVarV1,
-}
+struct VarSet(BlockchainVarV1);
 
 impl FromStr for VarSet {
     type Err = Box<dyn std::error::Error>;
@@ -199,7 +113,7 @@ impl FromStr for VarSet {
         let var = match value {
             serde_json::Value::Number(n) if n.is_i64() => BlockchainVarV1 {
                 name,
-                r#type: "integer".to_string(),
+                r#type: "int".to_string(),
                 value: n.to_string().as_bytes().to_vec(),
             },
             serde_json::Value::Number(n) if n.is_f64() => BlockchainVarV1 {
@@ -214,6 +128,6 @@ impl FromStr for VarSet {
             },
             _ => return Err(format!("Invalid variable value {}", value.to_string()).into()),
         };
-        Ok(VarSet { var })
+        Ok(VarSet(var))
     }
 }

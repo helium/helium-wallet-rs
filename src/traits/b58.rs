@@ -44,3 +44,13 @@ impl B58 for PubKeyBin {
         Ok(pubkey_bin)
     }
 }
+
+impl B58 for Vec<u8> {
+    fn to_b58(&self) -> Result<String> {
+        Ok(bs58::encode(self).with_check().into_string())
+    }
+
+    fn from_b58(b58: &str) -> Result<Self> {
+        Ok(bs58::decode(b58).with_check(Some(0)).into_vec()?)
+    }
+}

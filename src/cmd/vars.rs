@@ -23,19 +23,19 @@ pub struct Current {}
 /// Create a chain variable transaction
 pub struct Create {
     /// Variables to set
-    #[structopt(long, name = "name=value")]
+    #[structopt(long)]
     set: Vec<VarSet>,
 
     /// Variables to unset
-    #[structopt(long, name = "name")]
+    #[structopt(long)]
     unset: Vec<String>,
 
     /// Variables to cancel
-    #[structopt(long, name = "name")]
+    #[structopt(long)]
     cancel: Vec<String>,
 
     /// Signing keys to set
-    #[structopt(long, name = "key")]
+    #[structopt(long)]
     key: Vec<PubKeyBin>,
 
     /// The nonce to use

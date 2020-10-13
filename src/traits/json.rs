@@ -1,4 +1,5 @@
 use crate::{
+    keypair::PubKeyBin,
     result::Result,
     traits::{B58, B64},
 };
@@ -48,7 +49,7 @@ fn vec_to_strings(vec: &[Vec<u8>]) -> Result<Vec<String>> {
 fn vec_to_b58s(vec: &[Vec<u8>]) -> Result<Vec<String>> {
     let mut seq = Vec::with_capacity(vec.len());
     for entry in vec {
-        seq.push(entry.to_b58()?);
+        seq.push(PubKeyBin::from_vec(entry).to_b58()?);
     }
     Ok(seq)
 }

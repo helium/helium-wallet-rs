@@ -1,6 +1,6 @@
 # helium-wallet
 
-[![Build Status](https://travis-ci.com/helium/helium-wallet-rs.svg?branch=master)](https://travis-ci.com/helium/helium-wallet-rs)
+![Continuous Integration](https://github.com/helium/helium-wallet-rs/workflows/Continuous%20Integration/badge.svg)
 
 A [Helium](https://helium.com) wallet implementation in Rust.
 

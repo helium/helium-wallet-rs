@@ -6,71 +6,106 @@ on:
     tags: ['v*']
   pull_request:
     branches: [ master ]
-    
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        default: true
-        override: true
-        components: clippy, rustfmt
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+          components: clippy, rustfmt
 
-    - name: Cancel previous runs
-      uses: styfle/cancel-workflow-action@0.5.0
-      with:
-        access_token: ${{ github.token }}
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.5.0
+        with:
+          access_token: ${{ github.token }}
 
-    - name: Check formatting
-      run: cargo fmt  -- --check
+      - name: Check formatting
+        run: cargo fmt  -- --check
 
-    - name: Clippy
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: -- -Dclippy::all
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: -- -Dclippy::all
 
-    - name: Build
-      run: cargo build --all --release && strip target/release/helium-wallet && tar zcvf helium-wallet-x86_64-linux.tar.gz target/release/helium-wallet
+      - name: Build
+        run: cargo build --all --release
 
-    - name: Release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          helium-wallet-x86_64-linux.tar.gz
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: name_release
+        run: echo ::set-output name=RELEASE::$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-linux
+
+      - name: Prepare Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NAME: ${{ steps.name_release.outputs.RELEASE }}
+        run: |
+          strip target/release/helium-wallet
+          mkdir $NAME
+          mv target/release/helium-wallet $NAME/
+          cp README.md $NAME/
+          cp LICENSE $NAME/
+          tar -zcvf $NAME.tar.gz $NAME/
+
+      - name: Push Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ steps.name_release.outputs.RELEASE }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-mac:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: x86_64-apple-darwin
-        default: true
-        override: true
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-apple-darwin
+          default: true
+          override: true
 
-    - name: Cancel previous runs
-      uses: styfle/cancel-workflow-action@0.5.0
-      with:
-        access_token: ${{ github.token }}
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.5.0
+        with:
+          access_token: ${{ github.token }}
 
-    - name: Build
-      run: cargo build --all --release && strip target/release/helium-wallet && tar zcvf helium-wallet-x86_64-macos.tar.gz target/release/helium-wallet 
+      - name: Build
+        run: cargo build --all --release
 
-    - name: Release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          helium-wallet-x86_64-macos.tar.gz
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: name_release
+        run: echo ::set-output name=RELEASE::$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-macos
+
+      - name: Prepare Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NAME: ${{ steps.name_release.outputs.RELEASE }}
+        run: |
+          strip target/release/helium-wallet
+          mkdir $NAME
+          mv target/release/helium-wallet $NAME/
+          cp README.md $NAME/
+          cp LICENSE $NAME/
+          tar -zcvf $NAME.tar.gz $NAME/
+
+      - name: Push Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ steps.name_release.outputs.RELEASE }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

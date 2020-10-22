@@ -145,9 +145,17 @@ impl Price {
         Price::from_str(amount.as_str().ok_or("No USD value found")?)
     }
 
-    fn from_binance() -> Result<Self> {
+    fn from_binance_us() -> Result<Self> {
         let mut response =
             reqwest::get("https://api.binance.us/api/v3/ticker/price?symbol=HNTUSD")?;
+        let json: serde_json::Value = response.json()?;
+        let amount = &json["price"];
+        Price::from_str(amount.as_str().ok_or("No USD value found")?)
+    }
+
+    fn from_binance_int() -> Result<Self> {
+        let mut response =
+            reqwest::get("https://api.binance.us/api/v3/avgPrice?symbol=HNTUSDT")?;
         let json: serde_json::Value = response.json()?;
         let amount = &json["price"];
         Price::from_str(amount.as_str().ok_or("No USD value found")?)
@@ -178,7 +186,10 @@ impl FromStr for Price {
         match s {
             "coingecko" => Price::from_coingecko(),
             "bilaxy" => Price::from_bilaxy(),
-            "binance" => Price::from_binance(),
+            // don't break old interface so maintain "binance" to Binance US
+            "binance" => Price::from_binance_us(),
+            "binance-us" => Price::from_binance_us(),
+            "binance-int" => Price::from_binance_int(),
             _ => {
                 let data = Decimal::from_str(s).or_else(|_| Decimal::from_scientific(s))?;
                 Ok(Price(

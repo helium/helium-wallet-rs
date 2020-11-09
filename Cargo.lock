@@ -663,7 +663,7 @@ dependencies = [
 [[package]]
 name = "helium-api"
 version = "1.1.2"
-source = "git+https://github.com/helium/helium-api-rs?tag=1.1.3#824ba6d2248033176c45be2942ee9dc73024a4de"
+source = "git+https://github.com/helium/helium-api-rs?tag=1.1.4#fba66d35149ba594d9254326d4e5539a132125b8"
 dependencies = [
  "base64 0.13.0",
  "helium-proto",
@@ -677,7 +677,7 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#9d604b5908ab6084676d3b6e4819792b0c11bc0e"
+source = "git+https://github.com/helium/proto?branch=master#09f4ae5764e940d490ac4e3f096be9c348ca4219"
 dependencies = [
  "bytes 0.4.12",
  "prost",

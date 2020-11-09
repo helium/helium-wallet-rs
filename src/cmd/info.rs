@@ -3,7 +3,7 @@ use crate::{
     result::Result,
     wallet::Wallet,
 };
-use helium_api::{Account, Client, Hnt};
+use helium_api::{Account, Client, Hnt, Hst};
 use prettytable::Table;
 use qr2term::print_qr;
 use serde_json::json;
@@ -42,7 +42,10 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             table.add_row(row!["PWHash", wallet.pwhash()]);
             table.add_row(row!["Balance", Hnt::from_bones(account.balance)]);
             table.add_row(row!["DC Balance", account.dc_balance]);
-            table.add_row(row!["Securities Balance", account.sec_balance]);
+            table.add_row(row![
+                "Securities Balance",
+                Hst::from_bones(account.sec_balance)
+            ]);
             print_table(&table)
         }
         OutputFormat::Json => {

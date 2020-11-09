@@ -7,7 +7,7 @@ use crate::{
     result::Result,
     traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnSecurityExchangeV1, Client, PendingTxnStatus};
+use helium_api::{BlockchainTxn, BlockchainTxnSecurityExchangeV1, Client, Hst, PendingTxnStatus};
 use serde_json::json;
 use structopt::StructOpt;
 
@@ -24,7 +24,7 @@ pub struct Transfer {
     payee: String,
 
     /// The number of security tokens to transfer
-    amount: u64,
+    amount: Hst,
 
     /// Commit the transfter to the API
     #[structopt(long)]
@@ -52,7 +52,7 @@ impl Transfer {
         let mut txn = BlockchainTxnSecurityExchangeV1 {
             payer: keypair.pubkey_bin().into(),
             payee: PubKeyBin::from_b58(&self.payee)?.into(),
-            amount: self.amount,
+            amount: self.amount.to_bones(),
             nonce: account.speculative_sec_nonce + 1,
             fee: 0,
             signature: vec![],

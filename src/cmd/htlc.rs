@@ -5,7 +5,7 @@ use crate::{
     },
     keypair::{Keypair, PubKeyBin},
     result::Result,
-    traits::{Sign, Signer, TxnEnvelope, TxnFee, B58, B64},
+    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
 };
 use helium_api::{
     BlockchainTxn, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Client, Hnt,
@@ -95,7 +95,8 @@ impl Create {
             signature: Vec::new(),
         };
         txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
-        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
+        txn.signature = txn.sign(&keypair)?;
+        let envelope = txn.in_envelope();
 
         let status = if self.commit {
             Some(client.submit_txn(&envelope)?)
@@ -158,8 +159,8 @@ impl Redeem {
             signature: Vec::new(),
         };
         txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
-
-        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
+        txn.signature = txn.sign(&keypair)?;
+        let envelope = txn.in_envelope();
 
         let status = if self.commit {
             Some(client.submit_txn(&envelope)?)

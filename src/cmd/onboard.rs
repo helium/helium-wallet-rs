@@ -4,7 +4,7 @@ use crate::{
     },
     result::Result,
     staking,
-    traits::{Sign, Signer, TxnPayer, B64},
+    traits::{Sign, TxnPayer, B64},
 };
 use helium_api::{BlockchainTxn, PendingTxnStatus, Txn};
 use serde_json::json;
@@ -41,10 +41,10 @@ impl Cmd {
         let mut envelope = BlockchainTxn::from_b64(&self.read_txn()?)?;
         match &mut envelope.txn {
             Some(Txn::AddGateway(t)) => {
-                t.sign(&keypair, Signer::Owner)?;
+                t.owner_signature = t.sign(&keypair)?;
             }
             Some(Txn::AssertLocation(t)) => {
-                t.sign(&keypair, Signer::Owner)?;
+                t.owner_signature = t.sign(&keypair)?;
             }
             _ => return Err("Unsupported transaction for onboarding".into()),
         };

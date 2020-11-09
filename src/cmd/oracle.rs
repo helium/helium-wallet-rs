@@ -4,7 +4,7 @@ use crate::{
         Opts, OutputFormat,
     },
     result::Result,
-    traits::{Sign, Signer, TxnEnvelope, B64},
+    traits::{Sign, TxnEnvelope, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnPriceOracleV1, Client, PendingTxnStatus};
 use rust_decimal::{prelude::*, Decimal};
@@ -60,8 +60,8 @@ impl Report {
             block_height: self.block.to_block(),
             signature: Vec::new(),
         };
-
-        let envelope = txn.sign(&keypair, Signer::Owner)?.in_envelope();
+        txn.signature = txn.sign(&keypair)?;
+        let envelope = txn.in_envelope();
         let status = if self.commit {
             Some(client.submit_txn(&envelope)?)
         } else {

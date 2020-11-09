@@ -4,3 +4,4 @@
 perf.data*
 flamegraph.*
 *.png
+*.json

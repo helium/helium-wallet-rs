@@ -2,7 +2,7 @@ use crate::{
     cmd::{api_url, collect_addresses, print_json, print_table, Opts, OutputFormat},
     result::Result,
 };
-use helium_api::{Account, Client, Hnt};
+use helium_api::{Account, Client, Hnt, Hst};
 use prettytable::{format, Table};
 use serde_json::json;
 use structopt::StructOpt;
@@ -44,7 +44,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                         address,
                         Hnt::from_bones(account.balance),
                         account.dc_balance,
-                        account.sec_balance
+                        Hst::from_bones(account.sec_balance)
                     ]),
                     Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
                 };

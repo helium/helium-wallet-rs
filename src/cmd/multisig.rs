@@ -42,8 +42,8 @@ pub struct Combine {
     #[structopt(name = "ARTIFACT FILE")]
     artifact: PathBuf,
 
-    /// Proof file(s) to use
-    #[structopt(long = "proof")]
+    /// Proof file(s) to use. Use this option multiple times for multiple proofs.
+    #[structopt(long = "proof", name = "PROOF FILE", number_of_values(1))]
     proofs: Vec<PathBuf>,
 
     /// Commit the combined transaction to the API

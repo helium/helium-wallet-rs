@@ -128,6 +128,7 @@ fn print_txn(envelope: &BlockchainTxn, status: &Option<PendingTxnStatus>) -> Res
         _ => return Err("Unsupported transaction for multisig".into()),
     };
     json["hash"] = status_json(status);
+    json["txn"] = envelope.to_b64()?.into();
     print_json(&json)
 }
 

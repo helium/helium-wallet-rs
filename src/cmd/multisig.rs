@@ -30,7 +30,7 @@ pub struct Prove {
     #[structopt(name = "ARTIFACT FILE")]
     artifact: PathBuf,
 
-    /// Sign as a new key
+    /// Sign that a new signing key is being added
     #[structopt(long = "key")]
     key: bool,
 }

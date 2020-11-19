@@ -154,8 +154,7 @@ impl Price {
     }
 
     fn from_binance_int() -> Result<Self> {
-        let mut response =
-            reqwest::get("https://api.binance.us/api/v3/avgPrice?symbol=HNTUSDT")?;
+        let mut response = reqwest::get("https://api.binance.us/api/v3/avgPrice?symbol=HNTUSDT")?;
         let json: serde_json::Value = response.json()?;
         let amount = &json["price"];
         Price::from_str(amount.as_str().ok_or("No USD value found")?)

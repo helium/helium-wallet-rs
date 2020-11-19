@@ -30,7 +30,7 @@ pub struct Prove {
     #[structopt(name = "ARTIFACT FILE")]
     artifact: PathBuf,
 
-    /// Sign as a new key
+    /// Sign that a new signing key is being added
     #[structopt(long = "key")]
     key: bool,
 }
@@ -42,8 +42,8 @@ pub struct Combine {
     #[structopt(name = "ARTIFACT FILE")]
     artifact: PathBuf,
 
-    /// Proof file(s) to use
-    #[structopt(long = "proof")]
+    /// Proof file(s) to use. Use this option multiple times for multiple proofs.
+    #[structopt(long = "proof", name = "PROOF FILE", number_of_values(1))]
     proofs: Vec<PathBuf>,
 
     /// Commit the combined transaction to the API
@@ -128,6 +128,7 @@ fn print_txn(envelope: &BlockchainTxn, status: &Option<PendingTxnStatus>) -> Res
         _ => return Err("Unsupported transaction for multisig".into()),
     };
     json["hash"] = status_json(status);
+    json["txn"] = envelope.to_b64()?.into();
     print_json(&json)
 }
 

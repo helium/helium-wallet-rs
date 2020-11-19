@@ -93,7 +93,7 @@ impl ToJson for BlockchainVarV1 {
                 let v: f64 = String::from_utf8(self.value.to_vec())?.parse::<f64>()?;
                 json!(v)
             }
-            "string" => {
+            "string" | "atom" => {
                 let v: String = String::from_utf8(self.value.to_vec())?;
                 json!(v)
             }
@@ -101,6 +101,7 @@ impl ToJson for BlockchainVarV1 {
         };
         Ok(json!({
             "name": self.name,
+            "type": self.r#type,
             "value": value
         }))
     }

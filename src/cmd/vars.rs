@@ -126,7 +126,11 @@ impl FromStr for VarSet {
                 r#type: "string".to_string(),
                 value: s.as_bytes().to_vec(),
             },
-            _ => return Err(format!("Invalid variable value {}", value.to_string()).into()),
+            _ => BlockchainVarV1 {
+                name,
+                r#type: "atom".to_string(),
+                value: s.as_bytes().to_vec(),
+            },
         };
         Ok(VarSet(var))
     }

@@ -4,7 +4,7 @@ use helium_api::{
     BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1, BlockchainTxnCreateHtlcV1,
     BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2, BlockchainTxnPriceOracleV1,
     BlockchainTxnRedeemHtlcV1, BlockchainTxnSecurityExchangeV1, BlockchainTxnTokenBurnV1,
-    BlockchainTxnVarsV1, BlockchainTxnTransferHotspotV1, Message,
+    BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, Message,
 };
 
 #[derive(PartialEq)]
@@ -75,7 +75,8 @@ impl_sign!(
     multi_proofs,
     multi_key_proofs
 );
-impl_sign!(BlockchainTxnTransferHotspotV1,
+impl_sign!(
+    BlockchainTxnTransferHotspotV1,
     buyer_signature,
     seller_signature
 );

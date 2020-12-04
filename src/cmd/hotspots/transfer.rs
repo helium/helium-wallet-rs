@@ -1,15 +1,12 @@
 use crate::{
-    cmd::{
-        api_url, get_password, load_wallet, Opts, get_txn_fees, print_table
-    },
-    result::Result,
+    cmd::{api_url, get_password, get_txn_fees, load_wallet, print_table, Opts},
     keypair::PubKeyBin,
-    traits::{Sign, B64, B58, TxnFee, TxnEnvelope},
+    result::Result,
+    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
 };
-use helium_api::{Hnt, BlockchainTxn, Txn, Client, BlockchainTxnTransferHotspotV1};
+use helium_api::{BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, Txn};
 use std::io;
 use structopt::StructOpt;
-
 
 /// Transfer hotspot as buyer or seller.
 #[derive(Debug, StructOpt)]
@@ -64,7 +61,6 @@ impl Transfer {
 
         match self {
             Self::Sell(sell) => {
-
                 let seller = wallet.address_as_vec();
                 let buyer = PubKeyBin::from_b58(&sell.buyer)?;
                 let buyer_account = client.get_account(&buyer.to_b58()?)?;
@@ -77,7 +73,7 @@ impl Transfer {
                     buyer: buyer.to_vec(),
                     seller_signature: vec![],
                     buyer_signature: vec![],
-                    amount_to_seller: if let Some(price) = sell.price{
+                    amount_to_seller: if let Some(price) = sell.price {
                         price.to_bones()
                     } else {
                         0
@@ -95,10 +91,10 @@ impl Transfer {
                 } else {
                     println!("Use --commit flag to sign transaction")
                 }
-            },
+            }
 
             Self::Buy(buy) => {
-                let mut envelope = BlockchainTxn::from_b64(& buy.read_txn()?)?;
+                let mut envelope = BlockchainTxn::from_b64(&buy.read_txn()?)?;
 
                 match &mut envelope.txn {
                     Some(Txn::TransferHotspot(t)) => {
@@ -107,15 +103,17 @@ impl Transfer {
                             let password = get_password(false)?;
                             let keypair = wallet.decrypt(password.as_bytes())?;
                             t.buyer_signature = t.sign(&keypair)?;
-                            
+
                             match client.submit_txn(&envelope) {
                                 Ok(status) => {
-                                    println!("Successfully submitted txn with hash: {}", status.hash);
+                                    println!(
+                                        "Successfully submitted txn with hash: {}",
+                                        status.hash
+                                    );
                                 }
                                 Err(e) => {
                                     println!("{}", e);
                                     println!("Submit failed. Please try again");
-
                                 }
                             }
                         }
@@ -126,15 +124,10 @@ impl Transfer {
         }
 
         Ok(())
-
-
     }
-
 }
 
-fn print_txn_as_table(
-    txn: &BlockchainTxnTransferHotspotV1,
-) -> Result {
+fn print_txn_as_table(txn: &BlockchainTxnTransferHotspotV1) -> Result {
     use prettytable::Table;
     let mut table = Table::new();
     let seller = PubKeyBin::from_vec(txn.seller.as_slice());
@@ -142,7 +135,13 @@ fn print_txn_as_table(
     let buyer = PubKeyBin::from_vec(txn.buyer.as_slice());
 
     let sold_for = Hnt::from_bones(txn.amount_to_seller);
-    table.add_row(row!["Seller", "Hotspot", "Sale Price [HNT]", "Buyer", "Buyer Nonce"]);
+    table.add_row(row![
+        "Seller",
+        "Hotspot",
+        "Sale Price [HNT]",
+        "Buyer",
+        "Buyer Nonce"
+    ]);
     table.add_row(row![seller, hotspot, sold_for, buyer, txn.buyer_nonce]);
     print_table(&table)
 }

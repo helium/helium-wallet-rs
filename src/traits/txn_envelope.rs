@@ -2,7 +2,7 @@ use helium_api::{
     BlockchainTxn, BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1,
     BlockchainTxnCreateHtlcV1, BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2,
     BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, BlockchainTxnSecurityExchangeV1,
-    BlockchainTxnTokenBurnV1, BlockchainTxnVarsV1, Txn,BlockchainTxnTransferHotspotV1
+    BlockchainTxnTokenBurnV1, BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, Txn,
 };
 
 pub trait TxnEnvelope {

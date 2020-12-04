@@ -86,6 +86,9 @@ impl Wallet {
         self.pubkey_bin.to_b58()
     }
 
+    pub fn address_as_vec(&self) -> Vec<u8>{ self.pubkey_bin.to_vec()
+    }
+
     pub fn pwhash(&self) -> &PWHash {
         self.format.pwhash()
     }

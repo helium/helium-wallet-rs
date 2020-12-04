@@ -7,15 +7,39 @@ use prettytable::{format, Table};
 use serde_json::json;
 use structopt::StructOpt;
 
-/// Get the hotspots for a wallet
+pub mod transfer;
+
 #[derive(Debug, StructOpt)]
-pub struct Cmd {
-    /// Addresses to get hotspots for
-    #[structopt(short = "a", long = "address")]
-    addresses: Vec<String>,
+pub enum Cmd {
+    List(List),
+    Transfer(transfer::Transfer),
 }
 
 impl Cmd {
+    pub fn run(self, opts: Opts) -> Result {
+        match self {
+            Self::List(list) => list.run(opts),
+            Self::Transfer(list) => list.run(opts),
+        }
+    }
+}
+
+/// Get the hotspots for a wallet
+#[derive(Debug, StructOpt)]
+pub struct List {
+    /// Addresses to get hotspots for
+    #[structopt(short = "a", long = "address")]
+    addresses: Vec<String>,
+
+    /// Base64 encoded transaction to sign. If no transaction if given
+    /// stdin is read for the transaction. Note that the stdin feature
+    /// only works if the wallet password is set in the
+    /// HELIUM_WALLET_PASSWORD environment variable
+    #[structopt(name = "TRANSACTION")]
+    txn: Option<String>,
+}
+
+impl List {
     pub fn run(&self, opts: Opts) -> Result {
         let client = Client::new_with_base_url(api_url());
         let mut results: Vec<(String, Result<Vec<Hotspot>>)> =

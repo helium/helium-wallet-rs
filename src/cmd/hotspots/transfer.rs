@@ -98,7 +98,22 @@ impl Transfer {
 
                 match &mut envelope.txn {
                     Some(Txn::TransferHotspot(t)) => {
+                        // verify that nonce is still valid.
+                        let nonce = t.buyer_nonce;
+                        let buyer_account =
+                            client.get_account(&PubKeyBin::from_vec(&t.buyer).to_b58()?)?;
+                        let expected_nonce = buyer_account.speculative_nonce + 1;
+
+                        if buyer_account.speculative_nonce + 1 != nonce {
+                            println!(
+                                "Buyer_nonce in transaction is {} while expected nonce is {}",
+                                nonce, expected_nonce
+                            );
+                            return Err("Hotspot transfer nonce no longer valid".into());
+                        }
+
                         print_txn_as_table(&t)?;
+
                         if buy.commit {
                             let password = get_password(false)?;
                             let keypair = wallet.decrypt(password.as_bytes())?;

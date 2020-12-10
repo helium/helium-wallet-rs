@@ -1,8 +1,8 @@
 use crate::{
-    cmd::{api_url, get_password, get_txn_fees, load_wallet, print_table, Opts},
+    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts},
     keypair::PubKeyBin,
     result::Result,
-    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
+    traits::{Sign, ToJson, TxnEnvelope, TxnFee, B58, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, Txn};
 use std::io;
@@ -78,16 +78,12 @@ impl Transfer {
                     buyer_nonce: buyer_account.speculative_nonce + 1,
                 };
                 txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
-                print_txn_as_table(&txn)?;
+                println!("{:#?}", txn.to_json()?);
 
-                if sell.commit {
-                    let password = get_password(false)?;
-                    let keypair = wallet.decrypt(password.as_bytes())?;
-                    txn.seller_signature = txn.sign(&keypair)?;
-                    println!("{}", txn.in_envelope().to_b64()?);
-                } else {
-                    println!("Use --commit flag to sign transaction")
-                }
+                let password = get_password(false)?;
+                let keypair = wallet.decrypt(password.as_bytes())?;
+                txn.seller_signature = txn.sign(&keypair)?;
+                println!("{}", txn.in_envelope().to_b64()?);
             }
 
             Self::Buy(buy) => {
@@ -109,7 +105,7 @@ impl Transfer {
                             return Err("Hotspot transfer nonce no longer valid".into());
                         }
 
-                        print_txn_as_table(&t)?;
+                        println!("{:#?}", t.to_json()?);
 
                         if buy.commit {
                             let password = get_password(false)?;
@@ -137,23 +133,4 @@ impl Transfer {
 
         Ok(())
     }
-}
-
-fn print_txn_as_table(txn: &BlockchainTxnTransferHotspotV1) -> Result {
-    use prettytable::Table;
-    let mut table = Table::new();
-    let seller = PubKeyBin::from_vec(txn.seller.as_slice());
-    let hotspot = PubKeyBin::from_vec(txn.gateway.as_slice());
-    let buyer = PubKeyBin::from_vec(txn.buyer.as_slice());
-
-    let sold_for = Hnt::from_bones(txn.amount_to_seller);
-    table.add_row(row![
-        "Seller",
-        "Hotspot",
-        "Sale Price [HNT]",
-        "Buyer",
-        "Buyer Nonce"
-    ]);
-    table.add_row(row![seller, hotspot, sold_for, buyer, txn.buyer_nonce]);
-    print_table(&table)
 }

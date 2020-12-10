@@ -30,13 +30,6 @@ pub struct List {
     /// Addresses to get hotspots for
     #[structopt(short = "a", long = "address")]
     addresses: Vec<String>,
-
-    /// Base64 encoded transaction to sign. If no transaction if given
-    /// stdin is read for the transaction. Note that the stdin feature
-    /// only works if the wallet password is set in the
-    /// HELIUM_WALLET_PASSWORD environment variable
-    #[structopt(name = "TRANSACTION")]
-    txn: Option<String>,
 }
 
 impl List {

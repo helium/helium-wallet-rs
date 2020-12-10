@@ -7,18 +7,6 @@ use helium_api::{
     BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, Message,
 };
 
-#[derive(PartialEq)]
-pub enum Signer {
-    Owner,
-    Payer,
-    Gateway,
-    Buyer,
-    Seller,
-    // Adds an unknown signer to allow the macro get/set_signature
-    // match arms to work
-    Unknown,
-}
-
 pub trait Sign: Message + std::clone::Clone {
     fn sign(&self, keypair: &Keypair) -> Result<Vec<u8>>
     where

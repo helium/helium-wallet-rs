@@ -112,7 +112,7 @@ impl ToJson for BlockchainTxnTransferHotspotV1 {
         Ok(json!({
             "seller": maybe_b58(&self.seller)?,
             "gateway": maybe_b58(&self.gateway)?,
-            "buyer": maybe_b58(&self.gateway)?,
+            "buyer": maybe_b58(&self.buyer)?,
             "amount_to_seller": self.amount_to_seller,
             "buyer_nonce": self.buyer_nonce,
             "fee": self.fee

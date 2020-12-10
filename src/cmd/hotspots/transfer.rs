@@ -1,10 +1,10 @@
 use crate::{
-    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts},
+    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts, OutputFormat, status_json, print_json},
     keypair::PubKeyBin,
     result::Result,
     traits::{Sign, ToJson, TxnEnvelope, TxnFee, B58, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, Txn};
+use helium_api::{BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, Txn, PendingTxnStatus};
 use std::io;
 use structopt::StructOpt;
 
@@ -84,6 +84,7 @@ impl Transfer {
                 let keypair = wallet.decrypt(password.as_bytes())?;
                 txn.seller_signature = txn.sign(&keypair)?;
                 eprintln!("{}", txn.in_envelope().to_b64()?);
+                Ok(())
             }
 
             Self::Buy(buy) => {
@@ -105,32 +106,37 @@ impl Transfer {
                             return Err("Hotspot transfer nonce no longer valid".into());
                         }
 
-                        eprintln!("{:#?}", t.to_json()?);
-
-                        if buy.commit {
-                            let password = get_password(false)?;
-                            let keypair = wallet.decrypt(password.as_bytes())?;
-                            t.buyer_signature = t.sign(&keypair)?;
-
-                            match client.submit_txn(&envelope) {
-                                Ok(status) => {
-                                    eprintln!(
-                                        "Successfully submitted txn with hash: {}",
-                                        status.hash
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!("{}", e);
-                                    eprintln!("Submit failed. Please try again");
-                                }
-                            }
-                        }
+                        let password = get_password(false)?;
+                        let keypair = wallet.decrypt(password.as_bytes())?;
+                        t.buyer_signature = t.sign(&keypair)?;
+                        let status = if buy.commit {
+                            Some(client.submit_txn(&envelope)?)
+                        } else {
+                            None
+                        };
+                        print_txn(&envelope, &status, opts.format)
                     }
-                    _ => return Err("Unsupported transaction for transfer_hotspot".into()),
-                };
+                    _ => Err("Unsupported transaction for transfer_hotspot".into()),
+                }
             }
         }
+    }
+}
 
-        Ok(())
+fn print_txn(
+    envelope: &BlockchainTxn,
+    status: &Option<PendingTxnStatus>,
+    format: OutputFormat,
+) -> Result {
+    let encoded = envelope.to_b64()?;
+    match format {
+        OutputFormat::Table => Err("Table format not supported for transaction output".into()),
+        OutputFormat::Json => {
+            let table = json!({
+                "txn": encoded,
+                "hash": status_json(status)
+            });
+            print_json(&table)
+        }
     }
 }

@@ -78,12 +78,12 @@ impl Transfer {
                     buyer_nonce: buyer_account.speculative_nonce + 1,
                 };
                 txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
-                println!("{:#?}", txn.to_json()?);
+                eprintln!("{:#?}", txn.to_json()?);
 
                 let password = get_password(false)?;
                 let keypair = wallet.decrypt(password.as_bytes())?;
                 txn.seller_signature = txn.sign(&keypair)?;
-                println!("{}", txn.in_envelope().to_b64()?);
+                eprintln!("{}", txn.in_envelope().to_b64()?);
             }
 
             Self::Buy(buy) => {
@@ -98,14 +98,14 @@ impl Transfer {
                         let expected_nonce = buyer_account.speculative_nonce + 1;
 
                         if buyer_account.speculative_nonce + 1 != nonce {
-                            println!(
+                            eprintln!(
                                 "Buyer_nonce in transaction is {} while expected nonce is {}",
                                 nonce, expected_nonce
                             );
                             return Err("Hotspot transfer nonce no longer valid".into());
                         }
 
-                        println!("{:#?}", t.to_json()?);
+                        eprintln!("{:#?}", t.to_json()?);
 
                         if buy.commit {
                             let password = get_password(false)?;
@@ -114,14 +114,14 @@ impl Transfer {
 
                             match client.submit_txn(&envelope) {
                                 Ok(status) => {
-                                    println!(
+                                    eprintln!(
                                         "Successfully submitted txn with hash: {}",
                                         status.hash
                                     );
                                 }
                                 Err(e) => {
-                                    println!("{}", e);
-                                    println!("Submit failed. Please try again");
+                                    eprintln!("{}", e);
+                                    eprintln!("Submit failed. Please try again");
                                 }
                             }
                         }

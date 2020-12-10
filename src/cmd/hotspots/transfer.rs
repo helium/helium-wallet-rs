@@ -8,11 +8,14 @@ use helium_api::{BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, Txn
 use std::io;
 use structopt::StructOpt;
 
-/// Transfer hotspot as buyer or seller.
 #[derive(Debug, StructOpt)]
+/// Transfer hotspot as buyer or seller.
 pub enum Transfer {
-    Buy(Buy),
+    /// Create and sign transaction to sell a hotspot, outputting it as base64 for counter-party
     Sell(Sell),
+    /// Ingest a transaction to buy a hotspot from base64.
+    /// Signs and submits the transaction to the API
+    Buy(Buy),
 }
 
 #[derive(Debug, StructOpt)]

@@ -23,9 +23,6 @@ pub struct Sell {
     buyer: String,
     /// Price in HNT to be paid by recipient of transfer
     price: Option<Hnt>,
-    #[structopt(long)]
-    /// Commit to sign and output the transaction in base64
-    commit: bool,
 }
 
 #[derive(Debug, StructOpt)]

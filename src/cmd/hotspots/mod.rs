@@ -18,8 +18,8 @@ pub enum Cmd {
 impl Cmd {
     pub fn run(self, opts: Opts) -> Result {
         match self {
-            Self::List(list) => list.run(opts),
-            Self::Transfer(list) => list.run(opts),
+            Self::List(cmd) => cmd.run(opts),
+            Self::Transfer(cmd) => cmd.run(opts),
         }
     }
 }

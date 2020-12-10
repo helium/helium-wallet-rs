@@ -1,10 +1,15 @@
 use crate::{
-    cmd::{api_url, get_password, get_txn_fees, load_wallet, Opts, OutputFormat, status_json, print_json},
+    cmd::{
+        api_url, get_password, get_txn_fees, load_wallet, print_json, status_json, Opts,
+        OutputFormat,
+    },
     keypair::PubKeyBin,
     result::Result,
     traits::{Sign, ToJson, TxnEnvelope, TxnFee, B58, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, Txn, PendingTxnStatus};
+use helium_api::{
+    BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, PendingTxnStatus, Txn,
+};
 use std::io;
 use structopt::StructOpt;
 

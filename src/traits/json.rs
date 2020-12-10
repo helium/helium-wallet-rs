@@ -109,11 +109,9 @@ impl ToJson for BlockchainVarV1 {
 
 impl ToJson for BlockchainTxnTransferHotspotV1 {
     fn to_json(&self) -> Result<serde_json::Value> {
-
         let seller = PubKeyBin::from_vec(self.seller.as_slice()).to_string();
         let gateway = PubKeyBin::from_vec(self.gateway.as_slice()).to_string();
         let buyer = PubKeyBin::from_vec(self.buyer.as_slice()).to_string();
-
 
         Ok(json!({
             "seller": seller,

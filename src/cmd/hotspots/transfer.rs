@@ -58,7 +58,7 @@ impl Transfer {
 
         match self {
             Self::Sell(sell) => {
-                let seller = wallet.address_as_vec();
+                let seller = wallet.pubkey_bin.to_vec();
                 let buyer = PubKeyBin::from_b58(&sell.buyer)?;
                 let buyer_account = client.get_account(&buyer.to_b58()?)?;
                 let gateway = PubKeyBin::from_b58(&sell.gateway)?.to_vec();

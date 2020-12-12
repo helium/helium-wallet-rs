@@ -3,7 +3,7 @@ use crate::{
     result::Result,
     traits::{B58, B64},
 };
-use helium_api::{BlockchainTxnVarsV1, BlockchainVarV1};
+use helium_api::{BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, BlockchainVarV1};
 
 pub(crate) fn maybe_b58(data: &[u8]) -> Result<Option<String>> {
     if data.is_empty() {
@@ -103,6 +103,23 @@ impl ToJson for BlockchainVarV1 {
             "name": self.name,
             "type": self.r#type,
             "value": value
+        }))
+    }
+}
+
+impl ToJson for BlockchainTxnTransferHotspotV1 {
+    fn to_json(&self) -> Result<serde_json::Value> {
+        let seller = PubKeyBin::from_vec(&self.seller).to_b58()?;
+        let gateway = PubKeyBin::from_vec(&self.gateway).to_b58()?;
+        let buyer = PubKeyBin::from_vec(&self.buyer).to_b58()?;
+
+        Ok(json!({
+            "seller": seller,
+            "gateway": gateway,
+            "buyer": buyer,
+            "amount_to_seller": self.amount_to_seller,
+            "buyer_nonce": self.buyer_nonce,
+            "fee": self.fee
         }))
     }
 }

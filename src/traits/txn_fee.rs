@@ -3,7 +3,8 @@ use crate::result::Result;
 use helium_api::{
     BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1, BlockchainTxnCreateHtlcV1,
     BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2, BlockchainTxnRedeemHtlcV1,
-    BlockchainTxnSecurityExchangeV1, BlockchainTxnTokenBurnV1, Message,
+    BlockchainTxnSecurityExchangeV1, BlockchainTxnTokenBurnV1, BlockchainTxnTransferHotspotV1,
+    Message,
 };
 use serde_derive::{Deserialize, Serialize};
 
@@ -130,6 +131,12 @@ impl_txn_staking_fee!(
     staking_fee_txn_assert_location_v1
 );
 impl_txn_fee!((payer, BlockchainTxnOuiV1), owner_signature);
+
+impl_txn_fee!(
+    BlockchainTxnTransferHotspotV1,
+    buyer_signature,
+    seller_signature
+);
 
 impl TxnStakingFee for BlockchainTxnOuiV1 {
     fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {

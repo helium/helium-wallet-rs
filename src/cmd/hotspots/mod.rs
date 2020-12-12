@@ -7,15 +7,34 @@ use prettytable::{format, Table};
 use serde_json::json;
 use structopt::StructOpt;
 
-/// Get the hotspots for a wallet
+pub mod transfer;
+
 #[derive(Debug, StructOpt)]
-pub struct Cmd {
+/// Display list of hotspots associated with wallet
+/// or transfer a hotspot to another wallet
+pub enum Cmd {
+    List(List),
+    Transfer(transfer::Transfer),
+}
+
+impl Cmd {
+    pub fn run(self, opts: Opts) -> Result {
+        match self {
+            Self::List(cmd) => cmd.run(opts),
+            Self::Transfer(cmd) => cmd.run(opts),
+        }
+    }
+}
+
+#[derive(Debug, StructOpt)]
+/// Get the list of hotspots for one or more wallet addresses
+pub struct List {
     /// Addresses to get hotspots for
     #[structopt(short = "a", long = "address")]
     addresses: Vec<String>,
 }
 
-impl Cmd {
+impl List {
     pub fn run(&self, opts: Opts) -> Result {
         let client = Client::new_with_base_url(api_url());
         let mut results: Vec<(String, Result<Vec<Hotspot>>)> =

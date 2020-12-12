@@ -22,6 +22,7 @@ impl TxnPayer for BlockchainTxn {
             Some(Txn::PaymentV2(t)) => Ok(maybe_payer(&t.payer)),
             Some(Txn::Oui(t)) => Ok(maybe_payer(&t.payer)),
             Some(Txn::TokenBurn(t)) => Ok(maybe_payer(&t.payer)),
+            Some(Txn::TransferHotspot(t)) => Ok(maybe_payer(&t.buyer)),
             _ => Err("Unsupported transaction".into()),
         }
     }

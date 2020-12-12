@@ -5,7 +5,7 @@ use crate::{
     },
     keypair::PubKeyBin,
     result::Result,
-    traits::{Sign, ToJson, TxnEnvelope, TxnFee, B58, B64},
+    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
 };
 use helium_api::{
     BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, PendingTxnStatus, Txn,

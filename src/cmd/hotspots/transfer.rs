@@ -78,11 +78,7 @@ impl Transfer {
                     buyer: buyer.to_vec(),
                     seller_signature: vec![],
                     buyer_signature: vec![],
-                    amount_to_seller: if let Some(price) = sell.price {
-                        price.to_bones()
-                    } else {
-                        0
-                    },
+                    amount_to_seller: sell.price.unwrap_or_else(|| Hnt::from_bones(0)).to_bones(),
                     buyer_nonce: buyer_account.speculative_nonce + 1,
                 };
                 txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;

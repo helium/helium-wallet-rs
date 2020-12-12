@@ -82,8 +82,6 @@ impl Transfer {
                     buyer_nonce: buyer_account.speculative_nonce + 1,
                 };
                 txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
-                print_json(&txn.to_json()?)?;
-
                 let password = get_password(false)?;
                 let keypair = wallet.decrypt(password.as_bytes())?;
                 txn.seller_signature = txn.sign(&keypair)?;

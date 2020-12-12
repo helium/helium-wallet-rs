@@ -40,7 +40,7 @@ jobs:
       - name: Name Release
         if: startsWith(github.ref, 'refs/tags/')
         id: name_release
-        run: echo ::set-output name=RELEASE::$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-linux
+        run: echo ::set-output name=RELEASE::helium-wallet-$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-linux
 
       - name: Prepare Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -86,7 +86,7 @@ jobs:
       - name: Name Release
         if: startsWith(github.ref, 'refs/tags/')
         id: name_release
-        run: echo ::set-output name=RELEASE::$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-macos
+        run: echo ::set-output name=RELEASE::helium-wallet-$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-macos
 
       - name: Prepare Release
         if: startsWith(github.ref, 'refs/tags/')

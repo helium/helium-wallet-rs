@@ -220,12 +220,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e4cec68f03f32e44924783795810fa50a7035d8c8ebe78580ad7e6c703fba38"
 
 [[package]]
-name = "bytes"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0dcbc35f504eb6fc275a6d20e4ebcda18cf50d40ba6fabff8c711fa16cb3b16"
-
-[[package]]
 name = "cc"
 version = "1.0.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -702,14 +696,14 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.3.9-dev"
+version = "1.3.9"
 dependencies = [
  "aead",
  "aes-gcm",
- "base64 0.13.0",
+ "base64 0.10.1",
  "bs58",
  "byteorder",
- "bytes 0.6.0",
+ "bytes 0.4.12",
  "console",
  "dialoguer",
  "helium-api",

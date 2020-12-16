@@ -74,8 +74,7 @@ impl Cmd {
                 };
                 print_txn(&envelope, &status, opts.format)
             }
-            Some(key) if key == wallet_key  => {
-
+            Some(key) if key == wallet_key => {
                 match &mut envelope.txn {
                     Some(Txn::AddGateway(t)) => {
                         t.payer_signature = t.sign(&keypair)?;

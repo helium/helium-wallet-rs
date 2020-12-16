@@ -74,7 +74,27 @@ impl Cmd {
                 };
                 print_txn(&envelope, &status, opts.format)
             }
-            key if key == Some(wallet_key) || key.is_none() => {
+            Some(key) if key == wallet_key  => {
+
+                match &mut envelope.txn {
+                    Some(Txn::AddGateway(t)) => {
+                        t.payer_signature = t.sign(&keypair)?;
+                    }
+                    Some(Txn::AssertLocation(t)) => {
+                        t.payer_signature = t.sign(&keypair)?;
+                    }
+                    _ => return Err("Unsupported transaction for onboarding".into()),
+                };
+
+                // Payer is the wallet submit if ready to commit
+                let status = if self.commit {
+                    Some(api_client.submit_txn(&envelope)?)
+                } else {
+                    None
+                };
+                print_txn(&envelope, &status, opts.format)
+            }
+            None => {
                 // Payer is the wallet submit if ready to commit
                 let status = if self.commit {
                     Some(api_client.submit_txn(&envelope)?)

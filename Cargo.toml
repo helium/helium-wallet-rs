@@ -44,7 +44,7 @@ serde =  "1"
 serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
-helium-api = { git = "https://github.com/helium/helium-api-rs", tag="1.1.5" }
+helium-api = { git = "https://github.com/helium/helium-api-rs", tag="1.1.6" }
 
 
 # Add openssl-sys as a direct dependency so it can be cross compiled to

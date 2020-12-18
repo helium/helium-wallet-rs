@@ -39,6 +39,7 @@ impl Cmd {
         // let staking_address = get_staking_address()?;
         // Now decode the given transaction
         let mut envelope = BlockchainTxn::from_b64(&self.read_txn()?)?;
+
         match &mut envelope.txn {
             Some(Txn::AddGateway(t)) => {
                 t.owner_signature = t.sign(&keypair)?;
@@ -47,7 +48,7 @@ impl Cmd {
                 t.owner_signature = t.sign(&keypair)?;
             }
             _ => return Err("Unsupported transaction for onboarding".into()),
-        };
+        }
 
         // Check staking address
         let staking_client = staking::Client::default();
@@ -58,37 +59,40 @@ impl Cmd {
 
         let payer = get_payer(staking_key, &envelope.payer()?.map(|k| k.to_string()))?;
 
-        match payer {
+        let envelope = match payer {
             Some(key) if key == staking_key => {
                 if self.onboarding.is_none() {
-                    return Err("Staking server requires an onboarding key".into());
-                }
-                // Staking server is paying. On commit have it sign
-                // then submit to API
-                let status = if self.commit {
+                    Err("Staking server requires an onboarding key")
+                } else {
                     let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
-                    envelope = staking_client.sign(&onboarding_key, &envelope)?;
-                    Some(api_client.submit_txn(&envelope)?)
-                } else {
-                    None
-                };
-                print_txn(&envelope, &status, opts.format)
+                    Ok(staking_client.sign(&onboarding_key, &envelope)?)
+                }
             }
-            key if key == Some(wallet_key) || key.is_none() => {
-                // Payer is the wallet submit if ready to commit
-                let status = if self.commit {
-                    Some(api_client.submit_txn(&envelope)?)
-                } else {
-                    None
-                };
-                print_txn(&envelope, &status, opts.format)
-            }
+            Some(key) if key == wallet_key => match &mut envelope.txn {
+                Some(Txn::AddGateway(t)) => {
+                    t.payer_signature = t.owner_signature.clone();
+                    Ok(envelope)
+                }
+                Some(Txn::AssertLocation(t)) => {
+                    t.payer_signature = t.owner_signature.clone();
+                    Ok(envelope)
+                }
+                _ => Err("Unsupported transaction for onboarding"),
+            },
+            None => Ok(envelope),
             _ => {
                 // Payer is neither staking server nor wallet. We
                 // can't commit this transaction.
-                Err("Unknown payer in transaction".into())
+                Err("Unknown payer in transaction")
             }
-        }
+        }?;
+
+        let status = if self.commit {
+            Some(api_client.submit_txn(&envelope)?)
+        } else {
+            None
+        };
+        print_txn(&envelope, &status, opts.format)
     }
 
     fn read_txn(&self) -> Result<String> {

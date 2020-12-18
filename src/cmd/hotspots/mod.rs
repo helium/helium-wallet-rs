@@ -51,9 +51,7 @@ fn print_results(results: Vec<(String, Result<Vec<Hotspot>>)>, format: OutputFor
         OutputFormat::Table => {
             let mut table = Table::new();
             table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-            table.set_titles(row![
-                "Address", "Name", "Location", "City", "State"
-            ]);
+            table.set_titles(row!["Address", "Name", "Location", "City", "State"]);
 
             for (address, result) in results {
                 #[allow(clippy::unused_unit)]

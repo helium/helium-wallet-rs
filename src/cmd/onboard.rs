@@ -39,6 +39,7 @@ impl Cmd {
         // let staking_address = get_staking_address()?;
         // Now decode the given transaction
         let mut envelope = BlockchainTxn::from_b64(&self.read_txn()?)?;
+
         match &mut envelope.txn {
             Some(Txn::AddGateway(t)) => {
                 t.owner_signature = t.sign(&keypair)?;
@@ -47,7 +48,7 @@ impl Cmd {
                 t.owner_signature = t.sign(&keypair)?;
             }
             _ => return Err("Unsupported transaction for onboarding".into()),
-        };
+        }
 
         // Check staking address
         let staking_client = staking::Client::default();
@@ -77,10 +78,10 @@ impl Cmd {
             Some(key) if key == wallet_key => {
                 match &mut envelope.txn {
                     Some(Txn::AddGateway(t)) => {
-                        t.payer_signature = t.sign(&keypair)?;
+                        t.payer_signature = t.owner_signature.clone();
                     }
                     Some(Txn::AssertLocation(t)) => {
-                        t.payer_signature = t.sign(&keypair)?;
+                        t.payer_signature = t.owner_signature.clone();
                     }
                     _ => return Err("Unsupported transaction for onboarding".into()),
                 };

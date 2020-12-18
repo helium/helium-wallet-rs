@@ -59,55 +59,48 @@ impl Cmd {
 
         let payer = get_payer(staking_key, &envelope.payer()?.map(|k| k.to_string()))?;
 
-        match payer {
+        let transaction = match payer {
             Some(key) if key == staking_key => {
                 if self.onboarding.is_none() {
-                    return Err("Staking server requires an onboarding key".into());
-                }
-                // Staking server is paying. On commit have it sign
-                // then submit to API
-                let status = if self.commit {
-                    let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
-                    envelope = staking_client.sign(&onboarding_key, &envelope)?;
-                    Some(api_client.submit_txn(&envelope)?)
+                    Err("Staking server requires an onboarding key".into())
                 } else {
-                    None
-                };
-                print_txn(&envelope, &status, opts.format)
+                    let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
+                    Ok(staking_client.sign(&onboarding_key, &envelope)?)
+                }
             }
             Some(key) if key == wallet_key => {
                 match &mut envelope.txn {
                     Some(Txn::AddGateway(t)) => {
                         t.payer_signature = t.owner_signature.clone();
+                        Ok(envelope)
                     }
                     Some(Txn::AssertLocation(t)) => {
                         t.payer_signature = t.owner_signature.clone();
+                        Ok(envelope)
                     }
-                    _ => return Err("Unsupported transaction for onboarding".into()),
-                };
-
-                // Payer is the wallet submit if ready to commit
-                let status = if self.commit {
-                    Some(api_client.submit_txn(&envelope)?)
-                } else {
-                    None
-                };
-                print_txn(&envelope, &status, opts.format)
+                    _ => Err("Unsupported transaction for onboarding".into()),
+                }
             }
             None => {
-                // Payer is the wallet submit if ready to commit
-                let status = if self.commit {
-                    Some(api_client.submit_txn(&envelope)?)
-                } else {
-                    None
-                };
-                print_txn(&envelope, &status, opts.format)
+                Ok(envelope)
             }
             _ => {
                 // Payer is neither staking server nor wallet. We
                 // can't commit this transaction.
                 Err("Unknown payer in transaction".into())
             }
+        };
+        
+        match transaction {
+            Ok(envelope) => {
+                let status = if self.commit {
+                    Some(api_client.submit_txn(&envelope)?)
+                } else {
+                    None
+                };
+                print_txn(&envelope, &status, opts.format)
+            }
+            Err(e) => Err(e)
         }
     }
 

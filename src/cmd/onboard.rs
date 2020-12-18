@@ -59,10 +59,10 @@ impl Cmd {
 
         let payer = get_payer(staking_key, &envelope.payer()?.map(|k| k.to_string()))?;
 
-        let transaction = match payer {
+        let envelope = match payer {
             Some(key) if key == staking_key => {
                 if self.onboarding.is_none() {
-                    Err("Staking server requires an onboarding key".into())
+                    Err("Staking server requires an onboarding key")
                 } else {
                     let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
                     Ok(staking_client.sign(&onboarding_key, &envelope)?)
@@ -77,27 +77,22 @@ impl Cmd {
                     t.payer_signature = t.owner_signature.clone();
                     Ok(envelope)
                 }
-                _ => Err("Unsupported transaction for onboarding".into()),
+                _ => Err("Unsupported transaction for onboarding"),
             },
             None => Ok(envelope),
             _ => {
                 // Payer is neither staking server nor wallet. We
                 // can't commit this transaction.
-                Err("Unknown payer in transaction".into())
+                Err("Unknown payer in transaction")
             }
-        };
+        }?;
 
-        match transaction {
-            Ok(envelope) => {
-                let status = if self.commit {
-                    Some(api_client.submit_txn(&envelope)?)
-                } else {
-                    None
-                };
-                print_txn(&envelope, &status, opts.format)
-            }
-            Err(e) => Err(e),
-        }
+        let status = if self.commit {
+            Some(api_client.submit_txn(&envelope)?)
+        } else {
+            None
+        };
+        print_txn(&envelope, &status, opts.format)
     }
 
     fn read_txn(&self) -> Result<String> {

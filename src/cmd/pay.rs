@@ -22,6 +22,10 @@ pub struct Cmd {
     #[structopt(long = "payee", short = "p", name = "payee=hnt", required = true)]
     payees: Vec<Payee>,
 
+    /// Manually set DC fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+
     /// Commit the payment to the API
     #[structopt(long)]
     commit: bool,
@@ -54,7 +58,12 @@ impl Cmd {
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+
+        txn.fee = if let Some(fee) = self.fee {
+            fee
+        } else {
+            txn.txn_fee(&get_txn_fees(&client)?)?
+        };
         txn.signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
         let status = if self.commit {

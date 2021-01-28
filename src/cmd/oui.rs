@@ -1,11 +1,10 @@
 use crate::{
     cmd::{
-        api_url, get_password, get_payer, get_txn_fees, load_wallet, print_footer, print_json,
-        status_json, status_str, Opts, OutputFormat,
+        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
+        status_str, Opts, OutputFormat,
     },
     keypair::PubKeyBin,
     result::Result,
-    staking,
     traits::{Sign, TxnEnvelope, TxnFee, TxnStakingFee, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnOuiV1, Client, PendingTxnStatus, Txn};
@@ -38,10 +37,9 @@ pub struct Create {
     subnet_size: u32,
 
     /// Payer for the transaction (B58 address). If not specified the
-    /// wallet is used. If "staking" is used the Helium staking server
-    /// is used as the payer.
+    /// wallet is used.
     #[structopt(long)]
-    payer: Option<String>,
+    payer: Option<PubKeyBin>,
 
     /// Commit the transaction to the API. If the staking server is
     /// used as the payer the transaction must first be submitted to
@@ -81,14 +79,9 @@ impl Create {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-
-        let api_client = Client::new_with_base_url(api_url());
-        let staking_client = staking::Client::default();
-
-        let staking_key = staking_client.address()?;
         let wallet_key = keypair.pubkey_bin();
 
-        let payer = get_payer(staking_key, &self.payer)?;
+        let api_client = Client::new_with_base_url(api_url());
 
         let mut txn = BlockchainTxnOuiV1 {
             addresses: self
@@ -98,7 +91,7 @@ impl Create {
                 .map(|s| s.to_vec())
                 .collect(),
             owner: keypair.pubkey_bin().into(),
-            payer: payer.map_or(vec![], |v| v.to_vec()),
+            payer: self.payer.map_or(vec![], |v| v.to_vec()),
             oui: api_client.get_last_oui()?,
             fee: 0,
             staking_fee: 1,
@@ -112,7 +105,7 @@ impl Create {
         txn.owner_signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 
-        match payer {
+        match self.payer {
             key if key == Some(wallet_key) || key.is_none() => {
                 // Payer is the wallet submit if ready to commit
                 let status = if self.commit {
@@ -123,7 +116,7 @@ impl Create {
                 print_txn(&txn, &envelope, &status, opts.format)
             }
             _ => {
-                // Payer is either staking server or something else.
+                // Payer is something else.
                 // can't commit this transaction but we can display it
                 print_txn(&txn, &envelope, &None, opts.format)
             }

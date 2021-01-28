@@ -9,7 +9,7 @@ use std::time::Duration;
 /// The default timeout for API requests
 pub const DEFAULT_TIMEOUT: u64 = 120;
 /// The default base URL if none is specified.
-pub const DEFAULT_BASE_URL: &str = "https://staking.helium.foundation/api/v1";
+pub const DEFAULT_BASE_URL: &str = "https://onboarding.dewi.org/api/v2";
 
 pub struct Client {
     base_url: String,
@@ -44,16 +44,16 @@ impl Client {
         Self { base_url, client }
     }
 
-    /// Fetch the public key of the staking server
-    pub fn address(&self) -> Result<PubKeyBin> {
-        let request_url = format!("{}/address", self.base_url);
+    /// Fetch the public maker key for a given gateway key
+    pub fn address_for(&self, gateway: &PubKeyBin) -> Result<PubKeyBin> {
+        let request_url = format!("{}/hotspots/{}", self.base_url, gateway.to_b58()?);
         let response: serde_json::Value = self
             .client
             .get(&request_url)
             .send()?
             .error_for_status()?
             .json()?;
-        response["data"]["address"]
+        response["data"]["publicAddress"]
             .as_str()
             .map_or(Err("Invalid staking address from server".into()), |v| {
                 PubKeyBin::from_b58(&v)

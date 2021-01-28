@@ -1,7 +1,5 @@
 use crate::{
-    cmd::{
-        api_url, get_password, get_payer, load_wallet, print_json, status_json, Opts, OutputFormat,
-    },
+    cmd::{api_url, get_password, load_wallet, print_json, status_json, Opts, OutputFormat},
     result::Result,
     staking,
     traits::{Sign, TxnPayer, B64},
@@ -48,26 +46,15 @@ impl Cmd {
                 t.owner_signature = t.sign(&keypair)?;
             }
             _ => return Err("Unsupported transaction for onboarding".into()),
-        }
+        };
 
         // Check staking address
         let staking_client = staking::Client::default();
         let api_client = helium_api::Client::new_with_base_url(api_url());
 
         let wallet_key = keypair.pubkey_bin();
-        let staking_key = staking_client.address()?;
 
-        let payer = get_payer(staking_key, &envelope.payer()?.map(|k| k.to_string()))?;
-
-        let envelope = match payer {
-            Some(key) if key == staking_key => {
-                if self.onboarding.is_none() {
-                    Err("Staking server requires an onboarding key")
-                } else {
-                    let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
-                    Ok(staking_client.sign(&onboarding_key, &envelope)?)
-                }
-            }
+        let envelope = match envelope.payer()? {
             Some(key) if key == wallet_key => match &mut envelope.txn {
                 Some(Txn::AddGateway(t)) => {
                     t.payer_signature = t.owner_signature.clone();
@@ -79,12 +66,15 @@ impl Cmd {
                 }
                 _ => Err("Unsupported transaction for onboarding"),
             },
-            None => Ok(envelope),
-            _ => {
-                // Payer is neither staking server nor wallet. We
-                // can't commit this transaction.
-                Err("Unknown payer in transaction")
+            Some(_maker_key) => {
+                if self.onboarding.is_none() {
+                    Err("Staking server requires an onboarding key")
+                } else {
+                    let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
+                    Ok(staking_client.sign(&onboarding_key, &envelope)?)
+                }
             }
+            None => Ok(envelope),
         }?;
 
         let status = if self.commit {

@@ -44,7 +44,8 @@ serde =  "1"
 serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
-helium-api = { git = "https://github.com/helium/helium-api-rs", branch = "lthiery/txns-as-flatten-structs" }
+#helium-api = { git = "https://github.com/helium/helium-api-rs", branch = "lthiery/txns-as-flatten-structs" }
+helium-api = { path = "../helium-api-rs" }
 
 chrono = "0.4"
 

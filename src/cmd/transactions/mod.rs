@@ -6,7 +6,7 @@ use crate::{
     result::Result,
 };
 use chrono::{DateTime, Utc};
-use helium_api::Client;
+use helium_api::{transactions::Data, Client};
 use prettytable::Table;
 use std::fs::File;
 use structopt::StructOpt;
@@ -23,6 +23,10 @@ pub struct Cmd {
     /// fetch all transactions instead of just recent
     #[structopt(long)]
     all: bool,
+
+    /// only print out rewards
+    #[structopt(long)]
+    rewards: bool,
 
     /// output csv
     #[structopt(long)]
@@ -104,7 +108,13 @@ impl Cmd {
         ]);
 
         for transaction in &all_transactions {
-            table.add_row(transaction.into_row(&Address::from_str(&address)?, &client));
+            if self.rewards {
+                if let Data::RewardsV1(reward) = &transaction.data {
+                    table.add_row(transaction.into_row(&Address::from_str(&address)?, &client));
+                }
+            } else {
+                table.add_row(transaction.into_row(&Address::from_str(&address)?, &client));
+            }
         }
 
         match opts.format {

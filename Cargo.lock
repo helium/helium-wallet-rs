@@ -737,7 +737,6 @@ dependencies = [
 [[package]]
 name = "helium-api"
 version = "1.1.2"
-source = "git+https://github.com/helium/helium-api-rs?branch=lthiery/txns-as-flatten-structs#837070b583213b73003eaebdcc5af7c5e8e66e51"
 dependencies = [
  "base64 0.10.1",
  "helium-proto",
@@ -751,7 +750,6 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=lthiery/rust-add-serde#b8d312d724b5d638d83d460ec13f5106eac2d22d"
 dependencies = [
  "base64 0.12.3",
  "bs58",

@@ -214,6 +214,10 @@ impl IntoRow for Transaction {
             Data::GenPriceOracleV1(gen_price_oracle) => {
                 into_row!(self, gen_price_oracle, account, client)
             }
+
+            Data::TransferHotspotV1(transfer_hotspot) => {
+                into_row!(self, transfer_hotspot, account, client)
+            }
         }
     }
 }
@@ -326,6 +330,7 @@ into_row!(PaymentV2, "PaymentV2");
 into_row!(PriceOracleV1, "PriceOracleV1");
 into_row!(GenPriceOracleV1, "GenPriceOracleV1");
 into_row!(BundleV1, "BundleV1");
+into_row!(TransferHotspotV1, "TransferHotspotV1");
 
 dummy_difference!(AddGatewayV1);
 dummy_difference!(AssertLocationV1);
@@ -349,3 +354,4 @@ dummy_difference!(StateChannelCloseV1);
 dummy_difference!(PriceOracleV1);
 dummy_difference!(GenPriceOracleV1);
 dummy_difference!(BundleV1);
+dummy_difference!(TransferHotspotV1);

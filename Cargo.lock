@@ -690,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.3.11-dev"
+version = "1.3.11"
 dependencies = [
  "aead",
  "aes-gcm",

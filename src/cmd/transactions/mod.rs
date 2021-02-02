@@ -109,7 +109,7 @@ impl Cmd {
 
         for transaction in &all_transactions {
             if self.rewards {
-                if let Data::RewardsV1(reward) = &transaction.data {
+                if let Data::RewardsV1(_) = &transaction.data {
                     table.add_row(transaction.into_row(&Address::from_str(&address)?, &client));
                 }
             } else {

@@ -109,7 +109,7 @@ impl Combine {
         let mut combined_proofs = Proofs::from_txn(&envelope)?;
         for path in &self.proofs {
             let proofs = Proofs::load(path)?;
-            combined_proofs.merge_proofs(&proofs)?;
+            combined_proofs.merge_proofs(&proofs);
         }
         combined_proofs.apply(&mut envelope)?;
         let status = if self.commit {
@@ -200,11 +200,10 @@ impl Proofs {
         Ok(())
     }
 
-    fn merge_proofs(&mut self, other: &Proofs) -> Result {
+    fn merge_proofs(&mut self, other: &Proofs) {
         self.proofs.extend(other.proofs.clone());
         self.key_proofs.extend(other.key_proofs.clone());
         self.dedup();
-        Ok(())
     }
 
     fn dedup(&mut self) {

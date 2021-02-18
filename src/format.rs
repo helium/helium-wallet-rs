@@ -1,6 +1,9 @@
-use crate::{pwhash::PWHash, result::Result};
+use crate::{
+    pwhash::PWHash,
+    result::{bail, Result},
+};
 use byteorder::{ReadBytesExt, WriteBytesExt};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, Mac, NewMac};
 use sha2::Sha256;
 use shamirsecretsharing::hazmat::{combine_keyshares, create_keyshares};
 use sodiumoxide::randombytes;
@@ -146,26 +149,25 @@ impl Sharded {
             self.key_shares = key_shares;
         } else if self.key_shares.len() < self.recovery_threshold as usize {
             // Otherwise validate that we can reconstruct the key
-            return Err("not enouth keyshares to recover key".into());
+            bail!("not enouth keyshares to recover key");
         } else {
             // Reconstruct shared key
             let key_share_vecs: Vec<Vec<u8>> =
                 self.key_shares.iter().map(|sh| sh.to_vec()).collect();
             match combine_keyshares(&key_share_vecs) {
                 Ok(k) => sss_key.copy_from_slice(&k),
-                Err(_) => return Err("Failed to combine keyshares".into()),
+                Err(_) => bail!("Failed to combine keyshares"),
             }
         }
 
         // Now go derive the encryption key from the sharded key
         // source and the stretched key
         let mut hmac = match Hmac::<Sha256>::new_varkey(&sss_key) {
-            Err(_) => return Err("Failed to initialize hmac".into()),
+            Err(_) => bail!("Failed to initialize hmac"),
             Ok(m) => m,
         };
-        hmac.input(key);
-        let code: [u8; 32] = hmac.result().code().into();
-        key.copy_from_slice(&code);
+        hmac.update(key);
+        key.copy_from_slice(&hmac.finalize().into_bytes());
         Ok(())
     }
 
@@ -192,7 +194,7 @@ impl Sharded {
         if self.key_share_count != other.key_share_count
             || self.recovery_threshold != other.recovery_threshold
         {
-            return Err("Shards are not congruent".into());
+            bail!("Shards are not congruent");
         }
 
         self.key_shares.extend_from_slice(&other.key_shares);
@@ -210,7 +212,7 @@ impl Sharded {
 
     pub fn write(&self, writer: &mut dyn io::Write) -> Result {
         if self.key_shares.len() != 1 {
-            return Err("Invalid number of ksy shares in shard".into());
+            bail!("Invalid number of ksy shares in shard");
         }
         writer.write_u8(self.key_share_count)?;
         writer.write_u8(self.recovery_threshold)?;

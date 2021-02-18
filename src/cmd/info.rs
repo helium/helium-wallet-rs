@@ -38,6 +38,8 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             let mut table = Table::new();
             table.add_row(row!["Key", "Value"]);
             table.add_row(row!["Address", account.address]);
+            table.add_row(row!["Network", wallet.public_key.tag().network]);
+            table.add_row(row!["Type", wallet.public_key.tag().key_type]);
             table.add_row(row!["Sharded", wallet.is_sharded()]);
             table.add_row(row!["PWHash", wallet.pwhash()]);
             table.add_row(row!["Balance", Hnt::from_bones(account.balance)]);
@@ -51,6 +53,8 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
         OutputFormat::Json => {
             let table = json!({
                 "sharded": wallet.is_sharded(),
+                "network": wallet.public_key.tag().network.to_string(),
+                "type": wallet.public_key.tag().key_type.to_string(),
                 "pwhash": wallet.pwhash().to_string(),
                 "account": account,
             });

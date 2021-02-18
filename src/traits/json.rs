@@ -1,7 +1,7 @@
 use crate::{
-    keypair::PubKeyBin,
-    result::Result,
-    traits::{B58, B64},
+    keypair::PublicKey,
+    result::{anyhow, Result},
+    traits::B64,
 };
 use helium_api::{BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, BlockchainVarV1};
 
@@ -9,7 +9,7 @@ pub(crate) fn maybe_b58(data: &[u8]) -> Result<Option<String>> {
     if data.is_empty() {
         Ok(None)
     } else {
-        Ok(Some(data.to_vec().to_b58()?))
+        Ok(Some(PublicKey::from_bytes(data)?.to_string()))
     }
 }
 
@@ -49,7 +49,7 @@ fn vec_to_strings(vec: &[Vec<u8>]) -> Result<Vec<String>> {
 fn vec_to_b58s(vec: &[Vec<u8>]) -> Result<Vec<String>> {
     let mut seq = Vec::with_capacity(vec.len());
     for entry in vec {
-        seq.push(PubKeyBin::from_vec(entry).to_b58()?);
+        seq.push(PublicKey::from_bytes(entry)?.to_string());
     }
     Ok(seq)
 }
@@ -97,7 +97,7 @@ impl ToJson for BlockchainVarV1 {
                 let v: String = String::from_utf8(self.value.to_vec())?;
                 json!(v)
             }
-            _ => return Err(format!("Invalid variable {:?}", self).into()),
+            _ => return Err(anyhow!("Invalid variable {:?}", self)),
         };
         Ok(json!({
             "name": self.name,
@@ -109,9 +109,9 @@ impl ToJson for BlockchainVarV1 {
 
 impl ToJson for BlockchainTxnTransferHotspotV1 {
     fn to_json(&self) -> Result<serde_json::Value> {
-        let seller = PubKeyBin::from_vec(&self.seller).to_b58()?;
-        let gateway = PubKeyBin::from_vec(&self.gateway).to_b58()?;
-        let buyer = PubKeyBin::from_vec(&self.buyer).to_b58()?;
+        let seller = PublicKey::from_bytes(&self.seller)?.to_string();
+        let gateway = PublicKey::from_bytes(&self.gateway)?.to_string();
+        let buyer = PublicKey::from_bytes(&self.buyer)?.to_string();
 
         Ok(json!({
             "seller": seller,

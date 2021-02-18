@@ -1,5 +1,6 @@
-use crate::result::Result;
+use crate::result::{bail, Result};
 use regex::Regex;
+
 include!(concat!(env!("OUT_DIR"), "/english.rs"));
 
 type WordList = &'static [&'static str];
@@ -18,7 +19,7 @@ fn get_wordlist(language: Language) -> WordList {
 /// generate a keypair
 pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
     if words.len() != 12 {
-        return Err("Invalid number of seed words".into());
+        bail!("Invalid number of seed words");
     }
     let wordlist = get_wordlist(Language::English);
 
@@ -26,7 +27,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
     for word in words.iter() {
         let idx_bits = match wordlist.iter().position(|s| *s == word.to_lowercase()) {
             Some(idx) => format!("{:011b}", idx),
-            _ => return Err(format!("Seed word {} not found in wordlist", word).into()),
+            _ => bail!("Seed word {} not found in wordlist", word),
         };
         bit_vec.push(idx_bits);
     }
@@ -37,7 +38,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
     // The mobile wallet does not calculate the checksum bits right so
     // they always and up being all 0
     if checksum_bits != "0000" {
-        return Err("invalid checksum".into());
+        bail!("invalid checksum");
     }
 
     lazy_static! {
@@ -64,7 +65,6 @@ fn binary_to_bytes(bin: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bs58;
 
     #[test]
     fn decode_words() {

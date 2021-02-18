@@ -1,4 +1,4 @@
-use crate::result::Result;
+use crate::result::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use hmac::Hmac;
 use sha2::Sha256;
@@ -71,7 +71,7 @@ impl PBKDF2 {
     }
 
     pub fn pwhash(&self, password: &[u8], hash: &mut [u8]) -> Result {
-        pbkdf2::pbkdf2::<Hmac<Sha256>>(password, &self.salt, self.iterations as usize, hash);
+        pbkdf2::pbkdf2::<Hmac<Sha256>>(password, &self.salt, self.iterations, hash);
         Ok(())
     }
 
@@ -116,7 +116,7 @@ impl Argon2id13 {
     pub fn pwhash(&self, password: &[u8], hash: &mut [u8]) -> Result {
         match argon2id13::derive_key(hash, password, &self.salt, self.ops_limit, self.mem_limit) {
             Ok(_) => Ok(()),
-            Err(_) => Err("Failed to hash password".into()),
+            Err(_) => Err(anyhow!("Failed to hash password")),
         }
     }
 

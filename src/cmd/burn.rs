@@ -3,9 +3,9 @@ use crate::{
         api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
         status_str, Opts, OutputFormat,
     },
-    keypair::PubKeyBin,
+    keypair::PublicKey,
     result::Result,
-    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnTokenBurnV1, Client, Hnt, PendingTxnStatus};
 use serde_json::json;
@@ -16,7 +16,7 @@ use structopt::StructOpt;
 pub struct Cmd {
     /// Account address to send the resulting DC to.
     #[structopt(long)]
-    payee: String,
+    payee: PublicKey,
 
     /// Memo field to include. Provide as a base64 encoded string
     #[structopt(long)]
@@ -39,7 +39,7 @@ impl Cmd {
         let client = Client::new_with_base_url(api_url());
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = client.get_account(&keypair.public.to_b58()?)?;
+        let account = client.get_account(&keypair.public_key().to_string())?;
         let memo = match &self.memo {
             None => 0,
             Some(s) => u64::from_b64(&s)?,
@@ -47,9 +47,9 @@ impl Cmd {
 
         let mut txn = BlockchainTxnTokenBurnV1 {
             fee: 0,
-            payee: PubKeyBin::from_b58(&self.payee)?.into(),
+            payee: self.payee.to_bytes().to_vec(),
             amount: self.amount.to_bones(),
-            payer: keypair.pubkey_bin().into(),
+            payer: keypair.public_key().into(),
             memo,
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
@@ -76,7 +76,7 @@ fn print_txn(
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
-                ["Payee", PubKeyBin::from_vec(&txn.payee).to_b58().unwrap()],
+                ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
                 ["Memo", txn.memo.to_b64()?],
                 ["Amount", Hnt::from_bones(txn.amount)],
                 ["Fee", txn.fee],
@@ -87,7 +87,7 @@ fn print_txn(
         }
         OutputFormat::Json => {
             let table = json!({
-                "payee": PubKeyBin::from_vec(&txn.payee).to_b58().unwrap(),
+                "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
                 "amount": Hnt::from_bones(txn.amount),
                 "memo": txn.memo.to_b64()?,
                 "fee": txn.fee,

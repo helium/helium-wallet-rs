@@ -3,8 +3,8 @@ use crate::{
         api_url, get_password, load_wallet, print_footer, print_json, status_json, status_str,
         Opts, OutputFormat,
     },
-    result::Result,
-    traits::{Sign, TxnEnvelope, B64},
+    result::{anyhow, Result},
+    traits::{TxnEnvelope, TxnSign, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnPriceOracleV1, Client, PendingTxnStatus};
 use rust_decimal::{prelude::*, Decimal};
@@ -55,7 +55,7 @@ impl Report {
         let client = Client::new_with_base_url(api_url());
 
         let mut txn = BlockchainTxnPriceOracleV1 {
-            public_key: keypair.pubkey_bin().into(),
+            public_key: keypair.public_key().into(),
             price: self.price.to_millis(),
             block_height: self.block.to_block(),
             signature: Vec::new(),
@@ -132,32 +132,46 @@ struct Price(Decimal);
 
 impl Price {
     fn from_coingecko() -> Result<Self> {
-        let mut response = reqwest::get("https://api.coingecko.com/api/v3/coins/helium")?;
+        let response = reqwest::blocking::get("https://api.coingecko.com/api/v3/coins/helium")?;
         let json: serde_json::Value = response.json()?;
         let amount = &json["market_data"]["current_price"]["usd"];
         Price::from_str(&amount.to_string())
     }
 
     fn from_bilaxy() -> Result<Self> {
-        let mut response = reqwest::get("https://newapi.bilaxy.com/v1/valuation?currency=HNT")?;
+        let response =
+            reqwest::blocking::get("https://newapi.bilaxy.com/v1/valuation?currency=HNT")?;
         let json: serde_json::Value = response.json()?;
         let amount = &json["HNT"]["usd_value"];
-        Price::from_str(amount.as_str().ok_or("No USD value found")?)
+        Price::from_str(
+            amount
+                .as_str()
+                .ok_or_else(|| anyhow!("No USD value found"))?,
+        )
     }
 
     fn from_binance_us() -> Result<Self> {
-        let mut response =
-            reqwest::get("https://api.binance.us/api/v3/ticker/price?symbol=HNTUSD")?;
+        let response =
+            reqwest::blocking::get("https://api.binance.us/api/v3/ticker/price?symbol=HNTUSD")?;
         let json: serde_json::Value = response.json()?;
         let amount = &json["price"];
-        Price::from_str(amount.as_str().ok_or("No USD value found")?)
+        Price::from_str(
+            amount
+                .as_str()
+                .ok_or_else(|| anyhow!("No USD value found"))?,
+        )
     }
 
     fn from_binance_int() -> Result<Self> {
-        let mut response = reqwest::get("https://api.binance.us/api/v3/avgPrice?symbol=HNTUSDT")?;
+        let response =
+            reqwest::blocking::get("https://api.binance.us/api/v3/avgPrice?symbol=HNTUSDT")?;
         let json: serde_json::Value = response.json()?;
         let amount = &json["price"];
-        Price::from_str(amount.as_str().ok_or("No USD value found")?)
+        Price::from_str(
+            amount
+                .as_str()
+                .ok_or_else(|| anyhow!("No USD value found"))?,
+        )
     }
 
     fn to_millis(self) -> u64 {
@@ -179,9 +193,9 @@ impl Price {
 }
 
 impl FromStr for Price {
-    type Err = Box<dyn std::error::Error>;
+    type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self> {
         match s {
             "coingecko" => Price::from_coingecko(),
             "bilaxy" => Price::from_bilaxy(),

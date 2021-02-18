@@ -1,191 +1,104 @@
-use crate::{
-    result::Result,
-    traits::{ReadWrite, B58},
-};
+use crate::{result::Result, traits::ReadWrite};
 use byteorder::ReadBytesExt;
-use ed25519::Signature;
-pub use ed25519::{PublicKey, SecretKey, Seed};
-use sodiumoxide::crypto::sign::ed25519;
-use std::{fmt, io, str::FromStr};
+use std::{convert::TryFrom, io};
+
+use helium_crypto::{ecc_compact, ed25519};
+pub use helium_crypto::{
+    KeyTag, KeyType, Network, PublicKey, Sign, Verify, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR,
+    PUBLIC_KEY_LENGTH,
+};
+
+#[derive(Debug, PartialEq)]
+pub enum Keypair {
+    Ed25519(helium_crypto::ed25519::Keypair),
+    EccCompact(helium_crypto::ecc_compact::Keypair),
+}
 
 static START: std::sync::Once = std::sync::Once::new();
-pub const KEYTYPE_ED25519: u8 = 1;
-
-// Newtype to allow us to `impl Default` on a 33 element array.
-#[derive(Clone, Copy)]
-pub struct PubKeyBin(pub(crate) [u8; 33]);
-
-impl Default for PubKeyBin {
-    fn default() -> Self {
-        PubKeyBin([0; 33])
-    }
-}
-
-impl From<&PublicKey> for PubKeyBin {
-    fn from(pubkey: &PublicKey) -> Self {
-        let mut buf = PubKeyBin::default();
-        buf.0[0] = KEYTYPE_ED25519;
-        buf.0[1..].copy_from_slice(&pubkey.0);
-        buf
-    }
-}
-
-impl PubKeyBin {
-    pub fn to_vec(&self) -> Vec<u8> {
-        self.0.to_vec()
-    }
-
-    pub fn from_vec(data: &[u8]) -> Self {
-        let mut result = PubKeyBin::default();
-        result.0.copy_from_slice(&data);
-        result
-    }
-}
-
-impl From<PubKeyBin> for PublicKey {
-    fn from(pkb: PubKeyBin) -> PublicKey {
-        assert!(pkb.0[0] == KEYTYPE_ED25519);
-        let mut buf = [0u8; 32];
-        buf.copy_from_slice(&pkb.0[1..]);
-        Self(buf)
-    }
-}
-
-impl From<PubKeyBin> for Vec<u8> {
-    fn from(pkb: PubKeyBin) -> Vec<u8> {
-        pkb.to_vec()
-    }
-}
-
-impl PartialEq for PubKeyBin {
-    fn eq(&self, other: &Self) -> bool {
-        use std::cmp::Ordering::Equal;
-        self.0.cmp(&other.0) == Equal
-    }
-}
-
-impl FromStr for PubKeyBin {
-    type Err = Box<dyn std::error::Error>;
-    fn from_str(s: &str) -> Result<Self> {
-        PubKeyBin::from_b58(s)
-    }
-}
-
-impl fmt::Debug for PubKeyBin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.to_b58() {
-            Ok(s) => f.write_str(&s),
-            Err(_e) => Err(fmt::Error),
-        }
-    }
-}
-
-impl fmt::Display for PubKeyBin {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.to_b58() {
-            Ok(s) => f.write_str(&s),
-            Err(_e) => Err(fmt::Error),
-        }
-    }
-}
-
-#[derive(PartialEq)]
-pub struct Keypair {
-    pub public: PublicKey,
-    pub secret: SecretKey,
-}
 
 fn init() {
     START.call_once(|| sodiumoxide::init().expect("Failed to intialize sodium"))
 }
 
+impl Default for Keypair {
+    fn default() -> Self {
+        Self::generate(KeyTag::default())
+    }
+}
+
 impl Keypair {
-    pub fn gen_keypair() -> Keypair {
-        init();
-        let (pk, sk) = ed25519::gen_keypair();
-        Keypair {
-            public: pk,
-            secret: sk,
+    pub fn generate(key_tag: KeyTag) -> Self {
+        use rand::rngs::OsRng;
+        match key_tag.key_type {
+            KeyType::Ed25519 => {
+                Self::Ed25519(ed25519::Keypair::generate(key_tag.network, &mut OsRng))
+            }
+            KeyType::EccCompact => {
+                Self::EccCompact(ecc_compact::Keypair::generate(key_tag.network, &mut OsRng))
+            }
         }
     }
 
-    pub fn gen_keypair_from_seed(seed: &Seed) -> Keypair {
-        init();
-        let (pk, sk) = ed25519::keypair_from_seed(seed);
-        Keypair {
-            public: pk,
-            secret: sk,
+    pub fn generate_from_entropy(key_tag: KeyTag, entropy: &[u8]) -> Result<Self> {
+        match key_tag.key_type {
+            KeyType::Ed25519 => Ok(Self::Ed25519(ed25519::Keypair::generate_from_entropy(
+                key_tag.network,
+                entropy,
+            )?)),
+            KeyType::EccCompact => Ok(Self::EccCompact(
+                ecc_compact::Keypair::generate_from_entropy(key_tag.network, entropy)?,
+            )),
         }
     }
 
-    pub fn sign(&self, data: &[u8]) -> Vec<u8> {
-        ed25519::sign_detached(data, &self.secret).0.to_vec()
+    pub fn public_key(&self) -> &PublicKey {
+        match self {
+            Self::Ed25519(key) => &key.public_key,
+            Self::EccCompact(key) => &key.public_key,
+        }
     }
 
-    pub fn pubkey_bin(&self) -> PubKeyBin {
-        PubKeyBin::from(&self.public)
-    }
-}
-
-impl fmt::Display for Keypair {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Keypair({:?}, {:?})",
-            self.public.to_b58().unwrap(),
-            self.secret
-        )
-    }
-}
-
-impl fmt::Debug for Keypair {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
+    pub fn sign(&self, msg: &[u8]) -> Result<Vec<u8>> {
+        match self {
+            Self::Ed25519(key) => Ok(key.sign(msg)?),
+            Self::EccCompact(key) => Ok(key.sign(msg)?),
+        }
     }
 }
 
 impl ReadWrite for Keypair {
     fn write(&self, writer: &mut dyn io::Write) -> Result {
-        writer.write_all(&[KEYTYPE_ED25519])?;
-        writer.write_all(&self.secret.0)?;
-        writer.write_all(&self.public.0)?;
+        match self {
+            Self::Ed25519(key) => {
+                writer.write_all(&key.to_bytes())?;
+                writer.write_all(&key.public_key.to_bytes())?;
+            }
+            Self::EccCompact(key) => {
+                writer.write_all(&key.to_bytes())?;
+                writer.write_all(&key.public_key.to_bytes())?;
+            }
+        }
         Ok(())
     }
 
     fn read(reader: &mut dyn io::Read) -> Result<Keypair> {
         init();
-        let key_type = reader.read_u8()?;
-        if key_type != KEYTYPE_ED25519 {
-            return Err(format!("Invalid key type {}", key_type).into());
-        }
-
-        let mut sk_buf = [0; 64];
-        reader.read_exact(&mut sk_buf)?;
-
-        let mut pk_buf = [0; 32];
-        reader.read_exact(&mut pk_buf)?;
-
-        Ok(Keypair {
-            public: PublicKey(pk_buf),
-            secret: SecretKey(sk_buf),
-        })
-    }
-}
-
-pub trait Verify {
-    fn verify(&self, message: &[u8], signature: &[u8]) -> Result;
-}
-
-impl Verify for PublicKey {
-    fn verify(&self, message: &[u8], signature: &[u8]) -> Result {
-        if let Some(sig) = Signature::from_slice(signature) {
-            if ed25519::verify_detached(&sig, message, self) {
-                Ok(())
-            } else {
-                Err("Sigmature does not verify".into())
+        let tag = reader.read_u8()?;
+        match KeyType::try_from(tag)? {
+            KeyType::Ed25519 => {
+                let mut sk_buf = [0u8; ed25519::KEYPAIR_LENGTH];
+                sk_buf[0] = tag;
+                reader.read_exact(&mut sk_buf[1..])?;
+                Ok(Keypair::Ed25519(ed25519::Keypair::try_from(&sk_buf[..])?))
             }
-        } else {
-            Err("Invalid signature".into())
+            KeyType::EccCompact => {
+                let mut sk_buf = [0u8; ecc_compact::KEYPAIR_LENGTH];
+                sk_buf[0] = tag;
+                reader.read_exact(&mut sk_buf[1..])?;
+                Ok(Keypair::EccCompact(ecc_compact::Keypair::try_from(
+                    &sk_buf[..],
+                )?))
+            }
         }
     }
 }
@@ -193,11 +106,11 @@ impl Verify for PublicKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use std::{io::Cursor, str::FromStr};
 
     #[test]
     fn roundtrip_keypair() {
-        let keypair = Keypair::gen_keypair();
+        let keypair = Keypair::default();
         let mut buffer = Vec::new();
         keypair
             .write(&mut buffer)
@@ -209,20 +122,22 @@ mod tests {
 
     #[test]
     fn roundtrip_public_key() {
-        let pk = Keypair::gen_keypair().public;
+        let pk = Keypair::default();
         let mut buffer = Vec::new();
-        pk.write(&mut buffer).expect("Failed to encode public key");
+        pk.public_key()
+            .write(&mut buffer)
+            .expect("Failed to encode public key");
 
         let decoded =
             PublicKey::read(&mut Cursor::new(buffer)).expect("Failed to decode public key");
-        assert_eq!(pk, decoded);
+        assert_eq!(pk.public_key(), &decoded);
     }
 
     #[test]
     fn roundtrip_b58_public_key() {
-        let pk = Keypair::gen_keypair().public;
-        let encoded = pk.to_b58().expect("Failed to encode public key");
-        let decoded = PublicKey::from_b58(&encoded).expect("Failed to decode public key");
-        assert_eq!(pk, decoded);
+        let pk = Keypair::default();
+        let decoded =
+            PublicKey::from_str(&pk.public_key().to_string()).expect("Failed to decode public key");
+        assert_eq!(pk.public_key(), &decoded);
     }
 }

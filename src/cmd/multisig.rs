@@ -1,8 +1,8 @@
 use crate::{
     cmd::{api_url, get_password, load_wallet, print_json, status_json, Opts},
     keypair::Keypair,
-    result::Result,
-    traits::{Sign, ToJson, B64},
+    result::{bail, Result},
+    traits::{ToJson, TxnSign, B64},
 };
 use helium_api::{BlockchainTxn, Client, PendingTxnStatus, Txn};
 use serde::{Deserialize, Serialize};
@@ -109,7 +109,7 @@ impl Combine {
         let mut combined_proofs = Proofs::from_txn(&envelope)?;
         for path in &self.proofs {
             let proofs = Proofs::load(path)?;
-            combined_proofs.merge_proofs(&proofs)?;
+            combined_proofs.merge_proofs(&proofs);
         }
         combined_proofs.apply(&mut envelope)?;
         let status = if self.commit {
@@ -125,7 +125,7 @@ impl Combine {
 fn print_txn(envelope: &BlockchainTxn, status: &Option<PendingTxnStatus>) -> Result {
     let mut json = match &envelope.txn {
         Some(Txn::Vars(t)) => t.to_json()?,
-        _ => return Err("Unsupported transaction for multisig".into()),
+        _ => bail!("Unsupported transaction for multisig"),
     };
     json["hash"] = status_json(status);
     json["txn"] = envelope.to_b64()?.into();
@@ -158,7 +158,7 @@ impl Proofs {
                     proofs.proofs.push(signature.to_b64()?);
                 }
             }
-            _ => return Err("Invalid transaction for proof".into()),
+            _ => bail!("Invalid transaction for proof"),
         }
         Ok(proofs)
     }
@@ -175,7 +175,7 @@ impl Proofs {
                     t.multi_proofs.push(Vec::<u8>::from_b64(&signature)?);
                 }
             }
-            _ => return Err("Invalid transaction for proof".into()),
+            _ => bail!("Invalid transaction for proof"),
         };
         Ok(())
     }
@@ -195,16 +195,15 @@ impl Proofs {
                 };
                 self.dedup();
             }
-            _ => return Err("Invalid transaction for proof".into()),
+            _ => bail!("Invalid transaction for proof"),
         };
         Ok(())
     }
 
-    fn merge_proofs(&mut self, other: &Proofs) -> Result {
+    fn merge_proofs(&mut self, other: &Proofs) {
         self.proofs.extend(other.proofs.clone());
         self.key_proofs.extend(other.key_proofs.clone());
         self.dedup();
-        Ok(())
     }
 
     fn dedup(&mut self) {

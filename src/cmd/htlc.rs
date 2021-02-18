@@ -3,9 +3,9 @@ use crate::{
         api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
         status_str, Opts, OutputFormat,
     },
-    keypair::{Keypair, PubKeyBin},
+    keypair::{Keypair, PublicKey},
     result::Result,
-    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
 use helium_api::{
     BlockchainTxn, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Client, Hnt,
@@ -26,7 +26,7 @@ pub enum Cmd {
 /// The transaction is not submitted to the system unless the '--commit' option is given.
 pub struct Create {
     /// The address of the intended payee for this HTLC
-    payee: String,
+    payee: PublicKey,
 
     /// Number of hnt to send
     #[structopt(long)]
@@ -49,7 +49,7 @@ pub struct Create {
 /// Redeem the balance from an HTLC address with the specified preimage for the hashlock
 pub struct Redeem {
     /// Address of the HTLC contract to redeem from
-    address: String,
+    address: PublicKey,
 
     /// The preimage used to create the hashlock for this contract address
     #[structopt(short = "p", long = "preimage")]
@@ -80,15 +80,16 @@ impl Create {
         let client = Client::new_with_base_url(api_url());
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = client.get_account(&keypair.public.to_b58()?)?;
-        let address = Keypair::gen_keypair().pubkey_bin();
+        let wallet_address = keypair.public_key();
+        let account = client.get_account(&wallet_address.to_string())?;
+        let address = Keypair::generate(wallet_address.tag());
 
         let mut txn = BlockchainTxnCreateHtlcV1 {
             amount: self.hnt.to_bones(),
             fee: 0,
-            payee: PubKeyBin::from_b58(&self.payee)?.into(),
-            payer: keypair.pubkey_bin().into(),
-            address: address.into(),
+            payee: self.payee.to_vec(),
+            payer: wallet_address.to_vec(),
+            address: address.public_key().to_vec(),
             hashlock: hex::decode(self.hashlock.clone()).unwrap(),
             timelock: self.timelock,
             nonce: account.speculative_nonce + 1,
@@ -118,8 +119,8 @@ fn print_create_txn(
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
-                ["Address", PubKeyBin::from_vec(&txn.address).to_b58()?],
-                ["Payee", PubKeyBin::from_vec(&txn.payee).to_b58()?],
+                ["Address", PublicKey::from_bytes(&txn.address)?.to_string()],
+                ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
                 ["Amount", txn.amount],
                 ["Hashlock", hex::encode(&txn.hashlock)],
                 ["Timelock", txn.timelock],
@@ -130,8 +131,8 @@ fn print_create_txn(
         }
         OutputFormat::Json => {
             let table = json!({
-                "address": PubKeyBin::from_vec(&txn.address).to_b58()?,
-                "payee": PubKeyBin::from_vec(&txn.payee).to_b58()?,
+                "address": PublicKey::from_bytes(&txn.address)?.to_string(),
+                "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
                 "amount": txn.amount,
                 "hashlock": hex::encode(&txn.hashlock),
                 "timelock": txn.timelock,
@@ -153,8 +154,8 @@ impl Redeem {
 
         let mut txn = BlockchainTxnRedeemHtlcV1 {
             fee: 0,
-            payee: keypair.pubkey_bin().into(),
-            address: PubKeyBin::from_b58(&self.address)?.into(),
+            payee: keypair.public_key().to_vec(),
+            address: self.address.to_vec(),
             preimage: self.preimage.clone().into_bytes(),
             signature: Vec::new(),
         };
@@ -182,8 +183,8 @@ fn print_redeem_txn(
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
-                ["Payee", PubKeyBin::from_vec(&txn.payee).to_b58()?],
-                ["Address", PubKeyBin::from_vec(&txn.address).to_b58()?],
+                ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
+                ["Address", PublicKey::from_bytes(&txn.payee)?.to_string()],
                 ["Preimage", std::str::from_utf8(&txn.preimage)?],
                 ["Hash", status_str(status)]
             );
@@ -191,8 +192,8 @@ fn print_redeem_txn(
         }
         OutputFormat::Json => {
             let table = json!({
-                "address": PubKeyBin::from_vec(&txn.address).to_b58()?,
-                "payee": PubKeyBin::from_vec(&txn.payee).to_b58()?,
+                "address": PublicKey::from_bytes(&txn.address)?.to_string(),
+                "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
             });

@@ -1,6 +1,6 @@
 use crate::{
     cmd::{api_url, multisig::Artifact, print_json, Opts},
-    keypair::PubKeyBin,
+    keypair::PublicKey,
     result::Result,
     traits::{ToJson, TxnEnvelope},
 };
@@ -36,7 +36,7 @@ pub struct Create {
 
     /// Signing keys to set
     #[structopt(long, name = "key")]
-    key: Vec<PubKeyBin>,
+    key: Vec<PublicKey>,
 
     /// The nonce to use
     #[structopt(long, number_of_values(1))]
@@ -64,7 +64,7 @@ impl Current {
 
 fn get_vars() -> Result<serde_json::Map<String, serde_json::Value>> {
     let client = Client::new_with_base_url(api_url());
-    client.get_vars()
+    client.get_vars().map_err(|e| e.into())
 }
 
 impl Create {

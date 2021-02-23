@@ -7,7 +7,7 @@ use helium_api::{
     BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, Message,
 };
 
-pub trait Sign: Message + std::clone::Clone {
+pub trait TxnSign: Message + std::clone::Clone {
     fn sign(&self, keypair: &Keypair) -> Result<Vec<u8>>
     where
         Self: std::marker::Sized;
@@ -16,13 +16,13 @@ pub trait Sign: Message + std::clone::Clone {
 
 macro_rules! impl_sign {
     ($txn_type:ty, $( $sig: ident ),+ ) => {
-        impl Sign for $txn_type {
+        impl TxnSign for $txn_type {
             fn sign(&self, keypair: &Keypair) -> Result<Vec<u8>> {
                 let mut buf = vec![];
                 let mut txn = self.clone();
                 $(txn.$sig = vec![];)+
                 txn.encode(& mut buf)?;
-                Ok(keypair.sign(&buf))
+                keypair.sign(&buf)
             }
 
             fn verify(&self, pubkey: &PublicKey, signature: &[u8]) -> Result {
@@ -30,7 +30,7 @@ macro_rules! impl_sign {
                 let mut txn = self.clone();
                 $(txn.$sig = vec![];)+
                 txn.encode(& mut buf)?;
-                pubkey.verify(&buf, &signature)
+                pubkey.verify(&buf, &signature).map_err(|err| err.into())
             }
         }
     }

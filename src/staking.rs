@@ -1,7 +1,7 @@
 use crate::{
-    keypair::PubKeyBin,
-    result::Result,
-    traits::{B58, B64},
+    keypair::PublicKey,
+    result::{anyhow, Result},
+    traits::B64,
 };
 use helium_api::BlockchainTxn;
 use std::time::Duration;
@@ -13,7 +13,7 @@ pub const DEFAULT_BASE_URL: &str = "https://onboarding.dewi.org/api/v2";
 
 pub struct Client {
     base_url: String,
-    client: reqwest::Client,
+    client: reqwest::blocking::Client,
 }
 
 impl Default for Client {
@@ -36,7 +36,7 @@ impl Client {
     /// timeout value.  The library will use absoluate paths based on
     /// the given base_url.
     pub fn new_with_timeout(base_url: String, timeout: u64) -> Self {
-        let client = reqwest::Client::builder()
+        let client = reqwest::blocking::Client::builder()
             .gzip(true)
             .timeout(Duration::from_secs(timeout))
             .build()
@@ -45,8 +45,8 @@ impl Client {
     }
 
     /// Fetch the public maker key for a given onboarding key
-    pub fn address_for(&self, gateway: &PubKeyBin) -> Result<PubKeyBin> {
-        let request_url = format!("{}/hotspots/{}", self.base_url, gateway.to_b58()?);
+    pub fn address_for(&self, gateway: &PublicKey) -> Result<PublicKey> {
+        let request_url = format!("{}/hotspots/{}", self.base_url, gateway.to_string());
         let response: serde_json::Value = self
             .client
             .get(&request_url)
@@ -55,8 +55,8 @@ impl Client {
             .json()?;
         response["data"]["publicAddress"]
             .as_str()
-            .map_or(Err("Invalid staking address from server".into()), |v| {
-                PubKeyBin::from_b58(&v)
+            .map_or(Err(anyhow!("Invalid staking address from server")), |v| {
+                v.parse().map_err(|e: helium_crypto::Error| e.into())
             })
     }
 
@@ -76,7 +76,7 @@ impl Client {
             .json()?;
         let txn_data = response["data"]["transaction"]
             .as_str()
-            .ok_or("Unexpected transaction response from staking server")?;
+            .ok_or_else(|| anyhow!("Unexpected transaction response from staking server"))?;
         Ok(BlockchainTxn::from_b64(txn_data)?)
     }
 }

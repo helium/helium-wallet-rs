@@ -21,7 +21,10 @@ impl Cmd {
         let client = Client::new_with_base_url(api_url());
         let mut results = Vec::with_capacity(self.addresses.len());
         for address in collect_addresses(opts.files, self.addresses.clone())? {
-            results.push((address.to_string(), client.get_account(&address)));
+            results.push((
+                address.to_string(),
+                client.get_account(&address).map_err(|e| e.into()),
+            ));
         }
         print_results(results, opts.format)
     }

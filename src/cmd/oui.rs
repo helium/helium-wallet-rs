@@ -3,12 +3,13 @@ use crate::{
         api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
         status_str, Opts, OutputFormat,
     },
-    keypair::PubKeyBin,
-    result::Result,
-    traits::{Sign, TxnEnvelope, TxnFee, TxnStakingFee, B64},
+    keypair::PublicKey,
+    result::{anyhow, Result},
+    traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnOuiV1, Client, PendingTxnStatus, Txn};
 use serde_json::json;
+use std::convert::TryInto;
 use structopt::StructOpt;
 
 /// Create or update an OUI
@@ -25,7 +26,7 @@ pub enum Cmd {
 pub struct Create {
     /// The address(es) of the router to send packets to
     #[structopt(long = "address", short = "a", number_of_values(1))]
-    addresses: Vec<PubKeyBin>,
+    addresses: Vec<PublicKey>,
 
     /// Initial device membership filter in base64 encoded form
     #[structopt(long)]
@@ -39,7 +40,7 @@ pub struct Create {
     /// Payer for the transaction (B58 address). If not specified the
     /// wallet is used.
     #[structopt(long)]
-    payer: Option<PubKeyBin>,
+    payer: Option<PublicKey>,
 
     /// Commit the transaction to the API. If the staking server is
     /// used as the payer the transaction must first be submitted to
@@ -79,19 +80,14 @@ impl Create {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let wallet_key = keypair.pubkey_bin();
+        let wallet_key = keypair.public_key();
 
         let api_client = Client::new_with_base_url(api_url());
 
         let mut txn = BlockchainTxnOuiV1 {
-            addresses: self
-                .addresses
-                .clone()
-                .into_iter()
-                .map(|s| s.to_vec())
-                .collect(),
-            owner: keypair.pubkey_bin().into(),
-            payer: self.payer.map_or(vec![], |v| v.to_vec()),
+            addresses: map_addresses(self.addresses.clone(), |v| v.to_vec())?,
+            owner: keypair.public_key().into(),
+            payer: self.payer.as_ref().map_or(vec![], |v| v.into()),
             oui: api_client.get_last_oui()?,
             fee: 0,
             staking_fee: 1,
@@ -105,8 +101,8 @@ impl Create {
         txn.owner_signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 
-        match self.payer {
-            key if key == Some(wallet_key) || key.is_none() => {
+        match self.payer.as_ref() {
+            key if key == Some(&wallet_key) || key.is_none() => {
                 // Payer is the wallet submit if ready to commit
                 let status = if self.commit {
                     Some(api_client.submit_txn(&envelope)?)
@@ -136,7 +132,7 @@ impl Submit {
             };
             print_txn(&t, &envelope, &status, opts.format)
         } else {
-            Err("Invalid OUI transaction".into())
+            Err(anyhow!("Invalid OUI transaction"))
         }
     }
 }
@@ -155,12 +151,7 @@ fn print_txn(
                 ["Reqeuested Subnet Size", txn.requested_subnet_size],
                 [
                     "Addresses",
-                    txn.addresses
-                        .clone()
-                        .into_iter()
-                        .map(|v| PubKeyBin::from_vec(&v).to_string())
-                        .collect::<Vec<String>>()
-                        .join("\n")
+                    map_addresses(txn.addresses.clone(), |v| v.to_string())?.join("\n")
                 ],
                 ["Hash", status_str(status)]
             );
@@ -170,11 +161,7 @@ fn print_txn(
         OutputFormat::Json => {
             let table = json!({
                 "requested_oui": txn.oui + 1,
-                "addresses": txn.addresses
-                    .clone()
-                    .into_iter()
-                    .map(|v| PubKeyBin::from_vec(&v).to_string())
-                    .collect::<Vec<String>>(),
+                "addresses": map_addresses(txn.addresses.clone(), |v| v.to_string())?,
                 "requested_subnet_size": txn.requested_subnet_size,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
@@ -183,4 +170,18 @@ fn print_txn(
             print_json(&table)
         }
     }
+}
+
+fn map_addresses<F, R>(addresses: Vec<impl TryInto<PublicKey>>, f: F) -> Result<Vec<R>>
+where
+    F: Fn(PublicKey) -> R,
+{
+    let results: Result<Vec<R>> = addresses
+        .into_iter()
+        .map(|v| match v.try_into() {
+            Ok(public_key) => Ok(f(public_key)),
+            Err(_err) => Err(anyhow!("failed to convert to public key")),
+        })
+        .collect();
+    results
 }

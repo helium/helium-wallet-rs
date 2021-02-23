@@ -186,12 +186,12 @@ mod tests {
 
     #[test]
     fn payment_v1_fee() {
-        let payer = Keypair::gen_keypair();
-        let payee = Keypair::gen_keypair();
+        let payer = Keypair::default();
+        let payee = Keypair::default();
         let fee_config = TxnFeeConfig::active();
         let mut txn = BlockchainTxnPaymentV1 {
-            payee: payee.pubkey_bin().into(),
-            payer: payer.pubkey_bin().into(),
+            payee: payee.public_key().to_vec(),
+            payer: payer.public_key().to_vec(),
             amount: 0,
             nonce: 1,
             fee: 0,
@@ -210,15 +210,15 @@ mod tests {
 
     #[test]
     fn payment_v2_fee() {
-        let payer = Keypair::gen_keypair();
-        let payee = Keypair::gen_keypair();
+        let payer = Keypair::default();
+        let payee = Keypair::default();
         let fee_config = TxnFeeConfig::active();
         let payment = Payment {
-            payee: payee.pubkey_bin().into(),
+            payee: payee.public_key().to_vec(),
             amount: 10_000,
         };
         let txn = BlockchainTxnPaymentV2 {
-            payer: payer.pubkey_bin().into(),
+            payer: payer.public_key().to_vec(),
             payments: vec![payment],
             nonce: 1,
             fee: 0,
@@ -230,15 +230,15 @@ mod tests {
 
     #[test]
     fn create_htlc_fee() {
-        let payer = Keypair::gen_keypair();
-        let payee = Keypair::gen_keypair();
+        let payer = Keypair::default();
+        let payee = Keypair::default();
         let fee_config = TxnFeeConfig::active();
         let txn = BlockchainTxnCreateHtlcV1 {
             amount: 10_000,
             fee: 0,
-            payee: payee.pubkey_bin().into(),
-            payer: payer.pubkey_bin().into(),
-            address: payer.pubkey_bin().into(),
+            payee: payee.public_key().to_vec(),
+            payer: payer.public_key().to_vec(),
+            address: payer.public_key().to_vec(),
             hashlock: vec![],
             timelock: 1,
             nonce: 1,
@@ -250,13 +250,13 @@ mod tests {
 
     #[test]
     fn redeem_htlc_fee() {
-        let payer = Keypair::gen_keypair();
-        let payee = Keypair::gen_keypair();
+        let payer = Keypair::default();
+        let payee = Keypair::default();
         let fee_config = TxnFeeConfig::active();
         let txn = BlockchainTxnRedeemHtlcV1 {
             fee: 0,
-            payee: payee.pubkey_bin().into(),
-            address: payer.pubkey_bin().into(),
+            payee: payee.public_key().to_vec(),
+            address: payer.public_key().to_vec(),
             preimage: vec![],
             signature: vec![],
         };
@@ -266,12 +266,12 @@ mod tests {
 
     #[test]
     fn security_exchange_fee() {
-        let payer = Keypair::gen_keypair();
-        let payee = Keypair::gen_keypair();
+        let payer = Keypair::default();
+        let payee = Keypair::default();
         let fee_config = TxnFeeConfig::active();
         let txn = BlockchainTxnSecurityExchangeV1 {
-            payee: payee.pubkey_bin().into(),
-            payer: payer.pubkey_bin().into(),
+            payee: payee.public_key().to_vec(),
+            payer: payer.public_key().to_vec(),
             amount: 10_000,
             nonce: 1,
             fee: 0,
@@ -283,11 +283,11 @@ mod tests {
 
     #[test]
     fn add_gateway_fee() {
-        let owner = Keypair::gen_keypair();
-        let gateway = Keypair::gen_keypair();
+        let owner = Keypair::default();
+        let gateway = Keypair::default();
         let mut txn = BlockchainTxnAddGatewayV1 {
-            owner: owner.pubkey_bin().into(),
-            gateway: gateway.pubkey_bin().into(),
+            owner: owner.public_key().to_vec(),
+            gateway: gateway.public_key().to_vec(),
             payer: vec![],
             staking_fee: 0,
             fee: 0,
@@ -308,16 +308,16 @@ mod tests {
         assert_txn_fee!(txn, &fee_config, 45_000);
 
         // With a payer
-        txn.payer = owner.pubkey_bin().into();
+        txn.payer = owner.public_key().to_vec();
         assert_txn_fee!(txn, &fee_config, 65_000);
         assert_txn_staking_fee!(txn, &fee_config, STAKING_FEE_ADD_GATEWAY);
     }
 
     #[test]
     fn oui_fee() {
-        let owner = Keypair::gen_keypair();
+        let owner = Keypair::default();
         let mut txn = BlockchainTxnOuiV1 {
-            owner: owner.pubkey_bin().into(),
+            owner: owner.public_key().to_vec(),
             payer: vec![],
             filter: vec![],
             addresses: vec![],
@@ -337,7 +337,7 @@ mod tests {
         assert_txn_staking_fee!(txn, &fee_config, expected_staking_fee);
 
         // with payer
-        txn.payer = owner.pubkey_bin().into();
+        txn.payer = owner.public_key().to_vec();
         assert_txn_fee!(txn, &fee_config, 45_000);
         assert_txn_staking_fee!(txn, &fee_config, expected_staking_fee);
     }

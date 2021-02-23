@@ -1,5 +1,5 @@
 use crate::{
-    keypair::{PubKeyBin, PublicKey, KEYTYPE_ED25519},
+    keypair::{PublicKey, PUBLIC_KEY_LENGTH},
     result::Result,
 };
 use io::{Read, Write};
@@ -14,29 +14,12 @@ pub trait ReadWrite {
 
 impl ReadWrite for PublicKey {
     fn write(&self, writer: &mut dyn io::Write) -> Result {
-        let pubkey_bin: PubKeyBin = self.into();
-        pubkey_bin.write(writer)
+        Ok(writer.write_all(&self.to_bytes())?)
     }
 
     fn read(reader: &mut dyn Read) -> Result<PublicKey> {
-        let pubkey_bin = PubKeyBin::read(reader)?;
-        if pubkey_bin.0[0] != KEYTYPE_ED25519 {
-            return Err(format!("Invalid key type {}", pubkey_bin.0[0]).into());
-        }
-        let pubkey: PublicKey = pubkey_bin.into();
-        Ok(pubkey)
-    }
-}
-
-impl ReadWrite for PubKeyBin {
-    fn write(&self, writer: &mut dyn io::Write) -> Result {
-        writer.write_all(&self.0)?;
-        Ok(())
-    }
-
-    fn read(reader: &mut dyn Read) -> Result<Self> {
-        let mut pubkey_bin = PubKeyBin::default();
-        reader.read_exact(&mut pubkey_bin.0)?;
-        Ok(pubkey_bin)
+        let mut data = [0u8; PUBLIC_KEY_LENGTH];
+        reader.read_exact(&mut data)?;
+        Ok(PublicKey::from_bytes(data)?)
     }
 }

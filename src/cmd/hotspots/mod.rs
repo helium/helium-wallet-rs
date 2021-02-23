@@ -14,7 +14,7 @@ pub mod transfer;
 /// or transfer a hotspot to another wallet
 pub enum Cmd {
     List(List),
-    Transfer(transfer::Transfer),
+    Transfer(Box<transfer::Transfer>),
 }
 
 impl Cmd {
@@ -40,7 +40,10 @@ impl List {
         let mut results: Vec<(String, Result<Vec<Hotspot>>)> =
             Vec::with_capacity(self.addresses.len());
         for address in collect_addresses(opts.files, self.addresses.clone())? {
-            results.push((address.to_string(), client.get_hotspots(&address)));
+            results.push((
+                address.to_string(),
+                client.get_hotspots(&address).map_err(|e| e.into()),
+            ));
         }
         print_results(results, opts.format)
     }

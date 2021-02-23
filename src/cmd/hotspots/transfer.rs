@@ -3,9 +3,9 @@ use crate::{
         api_url, get_password, get_txn_fees, load_wallet, print_json, status_json, Opts,
         OutputFormat,
     },
-    keypair::PubKeyBin,
-    result::Result,
-    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
+    keypair::PublicKey,
+    result::{anyhow, bail, Result},
+    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
 use helium_api::{
     BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, PendingTxnStatus, Txn,
@@ -26,9 +26,9 @@ pub enum Transfer {
 #[derive(Debug, StructOpt)]
 pub struct Sell {
     /// Public address of gateway to be transferred
-    gateway: String,
+    gateway: PublicKey,
     /// The recipient of the gateway transfer
-    buyer: String,
+    buyer: PublicKey,
     /// Price in HNT to be paid by recipient of transfer
     price: Option<Hnt>,
 }
@@ -66,16 +66,13 @@ impl Transfer {
 
         match self {
             Self::Sell(sell) => {
-                let seller = wallet.pubkey_bin.to_vec();
-                let buyer = PubKeyBin::from_b58(&sell.buyer)?;
-                let buyer_account = client.get_account(&buyer.to_b58()?)?;
-                let gateway = PubKeyBin::from_b58(&sell.gateway)?.to_vec();
+                let buyer_account = client.get_account(&sell.buyer.to_string())?;
 
                 let mut txn = BlockchainTxnTransferHotspotV1 {
                     fee: 0,
-                    seller,
-                    gateway,
-                    buyer: buyer.to_vec(),
+                    seller: wallet.public_key.to_vec(),
+                    gateway: sell.gateway.into(),
+                    buyer: sell.buyer.into(),
                     seller_signature: vec![],
                     buyer_signature: vec![],
                     amount_to_seller: sell.price.unwrap_or_else(|| Hnt::from_bones(0)).to_bones(),
@@ -97,7 +94,7 @@ impl Transfer {
                         // verify that nonce is still valid.
                         let nonce = t.buyer_nonce;
                         let buyer_account =
-                            client.get_account(&PubKeyBin::from_vec(&t.buyer).to_b58()?)?;
+                            client.get_account(&PublicKey::from_bytes(&t.buyer)?.to_string())?;
                         let expected_nonce = buyer_account.speculative_nonce + 1;
 
                         if buyer_account.speculative_nonce + 1 != nonce {
@@ -105,7 +102,7 @@ impl Transfer {
                                 "Buyer_nonce in transaction is {} while expected nonce is {}",
                                 nonce, expected_nonce
                             );
-                            return Err("Hotspot transfer nonce no longer valid".into());
+                            bail!("Hotspot transfer nonce no longer valid");
                         }
 
                         let password = get_password(false)?;
@@ -118,7 +115,7 @@ impl Transfer {
                         };
                         print_txn(&envelope, &status, opts.format)
                     }
-                    _ => Err("Unsupported transaction for transfer_hotspot".into()),
+                    _ => Err(anyhow!("Unsupported transaction for transfer_hotspot")),
                 }
             }
         }
@@ -132,7 +129,7 @@ fn print_txn(
 ) -> Result {
     let encoded = envelope.to_b64()?;
     match format {
-        OutputFormat::Table => Err("Table format not supported for transaction output".into()),
+        OutputFormat::Table => Err(anyhow!("Table format not supported for transaction output")),
         OutputFormat::Json => {
             let table = json!({
                 "txn": encoded,

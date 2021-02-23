@@ -3,9 +3,9 @@ use crate::{
         api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, print_table,
         status_json, status_str, Opts, OutputFormat,
     },
-    keypair::PubKeyBin,
+    keypair::PublicKey,
     result::Result,
-    traits::{Sign, TxnEnvelope, TxnFee, B58, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
 use helium_api::{BlockchainTxn, BlockchainTxnPaymentV2, Client, Hnt, Payment, PendingTxnStatus};
 use prettytable::Table;
@@ -39,14 +39,14 @@ impl Cmd {
         let client = Client::new_with_base_url(api_url());
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = client.get_account(&keypair.public.to_b58()?)?;
+        let account = client.get_account(&keypair.public_key().to_string())?;
 
         let payments: Result<Vec<Payment>> = self
             .payees
             .iter()
             .map(|p| {
                 Ok(Payment {
-                    payee: PubKeyBin::from_b58(&p.address)?.into(),
+                    payee: p.address.to_vec(),
                     amount: p.amount.to_bones(),
                 })
             })
@@ -54,7 +54,7 @@ impl Cmd {
         let mut txn = BlockchainTxnPaymentV2 {
             fee: 0,
             payments: payments?,
-            payer: keypair.pubkey_bin().into(),
+            payer: keypair.public_key().into(),
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
@@ -88,7 +88,7 @@ fn print_txn(
             table.add_row(row!["Payee", "Amount"]);
             for payment in txn.payments.clone() {
                 table.add_row(row![
-                    PubKeyBin::from_vec(&payment.payee).to_b58().unwrap(),
+                    PublicKey::from_bytes(payment.payee)?.to_string(),
                     Hnt::from_bones(payment.amount)
                 ]);
             }
@@ -107,7 +107,7 @@ fn print_txn(
             let mut payments = Vec::with_capacity(txn.payments.len());
             for payment in txn.payments.clone() {
                 payments.push(json!({
-                    "payee": PubKeyBin::from_vec(&payment.payee).to_b58().unwrap(),
+                    "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
                     "amount": Hnt::from_bones(payment.amount),
                 }))
             }
@@ -125,7 +125,7 @@ fn print_txn(
 
 #[derive(Debug)]
 pub struct Payee {
-    address: String,
+    address: PublicKey,
     amount: Hnt,
 }
 
@@ -137,7 +137,7 @@ impl FromStr for Payee {
             .find('=')
             .ok_or_else(|| format!("invalid KEY=value: missing `=`  in `{}`", s))?;
         Ok(Payee {
-            address: s[..pos].to_string(),
+            address: s[..pos].parse()?,
             amount: s[pos + 1..].parse()?,
         })
     }

@@ -1,8 +1,8 @@
 use crate::{
-    keypair::PubKeyBin,
+    keypair::PublicKey,
     mnemonic,
-    result::Result,
-    traits::{TxnFeeConfig, B58},
+    result::{bail, Result},
+    traits::TxnFeeConfig,
     wallet::Wallet,
 };
 use helium_api::{Client, PendingTxnStatus};
@@ -61,7 +61,7 @@ fn load_wallet(files: Vec<PathBuf>) -> Result<Wallet> {
             let mut reader = fs::File::open(path)?;
             Wallet::read(&mut reader)?
         }
-        None => return Err("At least one wallet file expected".into()),
+        None => bail!("At least one wallet file expected"),
     };
 
     for path in files_iter {
@@ -106,11 +106,11 @@ fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<String>) -> Result<
 
 fn get_seed_words() -> Result<Vec<String>> {
     use dialoguer::Input;
-    let split_str = |s: String| s.split_whitespace().map(|w| w.to_string()).collect();
+    let split_str = |s: &String| s.split_whitespace().map(|w| w.to_string()).collect();
     let word_string = Input::<String>::new()
         .with_prompt("Seed Words")
-        .validate_with(move |v: &str| {
-            let word_list = split_str(v.to_string());
+        .validate_with(|v: &String| {
+            let word_list = split_str(v);
             match mnemonic::mnemonic_to_entropy(word_list) {
                 Ok(_) => Ok(()),
                 Err(err) => Err(err),
@@ -123,11 +123,11 @@ fn get_seed_words() -> Result<Vec<String>> {
         .collect())
 }
 
-pub fn get_payer(staking_address: PubKeyBin, payer: &Option<String>) -> Result<Option<PubKeyBin>> {
+pub fn get_payer(staking_address: PublicKey, payer: &Option<String>) -> Result<Option<PublicKey>> {
     match payer {
         Some(s) if s == "staking" => Ok(Some(staking_address)),
         Some(s) => {
-            let address = PubKeyBin::from_b58(&s)?;
+            let address = s.parse()?;
             Ok(Some(address))
         }
         None => Ok(None),

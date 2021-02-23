@@ -1,7 +1,7 @@
 use crate::{
     cmd::{get_file_extension, get_password, get_seed_words, verify, Opts},
     format::{self, Format},
-    keypair::{Keypair, Seed},
+    keypair::{KeyTag, KeyType, Keypair, Network, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR},
     mnemonic::mnemonic_to_entropy,
     pwhash::PWHash,
     result::Result,
@@ -31,6 +31,14 @@ pub struct Basic {
     #[structopt(long)]
     /// Use space separated seed words to create the wallet
     seed: bool,
+
+    #[structopt(long, default_value = NETTYPE_MAIN_STR)]
+    /// The network to generate the wallet (testnet/mainnet)
+    network: Network,
+
+    #[structopt(long, default_value = KEYTYPE_ED25519_STR)]
+    /// The type of key to generate (ecc_compact/ed25519(.
+    key_type: KeyType,
 }
 
 #[derive(Debug, StructOpt)]
@@ -55,6 +63,14 @@ pub struct Sharded {
     #[structopt(long)]
     /// Use space separated seed words to create the wallet
     seed: bool,
+
+    #[structopt(long, default_value = NETTYPE_MAIN_STR)]
+    /// The network to generate the wallet (testnet/mainnet)
+    network: Network,
+
+    #[structopt(long, default_value = KEYTYPE_ED25519_STR)]
+    /// The type of key to generate (ecc_compact/ed25519(.
+    key_type: KeyType,
 }
 
 impl Cmd {
@@ -74,7 +90,11 @@ impl Basic {
             None
         };
         let password = get_password(true)?;
-        let keypair = gen_keypair(seed_words)?;
+        let tag = KeyTag {
+            network: self.network,
+            key_type: self.key_type,
+        };
+        let keypair = gen_keypair(tag, seed_words)?;
         let format = format::Basic {
             pwhash: PWHash::argon2id13_default(),
         };
@@ -93,8 +113,12 @@ impl Sharded {
             None
         };
         let password = get_password(true)?;
+        let tag = KeyTag {
+            network: self.network,
+            key_type: self.key_type,
+        };
 
-        let keypair = gen_keypair(seed_words)?;
+        let keypair = gen_keypair(tag, seed_words)?;
         let format = format::Sharded {
             key_share_count: self.key_share_count,
             recovery_threshold: self.recovery_threshold,
@@ -115,13 +139,13 @@ impl Sharded {
     }
 }
 
-fn gen_keypair(seed_words: Option<Vec<String>>) -> Result<Keypair> {
+fn gen_keypair(tag: KeyTag, seed_words: Option<Vec<String>>) -> Result<Keypair> {
     match seed_words {
         Some(words) => {
             let entropy = mnemonic_to_entropy(words)?;
-            Ok(Keypair::gen_keypair_from_seed(&Seed(entropy)))
+            Keypair::generate_from_entropy(tag, &entropy)
         }
-        None => Ok(Keypair::gen_keypair()),
+        None => Ok(Keypair::generate(tag)),
     }
 }
 

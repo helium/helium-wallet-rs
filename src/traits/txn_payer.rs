@@ -1,17 +1,20 @@
-use crate::{keypair::PubKeyBin, result::Result};
+use crate::{
+    keypair::PublicKey,
+    result::{anyhow, Result},
+};
 use helium_api::{BlockchainTxn, Txn};
 
 pub trait TxnPayer {
-    fn payer(&self) -> Result<Option<PubKeyBin>>;
+    fn payer(&self) -> Result<Option<PublicKey>>;
 }
 
 impl TxnPayer for BlockchainTxn {
-    fn payer(&self) -> Result<Option<PubKeyBin>> {
+    fn payer(&self) -> Result<Option<PublicKey>> {
         let maybe_payer = |v: &[u8]| {
             if v.is_empty() {
                 None
             } else {
-                Some(PubKeyBin::from_vec(v))
+                Some(PublicKey::from_bytes(v).ok()?)
             }
         };
         match &self.txn {
@@ -23,7 +26,7 @@ impl TxnPayer for BlockchainTxn {
             Some(Txn::Oui(t)) => Ok(maybe_payer(&t.payer)),
             Some(Txn::TokenBurn(t)) => Ok(maybe_payer(&t.payer)),
             Some(Txn::TransferHotspot(t)) => Ok(maybe_payer(&t.buyer)),
-            _ => Err("Unsupported transaction".into()),
+            _ => Err(anyhow!("Unsupported transaction")),
         }
     }
 }

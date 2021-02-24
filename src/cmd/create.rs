@@ -3,11 +3,14 @@ use crate::{
     format::{self, Format},
     keypair::{KeyTag, KeyType, Keypair, Network, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR},
     mnemonic::mnemonic_to_entropy,
-    pwhash::PWHash,
+    pwhash::PwHash,
     result::Result,
     wallet::Wallet,
 };
-use std::{fs, io, path::PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -96,7 +99,7 @@ impl Basic {
         };
         let keypair = gen_keypair(tag, seed_words)?;
         let format = format::Basic {
-            pwhash: PWHash::argon2id13_default(),
+            pwhash: PwHash::argon2id13_default(),
         };
         let wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Basic(format))?;
         let mut writer = open_output_file(&self.output, !self.force)?;
@@ -122,7 +125,7 @@ impl Sharded {
         let format = format::Sharded {
             key_share_count: self.key_share_count,
             recovery_threshold: self.recovery_threshold,
-            pwhash: PWHash::argon2id13_default(),
+            pwhash: PwHash::argon2id13_default(),
             key_shares: vec![],
         };
         let wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Sharded(format))?;
@@ -149,7 +152,7 @@ fn gen_keypair(tag: KeyTag, seed_words: Option<Vec<String>>) -> Result<Keypair> 
     }
 }
 
-fn open_output_file(filename: &PathBuf, create: bool) -> io::Result<fs::File> {
+fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
     fs::OpenOptions::new()
         .write(true)
         .create(true)

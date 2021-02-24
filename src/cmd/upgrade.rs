@@ -1,7 +1,7 @@
 use crate::{
     cmd::{get_file_extension, get_password, load_wallet, open_output_file, verify, Opts},
     format::{self, Format},
-    pwhash::PWHash,
+    pwhash::PwHash,
     result::Result,
     wallet::Wallet,
 };
@@ -65,7 +65,7 @@ impl Basic {
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let format = format::Basic {
-            pwhash: PWHash::argon2id13_default(),
+            pwhash: PwHash::argon2id13_default(),
         };
         let new_wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Basic(format))?;
         let mut writer = open_output_file(&self.output, !self.force)?;
@@ -83,7 +83,7 @@ impl Sharded {
         let format = format::Sharded {
             key_share_count: self.key_share_count,
             recovery_threshold: self.recovery_threshold,
-            pwhash: PWHash::argon2id13_default(),
+            pwhash: PwHash::argon2id13_default(),
             key_shares: vec![],
         };
         let new_wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Sharded(format))?;

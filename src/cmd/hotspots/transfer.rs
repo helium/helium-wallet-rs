@@ -1,8 +1,5 @@
 use crate::{
-    cmd::{
-        api_url, get_password, get_txn_fees, load_wallet, print_json, status_json, Opts,
-        OutputFormat,
-    },
+    cmd::*,
     keypair::PublicKey,
     result::{anyhow, bail, Result},
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
@@ -10,12 +7,11 @@ use crate::{
 use helium_api::{
     BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, PendingTxnStatus, Txn,
 };
-use std::io;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Transfer hotspot as buyer or seller.
-pub enum Transfer {
+pub enum Cmd {
     /// Create and sign transaction to sell a hotspot, outputting it as base64 for counter-party
     Sell(Sell),
     /// Ingest a transaction to buy a hotspot from base64.
@@ -40,29 +36,16 @@ pub struct Buy {
     /// only works if the wallet password is set in the
     /// HELIUM_WALLET_PASSWORD environment variable
     #[structopt(name = "TRANSACTION")]
-    txn: Option<String>,
+    txn: Option<Transaction>,
     #[structopt(long)]
     /// Commit to sign and submit the transaction
     commit: bool,
 }
 
-impl Buy {
-    fn read_txn(&self) -> Result<String> {
-        match &self.txn {
-            Some(txn) => Ok(txn.to_string()),
-            None => {
-                let mut buffer = String::new();
-                io::stdin().read_line(&mut buffer)?;
-                Ok(buffer.trim().to_string())
-            }
-        }
-    }
-}
-
-impl Transfer {
+impl Cmd {
     pub fn run(self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
-        let client = Client::new_with_base_url(api_url());
+        let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         match self {
             Self::Sell(sell) => {
@@ -87,7 +70,7 @@ impl Transfer {
             }
 
             Self::Buy(buy) => {
-                let mut envelope = BlockchainTxn::from_b64(&buy.read_txn()?)?;
+                let mut envelope = read_txn(&buy.txn)?;
 
                 match &mut envelope.txn {
                     Some(Txn::TransferHotspot(t)) => {

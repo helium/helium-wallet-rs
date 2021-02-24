@@ -1,6 +1,6 @@
 use crate::{
     cmd::{api_url, multisig::Artifact, print_json, Opts},
-    keypair::PublicKey,
+    keypair::{Network, PublicKey},
     result::Result,
     traits::{ToJson, TxnEnvelope},
 };
@@ -17,7 +17,11 @@ pub enum Cmd {
 
 #[derive(Debug, StructOpt)]
 /// Lists current chain variables
-pub struct Current {}
+pub struct Current {
+    /// The network to get the current variables for (mainnet/testnet)
+    #[structopt(long, default_value = "mainnet")]
+    network: Network,
+}
 
 #[derive(Debug, StructOpt)]
 /// Create a chain variable transaction
@@ -45,6 +49,10 @@ pub struct Create {
     /// Return the encoded transaction for signing
     #[structopt(long)]
     txn: bool,
+
+    /// The network to get the current variables for (mainnet/testnet)
+    #[structopt(long, default_value = "mainnet")]
+    network: Network,
 }
 
 impl Cmd {
@@ -58,18 +66,15 @@ impl Cmd {
 
 impl Current {
     pub fn run(&self, _opts: Opts) -> Result {
-        print_json(&get_vars()?)
+        let client = Client::new_with_base_url(api_url(self.network));
+        let vars = client.get_vars()?;
+        print_json(&vars)
     }
-}
-
-fn get_vars() -> Result<serde_json::Map<String, serde_json::Value>> {
-    let client = Client::new_with_base_url(api_url());
-    client.get_vars().map_err(|e| e.into())
 }
 
 impl Create {
     pub fn run(&self, _opts: Opts) -> Result {
-        let client = Client::new_with_base_url(api_url());
+        let client = Client::new_with_base_url(api_url(self.network));
         let vars = client.get_vars()?;
         let mut txn = BlockchainTxnVarsV1 {
             version_predicate: 0,

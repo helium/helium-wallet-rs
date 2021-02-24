@@ -1,7 +1,7 @@
 use helium_wallet::{
     cmd::{
-        balance, burn, create, hotspots, htlc, info, multisig, onboard, oracle, oui, pay, request,
-        securities, upgrade, vars, verify, Opts,
+        balance, burn, create, hotspots, htlc, info, multisig, oracle, oui, pay, request,
+        securities, upgrade, validators, vars, verify, Opts,
     },
     result::Result,
 };
@@ -22,19 +22,19 @@ pub enum Cmd {
     Info(info::Cmd),
     Verify(verify::Cmd),
     Balance(balance::Cmd),
-    Hotspots(hotspots::Cmd),
+    Hotspots(Box<hotspots::Cmd>),
     Create(create::Cmd),
     Upgrade(upgrade::Cmd),
     Pay(pay::Cmd),
     Htlc(htlc::Cmd),
     Oui(oui::Cmd),
-    Onboard(onboard::Cmd),
     Oracle(oracle::Cmd),
     Securities(securities::Cmd),
     Burn(burn::Cmd),
     Multisig(multisig::Cmd),
     Request(request::Cmd),
     Vars(vars::Cmd),
+    Validators(validators::Cmd),
 }
 
 fn main() {
@@ -56,12 +56,12 @@ fn run(cli: Cli) -> Result {
         Cmd::Pay(cmd) => cmd.run(cli.opts),
         Cmd::Htlc(cmd) => cmd.run(cli.opts),
         Cmd::Oui(cmd) => cmd.run(cli.opts),
-        Cmd::Onboard(cmd) => cmd.run(cli.opts),
         Cmd::Oracle(cmd) => cmd.run(cli.opts),
         Cmd::Securities(cmd) => cmd.run(cli.opts),
         Cmd::Burn(cmd) => cmd.run(cli.opts),
         Cmd::Multisig(cmd) => cmd.run(cli.opts),
         Cmd::Request(cmd) => cmd.run(cli.opts),
         Cmd::Vars(cmd) => cmd.run(cli.opts),
+        Cmd::Validators(cmd) => cmd.run(cli.opts),
     }
 }

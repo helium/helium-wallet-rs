@@ -26,7 +26,7 @@ pub fn print_result(wallet: &Wallet, result: bool, format: OutputFormat) -> Resu
         OutputFormat::Table => {
             let mut table = Table::new();
             table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-            table.set_titles(row!["Address", "Sharded", "Verify", "PWHash"]);
+            table.set_titles(row!["Address", "Sharded", "Verify", "PwHash"]);
             table.add_row(row![address, wallet.is_sharded(), result, wallet.pwhash()]);
             print_table(&table)
         }

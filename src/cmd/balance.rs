@@ -1,6 +1,7 @@
 use crate::{
-    cmd::{api_url, collect_addresses, print_json, print_table, Opts, OutputFormat},
-    result::Result,
+    cmd::*,
+    keypair::PublicKey,
+    result::{anyhow, Result},
 };
 use helium_api::{Account, Client, Hnt, Hst};
 use prettytable::{format, Table};
@@ -13,17 +14,27 @@ use structopt::StructOpt;
 pub struct Cmd {
     /// Addresses to get balances for
     #[structopt(short = "a", long = "address")]
-    addresses: Vec<String>,
+    addresses: Vec<PublicKey>,
 }
 
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
-        let client = Client::new_with_base_url(api_url());
+        let addresses = collect_addresses(opts.files, self.addresses.clone())?;
+        let api_url = api_url(
+            addresses
+                .first()
+                .map(|key| key.network)
+                .ok_or_else(|| anyhow!("at least one address expected"))?,
+        );
+        let client = Client::new_with_base_url(api_url);
+
         let mut results = Vec::with_capacity(self.addresses.len());
-        for address in collect_addresses(opts.files, self.addresses.clone())? {
+        for address in addresses {
             results.push((
                 address.to_string(),
-                client.get_account(&address).map_err(|e| e.into()),
+                client
+                    .get_account(&address.to_string())
+                    .map_err(|e| e.into()),
             ));
         }
         print_results(results, opts.format)

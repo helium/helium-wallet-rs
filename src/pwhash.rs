@@ -6,51 +6,51 @@ use sodiumoxide::{crypto::pwhash::argon2id13, randombytes};
 use std::{convert::TryInto, fmt, io};
 
 #[derive(Clone, Copy, Debug)]
-pub enum PWHash {
-    PBKDF2(PBKDF2),
+pub enum PwHash {
+    Pbkdf2(Pbkdf2),
     Argon2id13(Argon2id13),
 }
 
-impl PWHash {
+impl PwHash {
     pub fn pwhash(&self, password: &[u8], hash: &mut [u8]) -> Result {
         match self {
-            PWHash::PBKDF2(hasher) => hasher.pwhash(password, hash),
-            PWHash::Argon2id13(hasher) => hasher.pwhash(password, hash),
+            PwHash::Pbkdf2(hasher) => hasher.pwhash(password, hash),
+            PwHash::Argon2id13(hasher) => hasher.pwhash(password, hash),
         }
     }
 
     pub fn read(&mut self, reader: &mut dyn io::Read) -> Result {
         match self {
-            PWHash::PBKDF2(hasher) => hasher.read(reader),
-            PWHash::Argon2id13(hasher) => hasher.read(reader),
+            PwHash::Pbkdf2(hasher) => hasher.read(reader),
+            PwHash::Argon2id13(hasher) => hasher.read(reader),
         }
     }
 
     pub fn write(&self, writer: &mut dyn io::Write) -> Result {
         match self {
-            PWHash::PBKDF2(hasher) => hasher.write(writer),
-            PWHash::Argon2id13(hasher) => hasher.write(writer),
+            PwHash::Pbkdf2(hasher) => hasher.write(writer),
+            PwHash::Argon2id13(hasher) => hasher.write(writer),
         }
     }
 
     pub fn pbkdf2_default() -> Self {
-        PWHash::PBKDF2(PBKDF2::with_iterations(PBKDF2_DEFAULT_ITERATIONS))
+        PwHash::Pbkdf2(Pbkdf2::with_iterations(PBKDF2_DEFAULT_ITERATIONS))
     }
 
     pub fn pbkdf2(iterations: u32) -> Self {
-        PWHash::PBKDF2(PBKDF2::with_iterations(iterations))
+        PwHash::Pbkdf2(Pbkdf2::with_iterations(iterations))
     }
 
     pub fn argon2id13_default() -> Self {
-        PWHash::Argon2id13(Argon2id13::default())
+        PwHash::Argon2id13(Argon2id13::default())
     }
 }
 
-impl fmt::Display for PWHash {
+impl fmt::Display for PwHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PWHash::PBKDF2(_) => f.write_str("PBKDF2"),
-            PWHash::Argon2id13(_) => f.write_str("Argon2id13"),
+            PwHash::Pbkdf2(_) => f.write_str("Pbkdf2"),
+            PwHash::Argon2id13(_) => f.write_str("Argon2id13"),
         }
     }
 }
@@ -58,12 +58,12 @@ impl fmt::Display for PWHash {
 pub const PBKDF2_DEFAULT_ITERATIONS: u32 = 1_000_000;
 
 #[derive(Clone, Copy, Debug)]
-pub struct PBKDF2 {
+pub struct Pbkdf2 {
     salt: [u8; 8],
     iterations: u32,
 }
 
-impl PBKDF2 {
+impl Pbkdf2 {
     pub fn with_iterations(iterations: u32) -> Self {
         let mut salt: [u8; 8] = [0; 8];
         randombytes::randombytes_into(&mut salt);

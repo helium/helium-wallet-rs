@@ -82,7 +82,7 @@ impl Create {
         let keypair = wallet.decrypt(password.as_bytes())?;
         let wallet_key = keypair.public_key();
 
-        let api_client = Client::new_with_base_url(api_url());
+        let api_client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let mut txn = BlockchainTxnOuiV1 {
             addresses: map_addresses(self.addresses.clone(), |v| v.to_vec())?,
@@ -124,7 +124,8 @@ impl Submit {
     pub fn run(&self, opts: Opts) -> Result {
         let envelope = BlockchainTxn::from_b64(&self.transaction)?;
         if let Some(Txn::Oui(t)) = envelope.txn.clone() {
-            let api_client = helium_api::Client::new_with_base_url(api_url());
+            let api_url = api_url(PublicKey::from_bytes(&t.owner)?.network);
+            let api_client = helium_api::Client::new_with_base_url(api_url);
             let status = if self.commit {
                 Some(api_client.submit_txn(&envelope)?)
             } else {

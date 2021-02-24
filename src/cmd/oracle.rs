@@ -1,8 +1,5 @@
 use crate::{
-    cmd::{
-        api_url, get_password, load_wallet, print_footer, print_json, status_json, status_str,
-        Opts, OutputFormat,
-    },
+    cmd::*,
     result::{anyhow, Result},
     traits::{TxnEnvelope, TxnSign, B64},
 };
@@ -52,12 +49,12 @@ impl Report {
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let client = Client::new_with_base_url(api_url());
+        let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let mut txn = BlockchainTxnPriceOracleV1 {
             public_key: keypair.public_key().into(),
             price: self.price.to_millis(),
-            block_height: self.block.to_block(),
+            block_height: self.block.to_block(&client)?,
             signature: Vec::new(),
         };
         txn.signature = txn.sign(&keypair)?;
@@ -103,25 +100,28 @@ fn print_txn(
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
-struct Block(u64);
+enum Block {
+    Auto,
+    Height(u64),
+}
 
 impl FromStr for Block {
     type Err = Box<dyn std::error::Error>;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "auto" => {
-                let client = Client::new_with_base_url(api_url());
-                Ok(Block(client.get_height()?))
-            }
-            _ => Ok(Block(s.parse()?)),
+            "auto" => Ok(Block::Auto),
+            _ => Ok(Block::Height(s.parse()?)),
         }
     }
 }
 
 impl Block {
-    fn to_block(self) -> u64 {
-        self.0
+    fn to_block(self, client: &Client) -> Result<u64> {
+        match self {
+            Block::Auto => Ok(client.get_height()?),
+            Block::Height(height) => Ok(height),
+        }
     }
 }
 

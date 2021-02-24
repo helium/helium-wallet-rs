@@ -1,12 +1,15 @@
 use crate::{
-    keypair::PublicKey,
+    keypair::{Network, PublicKey},
     mnemonic,
-    result::{bail, Result},
-    traits::TxnFeeConfig,
+    result::{bail, Error, Result},
+    traits::{TxnFeeConfig, B64},
     wallet::Wallet,
 };
-use helium_api::{Client, PendingTxnStatus};
-use std::{env, fs, io, path::PathBuf};
+use helium_api::{BlockchainTxn, Client, PendingTxnStatus};
+use std::{
+    env, fs, io,
+    path::{Path, PathBuf},
+};
 use structopt::{clap::arg_enum, StructOpt};
 
 pub mod balance;
@@ -16,13 +19,13 @@ pub mod hotspots;
 pub mod htlc;
 pub mod info;
 pub mod multisig;
-pub mod onboard;
 pub mod oracle;
 pub mod oui;
 pub mod pay;
 pub mod request;
 pub mod securities;
 pub mod upgrade;
+pub mod validators;
 pub mod vars;
 pub mod verify;
 
@@ -52,6 +55,17 @@ pub struct Opts {
                 case_insensitive = true,
                 default_value = "table")]
     format: OutputFormat,
+}
+
+#[derive(Debug, Clone)]
+pub struct Transaction(BlockchainTxn);
+
+impl std::str::FromStr for Transaction {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Ok(Self(BlockchainTxn::from_b64(s)?))
+    }
 }
 
 fn load_wallet(files: Vec<PathBuf>) -> Result<Wallet> {
@@ -88,17 +102,36 @@ fn get_password(confirm: bool) -> std::io::Result<String> {
     }
 }
 
-fn api_url() -> String {
-    env::var("HELIUM_API_URL").unwrap_or_else(|_| helium_api::DEFAULT_BASE_URL.to_string())
+const DEFAULT_TESTNET_BASE_URL: &str = "https://testnet-api.helium.wtf/v1";
+
+fn api_url(network: Network) -> String {
+    match network {
+        Network::MainNet => {
+            env::var("HELIUM_API_URL").unwrap_or_else(|_| helium_api::DEFAULT_BASE_URL.to_string())
+        }
+        Network::TestNet => env::var("HELIUM_TESTNET_API_URL")
+            .unwrap_or_else(|_| DEFAULT_TESTNET_BASE_URL.to_string()),
+    }
 }
 
-fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<String>) -> Result<Vec<String>> {
+fn read_txn(txn: &Option<Transaction>) -> Result<BlockchainTxn> {
+    match txn {
+        Some(txn) => Ok(txn.0.clone()),
+        None => {
+            let mut buffer = String::new();
+            io::stdin().read_line(&mut buffer)?;
+            Ok(buffer.trim().parse::<Transaction>()?.0)
+        }
+    }
+}
+
+fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<PublicKey>) -> Result<Vec<PublicKey>> {
     // Any given addresses override _all_ the file parameters
     if addresses.is_empty() {
         for file in files {
             let mut reader = fs::File::open(&file)?;
             let enc_wallet = Wallet::read(&mut reader)?;
-            addresses.push(enc_wallet.address()?);
+            addresses.push(enc_wallet.public_key);
         }
     }
     Ok(addresses)
@@ -149,7 +182,7 @@ pub fn get_txn_fees(client: &Client) -> Result<TxnFeeConfig> {
     }
 }
 
-pub fn open_output_file(filename: &PathBuf, create: bool) -> io::Result<fs::File> {
+pub fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
     fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -157,7 +190,7 @@ pub fn open_output_file(filename: &PathBuf, create: bool) -> io::Result<fs::File
         .open(filename)
 }
 
-pub fn get_file_extension(filename: &PathBuf) -> String {
+pub fn get_file_extension(filename: &Path) -> String {
     use std::ffi::OsStr;
     filename
         .extension()

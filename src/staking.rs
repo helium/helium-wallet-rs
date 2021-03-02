@@ -77,6 +77,6 @@ impl Client {
         let txn_data = response["data"]["transaction"]
             .as_str()
             .ok_or_else(|| anyhow!("Unexpected transaction response from staking server"))?;
-        Ok(BlockchainTxn::from_b64(txn_data)?)
+        BlockchainTxn::from_b64(txn_data)
     }
 }

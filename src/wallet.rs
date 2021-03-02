@@ -1,7 +1,7 @@
 use crate::{
     format::{self, Format},
     keypair::{Keypair, PublicKey},
-    pwhash::PWHash,
+    pwhash::PwHash,
     result::{anyhow, bail, Result},
     traits::ReadWrite,
 };
@@ -14,8 +14,8 @@ use sodiumoxide::randombytes;
 use std::io::{self, Cursor};
 
 pub type Tag = [u8; 16];
-pub type IV = [u8; 12];
-pub type AESKey = [u8; 32];
+pub type Iv = [u8; 12];
+pub type AesKey = [u8; 32];
 
 const WALLET_KIND_BASIC_V1: u16 = 0x0001;
 const WALLET_KIND_BASIC_V2: u16 = 0x0002;
@@ -28,7 +28,7 @@ const PWHASH_KIND_ARGON2ID13: u8 = 1;
 
 pub struct Wallet {
     pub public_key: PublicKey,
-    pub iv: IV,
+    pub iv: Iv,
     pub tag: Tag,
     pub encrypted: Vec<u8>,
     pub format: Format,
@@ -36,12 +36,12 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn encrypt(keypair: &Keypair, password: &[u8], fmt: Format) -> Result<Wallet> {
-        let mut encryption_key = AESKey::default();
+        let mut encryption_key = AesKey::default();
         let mut format = fmt;
         let public_key = keypair.public_key();
         format.derive_key(password, &mut encryption_key)?;
 
-        let mut iv = IV::default();
+        let mut iv = Iv::default();
         randombytes::randombytes_into(&mut iv);
 
         let aead = Aes256Gcm::new(GenericArray::from_slice(&encryption_key));
@@ -66,7 +66,7 @@ impl Wallet {
     }
 
     pub fn decrypt(&self, password: &[u8]) -> Result<Keypair> {
-        let mut encryption_key = AESKey::default();
+        let mut encryption_key = AesKey::default();
         let mut format = self.format.clone();
         format.derive_key(password, &mut encryption_key)?;
 
@@ -89,7 +89,7 @@ impl Wallet {
         Ok(self.public_key.to_string())
     }
 
-    pub fn pwhash(&self) -> &PWHash {
+    pub fn pwhash(&self) -> &PwHash {
         self.format.pwhash()
     }
 
@@ -132,11 +132,11 @@ impl Wallet {
         format.absorb(&other_format)
     }
 
-    fn read_pwhash(reader: &mut dyn io::Read) -> Result<PWHash> {
+    fn read_pwhash(reader: &mut dyn io::Read) -> Result<PwHash> {
         let kind = reader.read_u8()?;
         match kind {
-            PWHASH_KIND_PBKDF2 => Ok(PWHash::pbkdf2_default()),
-            PWHASH_KIND_ARGON2ID13 => Ok(PWHash::argon2id13_default()),
+            PWHASH_KIND_PBKDF2 => Ok(PwHash::pbkdf2_default()),
+            PWHASH_KIND_ARGON2ID13 => Ok(PwHash::argon2id13_default()),
             _ => Err(anyhow!("Invalid pwhash kind {}", kind)),
         }
     }
@@ -144,15 +144,15 @@ impl Wallet {
     pub fn read(reader: &mut dyn io::Read) -> Result<Wallet> {
         let kind = reader.read_u16::<LittleEndian>()?;
         let mut format = match kind {
-            WALLET_KIND_BASIC_V1 => Format::basic(PWHash::pbkdf2_default()),
+            WALLET_KIND_BASIC_V1 => Format::basic(PwHash::pbkdf2_default()),
             WALLET_KIND_BASIC_V2 => Format::basic(Self::read_pwhash(reader)?),
-            WALLET_KIND_SHARDED_V1 => Format::sharded_default(PWHash::pbkdf2_default()),
+            WALLET_KIND_SHARDED_V1 => Format::sharded_default(PwHash::pbkdf2_default()),
             WALLET_KIND_SHARDED_V2 => Format::sharded_default(Self::read_pwhash(reader)?),
             _ => bail!("Invalid wallet kind {}", kind),
         };
         format.read(reader)?;
         let public_key = PublicKey::read(reader)?;
-        let mut iv = IV::default();
+        let mut iv = Iv::default();
         reader.read_exact(&mut iv)?;
         format.mut_pwhash().read(reader)?;
         let mut tag = Tag::default();
@@ -169,10 +169,10 @@ impl Wallet {
         })
     }
 
-    fn write_pwhash(pwhash: &PWHash, writer: &mut dyn io::Write) -> Result {
+    fn write_pwhash(pwhash: &PwHash, writer: &mut dyn io::Write) -> Result {
         match pwhash {
-            PWHash::PBKDF2(_) => writer.write_u8(PWHASH_KIND_PBKDF2)?,
-            PWHash::Argon2id13(_) => writer.write_u8(PWHASH_KIND_ARGON2ID13)?,
+            PwHash::Pbkdf2(_) => writer.write_u8(PWHASH_KIND_PBKDF2)?,
+            PwHash::Argon2id13(_) => writer.write_u8(PWHASH_KIND_ARGON2ID13)?,
         }
         Ok(())
     }
@@ -206,7 +206,7 @@ mod tests {
     fn rountrip_basic() {
         let from_keypair = Keypair::default();
         let format = format::Basic {
-            pwhash: PWHash::argon2id13_default(),
+            pwhash: PwHash::argon2id13_default(),
         };
         let password = b"passsword";
         let wallet = Wallet::encrypt(&from_keypair, password, Format::Basic(format))
@@ -221,7 +221,7 @@ mod tests {
         let format = format::Sharded {
             key_share_count: 5,
             recovery_threshold: 3,
-            pwhash: PWHash::argon2id13_default(),
+            pwhash: PwHash::argon2id13_default(),
             key_shares: vec![],
         };
         let password = b"passsword";

@@ -1,5 +1,5 @@
 use crate::{
-    pwhash::PWHash,
+    pwhash::PwHash,
     result::{bail, Result},
 };
 use byteorder::{ReadBytesExt, WriteBytesExt};
@@ -23,14 +23,14 @@ impl Format {
         }
     }
 
-    pub fn mut_pwhash(&mut self) -> &mut PWHash {
+    pub fn mut_pwhash(&mut self) -> &mut PwHash {
         match self {
             Format::Basic(derive) => derive.mut_pwhash(),
             Format::Sharded(derive) => derive.mut_pwhash(),
         }
     }
 
-    pub fn pwhash(&self) -> &PWHash {
+    pub fn pwhash(&self) -> &PwHash {
         match self {
             Format::Basic(derive) => derive.pwhash(),
             Format::Sharded(derive) => derive.pwhash(),
@@ -51,11 +51,11 @@ impl Format {
         }
     }
 
-    pub fn basic(pwhash: PWHash) -> Self {
+    pub fn basic(pwhash: PwHash) -> Self {
         Format::Basic(Basic { pwhash })
     }
 
-    pub fn sharded(key_share_count: u8, recovery_threshold: u8, pwhash: PWHash) -> Self {
+    pub fn sharded(key_share_count: u8, recovery_threshold: u8, pwhash: PwHash) -> Self {
         Format::Sharded(Sharded {
             key_share_count,
             recovery_threshold,
@@ -64,14 +64,14 @@ impl Format {
         })
     }
 
-    pub fn sharded_default(pwhash: PWHash) -> Self {
+    pub fn sharded_default(pwhash: PwHash) -> Self {
         Self::sharded(5, 3, pwhash)
     }
 }
 
 #[derive(Clone)]
 pub struct Basic {
-    pub pwhash: PWHash,
+    pub pwhash: PwHash,
 }
 
 impl Basic {
@@ -79,11 +79,11 @@ impl Basic {
         self.pwhash.pwhash(password, key)
     }
 
-    pub fn mut_pwhash(&mut self) -> &mut PWHash {
+    pub fn mut_pwhash(&mut self) -> &mut PwHash {
         &mut self.pwhash
     }
 
-    pub fn pwhash(&self) -> &PWHash {
+    pub fn pwhash(&self) -> &PwHash {
         &self.pwhash
     }
 
@@ -128,7 +128,7 @@ pub struct Sharded {
     pub key_share_count: u8,
     pub recovery_threshold: u8,
     pub key_shares: Vec<KeyShare>,
-    pub pwhash: PWHash,
+    pub pwhash: PwHash,
 }
 
 impl Sharded {
@@ -171,11 +171,11 @@ impl Sharded {
         Ok(())
     }
 
-    pub fn mut_pwhash(&mut self) -> &mut PWHash {
+    pub fn mut_pwhash(&mut self) -> &mut PwHash {
         &mut self.pwhash
     }
 
-    pub fn pwhash(&self) -> &PWHash {
+    pub fn pwhash(&self) -> &PwHash {
         &self.pwhash
     }
 

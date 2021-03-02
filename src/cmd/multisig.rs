@@ -1,12 +1,15 @@
 use crate::{
-    cmd::{api_url, get_password, load_wallet, print_json, status_json, Opts},
-    keypair::Keypair,
+    cmd::*,
+    keypair::{Keypair, Network},
     result::{bail, Result},
     traits::{ToJson, TxnSign, B64},
 };
 use helium_api::{BlockchainTxn, Client, PendingTxnStatus, Txn};
 use serde::{Deserialize, Serialize};
-use std::{fs::File, path::PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -49,6 +52,10 @@ pub struct Combine {
     /// Commit the combined transaction to the API
     #[structopt(long)]
     commit: bool,
+
+    /// The network to commit to if requested (mainnet/testnet)
+    #[structopt(long, default_value = "mainnet")]
+    network: Network,
 }
 
 impl Cmd {
@@ -113,7 +120,7 @@ impl Combine {
         }
         combined_proofs.apply(&mut envelope)?;
         let status = if self.commit {
-            let client = Client::new_with_base_url(api_url());
+            let client = Client::new_with_base_url(api_url(self.network));
             Some(client.submit_txn(&envelope)?)
         } else {
             None
@@ -140,7 +147,7 @@ impl Proofs {
         }
     }
 
-    fn load(path: &PathBuf) -> Result<Self> {
+    fn load(path: &Path) -> Result<Self> {
         let file = File::open(path)?;
         let proofs: Proofs = serde_json::from_reader(&file)?;
         Ok(proofs)
@@ -213,7 +220,7 @@ impl Proofs {
 }
 
 impl Artifact {
-    fn load_txn(path: &PathBuf) -> Result<BlockchainTxn> {
+    fn load_txn(path: &Path) -> Result<BlockchainTxn> {
         let file = File::open(path)?;
         let artifact: Artifact = serde_json::from_reader(&file)?;
         artifact.to_txn()
@@ -224,6 +231,6 @@ impl Artifact {
     }
 
     pub fn to_txn(&self) -> Result<BlockchainTxn> {
-        Ok(BlockchainTxn::from_b64(&self.txn)?)
+        BlockchainTxn::from_b64(&self.txn)
     }
 }

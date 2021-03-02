@@ -1,12 +1,18 @@
+use crate::result::{anyhow, Result};
 use helium_api::{
     BlockchainTxn, BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1,
     BlockchainTxnCreateHtlcV1, BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2,
     BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, BlockchainTxnSecurityExchangeV1,
-    BlockchainTxnTokenBurnV1, BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, Txn,
+    BlockchainTxnStakeValidatorV1, BlockchainTxnTokenBurnV1, BlockchainTxnTransferHotspotV1,
+    BlockchainTxnTransferValidatorStakeV1, BlockchainTxnUnstakeValidatorV1, BlockchainTxnVarsV1,
+    Txn,
 };
 
 pub trait TxnEnvelope {
     fn in_envelope(&self) -> BlockchainTxn;
+    fn from_envelope(envelope: &BlockchainTxn) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 macro_rules! impl_txn_envelope {
@@ -15,6 +21,13 @@ macro_rules! impl_txn_envelope {
             fn in_envelope(&self) -> BlockchainTxn {
                 BlockchainTxn {
                     txn: Some(Txn::$kind(self.clone())),
+                }
+            }
+
+            fn from_envelope(envelope: &BlockchainTxn) -> Result<Self> {
+                match &envelope.txn {
+                    Some(Txn::$kind(txn)) => Ok(txn.clone()),
+                    _ => Err(anyhow!("unsupported transaction")),
                 }
             }
         }
@@ -33,3 +46,6 @@ impl_txn_envelope!(BlockchainTxnAddGatewayV1, AddGateway);
 impl_txn_envelope!(BlockchainTxnAssertLocationV1, AssertLocation);
 impl_txn_envelope!(BlockchainTxnVarsV1, Vars);
 impl_txn_envelope!(BlockchainTxnTransferHotspotV1, TransferHotspot);
+impl_txn_envelope!(BlockchainTxnStakeValidatorV1, StakeValidator);
+impl_txn_envelope!(BlockchainTxnUnstakeValidatorV1, UnstakeValidator);
+impl_txn_envelope!(BlockchainTxnTransferValidatorStakeV1, TransferValStake);

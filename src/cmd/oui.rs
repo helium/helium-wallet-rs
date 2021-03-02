@@ -77,10 +77,8 @@ pub enum Update {
     /// The address(es) of the router to send packets to. This will overwrite any previous
     /// routers
     Routers(update::Routers),
-    /// If less than 5 filters have been defined,
-    /// you can create an additional Xor
-    NewXor(update::NewXor),
-    UpdateXor(update::UpdateXor),
+
+    Xor(update::Xor),
     /// Requested additional subnet size. Must be a value between 8 and 65,536
     /// and a power of two.
     RequestSubset(update::RequestSubet),
@@ -103,37 +101,51 @@ mod update {
         #[structopt(long)]
         pub commit: bool,
     }
+
     #[derive(Debug, StructOpt)]
-    /// Update an already defined Xor
-    pub struct UpdateXor {
-        /// OUI to update
-        #[structopt(long)]
-        pub oui: u32,
-        /// select which Xor to update
-        pub index: u32,
-        /// 100kb or less
-        pub filter: String,
-        /// Which OUI nonce this transaction has
-        #[structopt(long)]
-        pub nonce: Option<u64>,
-        /// Commit the transaction to the API
-        #[structopt(long)]
-        pub commit: bool,
+    pub enum Xor {
+        /// If less than 5 filters have been defined,
+        /// you can create an additional Xor
+        New(xor::New),
+        /// Overwrite an existing Xor filter
+        Update(xor::Update),
     }
-    #[derive(Debug, StructOpt)]
-    pub struct NewXor {
-        /// OUI to update
-        #[structopt(long)]
-        pub oui: u32,
-        /// 100kb or less
-        pub filter: String,
-        /// Which OUI nonce this transaction has
-        #[structopt(long)]
-        pub nonce: Option<u64>,
-        /// Commit the transaction to the API
-        #[structopt(long)]
-        pub commit: bool,
+
+    pub mod xor {
+        use super::StructOpt;
+        #[derive(Debug, StructOpt)]
+        /// Update an already defined Xor
+        pub struct Update {
+            /// OUI to update
+            #[structopt(long)]
+            pub oui: u32,
+            /// select which Xor to update
+            pub index: u32,
+            /// 100kb or less
+            pub filter: String,
+            /// Which OUI nonce this transaction has
+            #[structopt(long)]
+            pub nonce: Option<u64>,
+            /// Commit the transaction to the API
+            #[structopt(long)]
+            pub commit: bool,
+        }
+        #[derive(Debug, StructOpt)]
+        pub struct New {
+            /// OUI to update
+            #[structopt(long)]
+            pub oui: u32,
+            /// 100kb or less
+            pub filter: String,
+            /// Which OUI nonce this transaction has
+            #[structopt(long)]
+            pub nonce: Option<u64>,
+            /// Commit the transaction to the API
+            #[structopt(long)]
+            pub commit: bool,
+        }
     }
+
     #[derive(Debug, StructOpt)]
     pub struct RequestSubet {
         /// OUI to update
@@ -239,23 +251,25 @@ impl Update {
                     router_addresses: map_addresses(routers.addresses.clone(), |v| v.to_vec())?,
                 }),
             ),
-            Update::NewXor(filter) => (
-                filter.oui,
-                filter.commit,
-                filter.nonce,
-                helium_api::blockchain_txn_routing_v1::Update::NewXor(base64::decode(
-                    &filter.filter,
-                )?),
-            ),
-            Update::UpdateXor(update) => (
-                update.oui,
-                update.commit,
-                update.nonce,
-                helium_api::blockchain_txn_routing_v1::Update::UpdateXor(UpdateXor {
-                    index: update.index,
-                    filter: base64::decode(&update.filter)?,
-                }),
-            ),
+            Update::Xor(xor) => match xor {
+                update::Xor::New(filter) => (
+                    filter.oui,
+                    filter.commit,
+                    filter.nonce,
+                    helium_api::blockchain_txn_routing_v1::Update::NewXor(base64::decode(
+                        &filter.filter,
+                    )?),
+                ),
+                update::Xor::Update(update) => (
+                    update.oui,
+                    update.commit,
+                    update.nonce,
+                    helium_api::blockchain_txn_routing_v1::Update::UpdateXor(UpdateXor {
+                        index: update.index,
+                        filter: base64::decode(&update.filter)?,
+                    }),
+                ),
+            },
             Update::RequestSubset(size) => (
                 size.oui,
                 size.commit,

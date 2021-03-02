@@ -2,10 +2,10 @@ use crate::result::{anyhow, Result};
 use helium_api::{
     BlockchainTxn, BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1,
     BlockchainTxnCreateHtlcV1, BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2,
-    BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, BlockchainTxnSecurityExchangeV1,
-    BlockchainTxnStakeValidatorV1, BlockchainTxnTokenBurnV1, BlockchainTxnTransferHotspotV1,
-    BlockchainTxnTransferValidatorStakeV1, BlockchainTxnUnstakeValidatorV1, BlockchainTxnVarsV1,
-    Txn,
+    BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, BlockchainTxnRoutingV1,
+    BlockchainTxnSecurityExchangeV1, BlockchainTxnStakeValidatorV1, BlockchainTxnTokenBurnV1,
+    BlockchainTxnTransferHotspotV1, BlockchainTxnTransferValidatorStakeV1,
+    BlockchainTxnUnstakeValidatorV1, BlockchainTxnVarsV1, Txn,
 };
 
 pub trait TxnEnvelope {
@@ -49,3 +49,4 @@ impl_txn_envelope!(BlockchainTxnTransferHotspotV1, TransferHotspot);
 impl_txn_envelope!(BlockchainTxnStakeValidatorV1, StakeValidator);
 impl_txn_envelope!(BlockchainTxnUnstakeValidatorV1, UnstakeValidator);
 impl_txn_envelope!(BlockchainTxnTransferValidatorStakeV1, TransferValStake);
+impl_txn_envelope!(BlockchainTxnRoutingV1, Routing);

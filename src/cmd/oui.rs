@@ -77,11 +77,12 @@ pub enum Update {
     /// The address(es) of the router to send packets to. This will overwrite any previous
     /// routers
     Routers(update::Routers),
-
+    /// Create new or update Xor filter by hand. This is normally done by the OUI operator,
+    /// but may be done by hand here.
     Xor(update::Xor),
     /// Requested additional subnet size. Must be a value between 8 and 65,536
     /// and a power of two.
-    RequestSubset(update::RequestSubet),
+    RequestSubset(update::RequestSubnet),
 }
 
 mod update {
@@ -89,10 +90,10 @@ mod update {
     #[derive(Debug, StructOpt)]
     pub struct Routers {
         /// OUI to update
-        #[structopt(long)]
+        #[structopt(required = true, long)]
         pub oui: u32,
         /// The address(es) of the router to send packets to
-        #[structopt(long = "address", short = "a", number_of_values(1))]
+        #[structopt(required = true, long = "address", short = "a", number_of_values(1))]
         pub addresses: Vec<PublicKey>,
         /// Which OUI nonce this transaction has
         #[structopt(long)]
@@ -117,11 +118,13 @@ mod update {
         /// Update an already defined Xor
         pub struct Update {
             /// OUI to update
-            #[structopt(long)]
+            #[structopt(required = true, long)]
             pub oui: u32,
             /// select which Xor to update
+            #[structopt(required = true, long)]
             pub index: u32,
             /// 100kb or less
+            #[structopt(required = true, long)]
             pub filter: String,
             /// Which OUI nonce this transaction has
             #[structopt(long)]
@@ -133,9 +136,10 @@ mod update {
         #[derive(Debug, StructOpt)]
         pub struct New {
             /// OUI to update
-            #[structopt(long)]
+            #[structopt(required = true, long)]
             pub oui: u32,
             /// 100kb or less
+            #[structopt(required = true, long)]
             pub filter: String,
             /// Which OUI nonce this transaction has
             #[structopt(long)]
@@ -147,11 +151,11 @@ mod update {
     }
 
     #[derive(Debug, StructOpt)]
-    pub struct RequestSubet {
+    pub struct RequestSubnet {
         /// OUI to update
-        #[structopt(long)]
+        #[structopt(required = true, long)]
         pub oui: u32,
-        #[structopt(long)]
+        #[structopt(required = true, long)]
         pub size: u32,
         /// Which OUI nonce this transaction has
         #[structopt(long)]
@@ -296,9 +300,11 @@ impl Update {
         txn.staking_fee = txn.txn_staking_fee(&get_txn_fees(&api_client)?)?;
         txn.signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
-
+        println!("Submitting!");
         let status = if commit {
-            Some(api_client.submit_txn(&envelope)?)
+            let response = api_client.submit_txn(&envelope);
+            println!("{:?}", response);
+            Some(response.unwrap())
         } else {
             None
         };

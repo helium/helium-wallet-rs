@@ -157,16 +157,13 @@ impl TxnStakingFee for BlockchainTxnOuiV1 {
 
 impl TxnStakingFee for BlockchainTxnRoutingV1 {
     fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {
-        Ok(if let Some(update) = &self.update {
-            match update {
-                blockchain_txn_routing_v1::Update::RequestSubnet(size) => {
-                    *size as u64 * config.staking_fee_txn_oui_v1_per_address
-                }
-                _ => 0,
-            }
-        } else {
-            0
-        })
+        Ok(
+            if let Some(blockchain_txn_routing_v1::Update::RequestSubnet(size)) = &self.update {
+                *size as u64 * config.staking_fee_txn_oui_v1_per_address
+            } else {
+                0
+            },
+        )
     }
 }
 

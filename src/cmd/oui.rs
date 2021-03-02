@@ -362,7 +362,7 @@ fn print_update_txn(
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
-                ["OUI", txn.oui],
+                ["oui", txn.oui],
                 ["Update", update],
                 ["Hash", status_str(status)]
             );
@@ -370,7 +370,7 @@ fn print_update_txn(
         }
         OutputFormat::Json => {
             let table = json!({
-                "OUI": txn.oui + 1,
+                "oui": txn.oui + 1,
                 "Update": update,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,

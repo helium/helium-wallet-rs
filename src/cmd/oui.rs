@@ -300,6 +300,9 @@ impl Update {
         txn.staking_fee = txn.txn_staking_fee(&get_txn_fees(&api_client)?)?;
         txn.signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
+
+        let mut bytes = Vec::new();
+        envelope.to_bytes(&bytes);
         println!("Submitting!");
         let status = if commit {
             let response = api_client.submit_txn(&envelope);

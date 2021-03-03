@@ -382,7 +382,7 @@ fn print_update_txn(
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
-                ["oui", txn.oui],
+                ["OUI", txn.oui],
                 ["Update", update],
                 ["Hash", status_str(status)]
             );

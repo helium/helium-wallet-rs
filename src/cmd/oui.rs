@@ -301,9 +301,6 @@ impl Update {
         txn.signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 
-        let mut bytes = Vec::new();
-        envelope.to_bytes(&bytes);
-        println!("Submitting!");
         let status = if commit {
             let response = api_client.submit_txn(&envelope);
             println!("{:?}", response);

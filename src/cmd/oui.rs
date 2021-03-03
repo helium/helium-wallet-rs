@@ -334,7 +334,7 @@ fn print_txn(
         }
         OutputFormat::Json => {
             let table = json!({
-                "requested_oui": txn.oui,
+                "requested_oui": txn.oui + 1,
                 "addresses": map_addresses(txn.addresses.clone(), |v| v.to_string())?,
                 "requested_subnet_size": txn.requested_subnet_size,
                 "hash": status_json(status),

@@ -187,3 +187,23 @@ The following environment variables are supported:
 * `HELIUM_WALLET_PASSWORD` - The password to use to decrypt the
   wallet. Useful for scripting or other non-interactive commands, but
   use with care.
+
+## Building from Source
+
+If you wish to build from source instead of downloading 
+[a prebuilt release](https://github.com/helium/helium-wallet-rs/releases/latest) 
+you can add setup a Ubuntu 20.04 environment with the following:
+
+```
+sudo apt update
+sudo apt upgrade
+git clone https://github.com/helium/helium-wallet-rs
+cd helium-wallet-rs
+curl https://sh.rustup.rs -sSf | sh
+## use 1
+source $HOME/.cargo/env
+sudo apt install build-essential
+sudo apt install pkg-config
+sudo apt install libssl-dev
+cargo build --release
+```

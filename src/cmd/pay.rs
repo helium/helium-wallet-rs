@@ -81,7 +81,7 @@ impl Cmd {
             print_qr(&envelope.to_b64()?)?;
         }
 
-       print_txn(&txn, &envelope, &status, opts.format)
+        print_txn(&txn, &envelope, &status, opts.format)
     }
 }
 

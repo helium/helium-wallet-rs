@@ -12,6 +12,7 @@ use prettytable::Table;
 use serde_json::json;
 use std::str::FromStr;
 use structopt::StructOpt;
+use qr2term::print_qr;
 
 #[derive(Debug, StructOpt)]
 /// Send one or more payments to given addresses. Note that HNT only
@@ -29,6 +30,10 @@ pub struct Cmd {
     /// Commit the payment to the API
     #[structopt(long)]
     commit: bool,
+
+    /// Prints a QR code of the Base64 encoded transaction
+    #[structopt(long)]
+    qr: bool,
 }
 
 impl Cmd {
@@ -72,7 +77,11 @@ impl Cmd {
             None
         };
 
-        print_txn(&txn, &envelope, &status, opts.format)
+        if self.qr {
+            print_qr(&envelope.to_b64()?)?;
+        }
+
+       print_txn(&txn, &envelope, &status, opts.format)
     }
 }
 

@@ -9,10 +9,10 @@ use crate::{
 };
 use helium_api::{BlockchainTxn, BlockchainTxnPaymentV2, Client, Hnt, Payment, PendingTxnStatus};
 use prettytable::Table;
+use qr2term::print_qr;
 use serde_json::json;
 use std::str::FromStr;
 use structopt::StructOpt;
-use qr2term::print_qr;
 
 #[derive(Debug, StructOpt)]
 /// Send one or more payments to given addresses. Note that HNT only

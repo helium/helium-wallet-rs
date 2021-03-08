@@ -57,7 +57,10 @@ fn print_txn(
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
-                ["Requested OUI", txn.oui],
+                // The raw `create` transaction includes the index of the previous OUI.
+                // We increment it here, since user is actually acquiring previous OUI + 1.
+                // Note: all future transactions concerning this OUI reference OUI + 1 as
+                // displayed here
                 ["Reqeuested Subnet Size", txn.requested_subnet_size],
                 [
                     "Addresses",
@@ -70,6 +73,7 @@ fn print_txn(
         }
         OutputFormat::Json => {
             let table = json!({
+                // See the above comment about why + 1
                 "requested_oui": txn.oui + 1,
                 "addresses": map_addresses(txn.addresses.clone(), |v| v.to_string())?,
                 "requested_subnet_size": txn.requested_subnet_size,

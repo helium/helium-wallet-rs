@@ -17,6 +17,11 @@ pub struct Create {
     #[structopt(long = "address", short = "a", number_of_values(1))]
     addresses: Vec<PublicKey>,
 
+    /// Optionally request a specific OUI. They must increment
+    /// from previous OUI by 1.
+    #[structopt(long)]
+    oui: Option<u64>,
+
     /// Initial device membership filter in base64 encoded form
     #[structopt(long)]
     filter: String,
@@ -48,11 +53,19 @@ impl Create {
 
         let api_client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
+        let oui = if let Some(oui) = self.oui {
+            oui
+        } else {
+            api_client
+                .get_last_oui()
+                .expect("Requesting last OUI from API failed")
+        };
+
         let mut txn = BlockchainTxnOuiV1 {
             addresses: map_addresses(self.addresses.clone(), |v| v.to_vec())?,
             owner: keypair.public_key().into(),
             payer: self.payer.as_ref().map_or(vec![], |v| v.into()),
-            oui: api_client.get_last_oui()?,
+            oui,
             fee: 0,
             staking_fee: 1,
             owner_signature: vec![],
@@ -60,8 +73,13 @@ impl Create {
             requested_subnet_size: self.subnet_size,
             filter: base64::decode(&self.filter)?,
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&api_client)?)?;
-        txn.staking_fee = txn.txn_staking_fee(&get_txn_fees(&api_client)?)?;
+
+        let fees = &get_txn_fees(&api_client).expect("Failure to get fee schedule");
+
+        txn.fee = txn.txn_fee(&fees).expect("Failure to calculate txn fee");
+        txn.staking_fee = txn
+            .txn_staking_fee(&fees)
+            .expect("Failure to calculate staking fee");
         txn.owner_signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 

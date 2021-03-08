@@ -212,7 +212,7 @@ fn print_update_txn(
         OutputFormat::Json => {
             let table = json!({
                 "oui": txn.oui,
-                "Update": update,
+                "update": update,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
             });

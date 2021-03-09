@@ -3,7 +3,8 @@ use crate::{
     result::{anyhow, Result},
     traits::B64,
 };
-use helium_api::BlockchainTxn;
+use helium_proto::BlockchainTxn;
+use serde_json::json;
 use std::time::Duration;
 
 /// The default timeout for API requests
@@ -13,7 +14,7 @@ pub const DEFAULT_BASE_URL: &str = "https://onboarding.dewi.org/api/v2";
 
 pub struct Client {
     base_url: String,
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
 }
 
 impl Default for Client {
@@ -36,7 +37,7 @@ impl Client {
     /// timeout value.  The library will use absoluate paths based on
     /// the given base_url.
     pub fn new_with_timeout(base_url: String, timeout: u64) -> Self {
-        let client = reqwest::blocking::Client::builder()
+        let client = reqwest::Client::builder()
             .gzip(true)
             .timeout(Duration::from_secs(timeout))
             .build()
@@ -45,14 +46,16 @@ impl Client {
     }
 
     /// Fetch the public maker key for a given onboarding key
-    pub fn address_for(&self, gateway: &PublicKey) -> Result<PublicKey> {
+    pub async fn address_for(&self, gateway: &PublicKey) -> Result<PublicKey> {
         let request_url = format!("{}/hotspots/{}", self.base_url, gateway.to_string());
         let response: serde_json::Value = self
             .client
             .get(&request_url)
-            .send()?
+            .send()
+            .await?
             .error_for_status()?
-            .json()?;
+            .json()
+            .await?;
         response["data"]["publicAddress"]
             .as_str()
             .map_or(Err(anyhow!("Invalid staking address from server")), |v| {
@@ -62,7 +65,7 @@ impl Client {
 
     /// Get the staking server to sign a given transaction using the
     /// given onboarding key
-    pub fn sign(&self, onboarding_key: &str, txn: &BlockchainTxn) -> Result<BlockchainTxn> {
+    pub async fn sign(&self, onboarding_key: &str, txn: &BlockchainTxn) -> Result<BlockchainTxn> {
         let encoded = txn.to_b64()?;
         let json = json!({ "transaction": encoded });
 
@@ -71,9 +74,11 @@ impl Client {
             .client
             .post(&request_url)
             .json(&json)
-            .send()?
+            .send()
+            .await?
             .error_for_status()?
-            .json()?;
+            .json()
+            .await?;
         let txn_data = response["data"]["transaction"]
             .as_str()
             .ok_or_else(|| anyhow!("Unexpected transaction response from staking server"))?;

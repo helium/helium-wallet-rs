@@ -1,5 +1,4 @@
 use crate::{cmd::*, result::Result};
-use structopt::StructOpt;
 
 mod add;
 mod assert;
@@ -17,12 +16,12 @@ pub enum Cmd {
 }
 
 impl Cmd {
-    pub fn run(self, opts: Opts) -> Result {
+    pub async fn run(self, opts: Opts) -> Result {
         match self {
-            Self::Add(cmd) => cmd.run(opts),
-            Self::Assert(cmd) => cmd.run(opts),
-            Self::List(cmd) => cmd.run(opts),
-            Self::Transfer(cmd) => cmd.run(opts),
+            Self::Add(cmd) => cmd.run(opts).await,
+            Self::Assert(cmd) => cmd.run(opts).await,
+            Self::List(cmd) => cmd.run(opts).await,
+            Self::Transfer(cmd) => cmd.run(opts).await,
         }
     }
 }

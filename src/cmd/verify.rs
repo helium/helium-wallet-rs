@@ -1,18 +1,13 @@
-use crate::{
-    cmd::{get_password, load_wallet, print_json, print_table, Opts, OutputFormat},
-    result::Result,
-    wallet::Wallet,
-};
+use crate::{cmd::*, result::Result, wallet::Wallet};
 use prettytable::{format, Table};
 use serde_json::json;
-use structopt::StructOpt;
 
 /// Verify an encypted wallet
 #[derive(Debug, StructOpt)]
 pub struct Cmd {}
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let result = wallet.decrypt(password.as_bytes());

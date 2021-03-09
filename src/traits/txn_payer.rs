@@ -2,7 +2,7 @@ use crate::{
     keypair::PublicKey,
     result::{anyhow, Result},
 };
-use helium_api::{BlockchainTxn, Txn};
+use helium_proto::*;
 
 pub trait TxnPayer {
     fn payer(&self) -> Result<Option<PublicKey>>;

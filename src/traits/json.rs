@@ -3,7 +3,8 @@ use crate::{
     result::{anyhow, Result},
     traits::B64,
 };
-use helium_api::{BlockchainTxnTransferHotspotV1, BlockchainTxnVarsV1, BlockchainVarV1};
+use helium_proto::*;
+use serde_json::json;
 
 pub(crate) fn maybe_b58(data: &[u8]) -> Result<Option<String>> {
     if data.is_empty() {

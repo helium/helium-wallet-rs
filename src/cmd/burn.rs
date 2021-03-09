@@ -1,15 +1,11 @@
 use crate::{
-    cmd::{
-        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
-        status_str, Opts, OutputFormat,
-    },
+    cmd::*,
     keypair::PublicKey,
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnTokenBurnV1, Client, Hnt, PendingTxnStatus};
+use helium_api::accounts;
 use serde_json::json;
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Burn HNT to Data Credits (DC) from this wallet to given payees wallet.
@@ -32,14 +28,14 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
 
         let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = client.get_account(&keypair.public_key().to_string())?;
+        let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
         let memo = match &self.memo {
             None => 0,
             Some(s) => u64::from_b64(&s)?,
@@ -48,20 +44,17 @@ impl Cmd {
         let mut txn = BlockchainTxnTokenBurnV1 {
             fee: 0,
             payee: self.payee.to_bytes().to_vec(),
-            amount: self.amount.to_bones(),
+            amount: u64::from(self.amount),
             payer: keypair.public_key().into(),
             memo,
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         txn.signature = txn.sign(&keypair)?;
+
         let envelope = txn.in_envelope();
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&txn, &envelope, &status, opts.format)
     }
 }
@@ -78,7 +71,7 @@ fn print_txn(
                 ["Key", "Value"],
                 ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
                 ["Memo", txn.memo.to_b64()?],
-                ["Amount", Hnt::from_bones(txn.amount)],
+                ["Amount", Hnt::from(txn.amount)],
                 ["Fee", txn.fee],
                 ["Nonce", txn.nonce],
                 ["Hash", status_str(status)]
@@ -88,7 +81,7 @@ fn print_txn(
         OutputFormat::Json => {
             let table = json!({
                 "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
-                "amount": Hnt::from_bones(txn.amount),
+                "amount": Hnt::from(txn.amount),
                 "memo": txn.memo.to_b64()?,
                 "fee": txn.fee,
                 "nonce": txn.nonce,

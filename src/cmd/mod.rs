@@ -5,12 +5,15 @@ use crate::{
     traits::{TxnFeeConfig, B64},
     wallet::Wallet,
 };
-use helium_api::{BlockchainTxn, Client, PendingTxnStatus};
+pub use helium_api::{pending_transactions::PendingTxnStatus, Client, Hnt, Hst, Usd};
+pub use helium_proto::*;
+pub use serde_json::json;
+
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
 };
-use structopt::{clap::arg_enum, StructOpt};
+pub use structopt::{clap::arg_enum, StructOpt};
 
 pub mod balance;
 pub mod burn;
@@ -167,8 +170,8 @@ pub fn get_payer(staking_address: PublicKey, payer: &Option<String>) -> Result<O
     }
 }
 
-pub fn get_txn_fees(client: &Client) -> Result<TxnFeeConfig> {
-    let vars = client.get_vars()?;
+pub async fn get_txn_fees(client: &Client) -> Result<TxnFeeConfig> {
+    let vars = helium_api::vars::get(client).await?;
     if vars.contains_key("txn_fees") {
         match vars["txn_fees"].as_bool() {
             Some(true) => {
@@ -223,4 +226,25 @@ pub fn status_str(status: &Option<PendingTxnStatus>) -> &str {
 
 pub fn status_json(status: &Option<PendingTxnStatus>) -> serde_json::Value {
     status.as_ref().map_or(json!(null), |s| json!(s.hash))
+}
+
+pub async fn maybe_submit_txn(
+    commit: bool,
+    client: &Client,
+    txn: &BlockchainTxn,
+) -> Result<Option<PendingTxnStatus>> {
+    if commit {
+        let status = submit_txn(&client, txn).await?;
+        Ok(Some(status))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn submit_txn(client: &Client, txn: &BlockchainTxn) -> Result<PendingTxnStatus> {
+    let mut data = vec![];
+    txn.encode(&mut data);
+    helium_api::pending_transactions::submit(client, &data)
+        .await
+        .map_err(|e| e.into())
 }

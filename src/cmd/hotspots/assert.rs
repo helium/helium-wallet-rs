@@ -4,8 +4,6 @@ use crate::{
     staking,
     traits::{TxnEnvelope, TxnSign},
 };
-use helium_api::{BlockchainTxnAssertLocationV1, PendingTxnStatus};
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Assert a hotspot location on the blockchain. The original transaction is
@@ -29,7 +27,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(self, opts: Opts) -> Result {
+    pub async fn run(self, opts: Opts) -> Result {
         let mut txn = BlockchainTxnAssertLocationV1::from_envelope(&read_txn(&self.txn)?)?;
 
         let password = get_password(false)?;
@@ -52,16 +50,14 @@ impl Cmd {
                     bail!("Staking server requires an onboarding key");
                 } else {
                     let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
-                    staking_client.sign(&onboarding_key, &txn.in_envelope())
+                    staking_client
+                        .sign(&onboarding_key, &txn.in_envelope())
+                        .await
                 }
             }
         }?;
 
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&txn, &status, opts.format)
     }
 }

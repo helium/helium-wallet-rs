@@ -1,10 +1,5 @@
-use crate::{
-    cmd::{load_wallet, print_json, Opts, OutputFormat},
-    result::Result,
-};
-use helium_api::Hnt;
+use crate::{cmd::*, result::Result};
 use qr2term::print_qr;
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Construct various request (like payment) in a QR code
@@ -35,16 +30,16 @@ pub struct Burn {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Payment(cmd) => cmd.run(opts),
-            Cmd::Burn(cmd) => cmd.run(opts),
+            Cmd::Payment(cmd) => cmd.run(opts).await,
+            Cmd::Burn(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Payment {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
 
         let mut request = json!({
@@ -59,7 +54,7 @@ impl Payment {
 }
 
 impl Burn {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
 
         let mut request = json!({

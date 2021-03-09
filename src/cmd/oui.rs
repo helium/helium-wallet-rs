@@ -1,13 +1,9 @@
 use crate::{
-    cmd::{
-        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
-        status_str, Opts, OutputFormat,
-    },
+    cmd::*,
     keypair::PublicKey,
     result::{anyhow, Result},
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnOuiV1, Client, PendingTxnStatus, Txn};
 use serde_json::json;
 use std::convert::TryInto;
 use structopt::StructOpt;
@@ -67,16 +63,16 @@ pub struct Submit {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Create(cmd) => cmd.run(opts),
-            Cmd::Submit(cmd) => cmd.run(opts),
+            Cmd::Create(cmd) => cmd.run(opts).await,
+            Cmd::Submit(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Create {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
@@ -96,19 +92,16 @@ impl Create {
             requested_subnet_size: self.subnet_size,
             filter: base64::decode(&self.filter)?,
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&api_client)?)?;
-        txn.staking_fee = txn.txn_staking_fee(&get_txn_fees(&api_client)?)?;
+        let txn_fees = get_txn_fees(&api_client).await?;
+        txn.fee = txn.txn_fee(&txn_fees)?;
+        txn.staking_fee = txn.txn_staking_fee(&txn_fees)?;
         txn.owner_signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 
         match self.payer.as_ref() {
             key if key == Some(&wallet_key) || key.is_none() => {
                 // Payer is the wallet submit if ready to commit
-                let status = if self.commit {
-                    Some(api_client.submit_txn(&envelope)?)
-                } else {
-                    None
-                };
+                let status = maybe_submit_txn(self.commit, &api_client, &envelope).await?;
                 print_txn(&txn, &envelope, &status, opts.format)
             }
             _ => {
@@ -121,16 +114,12 @@ impl Create {
 }
 
 impl Submit {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let envelope = BlockchainTxn::from_b64(&self.transaction)?;
         if let Some(Txn::Oui(t)) = envelope.txn.clone() {
             let api_url = api_url(PublicKey::from_bytes(&t.owner)?.network);
             let api_client = helium_api::Client::new_with_base_url(api_url);
-            let status = if self.commit {
-                Some(api_client.submit_txn(&envelope)?)
-            } else {
-                None
-            };
+            let status = maybe_submit_txn(self.commit, &api_client, &envelope).await?;
             print_txn(&t, &envelope, &status, opts.format)
         } else {
             Err(anyhow!("Invalid OUI transaction"))

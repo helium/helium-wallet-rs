@@ -3,8 +3,6 @@ use crate::{
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnTransferValidatorStakeV1, Hnt, PendingTxnStatus};
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Onboard a given encoded validator staking transactiom with this wallet.
@@ -67,16 +65,16 @@ pub struct Accept {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Self::Accept(cmd) => cmd.run(opts),
-            Self::Create(cmd) => cmd.run(opts),
+            Self::Accept(cmd) => cmd.run(opts).await,
+            Self::Create(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Create {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
@@ -95,12 +93,12 @@ impl Create {
                 .map(|o| o.to_vec())
                 .unwrap_or_else(Vec::new),
             fee: 0,
-            amount: self.amount.to_bones(),
+            amount: u64::from(self.amount),
             old_owner_signature: vec![],
             new_owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         if old_owner == &wallet.public_key {
             txn.old_owner_signature = txn.sign(&keypair)?;
         }
@@ -111,17 +109,13 @@ impl Create {
         }
 
         let envelope = txn.in_envelope();
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(Some(&envelope), &txn, &status, opts.format)
     }
 }
 
 impl Accept {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let mut txn = BlockchainTxnTransferValidatorStakeV1::from_envelope(&read_txn(&self.txn)?)?;
 
         let password = get_password(false)?;
@@ -139,11 +133,8 @@ impl Accept {
 
         let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
 
-        let status = if self.commit {
-            Some(client.submit_txn(&txn.in_envelope())?)
-        } else {
-            None
-        };
+        let envelope = txn.in_envelope();
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(None, &txn, &status, opts.format)
     }
 }
@@ -171,7 +162,7 @@ fn print_txn(
                 ["Old owner", old_owner],
                 ["New owner", new_owner],
                 ["Fee", txn.fee],
-                ["Amount", Hnt::from_bones(txn.amount)],
+                ["Amount", Hnt::from(txn.amount)],
                 ["Hash", status_str(status)]
             );
             print_footer(status)
@@ -183,7 +174,7 @@ fn print_txn(
                 "old_owner" : old_owner,
                 "new_owner" : new_owner,
                 "fee": txn.fee,
-                "amount": Hnt::from_bones(txn.amount),
+                "amount": Hnt::from(txn.amount),
                 "hash": status_json(status)
             });
             if let Some(envelope) = envelope {

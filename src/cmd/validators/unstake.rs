@@ -3,8 +3,6 @@ use crate::{
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign},
 };
-use helium_api::{BlockchainTxnUnstakeValidatorV1, PendingTxnStatus};
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Unstake a given validator. The stake will be in a cooldown period after
@@ -19,7 +17,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
@@ -33,14 +31,11 @@ impl Cmd {
             owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         txn.owner_signature = txn.sign(&keypair)?;
 
-        let status = if self.commit {
-            Some(client.submit_txn(&txn.in_envelope())?)
-        } else {
-            None
-        };
+        let envelope = txn.in_envelope();
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&txn, &status, opts.format)
     }
 }

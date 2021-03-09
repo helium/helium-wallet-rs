@@ -1,13 +1,6 @@
 use crate::keypair::{Keypair, PublicKey, Verify};
 use crate::result::Result;
-use helium_api::{
-    BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1, BlockchainTxnCreateHtlcV1,
-    BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2, BlockchainTxnPriceOracleV1,
-    BlockchainTxnRedeemHtlcV1, BlockchainTxnSecurityExchangeV1, BlockchainTxnStakeValidatorV1,
-    BlockchainTxnTokenBurnV1, BlockchainTxnTransferHotspotV1,
-    BlockchainTxnTransferValidatorStakeV1, BlockchainTxnUnstakeValidatorV1, BlockchainTxnVarsV1,
-    Message,
-};
+use helium_proto::*;
 
 pub trait TxnSign: Message + std::clone::Clone {
     fn sign(&self, keypair: &Keypair) -> Result<Vec<u8>>

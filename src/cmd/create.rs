@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{get_file_extension, get_password, get_seed_words, verify, Opts},
+    cmd::*,
     format::{self, Format},
     keypair::{KeyTag, KeyType, Keypair, Network, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR},
     mnemonic::mnemonic_to_entropy,
@@ -11,7 +11,6 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
 };
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Create a new wallet
@@ -77,16 +76,16 @@ pub struct Sharded {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Basic(cmd) => cmd.run(opts),
-            Cmd::Sharded(cmd) => cmd.run(opts),
+            Cmd::Basic(cmd) => cmd.run(opts).await,
+            Cmd::Sharded(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Basic {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let seed_words = if self.seed {
             Some(get_seed_words()?)
         } else {
@@ -109,7 +108,7 @@ impl Basic {
 }
 
 impl Sharded {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let seed_words = if self.seed {
             Some(get_seed_words()?)
         } else {

@@ -3,8 +3,6 @@ use crate::{
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign},
 };
-use helium_api::{BlockchainTxnUnstakeValidatorV1, PendingTxnStatus};
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Unstake a given validator. The stake will be in a cooldown period after
@@ -19,28 +17,29 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
+        let stake_amount = helium_api::validators::get(&client, &wallet.public_key.to_string())
+            .await?
+            .stake;
 
         let mut txn = BlockchainTxnUnstakeValidatorV1 {
             address: self.address.to_vec(),
             owner: wallet.public_key.to_vec(),
+            stake_amount,
             fee: 0,
             owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         txn.owner_signature = txn.sign(&keypair)?;
 
-        let status = if self.commit {
-            Some(client.submit_txn(&txn.in_envelope())?)
-        } else {
-            None
-        };
+        let envelope = txn.in_envelope();
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&txn, &status, opts.format)
     }
 }

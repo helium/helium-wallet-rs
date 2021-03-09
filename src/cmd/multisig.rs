@@ -4,13 +4,11 @@ use crate::{
     result::{bail, Result},
     traits::{ToJson, TxnSign, B64},
 };
-use helium_api::{BlockchainTxn, Client, PendingTxnStatus, Txn};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     path::{Path, PathBuf},
 };
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Commands multi signature transactions
@@ -59,11 +57,11 @@ pub struct Combine {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Inspect(cmd) => cmd.run(opts),
-            Cmd::Sign(cmd) => cmd.run(opts),
-            Cmd::Combine(cmd) => cmd.run(opts),
+            Cmd::Inspect(cmd) => cmd.run(opts).await,
+            Cmd::Sign(cmd) => cmd.run(opts).await,
+            Cmd::Combine(cmd) => cmd.run(opts).await,
         }
     }
 }
@@ -85,14 +83,14 @@ struct Proofs {
 }
 
 impl Inspect {
-    pub fn run(&self, _opts: Opts) -> Result {
+    pub async fn run(&self, _opts: Opts) -> Result {
         let txn = Artifact::load_txn(&self.artifact)?;
         print_txn(&txn, &None)
     }
 }
 
 impl Prove {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
@@ -110,7 +108,7 @@ impl Prove {
 }
 
 impl Combine {
-    pub fn run(&self, _opts: Opts) -> Result {
+    pub async fn run(&self, _opts: Opts) -> Result {
         let mut envelope = Artifact::load_txn(&self.artifact)?;
         // Load proofs and key_proof maps from txn
         let mut combined_proofs = Proofs::from_txn(&envelope)?;
@@ -119,12 +117,9 @@ impl Combine {
             combined_proofs.merge_proofs(&proofs);
         }
         combined_proofs.apply(&mut envelope)?;
-        let status = if self.commit {
-            let client = Client::new_with_base_url(api_url(self.network));
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
+
+        let client = Client::new_with_base_url(api_url(self.network));
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&envelope, &status)
     }
 }

@@ -1,18 +1,11 @@
 use crate::{
-    cmd::{
-        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
-        status_str, Opts, OutputFormat,
-    },
+    cmd::*,
     keypair::{Keypair, PublicKey},
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
-use helium_api::{
-    BlockchainTxn, BlockchainTxnCreateHtlcV1, BlockchainTxnRedeemHtlcV1, Client, Hnt,
-    PendingTxnStatus,
-};
+use helium_api::accounts;
 use serde_json::json;
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Create or Redeem from an HTLC address
@@ -65,27 +58,27 @@ pub struct Redeem {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Create(cmd) => cmd.run(opts),
-            Cmd::Redeem(cmd) => cmd.run(opts),
+            Cmd::Create(cmd) => cmd.run(opts).await,
+            Cmd::Redeem(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Create {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let keypair = wallet.decrypt(password.as_bytes())?;
         let wallet_address = keypair.public_key();
-        let account = client.get_account(&wallet_address.to_string())?;
+        let account = accounts::get(&client, &wallet_address.to_string()).await?;
         let address = Keypair::generate(wallet_address.tag());
 
         let mut txn = BlockchainTxnCreateHtlcV1 {
-            amount: self.hnt.to_bones(),
+            amount: u64::from(self.hnt),
             fee: 0,
             payee: self.payee.to_vec(),
             payer: wallet_address.to_vec(),
@@ -95,16 +88,11 @@ impl Create {
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         txn.signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
-
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_create_txn(&txn, &envelope, &status, opts.format)
     }
 }
@@ -146,7 +134,7 @@ fn print_create_txn(
 }
 
 impl Redeem {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
@@ -159,16 +147,11 @@ impl Redeem {
             preimage: self.preimage.clone().into_bytes(),
             signature: Vec::new(),
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         txn.signature = txn.sign(&keypair)?;
+
         let envelope = txn.in_envelope();
-
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
-
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_redeem_txn(&txn, &envelope, &status, opts.format)
     }
 }

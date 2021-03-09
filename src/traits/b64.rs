@@ -1,5 +1,5 @@
 use crate::result::Result;
-use helium_api::{BlockchainTxn, Message};
+use helium_proto::{BlockchainTxn, Message};
 use std::convert::TryInto;
 
 pub trait B64 {

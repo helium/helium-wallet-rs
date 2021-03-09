@@ -4,10 +4,7 @@ use crate::{
     result::{anyhow, bail, Result},
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
-use helium_api::{
-    BlockchainTxn, BlockchainTxnTransferHotspotV1, Client, Hnt, PendingTxnStatus, Txn,
-};
-use structopt::StructOpt;
+use helium_api::accounts;
 
 #[derive(Debug, StructOpt)]
 /// Transfer hotspot as buyer or seller.
@@ -43,13 +40,13 @@ pub struct Buy {
 }
 
 impl Cmd {
-    pub fn run(self, opts: Opts) -> Result {
+    pub async fn run(self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
         let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         match self {
             Self::Sell(sell) => {
-                let buyer_account = client.get_account(&sell.buyer.to_string())?;
+                let buyer_account = accounts::get(&client, &sell.buyer.to_string()).await?;
 
                 let mut txn = BlockchainTxnTransferHotspotV1 {
                     fee: 0,
@@ -58,10 +55,10 @@ impl Cmd {
                     buyer: sell.buyer.into(),
                     seller_signature: vec![],
                     buyer_signature: vec![],
-                    amount_to_seller: sell.price.unwrap_or_else(|| Hnt::from_bones(0)).to_bones(),
+                    amount_to_seller: u64::from(sell.price.unwrap_or_else(|| Hnt::from(0))),
                     buyer_nonce: buyer_account.speculative_nonce + 1,
                 };
-                txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+                txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
                 let password = get_password(false)?;
                 let keypair = wallet.decrypt(password.as_bytes())?;
                 txn.seller_signature = txn.sign(&keypair)?;
@@ -77,7 +74,8 @@ impl Cmd {
                         // verify that nonce is still valid.
                         let nonce = t.buyer_nonce;
                         let buyer_account =
-                            client.get_account(&PublicKey::from_bytes(&t.buyer)?.to_string())?;
+                            accounts::get(&client, &PublicKey::from_bytes(&t.buyer)?.to_string())
+                                .await?;
                         let expected_nonce = buyer_account.speculative_nonce + 1;
 
                         if buyer_account.speculative_nonce + 1 != nonce {
@@ -91,11 +89,8 @@ impl Cmd {
                         let password = get_password(false)?;
                         let keypair = wallet.decrypt(password.as_bytes())?;
                         t.buyer_signature = t.sign(&keypair)?;
-                        let status = if buy.commit {
-                            Some(client.submit_txn(&envelope)?)
-                        } else {
-                            None
-                        };
+
+                        let status = maybe_submit_txn(buy.commit, &client, &envelope).await?;
                         print_txn(&envelope, &status, opts.format)
                     }
                     _ => Err(anyhow!("Unsupported transaction for transfer_hotspot")),

@@ -1,11 +1,7 @@
 #[macro_use]
-extern crate prettytable;
-
-#[macro_use]
 extern crate lazy_static;
-
 #[macro_use]
-extern crate serde_json;
+extern crate prettytable;
 
 pub mod cmd;
 pub mod format;

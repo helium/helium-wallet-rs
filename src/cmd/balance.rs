@@ -3,10 +3,9 @@ use crate::{
     keypair::PublicKey,
     result::{anyhow, Result},
 };
-use helium_api::{Account, Client, Hnt, Hst};
+use helium_api::accounts::{self, Account};
 use prettytable::{format, Table};
 use serde_json::json;
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Get the balance for a wallet. The balance is given in HNT and has
@@ -18,7 +17,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let addresses = collect_addresses(opts.files, self.addresses.clone())?;
         let api_url = api_url(
             addresses
@@ -32,8 +31,8 @@ impl Cmd {
         for address in addresses {
             results.push((
                 address.to_string(),
-                client
-                    .get_account(&address.to_string())
+                accounts::get(&client, &address.to_string())
+                    .await
                     .map_err(|e| e.into()),
             ));
         }
@@ -56,9 +55,9 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                 match result {
                     Ok(account) => table.add_row(row![
                         address,
-                        Hnt::from_bones(account.balance),
+                        account.balance,
                         account.dc_balance,
-                        Hst::from_bones(account.sec_balance)
+                        account.sec_balance
                     ]),
                     Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
                 };
@@ -73,7 +72,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                         "address": address,
                         "dc_balance": account.dc_balance,
                         "sec_balance": account.sec_balance,
-                        "balance": Hnt::from_bones(account.balance),
+                        "balance": account.balance,
                     }));
                 };
             }

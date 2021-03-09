@@ -3,9 +3,8 @@ use crate::{
     keypair::PublicKey,
     result::{anyhow, Result},
 };
-use helium_api::{Client, Hotspot};
+use helium_api::{accounts, hotspots::Hotspot, IntoVec};
 use prettytable::{format, Table};
-use serde_json::json;
 
 #[derive(Debug, StructOpt)]
 /// Get the list of hotspots for one or more wallet addresses
@@ -16,7 +15,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let addresses = collect_addresses(opts.files, self.addresses.clone())?;
         let api_url = api_url(
             addresses
@@ -28,12 +27,11 @@ impl Cmd {
         let mut results: Vec<(PublicKey, Result<Vec<Hotspot>>)> =
             Vec::with_capacity(self.addresses.len());
         for address in addresses {
-            results.push((
-                address.clone(),
-                client
-                    .get_hotspots(&address.to_string())
-                    .map_err(|e| e.into()),
-            ));
+            let hotspots: Result<Vec<Hotspot>> = accounts::hotspots(&client, &address.to_string())
+                .into_vec()
+                .await
+                .map_err(|e| e.into());
+            results.push((address.clone(), hotspots));
         }
         print_results(results, opts.format)
     }

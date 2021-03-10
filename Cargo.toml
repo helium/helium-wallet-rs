@@ -43,9 +43,7 @@ serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
 helium-crypto = {git = "https://github.com/helium/helium-crypto-rs", tag="v0.0.5"}
-#helium-api = { git = "https://github.com/helium/helium-api-rs", tag = "v1.1.8-rc.2"}
-
-helium-api = { path = "../helium-api-rs"}
+helium-api = { git = "https://github.com/helium/helium-api-rs", branch = "madninja/streams_async"}
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
 tokio = {version = "1.2", features = ["full"]}
 

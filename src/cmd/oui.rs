@@ -4,9 +4,9 @@ use crate::{
     result::{anyhow, Result},
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee, B64},
 };
+use helium_api::ouis;
 use serde_json::json;
 use std::convert::TryInto;
-use structopt::StructOpt;
 
 /// Create or update an OUI
 #[derive(Debug, StructOpt)]
@@ -84,7 +84,7 @@ impl Create {
             addresses: map_addresses(self.addresses.clone(), |v| v.to_vec())?,
             owner: keypair.public_key().into(),
             payer: self.payer.as_ref().map_or(vec![], |v| v.into()),
-            oui: api_client.get_last_oui()?,
+            oui: ouis::last(&api_client).await?.oui,
             fee: 0,
             staking_fee: 1,
             owner_signature: vec![],

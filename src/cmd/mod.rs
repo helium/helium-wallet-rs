@@ -243,7 +243,7 @@ pub async fn maybe_submit_txn(
 
 pub async fn submit_txn(client: &Client, txn: &BlockchainTxn) -> Result<PendingTxnStatus> {
     let mut data = vec![];
-    txn.encode(&mut data);
+    txn.encode(&mut data)?;
     helium_api::pending_transactions::submit(client, &data)
         .await
         .map_err(|e| e.into())

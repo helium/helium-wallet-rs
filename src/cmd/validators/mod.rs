@@ -1,5 +1,6 @@
 use crate::{cmd::*, result::Result};
 
+mod list;
 mod stake;
 mod transfer;
 mod unstake;
@@ -15,15 +16,17 @@ pub enum Cmd {
     Unstake(unstake::Cmd),
     /// Transfer a validator stake to a new validator and owner
     Transfer(Box<transfer::Cmd>),
+    /// List all validators for one or more account addresses
+    List(list::Cmd),
 }
 
 impl Cmd {
     pub async fn run(self, opts: Opts) -> Result {
         match self {
-            // Self::List(cmd) => cmd.run(opts),
             Self::Stake(cmd) => cmd.run(opts).await,
             Self::Unstake(cmd) => cmd.run(opts).await,
             Self::Transfer(cmd) => cmd.run(opts).await,
+            Self::List(cmd) => cmd.run(opts).await,
         }
     }
 }

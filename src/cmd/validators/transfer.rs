@@ -41,6 +41,10 @@ pub struct Create {
     #[structopt(long, default_value = "0")]
     amount: Hnt,
 
+    /// Manually set fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+    
     /// Whether to commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -98,7 +102,11 @@ impl Create {
             new_owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
+        txn.fee = if let Some(fee) = self.fee {
+            fee
+        } else {
+            txn.txn_fee(&get_txn_fees(&client).await?)?
+        };
         if old_owner == &wallet.public_key {
             txn.old_owner_signature = txn.sign(&keypair)?;
         }
@@ -135,7 +143,7 @@ impl Accept {
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(None, &txn, &status, opts.format)
+        print_txn(Some(&envelope), &txn, &status, opts.format)
     }
 }
 

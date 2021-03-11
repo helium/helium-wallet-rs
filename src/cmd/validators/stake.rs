@@ -14,6 +14,10 @@ pub struct Cmd {
     /// Amoun to stake
     stake: Hnt,
 
+    /// Manually set fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+
     /// Whether to commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -35,7 +39,11 @@ impl Cmd {
             owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
+        txn.fee = if let Some(fee) = self.fee {
+            fee
+        } else {
+            txn.txn_fee(&get_txn_fees(&client).await?)?
+        };
         txn.owner_signature = txn.sign(&keypair)?;
 
         let envelope = txn.in_envelope();

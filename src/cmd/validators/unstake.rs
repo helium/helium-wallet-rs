@@ -11,6 +11,10 @@ pub struct Cmd {
     /// Address of the validator to unstake
     address: PublicKey,
 
+    /// Manually set fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+
     /// Whether to commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -31,16 +35,21 @@ impl Cmd {
             owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
+        txn.fee = if let Some(fee) = self.fee {
+            fee
+        } else {
+            txn.txn_fee(&get_txn_fees(&client).await?)?
+        };
         txn.owner_signature = txn.sign(&keypair)?;
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(&txn, &status, opts.format)
+        print_txn(&envelope, &txn, &status, opts.format)
     }
 }
 
 fn print_txn(
+    envelope: &BlockchainTxn,
     txn: &BlockchainTxnUnstakeValidatorV1,
     status: &Option<PendingTxnStatus>,
     format: OutputFormat,
@@ -60,6 +69,7 @@ fn print_txn(
             let table = json!({
                 "validator" : validator,
                 "fee": txn.fee,
+                "txn": envelope.to_b64()?,
                 "hash": status_json(status)
             });
             print_json(&table)

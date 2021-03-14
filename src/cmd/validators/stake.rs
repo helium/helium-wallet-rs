@@ -13,7 +13,7 @@ pub struct Cmd {
     /// Address of the validator to stake
     address: PublicKey,
 
-    /// Amoun to stake
+    /// Amount to stake
     stake: Hnt,
 
     /// Whether to commit the transaction to the blockchain

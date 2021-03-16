@@ -10,7 +10,7 @@ use crate::{
 /// hotspot miner and supplied here for owner signing. Use an onboarding key to
 /// get the transaction signed by the DeWi staking server.
 pub struct Cmd {
-    /// Base64 encoded transaction to sign. If no transaction if given stdin is
+    /// Base64 encoded transaction to sign. If no transaction is given stdin is
     /// read for the transaction. Note that the stdin feature only works if the
     /// wallet password is set in the HELIUM_WALLET_PASSWORD environment
     /// variable

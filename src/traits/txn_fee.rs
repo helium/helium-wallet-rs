@@ -139,12 +139,25 @@ impl_txn_fee!(
     old_owner_signature,
     new_owner_signature
 );
+impl_txn_fee!(BlockchainTxnRoutingV1, signature);
 
 impl TxnStakingFee for BlockchainTxnOuiV1 {
     fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {
         let fee = config.staking_fee_txn_oui_v1
             + (self.requested_subnet_size as u64 * config.staking_fee_txn_oui_v1_per_address);
         Ok(fee)
+    }
+}
+
+impl TxnStakingFee for BlockchainTxnRoutingV1 {
+    fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {
+        Ok(
+            if let Some(blockchain_txn_routing_v1::Update::RequestSubnet(size)) = &self.update {
+                *size as u64 * config.staking_fee_txn_oui_v1_per_address
+            } else {
+                0
+            },
+        )
     }
 }
 

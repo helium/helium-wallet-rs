@@ -42,3 +42,4 @@ impl_txn_envelope!(BlockchainTxnTransferHotspotV1, TransferHotspot);
 impl_txn_envelope!(BlockchainTxnStakeValidatorV1, StakeValidator);
 impl_txn_envelope!(BlockchainTxnUnstakeValidatorV1, UnstakeValidator);
 impl_txn_envelope!(BlockchainTxnTransferValidatorStakeV1, TransferValStake);
+impl_txn_envelope!(BlockchainTxnRoutingV1, Routing);

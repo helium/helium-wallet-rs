@@ -74,9 +74,7 @@ impl Create {
             requested_subnet_size: self.subnet_size,
             filter: base64::decode(&self.filter)?,
         };
-
-        println!("{:?}", txn);
-
+        
         let fees = &get_txn_fees(&client)
             .await
             .expect("Failure to get fee schedule");

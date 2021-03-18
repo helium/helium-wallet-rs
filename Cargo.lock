@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.5.0"
+version = "1.5.1-dev"
 dependencies = [
  "aes-gcm",
  "anyhow",

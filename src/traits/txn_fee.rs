@@ -1,12 +1,6 @@
 use super::TxnEnvelope;
 use crate::result::Result;
-use helium_api::{
-    BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1, BlockchainTxnCreateHtlcV1,
-    BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2, BlockchainTxnRedeemHtlcV1,
-    BlockchainTxnSecurityExchangeV1, BlockchainTxnStakeValidatorV1, BlockchainTxnTokenBurnV1,
-    BlockchainTxnTransferHotspotV1, BlockchainTxnTransferValidatorStakeV1,
-    BlockchainTxnUnstakeValidatorV1, Message,
-};
+use helium_proto::*;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -158,7 +152,7 @@ impl TxnStakingFee for BlockchainTxnOuiV1 {
 mod tests {
     use super::*;
     use crate::keypair::Keypair;
-    use helium_api::Payment;
+    use helium_proto::Payment;
 
     macro_rules! assert_txn_fee {
         ($txn: expr, $cfg: expr, $expected: expr) => {

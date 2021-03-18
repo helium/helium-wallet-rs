@@ -3,8 +3,6 @@ use crate::{
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign},
 };
-use helium_api::{BlockchainTxnStakeValidatorV1, Hnt, PendingTxnStatus};
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Onboard a given encoded validator staking transactiom with this wallet.
@@ -22,7 +20,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
@@ -32,20 +30,16 @@ impl Cmd {
         let mut txn = BlockchainTxnStakeValidatorV1 {
             address: self.address.to_vec(),
             owner: wallet.public_key.to_vec(),
-            stake: self.stake.to_bones(),
+            stake: u64::from(self.stake),
             fee: 0,
             owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         txn.owner_signature = txn.sign(&keypair)?;
 
         let envelope = txn.in_envelope();
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&envelope, &txn, &status, opts.format)
     }
 }

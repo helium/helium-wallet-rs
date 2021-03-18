@@ -1,17 +1,13 @@
 use crate::{
-    cmd::{
-        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, print_table,
-        status_json, status_str, Opts, OutputFormat,
-    },
+    cmd::*,
     keypair::PublicKey,
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnPaymentV2, Client, Hnt, Payment, PendingTxnStatus};
+use helium_api::accounts;
 use prettytable::Table;
 use serde_json::json;
 use std::str::FromStr;
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Send one or more payments to given addresses. Note that HNT only
@@ -32,29 +28,27 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
 
         let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = client.get_account(&keypair.public_key().to_string())?;
+        let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
 
-        let payments: Result<Vec<Payment>> = self
+        let payments: Vec<Payment> = self
             .payees
             .iter()
-            .map(|p| {
-                Ok(Payment {
-                    payee: p.address.to_vec(),
-                    amount: p.amount.to_bones(),
-                })
+            .map(|p| Payment {
+                payee: p.address.to_vec(),
+                amount: u64::from(p.amount),
             })
             .collect();
         let mut txn = BlockchainTxnPaymentV2 {
             fee: 0,
-            payments: payments?,
-            payer: keypair.public_key().into(),
+            payments,
+            payer: keypair.public_key().to_vec(),
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
@@ -62,16 +56,12 @@ impl Cmd {
         txn.fee = if let Some(fee) = self.fee {
             fee
         } else {
-            txn.txn_fee(&get_txn_fees(&client)?)?
+            txn.txn_fee(&get_txn_fees(&client).await?)?
         };
         txn.signature = txn.sign(&keypair)?;
-        let envelope = txn.in_envelope();
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
 
+        let envelope = txn.in_envelope();
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&txn, &envelope, &status, opts.format)
     }
 }
@@ -89,7 +79,7 @@ fn print_txn(
             for payment in txn.payments.clone() {
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
-                    Hnt::from_bones(payment.amount)
+                    Hnt::from(payment.amount)
                 ]);
             }
             print_table(&table)?;
@@ -108,7 +98,7 @@ fn print_txn(
             for payment in txn.payments.clone() {
                 payments.push(json!({
                     "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
-                    "amount": Hnt::from_bones(payment.amount),
+                    "amount": Hnt::from(payment.amount),
                 }))
             }
             let table = json!({

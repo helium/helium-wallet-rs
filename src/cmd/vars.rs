@@ -1,12 +1,12 @@
 use crate::{
-    cmd::{api_url, multisig::Artifact, print_json, Opts},
+    cmd::multisig::Artifact,
+    cmd::*,
     keypair::{Network, PublicKey},
     result::Result,
     traits::{ToJson, TxnEnvelope},
 };
-use helium_api::{BlockchainTxnVarsV1, BlockchainVarV1, Client};
+use helium_api::vars;
 use std::{convert::TryInto, str::FromStr};
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Commands for chain variables
@@ -56,26 +56,27 @@ pub struct Create {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Current(cmd) => cmd.run(opts),
-            Cmd::Create(cmd) => cmd.run(opts),
+            Cmd::Current(cmd) => cmd.run(opts).await,
+            Cmd::Create(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Current {
-    pub fn run(&self, _opts: Opts) -> Result {
+    pub async fn run(&self, _opts: Opts) -> Result {
         let client = Client::new_with_base_url(api_url(self.network));
-        let vars = client.get_vars()?;
+        let vars = vars::get(&client).await?;
         print_json(&vars)
     }
 }
 
 impl Create {
-    pub fn run(&self, _opts: Opts) -> Result {
+    pub async fn run(&self, _opts: Opts) -> Result {
         let client = Client::new_with_base_url(api_url(self.network));
-        let vars = client.get_vars()?;
+        let vars = vars::get(&client).await?;
+
         let mut txn = BlockchainTxnVarsV1 {
             version_predicate: 0,
             master_key: vec![],

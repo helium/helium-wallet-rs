@@ -1,12 +1,11 @@
 use crate::{
-    cmd::{get_file_extension, get_password, load_wallet, open_output_file, verify, Opts},
+    cmd::*,
     format::{self, Format},
     pwhash::PwHash,
     result::Result,
     wallet::Wallet,
 };
 use std::path::PathBuf;
-use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 /// Upgrade a wallet to the latest supported version of the given
@@ -50,16 +49,16 @@ pub struct Sharded {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Basic(cmd) => cmd.run(opts),
-            Cmd::Sharded(cmd) => cmd.run(opts),
+            Cmd::Basic(cmd) => cmd.run(opts).await,
+            Cmd::Sharded(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Basic {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
@@ -75,7 +74,7 @@ impl Basic {
 }
 
 impl Sharded {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;

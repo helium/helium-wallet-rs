@@ -164,8 +164,8 @@ impl Wallet {
             public_key,
             iv,
             tag,
-            format,
             encrypted,
+            format,
         })
     }
 

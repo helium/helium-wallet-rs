@@ -1,15 +1,10 @@
 use crate::{
-    cmd::{
-        api_url, get_password, get_txn_fees, load_wallet, print_footer, print_json, status_json,
-        status_str, Opts, OutputFormat,
-    },
+    cmd::*,
     keypair::PublicKey,
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
-use helium_api::{BlockchainTxn, BlockchainTxnSecurityExchangeV1, Client, Hst, PendingTxnStatus};
-use serde_json::json;
-use structopt::StructOpt;
+use helium_api::accounts;
 
 #[derive(Debug, StructOpt)]
 /// Work with security tokens
@@ -32,40 +27,36 @@ pub struct Transfer {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Cmd::Transfer(cmd) => cmd.run(opts),
+            Cmd::Transfer(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 impl Transfer {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
 
         let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = client.get_account(&keypair.public_key().to_string())?;
+        let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
 
         let mut txn = BlockchainTxnSecurityExchangeV1 {
             payer: keypair.public_key().into(),
             payee: self.payee.to_vec(),
-            amount: self.amount.to_bones(),
+            amount: u64::from(self.amount),
             nonce: account.speculative_sec_nonce + 1,
             fee: 0,
             signature: vec![],
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&client)?)?;
+        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
         txn.signature = txn.sign(&keypair)?;
-        let envelope = txn.in_envelope();
-        let status = if self.commit {
-            Some(client.submit_txn(&envelope)?)
-        } else {
-            None
-        };
 
+        let envelope = txn.in_envelope();
+        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&txn, &envelope, &status, opts.format)
     }
 }

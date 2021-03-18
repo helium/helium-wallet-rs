@@ -1,13 +1,8 @@
-use crate::{
-    cmd::{api_url, load_wallet, print_json, print_table, Opts, OutputFormat},
-    result::Result,
-    wallet::Wallet,
-};
-use helium_api::{Account, Client, Hnt, Hst};
+use crate::{cmd::*, result::Result, wallet::Wallet};
+use helium_api::accounts::{self, Account};
 use prettytable::Table;
 use qr2term::print_qr;
 use serde_json::json;
-use structopt::StructOpt;
 
 /// Get wallet information
 #[derive(Debug, StructOpt)]
@@ -18,7 +13,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, opts: Opts) -> Result {
+    pub async fn run(&self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
         if self.qr_code {
             let address = wallet.address()?;
@@ -26,7 +21,7 @@ impl Cmd {
             Ok(())
         } else {
             let client = Client::new_with_base_url(api_url(wallet.public_key.network));
-            let account = client.get_account(&wallet.address()?)?;
+            let account = accounts::get(&client, &wallet.address()?).await?;
             print_wallet(&wallet, &account, opts.format)
         }
     }
@@ -42,12 +37,9 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             table.add_row(row!["Type", wallet.public_key.tag().key_type]);
             table.add_row(row!["Sharded", wallet.is_sharded()]);
             table.add_row(row!["PwHash", wallet.pwhash()]);
-            table.add_row(row!["Balance", Hnt::from_bones(account.balance)]);
+            table.add_row(row!["Balance", account.balance]);
             table.add_row(row!["DC Balance", account.dc_balance]);
-            table.add_row(row![
-                "Securities Balance",
-                Hst::from_bones(account.sec_balance)
-            ]);
+            table.add_row(row!["Securities Balance", account.sec_balance]);
             print_table(&table)
         }
         OutputFormat::Json => {

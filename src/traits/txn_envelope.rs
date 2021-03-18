@@ -1,12 +1,5 @@
 use crate::result::{anyhow, Result};
-use helium_api::{
-    BlockchainTxn, BlockchainTxnAddGatewayV1, BlockchainTxnAssertLocationV1,
-    BlockchainTxnCreateHtlcV1, BlockchainTxnOuiV1, BlockchainTxnPaymentV1, BlockchainTxnPaymentV2,
-    BlockchainTxnPriceOracleV1, BlockchainTxnRedeemHtlcV1, BlockchainTxnSecurityExchangeV1,
-    BlockchainTxnStakeValidatorV1, BlockchainTxnTokenBurnV1, BlockchainTxnTransferHotspotV1,
-    BlockchainTxnTransferValidatorStakeV1, BlockchainTxnUnstakeValidatorV1, BlockchainTxnVarsV1,
-    Txn,
-};
+use helium_proto::*;
 
 pub trait TxnEnvelope {
     fn in_envelope(&self) -> BlockchainTxn;

@@ -23,7 +23,7 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
-        let stake_amount = helium_api::validators::get(&client, &wallet.public_key.to_string())
+        let stake_amount = helium_api::validators::get(&client, &self.address.to_string())
             .await?
             .stake;
 

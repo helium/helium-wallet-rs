@@ -25,14 +25,14 @@ pub struct Create {
     #[structopt(long)]
     new_address: PublicKey,
 
-    /// The new owner of the transfered validator and stake. If not present the
+    /// The new owner of the transfered validator and stake. If not present
     /// the new owner is assumed to be the same as the current owner as defined
     /// on the blockchain.
     #[structopt(long)]
     new_owner: Option<PublicKey>,
 
-    /// The current (old) owner of the transfered validator and stake. If not present the
-    /// it is set to the public key of the given wallet.
+    /// The current (old) owner of the transfered validator and stake. If not present
+    /// the old owner is set to the public key of the given wallet.
     #[structopt(long)]
     old_owner: Option<PublicKey>,
 
@@ -82,7 +82,7 @@ impl Create {
         let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let old_owner = self.old_owner.as_ref().unwrap_or(&wallet.public_key);
-        let stake_amount = helium_api::validators::get(&client, &wallet.public_key.to_string())
+        let stake_amount = helium_api::validators::get(&client, &self.old_address.to_string())
             .await?
             .stake;
 

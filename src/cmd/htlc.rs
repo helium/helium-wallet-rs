@@ -167,7 +167,7 @@ fn print_redeem_txn(
             ptable!(
                 ["Key", "Value"],
                 ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
-                ["Address", PublicKey::from_bytes(&txn.payee)?.to_string()],
+                ["Address", PublicKey::from_bytes(&txn.address)?.to_string()],
                 ["Preimage", std::str::from_utf8(&txn.preimage)?],
                 ["Hash", status_str(status)]
             );

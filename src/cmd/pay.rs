@@ -21,7 +21,7 @@ pub struct Cmd {
     /// Manually set the nonce to use for the transaction
     #[structopt(long)]
     nonce: Option<u64>,
-    
+
     /// Manually set the DC fee to pay for the transaction
     #[structopt(long)]
     fee: Option<u64>,

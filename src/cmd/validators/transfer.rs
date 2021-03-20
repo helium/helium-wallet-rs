@@ -48,7 +48,7 @@ pub struct Create {
     /// Manually set fee to pay for the transaction
     #[structopt(long)]
     fee: Option<u64>,
-    
+
     /// Whether to commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -116,8 +116,8 @@ impl Create {
             u64::from(stake_amount)
         } else {
             helium_api::validators::get(&client, &self.old_address.to_string())
-            .await?
-            .stake
+                .await?
+                .stake
         };
         if old_owner == &wallet.public_key {
             txn.old_owner_signature = txn.sign(&keypair)?;

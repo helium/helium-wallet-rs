@@ -18,7 +18,7 @@ pub struct Cmd {
     /// Manually set the fee to pay for the transaction
     #[structopt(long)]
     fee: Option<u64>,
-    
+
     /// Whether to commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -49,8 +49,8 @@ impl Cmd {
             u64::from(stake_amount)
         } else {
             helium_api::validators::get(&client, &self.address.to_string())
-            .await?
-            .stake
+                .await?
+                .stake
         };
         txn.owner_signature = txn.sign(&keypair)?;
 

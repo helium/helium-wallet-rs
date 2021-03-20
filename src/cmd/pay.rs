@@ -18,7 +18,11 @@ pub struct Cmd {
     #[structopt(long = "payee", short = "p", name = "payee=hnt", required = true)]
     payees: Vec<Payee>,
 
-    /// Manually set DC fee to pay for the transaction
+    /// Manually set the nonce to use for the transaction
+    #[structopt(long)]
+    nonce: Option<u64>,
+    
+    /// Manually set the DC fee to pay for the transaction
     #[structopt(long)]
     fee: Option<u64>,
 
@@ -35,7 +39,6 @@ impl Cmd {
         let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
 
         let payments: Vec<Payment> = self
             .payees
@@ -49,7 +52,7 @@ impl Cmd {
             fee: 0,
             payments,
             payer: keypair.public_key().to_vec(),
-            nonce: account.speculative_nonce + 1,
+            nonce: 0,
             signature: Vec::new(),
         };
 
@@ -57,6 +60,12 @@ impl Cmd {
             fee
         } else {
             txn.txn_fee(&get_txn_fees(&client).await?)?
+        };
+        txn.nonce = if let Some(nonce) = self.nonce {
+            nonce
+        } else {
+            let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
+            account.speculative_nonce + 1
         };
         txn.signature = txn.sign(&keypair)?;
 

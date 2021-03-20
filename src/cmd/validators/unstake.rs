@@ -11,6 +11,14 @@ pub struct Cmd {
     /// Address of the validator to unstake
     address: PublicKey,
 
+    /// The amount of HNT of the original stake
+    #[structopt(long)]
+    stake_amount: Option<Hnt>,
+
+    /// Manually set the fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+    
     /// Whether to commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -23,28 +31,37 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
-        let stake_amount = helium_api::validators::get(&client, &self.address.to_string())
-            .await?
-            .stake;
 
         let mut txn = BlockchainTxnUnstakeValidatorV1 {
             address: self.address.to_vec(),
             owner: wallet.public_key.to_vec(),
-            stake_amount,
+            stake_amount: 0,
             fee: 0,
             owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
+        txn.fee = if let Some(fee) = self.fee {
+            fee
+        } else {
+            txn.txn_fee(&get_txn_fees(&client).await?)?
+        };
+        txn.stake_amount = if let Some(stake_amount) = self.stake_amount {
+            u64::from(stake_amount)
+        } else {
+            helium_api::validators::get(&client, &self.address.to_string())
+            .await?
+            .stake
+        };
         txn.owner_signature = txn.sign(&keypair)?;
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(&txn, &status, opts.format)
+        print_txn(&envelope, &txn, &status, opts.format)
     }
 }
 
 fn print_txn(
+    envelope: &BlockchainTxn,
     txn: &BlockchainTxnUnstakeValidatorV1,
     status: &Option<PendingTxnStatus>,
     format: OutputFormat,
@@ -64,6 +81,7 @@ fn print_txn(
             let table = json!({
                 "validator" : validator,
                 "fee": txn.fee,
+                "txn": envelope.to_b64()?,
                 "hash": status_json(status)
             });
             print_json(&table)

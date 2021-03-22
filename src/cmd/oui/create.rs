@@ -1,6 +1,5 @@
-use super::map_addresses;
 use crate::{
-    cmd::*,
+    cmd::oui::*,
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee},
 };
 use helium_api::{ouis, Client};
@@ -75,14 +74,11 @@ impl Create {
             filter: base64::decode(&self.filter)?,
         };
 
-        let fees = &get_txn_fees(&client)
-            .await
-            .expect("Failure to get fee schedule");
+        let fees = &get_txn_fees(&client).await?;
 
         txn.fee = txn.txn_fee(&fees).expect("Failure to calculate txn fee");
-        txn.staking_fee = txn
-            .txn_staking_fee(&fees)
-            .expect("Failure to calculate staking fee");
+        txn.staking_fee = txn.txn_staking_fee(&fees)?;
+
         txn.owner_signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 

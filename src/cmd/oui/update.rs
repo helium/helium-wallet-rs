@@ -1,6 +1,5 @@
-use super::map_addresses;
 use crate::{
-    cmd::*,
+    cmd::oui::*,
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee, B64},
 };
 use helium_api::{ouis, pending_transactions::PendingTxnStatus, Client};

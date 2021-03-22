@@ -29,7 +29,7 @@ hex = "0.4"
 hmac = "0"
 sha2 = "0"
 base64 = "0"
-reqwest = "*"
+reqwest = {version = "0", default-features=false, features=["rustls-tls"]}
 pbkdf2 = {version = "0.7", default-features=false }
 aes-gcm = "0.8"
 shamirsecretsharing = {version="0.1.4", features=["have_libsodium"]}
@@ -47,17 +47,8 @@ helium-crypto = {git = "https://github.com/helium/helium-crypto-rs", tag="v0.0.7
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
 tokio = {version = "1.2", features = ["full"]}
 
-# Add openssl-sys as a direct dependency so it can be cross compiled to
-# x86_64-unknown-linux-musl using the "vendored" feature below
-openssl-sys = "*"
-
 [dev-dependencies]
 bs58 = "0.4"
-
-[features]
-# Force openssl-sys to staticly link in the openssl library. Necessary when
-# cross compiling to x86_64-unknown-linux-musl.
-vendored = ["openssl-sys/vendored"]
 
 [patch.crates-io]
 elliptic-curve = { git = "https://github.com/helium/traits.git", branch = "rg/compact" }

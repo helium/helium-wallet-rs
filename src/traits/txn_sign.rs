@@ -70,3 +70,4 @@ impl_sign!(
     old_owner_signature,
     new_owner_signature
 );
+impl_sign!(BlockchainTxnRoutingV1, signature);

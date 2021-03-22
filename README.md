@@ -1,6 +1,9 @@
 # helium-wallet
 
-![Continuous Integration](https://github.com/helium/helium-wallet-rs/workflows/Continuous%20Integration/badge.svg)
+[![Build Status][actions-badge]][actions-url]
+
+[actions-badge]: https://github.com/helium/helium-wallet-rs/workflows/CI/badge.svg
+[actions-url]: https://github.com/helium/helium-wallet-rs/actions?query=workflow%3ACI+branch%3Amaster
 
 A [Helium](https://helium.com) wallet implementation in Rust.
 
@@ -190,8 +193,8 @@ The following environment variables are supported:
 
 ## Building from Source
 
-If you wish to build from source instead of downloading 
-[a prebuilt release](https://github.com/helium/helium-wallet-rs/releases/latest) 
+If you wish to build from source instead of downloading
+[a prebuilt release](https://github.com/helium/helium-wallet-rs/releases/latest)
 you can add setup a Ubuntu 20.04 environment with the following:
 
 ```

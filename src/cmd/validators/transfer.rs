@@ -101,7 +101,13 @@ impl Create {
                 .map(|o| o.to_vec())
                 .unwrap_or_else(Vec::new),
             fee: 0,
-            stake_amount: 0,
+            stake_amount: if let Some(stake_amount) = self.stake_amount {
+                    u64::from(stake_amount)
+                } else {
+                    helium_api::validators::get(&client, &self.old_address.to_string())
+                        .await?
+                        .stake
+                },
             payment_amount: u64::from(self.amount),
             old_owner_signature: vec![],
             new_owner_signature: vec![],
@@ -111,13 +117,6 @@ impl Create {
             fee
         } else {
             txn.txn_fee(&get_txn_fees(&client).await?)?
-        };
-        txn.stake_amount = if let Some(stake_amount) = self.stake_amount {
-            u64::from(stake_amount)
-        } else {
-            helium_api::validators::get(&client, &self.old_address.to_string())
-                .await?
-                .stake
         };
         if old_owner == &wallet.public_key {
             txn.old_owner_signature = txn.sign(&keypair)?;

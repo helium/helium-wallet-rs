@@ -35,7 +35,13 @@ impl Cmd {
         let mut txn = BlockchainTxnUnstakeValidatorV1 {
             address: self.address.to_vec(),
             owner: wallet.public_key.to_vec(),
-            stake_amount: 0,
+            stake_amount: if let Some(stake_amount) = self.stake_amount {
+                    u64::from(stake_amount)
+                } else {
+                    helium_api::validators::get(&client, &self.address.to_string())
+                        .await?
+                        .stake
+                },
             fee: 0,
             owner_signature: vec![],
         };
@@ -44,13 +50,6 @@ impl Cmd {
             fee
         } else {
             txn.txn_fee(&get_txn_fees(&client).await?)?
-        };
-        txn.stake_amount = if let Some(stake_amount) = self.stake_amount {
-            u64::from(stake_amount)
-        } else {
-            helium_api::validators::get(&client, &self.address.to_string())
-                .await?
-                .stake
         };
         txn.owner_signature = txn.sign(&keypair)?;
 

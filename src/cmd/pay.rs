@@ -52,7 +52,12 @@ impl Cmd {
             fee: 0,
             payments,
             payer: keypair.public_key().to_vec(),
-            nonce: 0,
+            nonce: if let Some(nonce) = self.nonce {
+                    nonce
+                } else {
+                    let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
+                    account.speculative_nonce + 1
+                },
             signature: Vec::new(),
         };
 
@@ -60,12 +65,6 @@ impl Cmd {
             fee
         } else {
             txn.txn_fee(&get_txn_fees(&client).await?)?
-        };
-        txn.nonce = if let Some(nonce) = self.nonce {
-            nonce
-        } else {
-            let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
-            account.speculative_nonce + 1
         };
         txn.signature = txn.sign(&keypair)?;
 

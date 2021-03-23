@@ -102,12 +102,12 @@ impl Create {
                 .unwrap_or_else(Vec::new),
             fee: 0,
             stake_amount: if let Some(stake_amount) = self.stake_amount {
-                    u64::from(stake_amount)
-                } else {
-                    helium_api::validators::get(&client, &self.old_address.to_string())
-                        .await?
-                        .stake
-                },
+                u64::from(stake_amount)
+            } else {
+                helium_api::validators::get(&client, &self.old_address.to_string())
+                    .await?
+                    .stake
+            },
             payment_amount: u64::from(self.amount),
             old_owner_signature: vec![],
             new_owner_signature: vec![],

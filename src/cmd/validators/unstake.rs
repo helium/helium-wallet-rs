@@ -36,12 +36,12 @@ impl Cmd {
             address: self.address.to_vec(),
             owner: wallet.public_key.to_vec(),
             stake_amount: if let Some(stake_amount) = self.stake_amount {
-                    u64::from(stake_amount)
-                } else {
-                    helium_api::validators::get(&client, &self.address.to_string())
-                        .await?
-                        .stake
-                },
+                u64::from(stake_amount)
+            } else {
+                helium_api::validators::get(&client, &self.address.to_string())
+                    .await?
+                    .stake
+            },
             fee: 0,
             owner_signature: vec![],
         };

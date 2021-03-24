@@ -1,5 +1,6 @@
 use crate::{cmd::*, result::Result};
 
+mod generate;
 mod list;
 mod stake;
 mod transfer;
@@ -18,6 +19,8 @@ pub enum Cmd {
     Transfer(Box<transfer::Cmd>),
     /// List all validators for one or more account addresses
     List(list::Cmd),
+    /// Generate a validator key
+    Generate(generate::Cmd),
 }
 
 impl Cmd {
@@ -27,6 +30,7 @@ impl Cmd {
             Self::Unstake(cmd) => cmd.run(opts).await,
             Self::Transfer(cmd) => cmd.run(opts).await,
             Self::List(cmd) => cmd.run(opts).await,
+            Self::Generate(cmd) => cmd.run(opts).await,
         }
     }
 }

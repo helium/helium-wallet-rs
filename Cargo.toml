@@ -43,9 +43,10 @@ serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
 helium-api = "2"
+angry-purple-tiger = "0"
 helium-crypto = {git = "https://github.com/helium/helium-crypto-rs", tag="v0.0.7"}
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
-tokio = {version = "1.2", features = ["full"]}
+tokio = {version = "1", features = ["full"]}
 
 [dev-dependencies]
 bs58 = "0.4"

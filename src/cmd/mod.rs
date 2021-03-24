@@ -190,6 +190,7 @@ pub fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
         .write(true)
         .create(true)
         .create_new(create)
+        .truncate(true)
         .open(filename)
 }
 

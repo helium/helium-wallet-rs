@@ -23,28 +23,6 @@ Download the latest binary for your platform here from
 the zip file and place the `helium-wallet` binary in your `$PATH`
 somewhere.
 
-### From Source
-
-You will need a working Rust tool-chain installed to build this CLI
-from source.
-
-Clone this repo:
-
-```
-git clone https://github.com/helium/helium-wallet-rs
-```
-
-and build it using cargo:
-
-```
-cd helium-wallet-rs
-cargo build --release
-```
-
-The resulting `target/release/helium-wallet` is ready for use. Place
-it somewhere in your `$PATH` or run it straight from the the target
-folder.
-
 ## Usage
 
 At any time use `-h` or `--help` to get more help for a command.
@@ -191,7 +169,11 @@ The following environment variables are supported:
   wallet. Useful for scripting or other non-interactive commands, but
   use with care.
 
-## Building from Source
+
+### Building from Source
+
+You will need a working Rust tool-chain installed to build this CLI
+from source. In addition, you will need some basic build tools.
 
 If you wish to build from source instead of downloading
 [a prebuilt release](https://github.com/helium/helium-wallet-rs/releases/latest)
@@ -203,10 +185,25 @@ sudo apt upgrade
 git clone https://github.com/helium/helium-wallet-rs
 cd helium-wallet-rs
 curl https://sh.rustup.rs -sSf | sh
-## use 1
+## recommended option 1
 source $HOME/.cargo/env
 sudo apt install build-essential
 sudo apt install pkg-config
-sudo apt install libssl-dev
+```
+
+Clone this repo:
+
+```
+git clone https://github.com/helium/helium-wallet-rs
+```
+
+and build it using cargo:
+
+```
+cd helium-wallet-rs
 cargo build --release
 ```
+
+The resulting `target/release/helium-wallet` is ready for use. Place
+it somewhere in your `$PATH` or run it straight from the the target
+folder.

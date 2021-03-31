@@ -41,6 +41,14 @@ pub struct Create {
     #[structopt(long, default_value = "0")]
     amount: Hnt,
 
+    /// The amount of HNT of the original stake
+    #[structopt(long)]
+    stake_amount: Option<Hnt>,
+
+    /// Manually set fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+
     /// Whether to commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -82,9 +90,6 @@ impl Create {
         let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let old_owner = self.old_owner.as_ref().unwrap_or(&wallet.public_key);
-        let stake_amount = helium_api::validators::get(&client, &self.old_address.to_string())
-            .await?
-            .stake;
 
         let mut txn = BlockchainTxnTransferValidatorStakeV1 {
             old_address: self.old_address.to_vec(),
@@ -96,13 +101,23 @@ impl Create {
                 .map(|o| o.to_vec())
                 .unwrap_or_else(Vec::new),
             fee: 0,
-            stake_amount,
+            stake_amount: if let Some(stake_amount) = self.stake_amount {
+                u64::from(stake_amount)
+            } else {
+                helium_api::validators::get(&client, &self.old_address.to_string())
+                    .await?
+                    .stake
+            },
             payment_amount: u64::from(self.amount),
             old_owner_signature: vec![],
             new_owner_signature: vec![],
         };
 
-        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
+        txn.fee = if let Some(fee) = self.fee {
+            fee
+        } else {
+            txn.txn_fee(&get_txn_fees(&client).await?)?
+        };
         if old_owner == &wallet.public_key {
             txn.old_owner_signature = txn.sign(&keypair)?;
         }
@@ -139,7 +154,7 @@ impl Accept {
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(None, &txn, &status, opts.format)
+        print_txn(Some(&envelope), &txn, &status, opts.format)
     }
 }
 

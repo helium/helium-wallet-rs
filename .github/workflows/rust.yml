@@ -40,14 +40,13 @@ jobs:
       - name: Name Release
         if: startsWith(github.ref, 'refs/tags/')
         id: name_release
-        run: echo ::set-output name=RELEASE::helium-wallet-$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-linux
+        run: echo ::set-output name=RELEASE::helium-wallet-${GITHUB_REF/refs\/tags\//}-x86-64-linux
 
       - name: Prepare Release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           NAME: ${{ steps.name_release.outputs.RELEASE }}
         run: |
-          strip target/release/helium-wallet
           mkdir $NAME
           mv target/release/helium-wallet $NAME/
           cp README.md $NAME/
@@ -86,14 +85,13 @@ jobs:
       - name: Name Release
         if: startsWith(github.ref, 'refs/tags/')
         id: name_release
-        run: echo ::set-output name=RELEASE::helium-wallet-$(echo $GITHUB_REF | cut -d / -f 3)-x86-64-macos
+        run: echo ::set-output name=RELEASE::helium-wallet-${GITHUB_REF/refs\/tags\//}-x86-64-macos
 
       - name: Prepare Release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           NAME: ${{ steps.name_release.outputs.RELEASE }}
         run: |
-          strip target/release/helium-wallet
           mkdir $NAME
           mv target/release/helium-wallet $NAME/
           cp README.md $NAME/
@@ -106,5 +104,51 @@ jobs:
         with:
           files: |
             ${{ steps.name_release.outputs.RELEASE }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-gnu
+          default: true
+          override: true
+
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.5.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Build
+        run: cargo build --all --release
+
+      - name: Name Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: name_release
+        run: echo ::set-output name=RELEASE::helium-wallet-${GITHUB_REF/refs\/tags\//}-x86-64-win
+        shell: bash
+
+      - name: Prepare Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NAME: ${{ steps.name_release.outputs.RELEASE }}
+        run: |
+          mkdir $env:NAME
+          mv target/release/helium-wallet.exe $env:NAME/
+          cp README.md $env:NAME/
+          cp LICENSE $env:NAME/
+          7z a "$env:NAME.zip" "$env:NAME/"
+
+      - name: Push Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ steps.name_release.outputs.RELEASE }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

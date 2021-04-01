@@ -72,7 +72,10 @@ fn print_txn(
                 ["Key", "Value"],
                 ["Validator", validator],
                 ["Fee", txn.fee],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                [Frb => "WARNING",
+                "After unstaking, a validator can not access the staked amount\n\
+                nor earn rewards for 250,000 blocks (approx. five months)."]
             );
             print_footer(status)
         }

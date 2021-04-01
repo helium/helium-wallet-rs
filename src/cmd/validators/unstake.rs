@@ -74,10 +74,8 @@ fn print_txn(
                 ["Fee", txn.fee],
                 ["Hash", status_str(status)],
                 [Frb => "WARNING",
-                "Once a validator has unstaked it enters an unbonding state.\n\
-                During this approximately 5 month (250,000 blocks) unbonding state,\n\
-                the staked amount cannot be transferred or withdrawn and validator\n\
-                nodes do NOT earn rewards."]
+                "After unstaking, a validator can not access the staked amount\n\
+                nor earn rewards for 250,000 blocks (approx. five months)."]
             );
             print_footer(status)
         }

@@ -142,8 +142,8 @@ when creating the wallet.
 To send tokens to other accounts use:
 
 ```
-    helium-wallet pay -p<payee>=<hnt>
-    helium-wallet -p<payee>=<hnt> --commit
+    helium-wallet pay -p <payee>=<hnt>
+    helium-wallet pay -p <payee>=<hnt> --commit
 
 ```
 

@@ -48,6 +48,11 @@ impl_sign!(
     payer_signature,
     gateway_signature
 );
+impl_sign!(
+    BlockchainTxnAssertLocationV2,
+    owner_signature,
+    payer_signature
+);
 impl_sign!(BlockchainTxnOuiV1, owner_signature, payer_signature);
 impl_sign!(BlockchainTxnSecurityExchangeV1, signature);
 impl_sign!(BlockchainTxnTokenBurnV1, signature);

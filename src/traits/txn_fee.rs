@@ -125,6 +125,11 @@ impl_txn_staking_fee!(
     BlockchainTxnAssertLocationV1,
     staking_fee_txn_assert_location_v1
 );
+impl_txn_fee!((payer, BlockchainTxnAssertLocationV2), owner_signature);
+impl_txn_staking_fee!(
+    BlockchainTxnAssertLocationV2,
+    staking_fee_txn_assert_location_v1
+);
 impl_txn_fee!((payer, BlockchainTxnOuiV1), owner_signature);
 
 impl_txn_fee!(

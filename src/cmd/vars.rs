@@ -18,9 +18,10 @@ pub enum Cmd {
 #[derive(Debug, StructOpt)]
 /// Lists current chain variables
 pub struct Current {
-    /// The network to get the current variables for (mainnet/testnet)
-    #[structopt(long, default_value = "mainnet")]
-    network: Network,
+    /// The network to get the variables for (mainnet/testnet). Defaults to the
+    /// network associated with the active wallet.
+    #[structopt(long)]
+    network: Option<Network>,
 }
 
 #[derive(Debug, StructOpt)]
@@ -50,9 +51,10 @@ pub struct Create {
     #[structopt(long)]
     txn: bool,
 
-    /// The network to get the current variables for (mainnet/testnet)
-    #[structopt(long, default_value = "mainnet")]
-    network: Network,
+    /// The network to create the variables for (mainnet/testnet). Defaults to
+    /// the network associated with the active wallet.
+    #[structopt(long)]
+    network: Option<Network>,
 }
 
 impl Cmd {
@@ -65,16 +67,20 @@ impl Cmd {
 }
 
 impl Current {
-    pub async fn run(&self, _opts: Opts) -> Result {
-        let client = Client::new_with_base_url(api_url(self.network));
+    pub async fn run(&self, opts: Opts) -> Result {
+        let wallet = load_wallet(opts.files)?;
+        let network = self.network.unwrap_or(wallet.public_key.network);
+        let client = Client::new_with_base_url(api_url(network));
         let vars = vars::get(&client).await?;
         print_json(&vars)
     }
 }
 
 impl Create {
-    pub async fn run(&self, _opts: Opts) -> Result {
-        let client = Client::new_with_base_url(api_url(self.network));
+    pub async fn run(&self, opts: Opts) -> Result {
+        let wallet = load_wallet(opts.files)?;
+        let network = self.network.unwrap_or(wallet.public_key.network);
+        let client = Client::new_with_base_url(api_url(network));
         let vars = vars::get(&client).await?;
 
         let mut txn = BlockchainTxnVarsV1 {
@@ -84,8 +90,10 @@ impl Create {
             key_proof: vec![],
             vars: self.set.iter().map(|v| v.0.clone()).collect(),
             nonce: self.nonce.unwrap_or_else(|| {
-                vars.get("nonce")
-                    .map_or(0, |v| v.as_u64().unwrap_or(0).try_into().unwrap())
+                vars.get("nonce").map_or(0, |v| {
+                    let result: u32 = v.as_u64().unwrap_or(0).try_into().unwrap();
+                    result + 1
+                })
             }),
             unsets: self.unset.iter().map(|v| v.as_bytes().to_vec()).collect(),
             cancels: self.cancel.iter().map(|v| v.as_bytes().to_vec()).collect(),

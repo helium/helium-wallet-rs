@@ -9,8 +9,6 @@ mod unstake;
 #[derive(Debug, StructOpt)]
 /// Commands for validators
 pub enum Cmd {
-    // List validators for the given wallet.
-    // List(List),
     /// Stake a validator with the given wallet as the owner.
     Stake(stake::Cmd),
     /// Unstake a validator

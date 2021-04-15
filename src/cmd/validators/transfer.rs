@@ -5,7 +5,7 @@ use crate::{
 };
 
 #[derive(Debug, StructOpt)]
-/// Onboard a given encoded validator staking transactiom with this wallet.
+/// Onboard a given encoded validator staking transaction with this wallet.
 /// transaction signed by the Helium staking server.
 pub enum Cmd {
     Create(Create),
@@ -13,9 +13,9 @@ pub enum Cmd {
 }
 
 #[derive(Debug, StructOpt)]
-/// Onboard a given encoded validator staking transactiom with this wallet.
-/// transaction signed by the Helium staking server. The current (old) or new
-/// owner are set to the public key of the given wallet if not specified.
+/// Create a validator transfer transaction with this wallet as as the current
+/// (old) owner or new owner. If either owner is not specified, this wallet
+/// is assumed to be that/those owner(s).
 pub struct Create {
     /// The validator to transfer the stake from
     #[structopt(long)]
@@ -25,21 +25,20 @@ pub struct Create {
     #[structopt(long)]
     new_address: PublicKey,
 
-    /// The new owner of the transfered validator and stake. If not present
+    /// The new owner of the transferred validator and stake. If not present
     /// the new owner is assumed to be the same as the current owner as defined
     /// on the blockchain.
     #[structopt(long)]
     new_owner: Option<PublicKey>,
 
-    /// The current (old) owner of the transfered validator and stake. If not present
+    /// The current (old) owner of the transferred validator and stake. If not present
     /// the old owner is set to the public key of the given wallet.
     #[structopt(long)]
     old_owner: Option<PublicKey>,
 
-    /// The amount of HNT to transfer from the new to the old owner as part of
-    /// the stake transfer
+    /// The payment from new owner to old owner as part of the the stake transfer
     #[structopt(long, default_value = "0")]
-    amount: Hnt,
+    payment: Hnt,
 
     /// The amount of HNT of the original stake
     #[structopt(long)]
@@ -108,7 +107,7 @@ impl Create {
                     .await?
                     .stake
             },
-            payment_amount: u64::from(self.amount),
+            payment_amount: u64::from(self.payment),
             old_owner_signature: vec![],
             new_owner_signature: vec![],
         };

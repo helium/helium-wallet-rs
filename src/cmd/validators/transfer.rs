@@ -36,10 +36,9 @@ pub struct Create {
     #[structopt(long)]
     old_owner: Option<PublicKey>,
 
-    /// The amount of HNT to transfer from the new to the old owner as part of
-    /// the stake transfer
+    /// The payment from new owner to old owner as part of the the stake transfer
     #[structopt(long, default_value = "0")]
-    amount: Hnt,
+    payment: Hnt,
 
     /// The amount of HNT of the original stake
     #[structopt(long)]
@@ -108,7 +107,7 @@ impl Create {
                     .await?
                     .stake
             },
-            payment_amount: u64::from(self.amount),
+            payment_amount: u64::from(self.payment),
             old_owner_signature: vec![],
             new_owner_signature: vec![],
         };

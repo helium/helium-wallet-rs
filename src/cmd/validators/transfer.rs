@@ -13,9 +13,9 @@ pub enum Cmd {
 }
 
 #[derive(Debug, StructOpt)]
-/// Onboard a given encoded validator staking transaction with this wallet.
-/// transaction signed by the Helium staking server. The current (old) or new
-/// owner are set to the public key of the given wallet if not specified.
+/// Create a validator transfer transaction with this wallet as as the current
+/// (old) owner or new owner. If either owner is not specified, this wallet
+/// is assumed to be that/those owner(s).
 pub struct Create {
     /// The validator to transfer the stake from
     #[structopt(long)]

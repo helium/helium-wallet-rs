@@ -5,7 +5,7 @@ use crate::{
 };
 
 #[derive(Debug, StructOpt)]
-/// Onboard a given encoded validator staking transactiom with this wallet.
+/// Onboard a given encoded validator staking transaction with this wallet.
 /// transaction signed by the Helium staking server.
 pub enum Cmd {
     Create(Create),
@@ -13,7 +13,7 @@ pub enum Cmd {
 }
 
 #[derive(Debug, StructOpt)]
-/// Onboard a given encoded validator staking transactiom with this wallet.
+/// Onboard a given encoded validator staking transaction with this wallet.
 /// transaction signed by the Helium staking server. The current (old) or new
 /// owner are set to the public key of the given wallet if not specified.
 pub struct Create {
@@ -25,13 +25,13 @@ pub struct Create {
     #[structopt(long)]
     new_address: PublicKey,
 
-    /// The new owner of the transfered validator and stake. If not present
+    /// The new owner of the transferred validator and stake. If not present
     /// the new owner is assumed to be the same as the current owner as defined
     /// on the blockchain.
     #[structopt(long)]
     new_owner: Option<PublicKey>,
 
-    /// The current (old) owner of the transfered validator and stake. If not present
+    /// The current (old) owner of the transferred validator and stake. If not present
     /// the old owner is set to the public key of the given wallet.
     #[structopt(long)]
     old_owner: Option<PublicKey>,

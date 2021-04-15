@@ -5,7 +5,7 @@ use crate::{
 };
 
 #[derive(Debug, StructOpt)]
-/// Onboard a given encoded validator staking transactiom with this wallet.
+/// Onboard a given encoded validator staking transaction with this wallet.
 /// transaction signed by the Helium staking server.
 pub struct Cmd {
     /// Address of the validator to stake

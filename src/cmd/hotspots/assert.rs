@@ -1,6 +1,5 @@
 use crate::{
     cmd::*,
-    result::Result,
     staking,
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee},
 };

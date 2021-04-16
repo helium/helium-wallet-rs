@@ -37,6 +37,7 @@ impl_txn_envelope!(BlockchainTxnSecurityExchangeV1, SecurityExchange);
 impl_txn_envelope!(BlockchainTxnTokenBurnV1, TokenBurn);
 impl_txn_envelope!(BlockchainTxnAddGatewayV1, AddGateway);
 impl_txn_envelope!(BlockchainTxnAssertLocationV1, AssertLocation);
+impl_txn_envelope!(BlockchainTxnAssertLocationV2, AssertLocationV2);
 impl_txn_envelope!(BlockchainTxnVarsV1, Vars);
 impl_txn_envelope!(BlockchainTxnTransferHotspotV1, TransferHotspot);
 impl_txn_envelope!(BlockchainTxnStakeValidatorV1, StakeValidator);

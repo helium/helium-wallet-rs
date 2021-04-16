@@ -187,8 +187,7 @@ cd helium-wallet-rs
 curl https://sh.rustup.rs -sSf | sh
 ## recommended option 1
 source $HOME/.cargo/env
-sudo apt install build-essential
-sudo apt install pkg-config
+sudo apt install build-essential pkg-config cmake clang
 ```
 
 Clone this repo:

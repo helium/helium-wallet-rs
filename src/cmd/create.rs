@@ -2,7 +2,7 @@ use crate::{
     cmd::*,
     format::{self, Format},
     keypair::{KeyTag, KeyType, Keypair, Network, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR},
-    mnemonic::mnemonic_to_entropy,
+    mnemonic::{mnemonic_to_entropy, SeedType},
     pwhash::PwHash,
     result::Result,
     wallet::Wallet,
@@ -30,16 +30,16 @@ pub struct Basic {
     /// Overwrite an existing file
     force: bool,
 
-    #[structopt(long)]
-    /// Use space separated seed words to create the wallet
-    seed: bool,
+    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true)]
+    /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
+    seed: Option<SeedType>,
 
     #[structopt(long, default_value = NETTYPE_MAIN_STR)]
     /// The network to generate the wallet (testnet/mainnet)
     network: Network,
 
     #[structopt(long, default_value = KEYTYPE_ED25519_STR)]
-    /// The type of key to generate (ecc_compact/ed25519(.
+    /// The type of key to generate (ecc_compact/ed25519)
     key_type: KeyType,
 }
 
@@ -62,16 +62,16 @@ pub struct Sharded {
     /// Number of shards required to recover the key
     recovery_threshold: u8,
 
-    #[structopt(long)]
-    /// Use space separated seed words to create the wallet
-    seed: bool,
+    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true)]
+    /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
+    seed: Option<SeedType>,
 
     #[structopt(long, default_value = NETTYPE_MAIN_STR)]
     /// The network to generate the wallet (testnet/mainnet)
     network: Network,
 
     #[structopt(long, default_value = KEYTYPE_ED25519_STR)]
-    /// The type of key to generate (ecc_compact/ed25519(.
+    /// The type of key to generate (ecc_compact/ed25519)
     key_type: KeyType,
 }
 
@@ -86,17 +86,16 @@ impl Cmd {
 
 impl Basic {
     pub async fn run(&self, opts: Opts) -> Result {
-        let seed_words = if self.seed {
-            Some(get_seed_words()?)
-        } else {
-            None
+        let seed_words = match &self.seed {
+            Some(seed_type) => Some(get_seed_words(seed_type)?),
+            None => None,
         };
         let password = get_password(true)?;
         let tag = KeyTag {
             network: self.network,
             key_type: self.key_type,
         };
-        let keypair = gen_keypair(tag, seed_words)?;
+        let keypair = gen_keypair(tag, seed_words, self.seed.as_ref())?;
         let format = format::Basic {
             pwhash: PwHash::argon2id13_default(),
         };
@@ -109,10 +108,9 @@ impl Basic {
 
 impl Sharded {
     pub async fn run(&self, opts: Opts) -> Result {
-        let seed_words = if self.seed {
-            Some(get_seed_words()?)
-        } else {
-            None
+        let seed_words = match &self.seed {
+            Some(seed_type) => Some(get_seed_words(seed_type)?),
+            None => None,
         };
         let password = get_password(true)?;
         let tag = KeyTag {
@@ -120,7 +118,7 @@ impl Sharded {
             key_type: self.key_type,
         };
 
-        let keypair = gen_keypair(tag, seed_words)?;
+        let keypair = gen_keypair(tag, seed_words, self.seed.as_ref())?;
         let format = format::Sharded {
             key_share_count: self.key_share_count,
             recovery_threshold: self.recovery_threshold,
@@ -141,13 +139,22 @@ impl Sharded {
     }
 }
 
-fn gen_keypair(tag: KeyTag, seed_words: Option<Vec<String>>) -> Result<Keypair> {
-    match seed_words {
-        Some(words) => {
-            let entropy = mnemonic_to_entropy(words)?;
+fn gen_keypair(
+    tag: KeyTag,
+    seed_words: Option<Vec<String>>,
+    seed_type: Option<&SeedType>,
+) -> Result<Keypair> {
+    // Callers of this function should either have Some of both or None of both.
+    // Anything else is an error.
+    match (seed_words, seed_type) {
+        (Some(words), Some(seed_type)) => {
+            let entropy = mnemonic_to_entropy(words, seed_type)?;
             Keypair::generate_from_entropy(tag, &entropy)
         }
-        None => Ok(Keypair::generate(tag)),
+        (None, None) => Ok(Keypair::generate(tag)),
+        _ => bail!(
+            "Invalid parameters in gen_keypair(). Report this to the development team."
+        ),
     }
 }
 

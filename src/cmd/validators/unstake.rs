@@ -7,6 +7,11 @@ use crate::{
 #[derive(Debug, StructOpt)]
 /// Unstake a given validator. The stake will be in a cooldown period after
 /// unstaking before the HNT is returned to the owning wallet.
+///
+/// The command requires a 'stake-release-height' argument which is suggested to
+/// be at least the current block height plus the chain cooldown period (as
+/// defined by a chain variable), and 5-10 blocks to allow for chain
+/// processing delays.
 pub struct Cmd {
     /// Address of the validator to unstake
     address: PublicKey,
@@ -14,6 +19,12 @@ pub struct Cmd {
     /// The amount of HNT of the original stake
     #[structopt(long)]
     stake_amount: Option<Hnt>,
+
+    /// The stake release block height. This should be at least the current
+    /// block height plus the cooldown period, and 5-10 blocks to allow for
+    /// chain processing delays.
+    #[structopt(long)]
+    stake_release_height: u64,
 
     /// Manually set the fee to pay for the transaction
     #[structopt(long)]
@@ -42,6 +53,7 @@ impl Cmd {
                     .await?
                     .stake
             },
+            stake_release_height: self.stake_release_height,
             fee: 0,
             owner_signature: vec![],
         };

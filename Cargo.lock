@@ -478,9 +478,9 @@ dependencies = [
 
 [[package]]
 name = "der"
-version = "0.2.10"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce93ba4502a73722aa4b955d97f4b1bd26f4f8da74315399ca58fb88fe2bdaae"
+checksum = "83dc83d0b59f92103d8e661e60526338ad3aeb0c15fa4a29a14b6a9b1ac8a43c"
 dependencies = [
  "typenum",
 ]
@@ -519,9 +519,9 @@ dependencies = [
 
 [[package]]
 name = "ecdsa"
-version = "0.11.0-pre.1"
+version = "0.11.0-pre.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a913d3bb160fe818844197fb49d73f4160df10a99aca3ffaab9a0dc9064958"
+checksum = "9cae6ee8d621666ce49476f2611056a95e7ba7f0f37356d5085b3cd2fdbac797"
 dependencies = [
  "der",
  "elliptic-curve",
@@ -559,11 +559,11 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
 name = "elliptic-curve"
-version = "0.9.6"
-source = "git+https://github.com/helium/traits.git?branch=rg/compact#c6cef06097aa9f8dbf608ffb96f95d6497622f86"
+version = "0.9.8"
+source = "git+https://github.com/helium/traits.git?branch=rg/compact#f35d193e40260e7ecc2f343f0383f40a93fe7a5c"
 dependencies = [
+ "bitvec",
  "ff",
- "funty",
  "generic-array 0.14.4",
  "group",
  "rand_core 0.6.2",
@@ -963,7 +963,7 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#ac7821a823946aab12ccf0c4cecbdcf68b990964"
+source = "git+https://github.com/helium/proto?branch=master#85a5d31353446c8a60880798466a7f45a2aa4d5f"
 dependencies = [
  "bytes",
  "prost",
@@ -1353,8 +1353,8 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
 name = "p256"
-version = "0.8.0-pre"
-source = "git+https://github.com/helium/elliptic-curves?branch=rg/compact#0228308e80b24c08176b7010ad6dbba7ca30b215"
+version = "0.8.0-pre.1"
+source = "git+https://github.com/helium/elliptic-curves?branch=rg/compact#2d187610929c24ea14c39f700b1d5450f45f33e9"
 dependencies = [
  "ecdsa",
  "elliptic-curve",

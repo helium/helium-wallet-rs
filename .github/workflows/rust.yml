@@ -96,7 +96,7 @@ jobs:
           mv target/release/helium-wallet $NAME/
           cp README.md $NAME/
           cp LICENSE $NAME/
-          tar -zcvf $NAME.tar.gz $NAME/
+          gtar -zcvf $NAME.tar.gz $NAME/
 
       - name: Push Release
         uses: softprops/action-gh-release@v1

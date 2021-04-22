@@ -80,7 +80,7 @@ fn print_results(
                     for validator in validators {
                         table_validators.push(json!({
                             "address": validator.address,
-                            "owner": validator.address,
+                            "owner": validator.owner,
                             "last_heartbeat": validator.last_heartbeat,
                             "version_heartbeat": validator.version_heartbeat,
                             "stake": validator.stake,

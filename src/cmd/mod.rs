@@ -52,7 +52,7 @@ pub struct Opts {
     )]
     files: Vec<PathBuf>,
 
-    /// Output formwat to use
+    /// Output format to use
     #[structopt(long = "format",
                 possible_values = &["table", "json"],
                 case_insensitive = true,

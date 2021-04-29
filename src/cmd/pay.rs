@@ -14,8 +14,14 @@ use std::str::FromStr;
 /// goes to 8 decimals of precision. The payment is not submitted to
 /// the system unless the '--commit' option is given.
 pub struct Cmd {
-    /// Address and amount of HNT to send in <address>=<amount> format.
-    #[structopt(long = "payee", short = "p", name = "payee=hnt", required = true)]
+    /// Address and amount of HNT to sent in <address>?amount=<amount>?memo=<memo> format.
+    /// Memo parameter is optional and may be ommitted.
+    #[structopt(
+        long = "payee",
+        short = "p",
+        name = "payee?<amount>=hnt?memo=<memo>",
+        required = true
+    )]
     payees: Vec<Payee>,
 
     /// Manually set the nonce to use for the transaction
@@ -46,8 +52,10 @@ impl Cmd {
             .map(|p| Payment {
                 payee: p.address.to_vec(),
                 amount: u64::from(p.amount),
+                memo: p.memo,
             })
             .collect();
+
         let mut txn = BlockchainTxnPaymentV2 {
             fee: 0,
             payments,
@@ -83,11 +91,12 @@ fn print_txn(
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
-            table.add_row(row!["Payee", "Amount"]);
+            table.add_row(row!["Payee", "Amount", "Memo"]);
             for payment in txn.payments.clone() {
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
-                    Hnt::from(payment.amount)
+                    Hnt::from(payment.amount),
+                    u64::to_b64(&payment.memo)?
                 ]);
             }
             print_table(&table)?;
@@ -107,6 +116,7 @@ fn print_txn(
                 payments.push(json!({
                     "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
                     "amount": Hnt::from(payment.amount),
+                    "memo": u64::to_b64(&payment.memo)?
                 }))
             }
             let table = json!({
@@ -125,18 +135,54 @@ fn print_txn(
 pub struct Payee {
     address: PublicKey,
     amount: Hnt,
+    memo: u64,
 }
 
+use crate::result::{anyhow, bail};
+
 impl FromStr for Payee {
-    type Err = Box<dyn std::error::Error>;
+    type Err = crate::result::Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let pos = s
-            .find('=')
-            .ok_or_else(|| format!("invalid KEY=value: missing `=`  in `{}`", s))?;
-        Ok(Payee {
-            address: s[..pos].parse()?,
-            amount: s[pos + 1..].parse()?,
-        })
+        // String is of the format:
+        //    <address>?amount=<amount>?memo=<memo>
+        let mut split = s.split('?');
+
+        // First segment is always address
+        if let Some(address) = split.next() {
+            // Memo defaults to 0
+            let mut memo = 0;
+            // Initialize amount as option, but we require amount later
+            let mut amount = None;
+
+            // Remaining segments are arguments of the form key=<value>
+            for segment in split {
+                let pos = segment
+                    .find('=')
+                    .ok_or_else(|| anyhow!("invalid KEY=value: missing `=`  in `{}`", segment))?;
+                let key = &segment[..pos];
+                let value = &segment[pos + 1..];
+                match key {
+                    "amount" => {
+                        amount = Some(value.parse()?);
+                    }
+                    "memo" => {
+                        memo = u64::from_b64(value)?;
+                    }
+                    _ => bail!("Invalid key given: {}", key),
+                }
+            }
+            Ok(Payee {
+                address: address.parse()?,
+                amount: if let Some(amount) = amount {
+                    amount
+                } else {
+                    bail!("Pay transaction must set amount")
+                },
+                memo,
+            })
+        } else {
+            bail!("Invalid command syntax. Check --help for more information")
+        }
     }
 }

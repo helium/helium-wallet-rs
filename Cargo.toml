@@ -42,7 +42,7 @@ serde =  "1"
 serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
-h3ron = "0"
+h3ron = "^0.10"
 geo-types = "^0.6" # pinned by h3ron but required here for geo_types::Point
 helium-api = "2"
 angry-purple-tiger = "0"

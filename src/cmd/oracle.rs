@@ -186,9 +186,10 @@ impl FromStr for Price {
             "binance-int" => Ok(Self::BinanceInt),
             _ => {
                 let data = Decimal::from_str(s).or_else(|_| Decimal::from_scientific(s))?;
-                Ok(Self::Usd(Usd::new(
-                    data.round_dp_with_strategy(8, RoundingStrategy::RoundHalfUp),
-                )))
+                Ok(Self::Usd(Usd::new(data.round_dp_with_strategy(
+                    8,
+                    RoundingStrategy::MidpointAwayFromZero,
+                ))))
             }
         }
     }

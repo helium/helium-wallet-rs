@@ -162,7 +162,7 @@ impl Sharded {
 
         // Now go derive the encryption key from the sharded key
         // source and the stretched key
-        let mut hmac = match Hmac::<Sha256>::new_varkey(&sss_key) {
+        let mut hmac = match Hmac::<Sha256>::new_from_slice(&sss_key) {
             Err(_) => bail!("Failed to initialize hmac"),
             Ok(m) => m,
         };

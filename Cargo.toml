@@ -30,7 +30,7 @@ hmac = "0"
 sha2 = "0"
 base64 = "0"
 reqwest = {version = "0", default-features=false, features=["rustls-tls"]}
-pbkdf2 = {version = "0.7", default-features=false }
+pbkdf2 = {version = "0", default-features=false }
 aes-gcm = "0.8"
 shamirsecretsharing = {version="0.1.4", features=["have_libsodium"]}
 prettytable-rs = "0.8"

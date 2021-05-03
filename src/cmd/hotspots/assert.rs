@@ -78,7 +78,7 @@ impl Cmd {
             payer,
             owner: wallet_key.into(),
             gateway: self.gateway.clone().into(),
-            location: h3ron::Index::from_point(&location, 12)?.to_string(),
+            location: h3ron::H3Cell::from_point(&location, 12)?.to_string(),
             elevation,
             gain,
             nonce,

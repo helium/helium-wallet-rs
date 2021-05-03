@@ -169,6 +169,12 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "base64"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
+
+[[package]]
+name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
@@ -873,22 +879,24 @@ dependencies = [
 
 [[package]]
 name = "h3ron"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95a0fbfda0efb17a55653d5d64ea3a5520794bb04dbc169a2baf504043d2cbe0"
+checksum = "12fd3604be275dfa8fe2d8dcfca305edc4ff891b7674dabc0e74bc8ba5172ce3"
 dependencies = [
  "geo",
  "geo-types",
  "h3ron-h3-sys",
  "itertools 0.10.0",
  "serde",
+ "svgbobdoc",
+ "thiserror",
 ]
 
 [[package]]
 name = "h3ron-h3-sys"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7b4b9c352e03849ea9ed6e917fbaae1f591287a973cedf22d223860d6f7f115"
+checksum = "498e6e5d89bffc81066a5d7823f403e85fc99c9d91cc189be75bacbebeb1d4f1"
 dependencies = [
  "bindgen",
  "cmake",
@@ -938,7 +946,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6889316f4a40730a2a8b3729cc6c7a2b0928321b7b62ad2186c9cc65743d5a8"
 dependencies = [
  "async-trait",
- "base64",
+ "base64 0.13.0",
  "futures",
  "reqwest",
  "rust_decimal",
@@ -980,7 +988,7 @@ dependencies = [
  "aes-gcm",
  "angry-purple-tiger",
  "anyhow",
- "base64",
+ "base64 0.13.0",
  "bs58",
  "byteorder",
  "dialoguer",
@@ -1483,6 +1491,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pom"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60f6ce597ecdcc9a098e7fddacb1065093a3d66446fa16c675e7e71d1b5c28e6"
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1749,7 +1763,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2296f2fac53979e8ccbc4a1136b25dcefd37be9ed7e4a1f6b05a6029c84ff124"
 dependencies = [
  "async-compression",
- "base64",
+ "base64 0.13.0",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -1819,7 +1833,7 @@ version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b18820d944b33caa75a71378964ac46f58517c92b6ae5f762636247c09e78fb"
 dependencies = [
- "base64",
+ "base64 0.13.0",
  "blake2b_simd",
  "constant_time_eq",
  "crossbeam-utils",
@@ -1848,7 +1862,7 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "064fd21ff87c6e87ed4506e68beb42459caa4a0e2eb144932e6776768556980b"
 dependencies = [
- "base64",
+ "base64 0.13.0",
  "log",
  "ring",
  "sct",
@@ -2070,6 +2084,40 @@ name = "subtle"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e81da0851ada1f3e9d4312c704aa4f8806f0f9d69faaf8df2f3464b4a9437c2"
+
+[[package]]
+name = "svg"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a863ec1f8e7cfd4ea449f77445cca06aac240b9a677ccf12b0f65ef020db52c7"
+
+[[package]]
+name = "svgbob"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd526cbbfdd8637f3d78b2a955f0291df671010563cc5a4aab50f200a981b4b5"
+dependencies = [
+ "pom",
+ "svg",
+ "unicode-width",
+]
+
+[[package]]
+name = "svgbobdoc"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bd7b0c572b374ff863c20c8b8cb6c3d495e1ecff17d765c0a2a5c7ad55e4b5e"
+dependencies = [
+ "base64 0.12.3",
+ "lazy_static",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "svg",
+ "svgbob",
+ "syn",
+ "unicode-width",
+]
 
 [[package]]
 name = "syn"

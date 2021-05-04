@@ -1,6 +1,7 @@
 use crate::{
     cmd::*,
     keypair::PublicKey,
+    memo::Memo,
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
@@ -16,7 +17,7 @@ pub struct Cmd {
 
     /// Memo field to include. Provide as a base64 encoded string
     #[structopt(long)]
-    memo: Option<String>,
+    memo: Option<Memo>,
 
     /// Amount of HNT to burn to DC
     #[structopt(long)]
@@ -36,17 +37,13 @@ impl Cmd {
 
         let keypair = wallet.decrypt(password.as_bytes())?;
         let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
-        let memo = match &self.memo {
-            None => 0,
-            Some(s) => u64::from_b64(&s)?,
-        };
 
         let mut txn = BlockchainTxnTokenBurnV1 {
             fee: 0,
             payee: self.payee.to_bytes().to_vec(),
             amount: u64::from(self.amount),
             payer: keypair.public_key().into(),
-            memo,
+            memo: *self.memo.as_ref().unwrap_or(&Memo::default()).as_ref(),
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };
@@ -70,7 +67,7 @@ fn print_txn(
             ptable!(
                 ["Key", "Value"],
                 ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
-                ["Memo", txn.memo.to_b64()?],
+                ["Memo", Memo::from(txn.memo).to_string()],
                 ["Amount", Hnt::from(txn.amount)],
                 ["Fee", txn.fee],
                 ["Nonce", txn.nonce],
@@ -82,7 +79,7 @@ fn print_txn(
             let table = json!({
                 "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
                 "amount": Hnt::from(txn.amount),
-                "memo": txn.memo.to_b64()?,
+                "memo": Memo::from(txn.memo).to_string(),
                 "fee": txn.fee,
                 "nonce": txn.nonce,
                 "hash": status_json(status),

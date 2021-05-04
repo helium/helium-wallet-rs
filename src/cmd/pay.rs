@@ -1,6 +1,7 @@
 use crate::{
     cmd::*,
     keypair::PublicKey,
+    memo::Memo,
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
@@ -52,7 +53,7 @@ impl Cmd {
             .map(|p| Payment {
                 payee: p.address.to_vec(),
                 amount: u64::from(p.amount),
-                memo: p.memo,
+                memo: *p.memo.as_ref(),
             })
             .collect();
 
@@ -96,7 +97,7 @@ fn print_txn(
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
                     Hnt::from(payment.amount),
-                    u64::to_b64(&payment.memo)?
+                    Memo::from(payment.memo).to_string(),
                 ]);
             }
             print_table(&table)?;
@@ -116,7 +117,7 @@ fn print_txn(
                 payments.push(json!({
                     "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
                     "amount": Hnt::from(payment.amount),
-                    "memo": u64::to_b64(&payment.memo)?
+                    "memo": Memo::from(payment.memo).to_string()
                 }))
             }
             let table = json!({
@@ -135,7 +136,7 @@ fn print_txn(
 pub struct Payee {
     address: PublicKey,
     amount: Hnt,
-    memo: u64,
+    memo: Memo,
 }
 
 use crate::result::{anyhow, bail};
@@ -145,13 +146,13 @@ impl FromStr for Payee {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         // String is of the format:
-        //    <address>?amount=<amount>?memo=<memo>
+        //    <address>?amount=<amount>?memo=<memo>?memo_type=<string|binary>
         let mut split = s.split('?');
 
         // First segment is always address
         if let Some(address) = split.next() {
             // Memo defaults to 0
-            let mut memo = 0;
+            let mut memo = Memo::default();
             // Initialize amount as option, but we require amount later
             let mut amount = None;
 
@@ -167,7 +168,7 @@ impl FromStr for Payee {
                         amount = Some(value.parse()?);
                     }
                     "memo" => {
-                        memo = u64::from_b64(value)?;
+                        memo = Memo::from_str(value)?;
                     }
                     _ => bail!("Invalid key given: {}", key),
                 }

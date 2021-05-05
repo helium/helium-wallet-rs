@@ -25,7 +25,7 @@ pub enum Cmd {
     Hotspots(Box<hotspots::Cmd>),
     Create(create::Cmd),
     Upgrade(upgrade::Cmd),
-    Pay(pay::Cmd),
+    Pay(Box<pay::Cmd>),
     Htlc(htlc::Cmd),
     Oui(oui::Cmd),
     Oracle(oracle::Cmd),

@@ -957,13 +957,14 @@ dependencies = [
 
 [[package]]
 name = "helium-crypto"
-version = "0.0.7"
-source = "git+https://github.com/helium/helium-crypto-rs?tag=v0.0.7#8041c2aaf82bac689cb55ef6a070d6c3a826effc"
+version = "0.0.8"
+source = "git+https://github.com/helium/helium-crypto-rs?tag=v0.0.8#353ad62d22f7e8eb6a6bb12a2e14a2d41ec1eb14"
 dependencies = [
  "bs58",
  "ed25519-dalek",
  "p256",
  "rand_core 0.6.2",
+ "serde",
  "signature",
  "thiserror",
 ]

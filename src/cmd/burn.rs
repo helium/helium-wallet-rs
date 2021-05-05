@@ -16,8 +16,8 @@ pub struct Cmd {
     payee: PublicKey,
 
     /// Memo field to include. Provide as a base64 encoded string
-    #[structopt(long)]
-    memo: Option<Memo>,
+    #[structopt(long, default_value)]
+    memo: Memo,
 
     /// Amount of HNT to burn to DC
     #[structopt(long)]
@@ -43,7 +43,7 @@ impl Cmd {
             payee: self.payee.to_bytes().to_vec(),
             amount: u64::from(self.amount),
             payer: keypair.public_key().into(),
-            memo: *self.memo.as_ref().unwrap_or(&Memo::default()).as_ref(),
+            memo: u64::from(&self.memo),
             nonce: account.speculative_nonce + 1,
             signature: Vec::new(),
         };

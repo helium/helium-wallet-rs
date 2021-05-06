@@ -1,22 +1,55 @@
 use crate::{
     cmd::*,
     keypair::PublicKey,
+    memo::Memo,
     result::Result,
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
 use helium_api::accounts;
 use prettytable::Table;
+use serde::Deserialize;
 use serde_json::json;
-use std::str::FromStr;
 
 #[derive(Debug, StructOpt)]
-/// Send one or more payments to given addresses. Note that HNT only
-/// goes to 8 decimals of precision. The payment is not submitted to
-/// the system unless the '--commit' option is given.
+/// Send one (or more) payments to given addresses. If an input file is
+/// specified for multiple payments, the payee, amount and memo arguments are
+/// ignored.
+///
+/// The input file for multiple payments is expected to be json file with a list
+/// of payees, amounts, and optional memos. For example:
+///
+/// [
+///     {
+///         "payee": "<adddress1>",
+///         "amount": 1.6,
+///         "memo": "AAAAAAAAAAA="
+///     },
+///     {
+///         "payee": "<adddress2>",
+///         "amount": 0.5
+///     }
+/// ]
+///
+/// Note that HNT only goes to 8 decimals of precision.
+///
+/// The payment is not submitted to the system unless the '--commit' option is
+/// given.
 pub struct Cmd {
-    /// Address and amount of HNT to send in <address>=<amount> format.
-    #[structopt(long = "payee", short = "p", name = "payee=hnt", required = true)]
-    payees: Vec<Payee>,
+    /// File to read multiple payments from.
+    #[structopt(long)]
+    input: Option<PathBuf>,
+
+    /// Address to send the tokens to.
+    #[structopt(long)]
+    payee: Option<PublicKey>,
+
+    /// Memo field to include. Provide as a base64 encoded string
+    #[structopt(long, default_value)]
+    memo: Memo,
+
+    /// Amount of HNT to send
+    #[structopt(long)]
+    amount: Option<Hnt>,
 
     /// Manually set the nonce to use for the transaction
     #[structopt(long)]
@@ -33,6 +66,8 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
+        let payments = self.collect_payments()?;
+
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
 
@@ -40,14 +75,6 @@ impl Cmd {
 
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let payments: Vec<Payment> = self
-            .payees
-            .iter()
-            .map(|p| Payment {
-                payee: p.address.to_vec(),
-                amount: u64::from(p.amount),
-            })
-            .collect();
         let mut txn = BlockchainTxnPaymentV2 {
             fee: 0,
             payments,
@@ -72,6 +99,37 @@ impl Cmd {
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&txn, &envelope, &status, opts.format)
     }
+
+    fn collect_payments(&self) -> Result<Vec<Payment>> {
+        match &self.input {
+            None => Ok(vec![Payment {
+                payee: if let Some(payee) = &self.payee {
+                    payee.to_bytes().to_vec()
+                } else {
+                    bail!("payee expected for single payment")
+                },
+                amount: if let Some(amount) = self.amount {
+                    u64::from(amount)
+                } else {
+                    bail!("amount expected for single payment")
+                },
+                memo: u64::from(&self.memo),
+            }]),
+            Some(path) => {
+                let file = std::fs::File::open(path)?;
+                let payees: Vec<Payee> = serde_json::from_reader(file)?;
+                let payments = payees
+                    .iter()
+                    .map(|p| Payment {
+                        payee: p.address.to_vec(),
+                        amount: u64::from(p.amount),
+                        memo: u64::from(&p.memo),
+                    })
+                    .collect();
+                Ok(payments)
+            }
+        }
+    }
 }
 
 fn print_txn(
@@ -83,11 +141,12 @@ fn print_txn(
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
-            table.add_row(row!["Payee", "Amount"]);
+            table.add_row(row!["Payee", "Amount", "Memo"]);
             for payment in txn.payments.clone() {
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
-                    Hnt::from(payment.amount)
+                    Hnt::from(payment.amount),
+                    Memo::from(payment.memo).to_string(),
                 ]);
             }
             print_table(&table)?;
@@ -107,6 +166,7 @@ fn print_txn(
                 payments.push(json!({
                     "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
                     "amount": Hnt::from(payment.amount),
+                    "memo": Memo::from(payment.memo).to_string()
                 }))
             }
             let table = json!({
@@ -121,22 +181,10 @@ fn print_txn(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct Payee {
     address: PublicKey,
     amount: Hnt,
-}
-
-impl FromStr for Payee {
-    type Err = Box<dyn std::error::Error>;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let pos = s
-            .find('=')
-            .ok_or_else(|| format!("invalid KEY=value: missing `=`  in `{}`", s))?;
-        Ok(Payee {
-            address: s[..pos].parse()?,
-            amount: s[pos + 1..].parse()?,
-        })
-    }
+    #[serde(default)]
+    memo: Memo,
 }

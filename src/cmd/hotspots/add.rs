@@ -79,8 +79,8 @@ fn print_txn(
                 ["Key", "Value"],
                 ["Address", address],
                 ["Payer", payer],
-                ["Fee", txn.fee],
-                ["Staking fee", txn.staking_fee],
+                ["Fee (DC)", txn.fee],
+                ["Staking fee (DC)", txn.staking_fee],
                 ["Hash", status_str(status)]
             );
             print_footer(status)

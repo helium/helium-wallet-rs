@@ -68,8 +68,8 @@ fn print_txn(
                 ["Key", "Value"],
                 ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
                 ["Memo", Memo::from(txn.memo).to_string()],
-                ["Amount", Hnt::from(txn.amount)],
-                ["Fee", txn.fee],
+                ["Amount (HNT)", Hnt::from(txn.amount)],
+                ["Fee (DC)", txn.fee],
                 ["Nonce", txn.nonce],
                 ["Hash", status_str(status)]
             );

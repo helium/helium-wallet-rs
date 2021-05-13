@@ -141,7 +141,7 @@ fn print_txn(
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
-            table.add_row(row!["Payee", "Amount", "Memo"]);
+            table.add_row(row!["Payee", "Amount (HNT)", "Memo"]);
             for payment in txn.payments.clone() {
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
@@ -153,7 +153,7 @@ fn print_txn(
 
             ptable!(
                 ["Key", "Value"],
-                ["Fee", txn.fee],
+                ["Fee (DC)", txn.fee],
                 ["Nonce", txn.nonce],
                 ["Hash", status_str(status)]
             );

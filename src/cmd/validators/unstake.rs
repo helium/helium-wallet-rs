@@ -83,7 +83,8 @@ fn print_txn(
             ptable!(
                 ["Key", "Value"],
                 ["Validator", validator],
-                ["Fee", txn.fee],
+                ["Fee (DC)", txn.fee],
+                ["Stake (HNT)", Hnt::from(txn.stake_amount)],
                 ["Hash", status_str(status)],
                 [Frb => "WARNING",
                 "After unstaking, a validator can not access the staked amount\n\
@@ -95,6 +96,7 @@ fn print_txn(
             let table = json!({
                 "validator" : validator,
                 "fee": txn.fee,
+                "stake_amount": txn.stake_amount,
                 "txn": envelope.to_b64()?,
                 "hash": status_json(status)
             });

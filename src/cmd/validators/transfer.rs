@@ -179,8 +179,8 @@ fn print_txn(
                 ["New address", new_address],
                 ["Old owner", old_owner],
                 ["New owner", new_owner],
-                ["Fee", txn.fee],
-                ["Amount", Hnt::from(txn.payment_amount)],
+                ["Fee (DC)", txn.fee],
+                ["Amount (HNT)", Hnt::from(txn.payment_amount)],
                 ["Hash", status_str(status)]
             );
             print_footer(status)

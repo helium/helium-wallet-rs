@@ -235,6 +235,7 @@ mod tests {
         let fee_config = TxnFeeConfig::active();
         let payment = Payment {
             payee: payee.public_key().to_vec(),
+            memo: 0,
             amount: 10_000,
         };
         let txn = BlockchainTxnPaymentV2 {

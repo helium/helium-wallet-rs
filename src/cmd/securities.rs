@@ -67,28 +67,25 @@ fn print_txn(
     status: &Option<PendingTxnStatus>,
     format: OutputFormat,
 ) -> Result {
+    let payee = PublicKey::from_bytes(&txn.payee)?.to_string();
     match format {
         OutputFormat::Table => {
             ptable!(
-                ["Payee", "Amount"],
-                [PublicKey::from_bytes(&txn.payee)?.to_string(), txn.amount]
-            );
-            ptable!(
                 ["Key", "Value"],
+                ["Payee", payee],
+                ["Amount (HST)", Hst::from(txn.amount)],
+                ["Fee (DC)", txn.fee],
                 ["Nonce", txn.nonce],
                 ["Hash", status_str(status)]
             );
-
             print_footer(status)
         }
         OutputFormat::Json => {
-            let transfer = json!({
-                    "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
-                    "amount": txn.amount,
-            });
             let table = json!({
-                "transfer": transfer,
-                "nonce": txn.nonce,
+                "payee": payee,
+                "amount": txn.amount,
+                    "fee": txn.fee,
+             "nonce": txn.nonce,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
             });

@@ -66,7 +66,7 @@ impl Cmd {
         // Get the next likely gateway nonce for the new transaction
         let nonce = helium_api::hotspots::get(&client, &self.gateway.to_string())
             .await?
-            .nonce
+            .speculative_nonce
             + 1;
         let payer = if self.onboarding {
             staking_client.address_for(&self.gateway).await?.into()

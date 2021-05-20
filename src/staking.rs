@@ -64,7 +64,7 @@ impl Client {
     }
 
     /// Get the staking server to sign a given transaction using the
-    /// given onboarding key
+    /// given gateway key
     pub async fn sign(&self, gateway: &str, txn: &BlockchainTxn) -> Result<BlockchainTxn> {
         let encoded = txn.to_b64()?;
         let json = json!({ "transaction": encoded });

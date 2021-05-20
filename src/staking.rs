@@ -65,11 +65,11 @@ impl Client {
 
     /// Get the staking server to sign a given transaction using the
     /// given onboarding key
-    pub async fn sign(&self, onboarding_key: &str, txn: &BlockchainTxn) -> Result<BlockchainTxn> {
+    pub async fn sign(&self, gateway: &str, txn: &BlockchainTxn) -> Result<BlockchainTxn> {
         let encoded = txn.to_b64()?;
         let json = json!({ "transaction": encoded });
 
-        let request_url = format!("{}/transactions/pay/{}", self.base_url, onboarding_key);
+        let request_url = format!("{}/transactions/pay/{}", self.base_url, gateway);
         let response: serde_json::Value = self
             .client
             .post(&request_url)

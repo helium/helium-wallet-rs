@@ -49,9 +49,9 @@ impl Cmd {
                 if self.onboarding.is_none() {
                     bail!("Staking server requires an onboarding key");
                 } else {
-                    let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
+                    let gateway = PublicKey::from_bytes(&txn.gateway)?.to_string();
                     staking_client
-                        .sign(&onboarding_key, &txn.in_envelope())
+                        .sign(&gateway, &txn.in_envelope())
                         .await
                 }
             }

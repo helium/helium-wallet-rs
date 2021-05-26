@@ -129,7 +129,7 @@ fn print_txn(
                 ["Payer", payer],
                 ["Nonce", txn.nonce],
                 ["Fee (DC)", txn.fee],
-                ["Staking Fee (HNT)", Hnt::from(txn.staking_fee)],
+                ["Staking Fee (DC)", txn.staking_fee],
                 ["Gain (dBi)", Dbi::from(txn.gain)],
                 ["Elevation", txn.elevation],
                 ["Hash", status_str(status)]

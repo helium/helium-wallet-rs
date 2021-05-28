@@ -140,14 +140,14 @@ fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<PublicKey>) -> Resu
     Ok(addresses)
 }
 
-fn get_seed_words() -> Result<Vec<String>> {
+fn get_seed_words(seed_type: &mnemonic::SeedType) -> Result<Vec<String>> {
     use dialoguer::Input;
     let split_str = |s: &String| s.split_whitespace().map(|w| w.to_string()).collect();
     let word_string = Input::<String>::new()
-        .with_prompt("Seed Words")
+        .with_prompt("Space separated seed words")
         .validate_with(|v: &String| {
             let word_list = split_str(v);
-            match mnemonic::mnemonic_to_entropy(word_list) {
+            match mnemonic::mnemonic_to_entropy(word_list, seed_type) {
                 Ok(_) => Ok(()),
                 Err(err) => Err(err),
             }

@@ -152,9 +152,7 @@ fn gen_keypair(
             Keypair::generate_from_entropy(tag, &entropy)
         }
         (None, None) => Ok(Keypair::generate(tag)),
-        _ => bail!(
-            "Invalid parameters in gen_keypair(). Report this to the development team."
-        ),
+        _ => bail!("Invalid parameters in gen_keypair(). Report this to the development team."),
     }
 }
 

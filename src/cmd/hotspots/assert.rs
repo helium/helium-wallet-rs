@@ -14,11 +14,13 @@ pub struct Cmd {
     #[structopt(long)]
     gateway: PublicKey,
 
-    /// Lattitude of hotspot location to assert
+    /// Lattitude of hotspot location to assert.
+    /// For negative values use '=", for example: "--lat=-xx.xxxxxxx".
     #[structopt(long)]
     lat: f64,
 
-    /// Longitude of hotspot location to assert
+    /// Longitude of hotspot location to assert.
+    /// For negative values use '=", for example: "--lon=-xx.xxxxxxx".
     #[structopt(long)]
     lon: f64,
 

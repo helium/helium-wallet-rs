@@ -52,6 +52,7 @@ jobs:
           cp README.md $NAME/
           cp LICENSE $NAME/
           tar -zcvf $NAME.tar.gz $NAME/
+          sha256sum -b --tag NAME.tar.gz > $NAME.checksum
 
       - name: Push Release
         uses: softprops/action-gh-release@v1
@@ -59,6 +60,7 @@ jobs:
         with:
           files: |
             ${{ steps.name_release.outputs.RELEASE }}.tar.gz
+            ${{ steps.name_release.outputs.RELEASE }}.checksum
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -97,6 +99,7 @@ jobs:
           cp README.md $NAME/
           cp LICENSE $NAME/
           gtar -zcvf $NAME.tar.gz $NAME/
+          sha256sum -b --tag NAME.tar.gz > $NAME.checksum
 
       - name: Push Release
         uses: softprops/action-gh-release@v1
@@ -104,6 +107,7 @@ jobs:
         with:
           files: |
             ${{ steps.name_release.outputs.RELEASE }}.tar.gz
+            ${{ steps.name_release.outputs.RELEASE }}.checksum
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -160,6 +164,7 @@ jobs:
           cp README.md $env:NAME/
           cp LICENSE $env:NAME/
           7z a "$env:NAME.zip" "$env:NAME/"
+          certUtil -hashfile "$env:NAME.zip" SHA256 > "$env:NAME.checksum"
 
       - name: Push Release
         uses: softprops/action-gh-release@v1
@@ -167,5 +172,6 @@ jobs:
         with:
           files: |
             ${{ steps.name_release.outputs.RELEASE }}.zip
+            ${{ steps.name_release.outputs.RELEASE }}.checksum
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

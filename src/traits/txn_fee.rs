@@ -186,8 +186,8 @@ mod tests {
         };
     }
 
-    const STAKING_FEE_ASSERT_LOCATION: u64 = 40 * 100_000;
-    const STAKING_FEE_ADD_GATEWAY: u64 = 10 * 100_000;
+    const STAKING_FEE_ASSERT_LOCATION: u64 = 10 * 100_000;
+    const STAKING_FEE_ADD_GATEWAY: u64 = 40 * 100_000;
     const STAKING_FEE_OUI: u64 = 100 * 100_000;
     const STAKING_FEE_OUI_PER_ADDRESS: u64 = 100 * 100_000;
 

@@ -11,10 +11,41 @@ use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Debug, StructOpt)]
-/// Send one (or more) payments to given addresses. If an input file is
-/// specified for multiple payments, the payee, amount and memo arguments are
-/// ignored.
+/// Send one (or more) payments to given addresses.
 ///
+/// The payment is not submitted to the system unless the '--commit' option is
+/// given.
+pub struct Cmd {
+    /// File to read multiple payments from.
+    #[structopt(long)]
+    input: Option<PathBuf>,
+
+    #[structopt(flatten)]
+    payment: Type,
+
+    /// Manually set the nonce to use for the transaction
+    #[structopt(long)]
+    nonce: Option<u64>,
+
+    /// Manually set the DC fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+
+    /// Commit the payment to the API
+    #[structopt(long)]
+    commit: bool,
+}
+
+#[derive(Debug, StructOpt)]
+enum Type {
+    /// Single payee
+    One(Payee),
+    /// Multiple payees (requires file input).
+    /// Check "helium-wallet pay multi --help" for details
+    Multi(File),
+}
+
+#[derive(Debug, StructOpt)]
 /// The input file for multiple payments is expected to be json file with a list
 /// of payees, amounts, and optional memos. For example:
 ///
@@ -31,37 +62,8 @@ use serde_json::json;
 /// ]
 ///
 /// Note that HNT only goes to 8 decimals of precision.
-///
-/// The payment is not submitted to the system unless the '--commit' option is
-/// given.
-pub struct Cmd {
-    /// File to read multiple payments from.
-    #[structopt(long)]
-    input: Option<PathBuf>,
-
-    /// Address to send the tokens to.
-    #[structopt(long)]
-    payee: Option<PublicKey>,
-
-    /// Memo field to include. Provide as a base64 encoded string
-    #[structopt(long, default_value)]
-    memo: Memo,
-
-    /// Amount of HNT to send
-    #[structopt(long)]
-    amount: Option<Hnt>,
-
-    /// Manually set the nonce to use for the transaction
-    #[structopt(long)]
-    nonce: Option<u64>,
-
-    /// Manually set the DC fee to pay for the transaction
-    #[structopt(long)]
-    fee: Option<u64>,
-
-    /// Commit the payment to the API
-    #[structopt(long)]
-    commit: bool,
+struct File {
+    path: PathBuf,
 }
 
 impl Cmd {
@@ -101,22 +103,14 @@ impl Cmd {
     }
 
     fn collect_payments(&self) -> Result<Vec<Payment>> {
-        match &self.input {
-            None => Ok(vec![Payment {
-                payee: if let Some(payee) = &self.payee {
-                    payee.to_bytes().to_vec()
-                } else {
-                    bail!("payee expected for single payment")
-                },
-                amount: if let Some(amount) = self.amount {
-                    u64::from(amount)
-                } else {
-                    bail!("amount expected for single payment")
-                },
-                memo: u64::from(&self.memo),
+        match &self.payment {
+            Type::One(payee) => Ok(vec![Payment {
+                payee: payee.address.to_bytes().to_vec(),
+                amount: u64::from(payee.amount),
+                memo: u64::from(&payee.memo),
             }]),
-            Some(path) => {
-                let file = std::fs::File::open(path)?;
+            Type::Multi(file) => {
+                let file = std::fs::File::open(file.path.clone())?;
                 let payees: Vec<Payee> = serde_json::from_reader(file)?;
                 let payments = payees
                     .iter()
@@ -181,10 +175,14 @@ fn print_txn(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, StructOpt)]
 pub struct Payee {
+    /// Address to send the tokens to.
     address: PublicKey,
+    /// Amount of HNT to send
     amount: Hnt,
+    /// Memo field to include. Provide as a base64 encoded string
     #[serde(default)]
+    #[structopt(long, default_value = "AA==")]
     memo: Memo,
 }

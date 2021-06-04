@@ -7,10 +7,36 @@ use crate::{
 use serde::Deserialize;
 
 #[derive(Debug, StructOpt)]
-/// Onboard one (or more) validators  with this wallet. If an input file is
-/// specified for multiple payments, the address and stake arguments are
-/// ignored.
+/// Onboard one (or more) validators  with this wallet.
 ///
+/// The payment is not submitted to the system unless the '--commit' option is
+/// given.
+///
+/// Note that multiple staking transactions are submitted individually and not as a
+/// single transaction. Any failures will abort the remaining staking entries.
+pub struct Cmd {
+    #[structopt(flatten)]
+    stake: Type,
+
+    /// Manually set fee to pay for the transaction(s)
+    #[structopt(long)]
+    fee: Option<u64>,
+
+    /// Whether to commit the transaction(s) to the blockchain
+    #[structopt(long)]
+    commit: bool,
+}
+
+#[derive(Debug, StructOpt)]
+enum Type {
+    /// Stake a single validator
+    One(Validator),
+    /// Stake multiple validators via file import.
+    /// Check "helium-wallet validator stake multi --help" for details
+    Multi(File),
+}
+
+#[derive(Debug, StructOpt)]
 /// The input file for multiple validator stakes is expected to be json file
 /// with a list of address and staking amounts. For example:
 ///
@@ -24,32 +50,8 @@ use serde::Deserialize;
 ///         "stake": 10000
 ///     }
 /// ]
-///
-/// The payment is not submitted to the system unless the '--commit' option is
-/// given.
-///
-/// Note that multiple staking transactions are submitted individually and not as a
-/// single transaction. Any failures will abort the remaining staking entries.
-pub struct Cmd {
-    /// File to read multiple validator stakes from.
-    #[structopt(long)]
-    input: Option<PathBuf>,
-
-    /// Address of the validator to stake
-    #[structopt(long)]
-    address: Option<PublicKey>,
-
-    /// Amount to stake
-    #[structopt(long)]
-    stake: Option<Hnt>,
-
-    /// Manually set fee to pay for the transaction(s)
-    #[structopt(long)]
-    fee: Option<u64>,
-
-    /// Whether to commit the transaction(s) to the blockchain
-    #[structopt(long)]
-    commit: bool,
+struct File {
+    path: PathBuf,
 }
 
 impl Cmd {
@@ -99,21 +101,10 @@ impl Cmd {
     }
 
     fn collect_validators(&self) -> Result<Vec<Validator>> {
-        match &self.input {
-            None => Ok(vec![Validator {
-                address: if let Some(address) = &self.address {
-                    address.clone()
-                } else {
-                    bail!("address expected for validator")
-                },
-                stake: if let Some(stake) = self.stake {
-                    stake
-                } else {
-                    bail!("stake expected for validator")
-                },
-            }]),
-            Some(path) => {
-                let file = std::fs::File::open(path)?;
+        match &self.stake {
+            Type::One(validator) => Ok(vec![validator.clone()]),
+            Type::Multi(file) => {
+                let file = std::fs::File::open(file.path.clone())?;
                 let validators: Vec<Validator> = serde_json::from_reader(file)?;
                 Ok(validators)
             }
@@ -155,7 +146,7 @@ fn print_txn(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, StructOpt, Clone)]
 pub struct Validator {
     address: PublicKey,
     stake: Hnt,

@@ -1,7 +1,8 @@
 use crate::result::{bail, Result};
 
+use bitvec::prelude::*;
 use regex::Regex;
-use sha2::{Digest, Sha256};
+use sha2::{digest::generic_array::GenericArray, Digest, Sha256};
 use structopt::{clap::arg_enum, StructOpt};
 
 include!(concat!(env!("OUT_DIR"), "/english.rs"));
@@ -106,6 +107,53 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
     Ok(entropy_bytes)
 }
 
+/// Given some entropy of the proper length, return a mnemonic phrase.
+/// Inspired by the bip39 crate. https://docs.rs/bip39/1.0.1/bip39/index.html
+pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<String>> {
+    const MAX_ENTROPY_BITS: usize = 256;
+    const MIN_ENTROPY_BITS: usize = 128;
+    const ENTROPY_MULTIPLE: usize = 32;
+    const WORD_BIT_CHUNK_SIZE: usize = 11;
+
+    let midpoint = entropy.len() / 2;
+    let (front, back) = entropy.split_at(midpoint);
+    let working_entropy = if front == back { front } else { entropy };
+    let working_bits = working_entropy.len() * 8;
+
+    if working_bits % ENTROPY_MULTIPLE != 0
+        || working_bits < MIN_ENTROPY_BITS
+        || working_bits > MAX_ENTROPY_BITS
+    {
+        bail!("Incorrect entropy length: {}", working_bits)
+    }
+
+    let mut word_bits = BitVec::<Msb0>::with_capacity(MAX_ENTROPY_BITS);
+    word_bits.extend_from_bitslice(working_entropy.view_bits::<Msb0>());
+
+    // For every 32-bits of entropy, add one bit of checksum to
+    // the end of word_bits.
+    let checksum = match seed_type {
+        SeedType::Bip39 => Sha256::digest(working_entropy),
+        SeedType::Mobile => GenericArray::clone_from_slice(&[0u8; 32]),
+    };
+
+    let check_bits = checksum.view_bits::<Msb0>();
+    word_bits.extend_from_bitslice(&check_bits[..working_bits / ENTROPY_MULTIPLE]);
+    let wordlist = get_wordlist(Language::English);
+    let mut words = Vec::with_capacity(word_bits.len() / WORD_BIT_CHUNK_SIZE);
+
+    // For every group of 11 bits, use the value as an index into the word list.
+    for c in word_bits.chunks(11) {
+        let mut idx: usize = 0;
+        let idx_bits = idx.view_bits_mut::<Msb0>();
+        let len = idx_bits.len() - WORD_BIT_CHUNK_SIZE;
+        idx_bits[len..].copy_from_bitslice(c);
+        words.push(wordlist[idx].to_string());
+    }
+
+    Ok(words)
+}
+
 fn calc_checksum_128(bytes: [u8; 16]) -> u8 {
     // For 128-bit entropy, checksum is the first four bits of the sha256 hash
     (Sha256::digest(&bytes)[0] & 0b11110000) >> 4
@@ -139,6 +187,21 @@ mod tests {
     }
 
     #[test]
+    fn encode_mobile_12_words() {
+        // The words and entropy here were generated as follows: from the JS mobile-wallet implementation
+        let entropy = bs58::decode("3RrA1FDa6mdw5JwKbUxEbZbMcJgSyWjhNwxsbX5pSos8")
+            .into_vec()
+            .expect("decoded entropy");
+
+        let expected_words =
+            "catch poet clog intact scare jacket throw palm illegal buyer allow figure";
+        let words = entropy_to_mnemonic(&entropy, &SeedType::Mobile)
+            .expect("mnemonic")
+            .join(" ");
+        assert_eq!(expected_words, words);
+    }
+
+    #[test]
     fn decode_bip39_12_words() {
         // The words and entropy here were generated as follows:
         // - Generate 12-words using https://iancoleman.io/bip39/. Record the words and the hex
@@ -158,6 +221,21 @@ mod tests {
     }
 
     #[test]
+    fn encode_bip39_12_words() {
+        // The words and entropy here were generated as follows: from the JS mobile-wallet implementation
+        let entropy = bs58::decode("DZESLNVfmfzdkwAPEjyUXQ8cBtLDCHX13wXMA6pyP7uP")
+            .into_vec()
+            .expect("decoded entropy");
+
+        let expected_words =
+            "ritual ice harbor gas modify seed control solve burden people stay million";
+        let words = entropy_to_mnemonic(&entropy, &SeedType::Bip39)
+            .expect("mnemonic")
+            .join(" ");
+        assert_eq!(expected_words, words);
+    }
+
+    #[test]
     fn decode_bip39_24_words() {
         // The words and entropy here were generated as follows:
         // - Generate 24-words using https://iancoleman.io/bip39/. Record the words and the hex
@@ -173,5 +251,19 @@ mod tests {
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
         let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
         assert_eq!(expected_entropy, entropy);
+    }
+
+    #[test]
+    fn encode_bip39_24_words() {
+        // The words and entropy here were generated as follows: from the JS mobile-wallet implementation
+        let entropy = bs58::decode("BvkoqCYcm8Ukcm6tsuRyovQRxMPNwvc6Ag3LR1ZfjRPm")
+            .into_vec()
+            .expect("decoded entropy");
+
+        let expected_words = "pelican sphere tackle click broken hurt fork nephew choice seven announce moment tobacco tribe topple pause october drama sock erase news glove okay bubble";
+        let words = entropy_to_mnemonic(&entropy, &SeedType::Bip39)
+            .expect("mnemonic")
+            .join(" ");
+        assert_eq!(expected_words, words);
     }
 }

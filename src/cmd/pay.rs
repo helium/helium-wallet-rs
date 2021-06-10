@@ -183,6 +183,6 @@ pub struct Payee {
     amount: Hnt,
     /// Memo field to include. Provide as a base64 encoded string
     #[serde(default)]
-    #[structopt(long, default_value = "AA==")]
+    #[structopt(long, default_value = "AAAAAAAAAAA=")]
     memo: Memo,
 }

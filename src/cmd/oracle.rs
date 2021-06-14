@@ -138,7 +138,7 @@ impl Price {
                     reqwest::get("https://api.coingecko.com/api/v3/coins/helium").await?;
                 let json: serde_json::Value = response.json().await?;
                 let amount = &json["market_data"]["current_price"]["usd"].to_string();
-                Ok(Usd::from_str(&amount)?)
+                Ok(Usd::from_str(amount)?)
             }
             Self::Bilaxy => {
                 let response =

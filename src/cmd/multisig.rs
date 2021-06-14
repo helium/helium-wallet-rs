@@ -170,11 +170,11 @@ impl Proofs {
             Some(Txn::Vars(t)) => {
                 t.multi_key_proofs = Vec::with_capacity(self.key_proofs.len());
                 for signature in &self.key_proofs {
-                    t.multi_key_proofs.push(Vec::<u8>::from_b64(&signature)?);
+                    t.multi_key_proofs.push(Vec::<u8>::from_b64(signature)?);
                 }
                 t.multi_proofs = Vec::with_capacity(self.proofs.len());
                 for signature in &self.proofs {
-                    t.multi_proofs.push(Vec::<u8>::from_b64(&signature)?);
+                    t.multi_proofs.push(Vec::<u8>::from_b64(signature)?);
                 }
             }
             _ => bail!("Invalid transaction for proof"),
@@ -190,7 +190,7 @@ impl Proofs {
     ) -> Result {
         match &envelope.txn {
             Some(Txn::Vars(t)) => {
-                let signature = t.sign(&keypair)?.to_b64()?;
+                let signature = t.sign(keypair)?.to_b64()?;
                 match proof_type {
                     ProofType::KeyProof => self.key_proofs.push(signature),
                     ProofType::Proof => self.proofs.push(signature),

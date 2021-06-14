@@ -3,7 +3,7 @@ use crate::{
     keypair::PublicKey,
     result::{anyhow, Result},
 };
-use helium_api::{accounts, hotspots::Hotspot, IntoVec};
+use helium_api::{accounts, models::Hotspot, IntoVec};
 use prettytable::{format, Table};
 
 #[derive(Debug, StructOpt)]

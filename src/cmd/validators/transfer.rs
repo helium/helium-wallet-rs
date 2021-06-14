@@ -103,9 +103,11 @@ impl Create {
             stake_amount: if let Some(stake_amount) = self.stake_amount {
                 u64::from(stake_amount)
             } else {
-                helium_api::validators::get(&client, &self.old_address.to_string())
-                    .await?
-                    .stake
+                u64::from(
+                    helium_api::validators::get(&client, &self.old_address.to_string())
+                        .await?
+                        .stake,
+                )
             },
             payment_amount: u64::from(self.payment),
             old_owner_signature: vec![],

@@ -3,7 +3,7 @@ use crate::{
     keypair::PublicKey,
     result::{anyhow, Result},
 };
-use helium_api::{accounts, validators::Validator, IntoVec};
+use helium_api::{accounts, models::Validator, IntoVec};
 use prettytable::{format, Table};
 
 #[derive(Debug, StructOpt)]
@@ -60,7 +60,7 @@ fn print_results(
                             table.add_row(row![
                                 validator.address,
                                 validator.owner,
-                                Hnt::from(validator.stake),
+                                validator.stake,
                                 validator.stake_status
                             ]);
                         }

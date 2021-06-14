@@ -235,7 +235,7 @@ pub async fn maybe_submit_txn(
     txn: &BlockchainTxn,
 ) -> Result<Option<PendingTxnStatus>> {
     if commit {
-        let status = submit_txn(&client, txn).await?;
+        let status = submit_txn(client, txn).await?;
         Ok(Some(status))
     } else {
         Ok(None)

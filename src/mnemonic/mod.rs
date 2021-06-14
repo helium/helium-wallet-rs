@@ -67,7 +67,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
 
     // For up to 24 words, checksum should only ever be a single byte
     let mut checksum_bytes = [0u8; 1];
-    for (idx, matched) in RE_BYTES.find_iter(&checksum_bits).enumerate() {
+    for (idx, matched) in RE_BYTES.find_iter(checksum_bits).enumerate() {
         checksum_bytes[idx] = binary_to_bytes(matched.as_str()) as u8;
     }
 
@@ -75,7 +75,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
     let valid_checksum;
     if words.len() == 12 {
         let mut entropy_base = [0u8; 16];
-        for (idx, matched) in RE_BYTES.find_iter(&entropy_bits).enumerate() {
+        for (idx, matched) in RE_BYTES.find_iter(entropy_bits).enumerate() {
             entropy_base[idx] = binary_to_bytes(matched.as_str()) as u8;
         }
 
@@ -90,7 +90,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
         entropy_bytes[..16].copy_from_slice(&entropy_base);
         entropy_bytes[16..].copy_from_slice(&entropy_base);
     } else {
-        for (idx, matched) in RE_BYTES.find_iter(&entropy_bits).enumerate() {
+        for (idx, matched) in RE_BYTES.find_iter(entropy_bits).enumerate() {
             entropy_bytes[idx] = binary_to_bytes(matched.as_str()) as u8;
         }
 

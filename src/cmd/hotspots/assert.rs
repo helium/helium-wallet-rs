@@ -91,8 +91,8 @@ impl Cmd {
         };
 
         let fees = &get_txn_fees(&client).await?;
-        txn.fee = txn.txn_fee(&fees)?;
-        txn.staking_fee = txn.txn_staking_fee(&fees)?;
+        txn.fee = txn.txn_fee(fees)?;
+        txn.staking_fee = txn.txn_staking_fee(fees)?;
 
         txn.owner_signature = txn.sign(&keypair)?;
 

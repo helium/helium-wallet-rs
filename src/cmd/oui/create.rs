@@ -76,14 +76,14 @@ impl Create {
 
         let fees = &get_txn_fees(&client).await?;
 
-        txn.fee = txn.txn_fee(&fees)?;
-        txn.staking_fee = txn.txn_staking_fee(&fees)?;
+        txn.fee = txn.txn_fee(fees)?;
+        txn.staking_fee = txn.txn_staking_fee(fees)?;
 
         txn.owner_signature = txn.sign(&keypair)?;
         let envelope = txn.in_envelope();
 
         match self.payer.as_ref() {
-            key if key == Some(&wallet_key) || key.is_none() => {
+            key if key == Some(wallet_key) || key.is_none() => {
                 // Payer is the wallet submit if ready to commit
                 let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
                 print_txn(&txn, &envelope, &status, opts.format)

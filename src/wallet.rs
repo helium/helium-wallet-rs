@@ -129,7 +129,7 @@ impl Wallet {
         let format = self.mut_sharded_format()?;
         let other_format = shard.sharded_format()?;
 
-        format.absorb(&other_format)
+        format.absorb(other_format)
     }
 
     fn read_pwhash(reader: &mut dyn io::Read) -> Result<PwHash> {

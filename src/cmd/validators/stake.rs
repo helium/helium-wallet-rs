@@ -94,9 +94,9 @@ impl Cmd {
         txn.fee = if let Some(fee) = self.fee {
             fee
         } else {
-            txn.txn_fee(&fee_config.as_ref().unwrap())?
+            txn.txn_fee(fee_config.as_ref().unwrap())?
         };
-        txn.owner_signature = txn.sign(&keypair)?;
+        txn.owner_signature = txn.sign(keypair)?;
         Ok(txn)
     }
 

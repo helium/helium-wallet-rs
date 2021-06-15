@@ -3,7 +3,7 @@ use crate::{
     keypair::PublicKey,
     result::{anyhow, Result},
 };
-use helium_api::accounts::{self, Account};
+use helium_api::{accounts, models::Account};
 use prettytable::{format, Table};
 use serde_json::json;
 

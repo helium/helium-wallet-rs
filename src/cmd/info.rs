@@ -1,5 +1,5 @@
 use crate::{cmd::*, result::Result, wallet::Wallet};
-use helium_api::accounts::{self, Account};
+use helium_api::{accounts, models::Account};
 use prettytable::Table;
 use qr2term::print_qr;
 use serde_json::json;

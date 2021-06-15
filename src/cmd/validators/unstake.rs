@@ -49,9 +49,11 @@ impl Cmd {
             stake_amount: if let Some(stake_amount) = self.stake_amount {
                 u64::from(stake_amount)
             } else {
-                helium_api::validators::get(&client, &self.address.to_string())
-                    .await?
-                    .stake
+                u64::from(
+                    helium_api::validators::get(&client, &self.address.to_string())
+                        .await?
+                        .stake,
+                )
             },
             stake_release_height: self.stake_release_height,
             fee: 0,

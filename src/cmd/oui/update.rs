@@ -2,7 +2,7 @@ use crate::{
     cmd::oui::*,
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee, B64},
 };
-use helium_api::{ouis, pending_transactions::PendingTxnStatus, Client};
+use helium_api::{models::PendingTxnStatus, ouis, Client};
 use serde_json::json;
 use structopt::StructOpt;
 

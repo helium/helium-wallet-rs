@@ -17,6 +17,7 @@ pub use structopt::{clap::arg_enum, StructOpt};
 
 pub mod balance;
 pub mod burn;
+pub mod commit;
 pub mod create;
 pub mod hotspots;
 pub mod htlc;

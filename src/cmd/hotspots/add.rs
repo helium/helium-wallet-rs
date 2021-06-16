@@ -1,6 +1,6 @@
 use crate::{
     cmd::*,
-    result::{bail, Result},
+    result::Result,
     staking,
     traits::{TxnEnvelope, TxnSign},
 };
@@ -45,16 +45,15 @@ impl Cmd {
                 txn.payer_signature = txn.owner_signature.clone();
                 Ok(txn.in_envelope())
             }
-            _maker_key => {
-                if self.onboarding.is_none() {
-                    bail!("Staking server requires an onboarding key");
-                } else {
-                    let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
-                    staking_client
-                        .sign(&onboarding_key, &txn.in_envelope())
-                        .await
-                }
+            _key if self.onboarding.is_some() && self.commit => {
+                // Only have staking server sign if there's an onboarding key,
+                // and we're actually going to commit
+                let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
+                staking_client
+                    .sign(&onboarding_key, &txn.in_envelope())
+                    .await
             }
+            _key => Ok(txn.in_envelope()),
         }?;
 
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
@@ -68,6 +67,7 @@ fn print_txn(
     format: OutputFormat,
 ) -> Result {
     let address = PublicKey::from_bytes(&txn.gateway)?.to_string();
+    let owner = PublicKey::from_bytes(&txn.owner)?.to_string();
     let payer = if txn.payer.is_empty() {
         PublicKey::from_bytes(&txn.owner)?.to_string()
     } else {
@@ -79,6 +79,7 @@ fn print_txn(
                 ["Key", "Value"],
                 ["Address", address],
                 ["Payer", payer],
+                ["Owner", owner],
                 ["Fee (DC)", txn.fee],
                 ["Staking fee (DC)", txn.staking_fee],
                 ["Hash", status_str(status)]
@@ -88,10 +89,12 @@ fn print_txn(
         OutputFormat::Json => {
             let table = json!({
                 "address": address,
+                "owner": owner,
                 "payer": payer,
                 "fee": txn.fee,
                 "staking fee": txn.staking_fee,
-                "hash": status_json(status)
+                "hash": status_json(status),
+                "txn": txn.in_envelope().to_b64()?
             });
             print_json(&table)
         }

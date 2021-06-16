@@ -1,7 +1,7 @@
 use crate::{
     cmd::*,
     staking,
-    traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee},
+    traits::{TxnEnvelope, TxnFee, TxnModeStakingFee, TxnSign},
 };
 use helium_api::{hotspots, Dbi};
 
@@ -40,6 +40,11 @@ pub struct Cmd {
     #[structopt(long)]
     onboarding: bool,
 
+    /// The staking mode for the assert location (full, light, dataonly)
+    #[structopt(long, default_value = "full")]
+    mode: StakingMode,
+
+    /// Commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
 }
@@ -92,14 +97,18 @@ impl Cmd {
 
         let fees = &get_txn_fees(&client).await?;
         txn.fee = txn.txn_fee(fees)?;
-        txn.staking_fee = txn.txn_staking_fee(fees)?;
+        txn.staking_fee = txn.txn_mode_staking_fee(&self.mode, fees)?;
 
         txn.owner_signature = txn.sign(&keypair)?;
 
         let envelope = if self.onboarding {
-            staking_client
-                .sign(&self.gateway.to_string(), &txn.in_envelope())
-                .await
+            if self.commit {
+                staking_client
+                    .sign(&self.gateway.to_string(), &txn.in_envelope())
+                    .await
+            } else {
+                Ok(txn.in_envelope())
+            }
         } else {
             txn.payer_signature = txn.owner_signature.clone();
             Ok(txn.in_envelope())

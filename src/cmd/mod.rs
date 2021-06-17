@@ -2,7 +2,7 @@ use crate::{
     keypair::{Network, PublicKey},
     mnemonic,
     result::{bail, Error, Result},
-    traits::{TxnFeeConfig, B64},
+    traits::{StakingMode, TxnFeeConfig, B64},
     wallet::Wallet,
 };
 pub use helium_api::{models::PendingTxnStatus, Client, Hnt, Hst, Usd};

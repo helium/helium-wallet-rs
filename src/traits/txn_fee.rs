@@ -1,7 +1,37 @@
 use super::TxnEnvelope;
-use crate::result::Result;
+use crate::result::{bail, Error, Result};
 use helium_proto::*;
 use serde_derive::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
+
+#[derive(Debug)]
+pub enum StakingMode {
+    DataOnly,
+    Light,
+    Full,
+}
+
+impl fmt::Display for StakingMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            StakingMode::DataOnly => f.write_str("dataonly"),
+            StakingMode::Full => f.write_str("full"),
+            StakingMode::Light => f.write_str("light"),
+        }
+    }
+}
+
+impl FromStr for StakingMode {
+    type Err = Error;
+    fn from_str(v: &str) -> Result<Self> {
+        match v.to_lowercase().as_ref() {
+            "light" => Ok(Self::Light),
+            "full" => Ok(Self::Full),
+            "dataonly" => Ok(Self::DataOnly),
+            _ => bail!("invalid staking mode {}", v),
+        }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TxnFeeConfig {
@@ -15,9 +45,23 @@ pub struct TxnFeeConfig {
     // the staking fee in DC for each OUI/routing address
     staking_fee_txn_oui_v1_per_address: u64,
     // the staking fee in DC for adding a gateway
+    #[serde(default = "TxnFeeConfig::default_add_full_staking_fee")]
     staking_fee_txn_add_gateway_v1: u64,
+    // the staking fee in DC for adding a data only gateway
+    #[serde(default = "TxnFeeConfig::default_add_dataonly_staking_fee")]
+    staking_fee_txn_add_dataonly_gateway_v1: u64,
+    // the staking fee in DC for adding a light gateway
+    #[serde(default = "TxnFeeConfig::default_add_light_staking_fee")]
+    staking_fee_txn_add_light_gateway_v1: u64,
     // the staking fee in DC for asserting a location
+    #[serde(default = "TxnFeeConfig::default_assert_full_staking_fee")]
     staking_fee_txn_assert_location_v1: u64,
+    // the staking fee in DC for asserting location for a dataonly gateway
+    #[serde(default = "TxnFeeConfig::default_assert_dataonly_staking_fee")]
+    staking_fee_txn_assert_location_dataonly_gateway_v1: u64,
+    // the staking fee in DC for asserting location for a light gateway
+    #[serde(default = "TxnFeeConfig::default_assert_light_staking_fee")]
+    staking_fee_txn_assert_location_light_gateway_v1: u64,
 }
 
 pub const LEGACY_STAKING_FEE: u64 = 1;
@@ -31,7 +75,11 @@ impl TxnFeeConfig {
             staking_fee_txn_oui_v1: LEGACY_STAKING_FEE,
             staking_fee_txn_oui_v1_per_address: 0,
             staking_fee_txn_add_gateway_v1: LEGACY_STAKING_FEE,
+            staking_fee_txn_add_dataonly_gateway_v1: LEGACY_STAKING_FEE,
+            staking_fee_txn_add_light_gateway_v1: LEGACY_STAKING_FEE,
             staking_fee_txn_assert_location_v1: LEGACY_STAKING_FEE,
+            staking_fee_txn_assert_location_dataonly_gateway_v1: LEGACY_STAKING_FEE,
+            staking_fee_txn_assert_location_light_gateway_v1: LEGACY_STAKING_FEE,
         }
     }
 
@@ -42,6 +90,30 @@ impl TxnFeeConfig {
             1
         }
     }
+
+    fn default_add_full_staking_fee() -> u64 {
+        4000000
+    }
+
+    fn default_add_dataonly_staking_fee() -> u64 {
+        1000000
+    }
+
+    fn default_add_light_staking_fee() -> u64 {
+        4000000
+    }
+
+    fn default_assert_full_staking_fee() -> u64 {
+        1000000
+    }
+
+    fn default_assert_dataonly_staking_fee() -> u64 {
+        500000
+    }
+
+    fn default_assert_light_staking_fee() -> u64 {
+        1000000
+    }
 }
 
 pub trait TxnFee {
@@ -50,6 +122,10 @@ pub trait TxnFee {
 
 pub trait TxnStakingFee {
     fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64>;
+}
+
+pub trait TxnModeStakingFee {
+    fn txn_mode_staking_fee(&self, mode: &StakingMode, config: &TxnFeeConfig) -> Result<u64>;
 }
 
 fn calculate_txn_fee(payload_size: usize, config: &TxnFeeConfig) -> u64 {
@@ -104,6 +180,28 @@ macro_rules! impl_txn_staking_fee {
     };
 }
 
+impl TxnModeStakingFee for BlockchainTxnAddGatewayV1 {
+    fn txn_mode_staking_fee(&self, mode: &StakingMode, config: &TxnFeeConfig) -> Result<u64> {
+        let result = match mode {
+            StakingMode::Full => config.staking_fee_txn_add_gateway_v1,
+            StakingMode::DataOnly => config.staking_fee_txn_add_dataonly_gateway_v1,
+            StakingMode::Light => config.staking_fee_txn_add_light_gateway_v1,
+        };
+        Ok(result)
+    }
+}
+
+impl TxnModeStakingFee for BlockchainTxnAssertLocationV2 {
+    fn txn_mode_staking_fee(&self, mode: &StakingMode, config: &TxnFeeConfig) -> Result<u64> {
+        let result = match mode {
+            StakingMode::Full => config.staking_fee_txn_assert_location_v1,
+            StakingMode::DataOnly => config.staking_fee_txn_assert_location_dataonly_gateway_v1,
+            StakingMode::Light => config.staking_fee_txn_assert_location_light_gateway_v1,
+        };
+        Ok(result)
+    }
+}
+
 impl_txn_fee!(BlockchainTxnPaymentV1, signature);
 impl_txn_fee!(BlockchainTxnPaymentV2, signature);
 impl_txn_fee!(BlockchainTxnCreateHtlcV1, signature);
@@ -115,7 +213,6 @@ impl_txn_fee!(
     owner_signature,
     gateway_signature
 );
-impl_txn_staking_fee!(BlockchainTxnAddGatewayV1, staking_fee_txn_add_gateway_v1);
 impl_txn_fee!(
     (payer, BlockchainTxnAssertLocationV1),
     owner_signature,
@@ -126,10 +223,6 @@ impl_txn_staking_fee!(
     staking_fee_txn_assert_location_v1
 );
 impl_txn_fee!((payer, BlockchainTxnAssertLocationV2), owner_signature);
-impl_txn_staking_fee!(
-    BlockchainTxnAssertLocationV2,
-    staking_fee_txn_assert_location_v1
-);
 impl_txn_fee!((payer, BlockchainTxnOuiV1), owner_signature);
 
 impl_txn_fee!(

@@ -99,7 +99,7 @@ jobs:
           cp README.md $NAME/
           cp LICENSE $NAME/
           gtar -zcvf $NAME.tar.gz $NAME/
-          sha256sum -b --tag $NAME.tar.gz > $NAME.checksum
+          shasum -a 256 -b --tag $NAME.tar.gz > $NAME.checksum
 
       - name: Push Release
         uses: softprops/action-gh-release@v1

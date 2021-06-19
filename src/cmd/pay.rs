@@ -16,8 +16,6 @@ use serde_json::json;
 /// The payment is not submitted to the system unless the '--commit' option is
 /// given.
 pub struct Cmd {
-
-
     #[structopt(flatten)]
     payment: Type,
 }
@@ -79,7 +77,7 @@ impl Cmd {
             fee: 0,
             payments,
             payer: keypair.public_key().to_vec(),
-            nonce: if let Some(nonce) = self.nonce {
+            nonce: if let Some(nonce) = self.nonce() {
                 nonce
             } else {
                 let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
@@ -88,7 +86,7 @@ impl Cmd {
             signature: Vec::new(),
         };
 
-        txn.fee = if let Some(fee) = self.fee {
+        txn.fee = if let Some(fee) = self.fee() {
             fee
         } else {
             txn.txn_fee(&get_txn_fees(&client).await?)?
@@ -96,7 +94,7 @@ impl Cmd {
         txn.signature = txn.sign(&keypair)?;
 
         let envelope = txn.in_envelope();
-        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
+        let status = maybe_submit_txn(self.commit(), &client, &envelope).await?;
         print_txn(&txn, &envelope, &status, opts.format)
     }
 
@@ -120,6 +118,27 @@ impl Cmd {
                     .collect();
                 Ok(payments)
             }
+        }
+    }
+
+    fn nonce(&self) -> Option<u64> {
+        match &self.payment {
+            Type::One(one) => one.nonce,
+            Type::Multi(multi) => multi.nonce,
+        }
+    }
+
+    fn fee(&self) -> Option<u64> {
+        match &self.payment {
+            Type::One(one) => one.fee,
+            Type::Multi(multi) => multi.fee,
+        }
+    }
+
+    fn commit(&self) -> bool {
+        match &self.payment {
+            Type::One(one) => one.commit,
+            Type::Multi(multi) => multi.commit,
         }
     }
 }

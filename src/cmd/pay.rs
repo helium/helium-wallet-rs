@@ -16,24 +16,10 @@ use serde_json::json;
 /// The payment is not submitted to the system unless the '--commit' option is
 /// given.
 pub struct Cmd {
-    /// File to read multiple payments from.
-    #[structopt(long)]
-    input: Option<PathBuf>,
+
 
     #[structopt(flatten)]
     payment: Type,
-
-    /// Manually set the nonce to use for the transaction
-    #[structopt(long)]
-    nonce: Option<u64>,
-
-    /// Manually set the DC fee to pay for the transaction
-    #[structopt(long)]
-    fee: Option<u64>,
-
-    /// Commit the payment to the API
-    #[structopt(long)]
-    commit: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -64,6 +50,18 @@ enum Type {
 /// Note that HNT only goes to 8 decimals of precision.
 struct File {
     path: PathBuf,
+    /// File to read multiple payments from.
+    #[structopt(long)]
+    input: Option<PathBuf>,
+    /// Manually set the nonce to use for the transaction
+    #[structopt(long)]
+    nonce: Option<u64>,
+    /// Manually set the DC fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Commit the payment to the API
+    #[structopt(long)]
+    commit: bool,
 }
 
 impl Cmd {
@@ -185,4 +183,16 @@ pub struct Payee {
     #[serde(default)]
     #[structopt(long, default_value = "AAAAAAAAAAA=")]
     memo: Memo,
+    /// File to read multiple payments from.
+    #[structopt(long)]
+    input: Option<PathBuf>,
+    /// Manually set the nonce to use for the transaction
+    #[structopt(long)]
+    nonce: Option<u64>,
+    /// Manually set the DC fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Commit the payment to the API
+    #[structopt(long)]
+    commit: bool,
 }

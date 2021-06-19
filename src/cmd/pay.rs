@@ -15,17 +15,12 @@ use serde_json::json;
 ///
 /// The payment is not submitted to the system unless the '--commit' option is
 /// given.
-pub struct Cmd {
-    #[structopt(flatten)]
-    payment: Type,
-}
-
-#[derive(Debug, StructOpt)]
-enum Type {
-    /// Single payee
+pub enum Cmd {
+    /// Pay a single payee.
+    ///
+    /// Note that HNT only goes to 8 decimals of precision.
     One(Payee),
-    /// Multiple payees (requires file input).
-    /// Check "helium-wallet pay multi --help" for details
+    /// Pay multiple payees
     Multi(File),
 }
 
@@ -35,22 +30,20 @@ enum Type {
 ///
 /// [
 ///     {
-///         "payee": "<adddress1>",
+///         "address": "<adddress1>",
 ///         "amount": 1.6,
 ///         "memo": "AAAAAAAAAAA="
 ///     },
 ///     {
-///         "payee": "<adddress2>",
+///         "address": "<adddress2>",
 ///         "amount": 0.5
 ///     }
 /// ]
 ///
 /// Note that HNT only goes to 8 decimals of precision.
-struct File {
-    path: PathBuf,
+pub struct File {
     /// File to read multiple payments from.
-    #[structopt(long)]
-    input: Option<PathBuf>,
+    path: PathBuf,
     /// Manually set the nonce to use for the transaction
     #[structopt(long)]
     nonce: Option<u64>,
@@ -99,13 +92,13 @@ impl Cmd {
     }
 
     fn collect_payments(&self) -> Result<Vec<Payment>> {
-        match &self.payment {
-            Type::One(payee) => Ok(vec![Payment {
+        match &self {
+            Self::One(payee) => Ok(vec![Payment {
                 payee: payee.address.to_bytes().to_vec(),
                 amount: u64::from(payee.amount),
                 memo: u64::from(&payee.memo),
             }]),
-            Type::Multi(file) => {
+            Self::Multi(file) => {
                 let file = std::fs::File::open(file.path.clone())?;
                 let payees: Vec<Payee> = serde_json::from_reader(file)?;
                 let payments = payees
@@ -122,23 +115,23 @@ impl Cmd {
     }
 
     fn nonce(&self) -> Option<u64> {
-        match &self.payment {
-            Type::One(one) => one.nonce,
-            Type::Multi(multi) => multi.nonce,
+        match &self {
+            Self::One(one) => one.nonce,
+            Self::Multi(multi) => multi.nonce,
         }
     }
 
     fn fee(&self) -> Option<u64> {
-        match &self.payment {
-            Type::One(one) => one.fee,
-            Type::Multi(multi) => multi.fee,
+        match &self {
+            Self::One(one) => one.fee,
+            Self::Multi(multi) => multi.fee,
         }
     }
 
     fn commit(&self) -> bool {
-        match &self.payment {
-            Type::One(one) => one.commit,
-            Type::Multi(multi) => multi.commit,
+        match &self {
+            Self::One(one) => one.commit,
+            Self::Multi(multi) => multi.commit,
         }
     }
 }
@@ -202,9 +195,6 @@ pub struct Payee {
     #[serde(default)]
     #[structopt(long, default_value = "AAAAAAAAAAA=")]
     memo: Memo,
-    /// File to read multiple payments from.
-    #[structopt(long)]
-    input: Option<PathBuf>,
     /// Manually set the nonce to use for the transaction
     #[structopt(long)]
     nonce: Option<u64>,

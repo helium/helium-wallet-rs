@@ -14,17 +14,10 @@ use serde::Deserialize;
 ///
 /// Note that multiple staking transactions are submitted individually and not as a
 /// single transaction. Any failures will abort the remaining staking entries.
-pub struct Cmd {
-    #[structopt(flatten)]
-    stake: Type,
-}
-
-#[derive(Debug, StructOpt)]
-enum Type {
+pub enum Cmd {
     /// Stake a single validator
     One(Validator),
-    /// Stake multiple validators via file import.
-    /// Check "helium-wallet validator stake multi --help" for details
+    /// Stake multiple validators via file import
     Multi(File),
 }
 
@@ -42,7 +35,8 @@ enum Type {
 ///         "stake": 10000
 ///     }
 /// ]
-struct File {
+pub struct File {
+    /// File to read multiple stakes from
     path: PathBuf,
     /// Manually set fee to pay for the transaction(s)
     #[structopt(long)]
@@ -99,9 +93,9 @@ impl Cmd {
     }
 
     fn collect_validators(&self) -> Result<Vec<Validator>> {
-        match &self.stake {
-            Type::One(validator) => Ok(vec![validator.clone()]),
-            Type::Multi(file) => {
+        match &self {
+            Self::One(validator) => Ok(vec![validator.clone()]),
+            Self::Multi(file) => {
                 let file = std::fs::File::open(file.path.clone())?;
                 let validators: Vec<Validator> = serde_json::from_reader(file)?;
                 Ok(validators)
@@ -110,16 +104,16 @@ impl Cmd {
     }
 
     fn fee(&self) -> Option<u64> {
-        match &self.stake {
-            Type::One(one) => one.fee,
-            Type::Multi(multi) => multi.fee,
+        match &self {
+            Self::One(one) => one.fee,
+            Self::Multi(multi) => multi.fee,
         }
     }
 
     fn commit(&self) -> bool {
-        match &self.stake {
-            Type::One(one) => one.commit,
-            Type::Multi(multi) => multi.commit,
+        match &self {
+            Self::One(one) => one.commit,
+            Self::Multi(multi) => multi.commit,
         }
     }
 }
@@ -160,7 +154,9 @@ fn print_txn(
 
 #[derive(Debug, Deserialize, StructOpt, Clone)]
 pub struct Validator {
+    /// The validator address to stake
     address: PublicKey,
+    /// The amount of HNT to stake
     stake: Hnt,
     /// Manually set fee to pay for the transaction(s)
     #[structopt(long)]

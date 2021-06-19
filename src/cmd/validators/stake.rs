@@ -17,14 +17,6 @@ use serde::Deserialize;
 pub struct Cmd {
     #[structopt(flatten)]
     stake: Type,
-
-    /// Manually set fee to pay for the transaction(s)
-    #[structopt(long)]
-    fee: Option<u64>,
-
-    /// Whether to commit the transaction(s) to the blockchain
-    #[structopt(long)]
-    commit: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -52,6 +44,12 @@ enum Type {
 /// ]
 struct File {
     path: PathBuf,
+    /// Manually set fee to pay for the transaction(s)
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Whether to commit the transaction(s) to the blockchain
+    #[structopt(long)]
+    commit: bool,
 }
 
 impl Cmd {
@@ -63,7 +61,7 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
-        let fee_config = if self.fee.is_none() {
+        let fee_config = if self.fee().is_none() {
             Some(get_txn_fees(&client).await?)
         } else {
             None
@@ -72,7 +70,7 @@ impl Cmd {
         for validator in validators {
             let txn = self.mk_txn(&keypair, &fee_config, &validator)?;
             let envelope = txn.in_envelope();
-            let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
+            let status = maybe_submit_txn(self.commit(), &client, &envelope).await?;
             print_txn(&envelope, &txn, &status, &opts.format)?
         }
         Ok(())
@@ -91,7 +89,7 @@ impl Cmd {
             fee: 0,
             owner_signature: vec![],
         };
-        txn.fee = if let Some(fee) = self.fee {
+        txn.fee = if let Some(fee) = self.fee() {
             fee
         } else {
             txn.txn_fee(fee_config.as_ref().unwrap())?
@@ -108,6 +106,20 @@ impl Cmd {
                 let validators: Vec<Validator> = serde_json::from_reader(file)?;
                 Ok(validators)
             }
+        }
+    }
+
+    fn fee(&self) -> Option<u64> {
+        match &self.stake {
+            Type::One(one) => one.fee,
+            Type::Multi(multi) => multi.fee,
+        }
+    }
+
+    fn commit(&self) -> bool {
+        match &self.stake {
+            Type::One(one) => one.commit,
+            Type::Multi(multi) => multi.commit,
         }
     }
 }
@@ -150,4 +162,10 @@ fn print_txn(
 pub struct Validator {
     address: PublicKey,
     stake: Hnt,
+    /// Manually set fee to pay for the transaction(s)
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Whether to commit the transaction(s) to the blockchain
+    #[structopt(long)]
+    commit: bool,
 }

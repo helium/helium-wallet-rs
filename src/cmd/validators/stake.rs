@@ -17,14 +17,6 @@ use serde::Deserialize;
 pub struct Cmd {
     #[structopt(flatten)]
     stake: Type,
-
-    /// Manually set fee to pay for the transaction(s)
-    #[structopt(long)]
-    fee: Option<u64>,
-
-    /// Whether to commit the transaction(s) to the blockchain
-    #[structopt(long)]
-    commit: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -52,6 +44,12 @@ enum Type {
 /// ]
 struct File {
     path: PathBuf,
+    /// Manually set fee to pay for the transaction(s)
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Whether to commit the transaction(s) to the blockchain
+    #[structopt(long)]
+    commit: bool,
 }
 
 impl Cmd {
@@ -150,4 +148,10 @@ fn print_txn(
 pub struct Validator {
     address: PublicKey,
     stake: Hnt,
+    /// Manually set fee to pay for the transaction(s)
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Whether to commit the transaction(s) to the blockchain
+    #[structopt(long)]
+    commit: bool,
 }

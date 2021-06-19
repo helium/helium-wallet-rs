@@ -35,12 +35,12 @@ enum Type {
 ///
 /// [
 ///     {
-///         "payee": "<adddress1>",
+///         "address": "<adddress1>",
 ///         "amount": 1.6,
 ///         "memo": "AAAAAAAAAAA="
 ///     },
 ///     {
-///         "payee": "<adddress2>",
+///         "address": "<adddress2>",
 ///         "amount": 0.5
 ///     }
 /// ]

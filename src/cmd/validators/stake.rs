@@ -160,7 +160,9 @@ fn print_txn(
 
 #[derive(Debug, Deserialize, StructOpt, Clone)]
 pub struct Validator {
+    /// The validator address to stake
     address: PublicKey,
+    /// The amount of HNT to stake
     stake: Hnt,
     /// Manually set fee to pay for the transaction(s)
     #[structopt(long)]

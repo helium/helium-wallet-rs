@@ -19,9 +19,24 @@ pub enum Cmd {
     /// Pay a single payee.
     ///
     /// Note that HNT only goes to 8 decimals of precision.
-    One(Payee),
+    One(One),
     /// Pay multiple payees
-    Multi(File),
+    Multi(Multi),
+}
+
+#[derive(Debug, StructOpt)]
+pub struct One {
+    #[structopt(flatten)]
+    payee: Payee,
+    /// Manually set the nonce to use for the transaction
+    #[structopt(long)]
+    nonce: Option<u64>,
+    /// Manually set the DC fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Commit the payment to the API
+    #[structopt(long)]
+    commit: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -41,7 +56,7 @@ pub enum Cmd {
 /// ]
 ///
 /// Note that HNT only goes to 8 decimals of precision.
-pub struct File {
+pub struct Multi {
     /// File to read multiple payments from.
     path: PathBuf,
     /// Manually set the nonce to use for the transaction
@@ -93,13 +108,13 @@ impl Cmd {
 
     fn collect_payments(&self) -> Result<Vec<Payment>> {
         match &self {
-            Self::One(payee) => Ok(vec![Payment {
-                payee: payee.address.to_bytes().to_vec(),
-                amount: u64::from(payee.amount),
-                memo: u64::from(&payee.memo),
+            Self::One(one) => Ok(vec![Payment {
+                payee: one.payee.address.to_bytes().to_vec(),
+                amount: u64::from(one.payee.amount),
+                memo: u64::from(&one.payee.memo),
             }]),
-            Self::Multi(file) => {
-                let file = std::fs::File::open(file.path.clone())?;
+            Self::Multi(multi) => {
+                let file = std::fs::File::open(multi.path.clone())?;
                 let payees: Vec<Payee> = serde_json::from_reader(file)?;
                 let payments = payees
                     .iter()
@@ -195,13 +210,4 @@ pub struct Payee {
     #[serde(default)]
     #[structopt(long, default_value = "AAAAAAAAAAA=")]
     memo: Memo,
-    /// Manually set the nonce to use for the transaction
-    #[structopt(long)]
-    nonce: Option<u64>,
-    /// Manually set the DC fee to pay for the transaction
-    #[structopt(long)]
-    fee: Option<u64>,
-    /// Commit the payment to the API
-    #[structopt(long)]
-    commit: bool,
 }

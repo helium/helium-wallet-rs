@@ -16,9 +16,21 @@ use serde::Deserialize;
 /// single transaction. Any failures will abort the remaining staking entries.
 pub enum Cmd {
     /// Stake a single validator
-    One(Validator),
+    One(One),
     /// Stake multiple validators via file import
-    Multi(File),
+    Multi(Multi),
+}
+
+#[derive(Debug, StructOpt)]
+pub struct One {
+    #[structopt(flatten)]
+    validator: Validator,
+    /// Manually set fee to pay for the transaction(s)
+    #[structopt(long)]
+    fee: Option<u64>,
+    /// Whether to commit the transaction(s) to the blockchain
+    #[structopt(long)]
+    commit: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -35,7 +47,7 @@ pub enum Cmd {
 ///         "stake": 10000
 ///     }
 /// ]
-pub struct File {
+pub struct Multi {
     /// File to read multiple stakes from
     path: PathBuf,
     /// Manually set fee to pay for the transaction(s)
@@ -94,9 +106,9 @@ impl Cmd {
 
     fn collect_validators(&self) -> Result<Vec<Validator>> {
         match &self {
-            Self::One(validator) => Ok(vec![validator.clone()]),
-            Self::Multi(file) => {
-                let file = std::fs::File::open(file.path.clone())?;
+            Self::One(one) => Ok(vec![one.validator.clone()]),
+            Self::Multi(multi) => {
+                let file = std::fs::File::open(multi.path.clone())?;
                 let validators: Vec<Validator> = serde_json::from_reader(file)?;
                 Ok(validators)
             }
@@ -158,10 +170,4 @@ pub struct Validator {
     address: PublicKey,
     /// The amount of HNT to stake
     stake: Hnt,
-    /// Manually set fee to pay for the transaction(s)
-    #[structopt(long)]
-    fee: Option<u64>,
-    /// Whether to commit the transaction(s) to the blockchain
-    #[structopt(long)]
-    commit: bool,
 }

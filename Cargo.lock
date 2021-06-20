@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.6.2"
+version = "1.6.3-dev"
 dependencies = [
  "aes-gcm",
  "angry-purple-tiger",

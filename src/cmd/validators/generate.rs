@@ -27,7 +27,7 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let tag = KeyTag {
             network: self.network,
-            key_type: KeyType::EccCompact,
+            key_type: KeyType::Ed25519,
         };
         let keypair = Keypair::generate(tag);
         let mut writer = open_output_file(&self.output, !self.force)?;

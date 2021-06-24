@@ -74,6 +74,13 @@ impl Cmd {
         };
 
         for validator in validators {
+            if validator.address.network != wallet.public_key.network {
+                bail!(
+                    "validator: {} is not on {}",
+                    validator.address.to_string(),
+                    wallet.public_key.network
+                )
+            }
             let txn = self.mk_txn(&keypair, &fee_config, &validator)?;
             let envelope = txn.in_envelope();
             let status = maybe_submit_txn(self.commit(), &client, &envelope).await?;

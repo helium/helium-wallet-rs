@@ -10,19 +10,47 @@ pub struct Cmd {
     /// Display QR code for a given single wallet.
     #[structopt(long = "qr")]
     qr_code: bool,
+
+    /// Display basic information on a given public key
+    #[structopt(long)]
+    address: Option<PublicKey>,
 }
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let wallet = load_wallet(opts.files)?;
-        if self.qr_code {
-            let address = wallet.address()?;
-            print_qr(&address)?;
-            Ok(())
-        } else {
-            let client = Client::new_with_base_url(api_url(wallet.public_key.network));
-            let account = accounts::get(&client, &wallet.address()?).await?;
-            print_wallet(&wallet, &account, opts.format)
+        match &self.address {
+            Some(public_key) => print_public_key(public_key, opts.format),
+            None => {
+                let wallet = load_wallet(opts.files)?;
+                if self.qr_code {
+                    print_qr(&wallet.public_key.to_string())?;
+                    Ok(())
+                } else {
+                    let client = Client::new_with_base_url(api_url(wallet.public_key.network));
+                    let account = accounts::get(&client, &wallet.address()?).await?;
+                    print_wallet(&wallet, &account, opts.format)
+                }
+            }
+        }
+    }
+}
+
+fn print_public_key(public_key: &PublicKey, format: OutputFormat) -> Result {
+    match format {
+        OutputFormat::Table => {
+            let mut table = Table::new();
+            table.add_row(row!["Key", "Value"]);
+            table.add_row(row!["Address", public_key.to_string()]);
+            table.add_row(row!["Network", public_key.tag().network]);
+            table.add_row(row!["Type", public_key.tag().key_type]);
+            print_table(&table)
+        }
+        OutputFormat::Json => {
+            let table = json!({
+                "network": public_key.tag().network.to_string(),
+                "type": public_key.tag().key_type.to_string(),
+            });
+            print_json(&table)
         }
     }
 }

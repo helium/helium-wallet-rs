@@ -147,7 +147,7 @@ To send tokens to other accounts use:
 
 ```
     helium-wallet pay one <payee> <hnt>
-    helium-wallet pay one <payee>=<hnt> --commit
+    helium-wallet pay one <payee> <hnt> --commit
 
 ```
 

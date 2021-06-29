@@ -40,7 +40,7 @@ pub struct One {
 /// [
 ///     {
 ///         "address": "<adddress1>",
-///         "stake": 10000,
+///         "stake": 10000
 ///     },
 ///     {
 ///         "address": "<adddress2>",

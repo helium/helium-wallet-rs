@@ -56,7 +56,7 @@ impl Client {
             .error_for_status()?
             .json()
             .await?;
-        response["data"]["publicAddress"]
+        response["data"]["maker"]["address"]
             .as_str()
             .map_or(Err(anyhow!("Invalid staking address from server")), |v| {
                 v.parse().map_err(|e: helium_crypto::Error| e.into())

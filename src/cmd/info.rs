@@ -41,14 +41,14 @@ fn print_public_key(public_key: &PublicKey, format: OutputFormat) -> Result {
             let mut table = Table::new();
             table.add_row(row!["Key", "Value"]);
             table.add_row(row!["Address", public_key.to_string()]);
-            table.add_row(row!["Network", public_key.tag().network]);
-            table.add_row(row!["Type", public_key.tag().key_type]);
+            table.add_row(row!["Network", public_key.key_tag().network]);
+            table.add_row(row!["Type", public_key.key_tag().key_type]);
             print_table(&table)
         }
         OutputFormat::Json => {
             let table = json!({
-                "network": public_key.tag().network.to_string(),
-                "type": public_key.tag().key_type.to_string(),
+                "network": public_key.key_tag().network.to_string(),
+                "type": public_key.key_tag().key_type.to_string(),
             });
             print_json(&table)
         }
@@ -61,8 +61,8 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             let mut table = Table::new();
             table.add_row(row!["Key", "Value"]);
             table.add_row(row!["Address", account.address]);
-            table.add_row(row!["Network", wallet.public_key.tag().network]);
-            table.add_row(row!["Type", wallet.public_key.tag().key_type]);
+            table.add_row(row!["Network", wallet.public_key.key_tag().network]);
+            table.add_row(row!["Type", wallet.public_key.key_tag().key_type]);
             table.add_row(row!["Sharded", wallet.is_sharded()]);
             table.add_row(row!["PwHash", wallet.pwhash()]);
             table.add_row(row!["Balance", account.balance]);
@@ -73,8 +73,8 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
         OutputFormat::Json => {
             let table = json!({
                 "sharded": wallet.is_sharded(),
-                "network": wallet.public_key.tag().network.to_string(),
-                "type": wallet.public_key.tag().key_type.to_string(),
+                "network": wallet.public_key.key_tag().network.to_string(),
+                "type": wallet.public_key.key_tag().key_type.to_string(),
                 "pwhash": wallet.pwhash().to_string(),
                 "account": account,
             });

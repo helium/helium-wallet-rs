@@ -143,18 +143,42 @@ when creating the wallet.
 
 ### Sending Tokens
 
-To send tokens to other accounts use:
+#### Single Payee
+To send tokens to one other account use:
 
 ```
     helium-wallet pay one <payee> <hnt>
     helium-wallet pay one <payee> <hnt> --commit
-
 ```
 
 Where `<payee>` is the wallet address for the wallet you want to
 send tokens to, `<hnt>` is the number of HNT you want to send. Since 1 HNT
 is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
 precision.
+
+The default behavior of the `pay` command is to print out what the
+intended payment is going to be _without_ submiting it to the
+blockchain.  In the second example the `--commit` option commits the
+actual payment to the API for processing by the blockchain.
+
+#### Multiple Payees in one transaction
+To send tokens to mulitple other accounts use:
+
+```
+    helium-wallet pay multi <path to json file>
+    helium-wallet pay multi <path to json file> --commit
+```
+
+Example json file:
+
+```
+[ { "address": "<adddress1>", "amount": <hnt1>, "memo": "<memo1>" }, { "address": "<adddress2>", "amount": <hnt2>, "memo": "<memo2>" } ]
+```
+
+Where `<address#>` is the wallet address for the wallet you want to
+send tokens to, `<hnt#>` is the number of HNT you want to send. Since 1 HNT
+is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
+precision. `<memo#>` is an 8 byte base 64 encdoded message.
 
 The default behavior of the `pay` command is to print out what the
 intended payment is going to be _without_ submiting it to the

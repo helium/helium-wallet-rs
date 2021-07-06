@@ -2,17 +2,13 @@ use crate::{result::Result, traits::ReadWrite};
 use byteorder::ReadBytesExt;
 use std::{convert::TryFrom, io};
 
-use helium_crypto::{ecc_compact, ed25519};
 pub use helium_crypto::{
-    KeyTag, KeyType, Network, PublicKey, Sign, Verify, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR,
-    PUBLIC_KEY_LENGTH,
+    ecc_compact, ed25519, KeyTag, KeyType, Network, PublicKey, Sign, Verify, KEYTYPE_ED25519_STR,
+    NETTYPE_MAIN_STR, PUBLIC_KEY_LENGTH,
 };
 
-#[derive(Debug, PartialEq)]
-pub enum Keypair {
-    Ed25519(helium_crypto::ed25519::Keypair),
-    EccCompact(helium_crypto::ecc_compact::Keypair),
-}
+#[derive(PartialEq, Debug)]
+pub struct Keypair(helium_crypto::Keypair);
 
 static START: std::sync::Once = std::sync::Once::new();
 
@@ -29,51 +25,32 @@ impl Default for Keypair {
 impl Keypair {
     pub fn generate(key_tag: KeyTag) -> Self {
         use rand::rngs::OsRng;
-        match key_tag.key_type {
-            KeyType::Ed25519 => {
-                Self::Ed25519(ed25519::Keypair::generate(key_tag.network, &mut OsRng))
-            }
-            KeyType::EccCompact => {
-                Self::EccCompact(ecc_compact::Keypair::generate(key_tag.network, &mut OsRng))
-            }
-        }
+        Keypair(helium_crypto::Keypair::generate(key_tag, &mut OsRng))
     }
 
     pub fn generate_from_entropy(key_tag: KeyTag, entropy: &[u8]) -> Result<Self> {
-        match key_tag.key_type {
-            KeyType::Ed25519 => Ok(Self::Ed25519(ed25519::Keypair::generate_from_entropy(
-                key_tag.network,
-                entropy,
-            )?)),
-            KeyType::EccCompact => Ok(Self::EccCompact(
-                ecc_compact::Keypair::generate_from_entropy(key_tag.network, entropy)?,
-            )),
-        }
+        Ok(Keypair(helium_crypto::Keypair::generate_from_entropy(
+            key_tag, entropy,
+        )?))
     }
 
     pub fn public_key(&self) -> &PublicKey {
-        match self {
-            Self::Ed25519(key) => &key.public_key,
-            Self::EccCompact(key) => &key.public_key,
-        }
+        self.0.public_key()
     }
 
     pub fn sign(&self, msg: &[u8]) -> Result<Vec<u8>> {
-        match self {
-            Self::Ed25519(key) => Ok(key.sign(msg)?),
-            Self::EccCompact(key) => Ok(key.sign(msg)?),
-        }
+        Ok(self.0.sign(msg)?)
     }
 }
 
 impl ReadWrite for Keypair {
     fn write(&self, writer: &mut dyn io::Write) -> Result {
-        match self {
-            Self::Ed25519(key) => {
+        match &self.0 {
+            helium_crypto::Keypair::Ed25519(key) => {
                 writer.write_all(&key.to_bytes())?;
                 writer.write_all(&key.public_key.to_bytes())?;
             }
-            Self::EccCompact(key) => {
+            helium_crypto::Keypair::EccCompact(key) => {
                 writer.write_all(&key.to_bytes())?;
                 writer.write_all(&key.public_key.to_bytes())?;
             }
@@ -89,15 +66,13 @@ impl ReadWrite for Keypair {
                 let mut sk_buf = [0u8; ed25519::KEYPAIR_LENGTH];
                 sk_buf[0] = tag;
                 reader.read_exact(&mut sk_buf[1..])?;
-                Ok(Keypair::Ed25519(ed25519::Keypair::try_from(&sk_buf[..])?))
+                Ok(Keypair(ed25519::Keypair::try_from(&sk_buf[..])?.into()))
             }
             KeyType::EccCompact => {
                 let mut sk_buf = [0u8; ecc_compact::KEYPAIR_LENGTH];
                 sk_buf[0] = tag;
                 reader.read_exact(&mut sk_buf[1..])?;
-                Ok(Keypair::EccCompact(ecc_compact::Keypair::try_from(
-                    &sk_buf[..],
-                )?))
+                Ok(Keypair(ecc_compact::Keypair::try_from(&sk_buf[..])?.into()))
             }
         }
     }

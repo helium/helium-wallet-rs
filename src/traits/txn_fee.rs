@@ -191,6 +191,12 @@ impl TxnModeStakingFee for BlockchainTxnAddGatewayV1 {
     }
 }
 
+impl TxnStakingFee for BlockchainTxnAddGatewayV1 {
+    fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {
+        self.txn_mode_staking_fee(&StakingMode::Full, config)
+    }
+}
+
 impl TxnModeStakingFee for BlockchainTxnAssertLocationV2 {
     fn txn_mode_staking_fee(&self, mode: &StakingMode, config: &TxnFeeConfig) -> Result<u64> {
         let result = match mode {
@@ -199,6 +205,12 @@ impl TxnModeStakingFee for BlockchainTxnAssertLocationV2 {
             StakingMode::Light => config.staking_fee_txn_assert_location_light_gateway_v1,
         };
         Ok(result)
+    }
+}
+
+impl TxnStakingFee for BlockchainTxnAssertLocationV2 {
+    fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {
+        self.txn_mode_staking_fee(&StakingMode::Full, config)
     }
 }
 
@@ -279,8 +291,19 @@ mod tests {
         };
     }
 
+    macro_rules! assert_txn_mode_staking_fee {
+        ($txn: expr, $mode: expr, $cfg: expr, $expected: expr) => {
+            let actual = $txn.txn_mode_staking_fee($mode, $cfg).unwrap();
+            assert_eq!(actual, $expected);
+        };
+    }
+
     const STAKING_FEE_ASSERT_LOCATION: u64 = 40 * 100_000;
-    const STAKING_FEE_ADD_GATEWAY: u64 = 10 * 100_000;
+    const STAKING_FEE_ASSERT_LOCATION_DATAONLY_GATEWAY: u64 = 10 * 100_000;
+    const STAKING_FEE_ASSERT_LOCATION_LIGHT_GATEWAY: u64 = 20 * 100_000;
+    const STAKING_FEE_ADD_GATEWAY: u64 = 20 * 100_000;
+    const STAKING_FEE_ADD_DATAONLY_GATEWAY: u64 = 5 * 100_000;
+    const STAKING_FEE_ADD_LIGHT_GATEWAY: u64 = 10 * 100_000;
     const STAKING_FEE_OUI: u64 = 100 * 100_000;
     const STAKING_FEE_OUI_PER_ADDRESS: u64 = 100 * 100_000;
 
@@ -290,7 +313,13 @@ mod tests {
                 txn_fees: true,
                 txn_fee_multiplier: 5000,
                 staking_fee_txn_add_gateway_v1: STAKING_FEE_ADD_GATEWAY,
+                staking_fee_txn_add_dataonly_gateway_v1: STAKING_FEE_ADD_DATAONLY_GATEWAY,
+                staking_fee_txn_add_light_gateway_v1: STAKING_FEE_ADD_LIGHT_GATEWAY,
                 staking_fee_txn_assert_location_v1: STAKING_FEE_ASSERT_LOCATION,
+                staking_fee_txn_assert_location_dataonly_gateway_v1:
+                    STAKING_FEE_ASSERT_LOCATION_DATAONLY_GATEWAY,
+                staking_fee_txn_assert_location_light_gateway_v1:
+                    STAKING_FEE_ASSERT_LOCATION_LIGHT_GATEWAY,
                 staking_fee_txn_oui_v1: STAKING_FEE_OUI,
                 staking_fee_txn_oui_v1_per_address: STAKING_FEE_OUI_PER_ADDRESS,
             }
@@ -410,12 +439,35 @@ mod tests {
             payer_signature: vec![],
         };
         assert_txn_fee!(txn, &TxnFeeConfig::legacy(), 0);
-        assert_txn_staking_fee!(txn, &TxnFeeConfig::legacy(), LEGACY_STAKING_FEE);
+        assert_txn_mode_staking_fee!(
+            txn,
+            &StakingMode::Full,
+            &TxnFeeConfig::legacy(),
+            LEGACY_STAKING_FEE
+        );
 
         let fee_config = TxnFeeConfig::active();
         // Check txn fee and staking fee
         assert_txn_fee!(txn, &fee_config, 45_000);
         assert_txn_staking_fee!(txn, &fee_config, STAKING_FEE_ADD_GATEWAY);
+        assert_txn_mode_staking_fee!(
+            txn,
+            &StakingMode::Full,
+            &fee_config,
+            STAKING_FEE_ADD_GATEWAY
+        );
+        assert_txn_mode_staking_fee!(
+            txn,
+            &StakingMode::DataOnly,
+            &fee_config,
+            STAKING_FEE_ADD_DATAONLY_GATEWAY
+        );
+        assert_txn_mode_staking_fee!(
+            txn,
+            &StakingMode::Light,
+            &fee_config,
+            STAKING_FEE_ADD_LIGHT_GATEWAY
+        );
 
         // Check fee without a payer but wiht staking fee
         txn.staking_fee = txn.txn_staking_fee(&fee_config).unwrap();

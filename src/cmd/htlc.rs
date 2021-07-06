@@ -75,7 +75,7 @@ impl Create {
         let keypair = wallet.decrypt(password.as_bytes())?;
         let wallet_address = keypair.public_key();
         let account = accounts::get(&client, &wallet_address.to_string()).await?;
-        let address = Keypair::generate(wallet_address.tag());
+        let address = Keypair::generate(wallet_address.key_tag());
 
         let mut txn = BlockchainTxnCreateHtlcV1 {
             amount: u64::from(self.hnt),

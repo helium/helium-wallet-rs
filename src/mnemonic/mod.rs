@@ -134,7 +134,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, SeedType::Mobile).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list, &SeedType::Mobile).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -153,7 +153,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, SeedType::Bip39).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -171,7 +171,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, SeedType::Bip39).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 }

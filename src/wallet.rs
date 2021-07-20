@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn sharded_from_builder() {
-        let path = ".test-sharded.key".to_string();
+        let path = Path::new(".test-sharded.key");
         // Delete Any existing test wallet in case prev error
         let _ = clean_up_shards(&path, 3);
 
@@ -471,7 +471,7 @@ mod tests {
 
         let wallet = Wallet::builder()
             .password(&password)
-            .output(&path.clone().into())
+            .output(&path)
             .key_tag(&tag)
             .seed_words(Some(seed_words.clone()))
             .seed_type(Some(SeedType::Bip39))
@@ -488,9 +488,9 @@ mod tests {
         let _ = clean_up_shards(&path, 3);
     }
 
-    fn clean_up_shards(path: &str, shards: u8) {
+    fn clean_up_shards(path: &Path, shards: u8) {
         for i in 1..=shards {
-            let _ = fs::remove_file(format!("{}.{}", path, i));
+            let _ = fs::remove_file(format!("{}.{}", path.to_string_lossy(), i));
         }
     }
 

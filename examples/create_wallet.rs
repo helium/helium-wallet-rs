@@ -1,12 +1,13 @@
 use helium_wallet::wallet::Wallet;
+use std::path::Path;
 
 fn main() {
     let password = "pass123";
-    let filename = "my-example-wallet.key";
+    let filename = Path::new("my-example-wallet.key");
 
     let wallet = Wallet::builder()
         .password(password)
-        .output(&filename.into())
+        .output(&filename)
         .force(true)
         .create()
         .expect("it should have created a wallet");

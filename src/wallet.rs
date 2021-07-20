@@ -253,8 +253,8 @@ impl Builder {
 
     /// Sets the output file for the wallet.
     /// Defaults to 'main.key'
-    pub fn output(mut self, path: &PathBuf) -> Builder {
-        self.output = path.clone();
+    pub fn output(mut self, path: &Path) -> Builder {
+        self.output = path.to_path_buf();
         self
     }
 
@@ -289,14 +289,14 @@ impl Builder {
     /// The type of key to generate (ecc_compact/ed25519)
     /// Defaults to ed25519
     pub fn key_tag(mut self, key_tag: &KeyTag) -> Builder {
-        self.key_tag = key_tag.clone();
+        self.key_tag = *key_tag;
         self
     }
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
     pub fn shard_config(mut self, shard_config: Option<ShardConfig>) -> Builder {
-        self.shard_config = shard_config.clone();
+        self.shard_config = shard_config;
         self
     }
 

@@ -9,7 +9,7 @@ include!(concat!(env!("OUT_DIR"), "/english.rs"));
 type WordList = &'static [&'static str];
 
 arg_enum! {
-    #[derive( Debug, StructOpt)]
+    #[derive( Debug, Clone, Copy, StructOpt)]
     pub enum SeedType {
         Bip39,
         Mobile,

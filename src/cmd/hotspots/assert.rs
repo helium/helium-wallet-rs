@@ -3,7 +3,7 @@ use crate::{
     staking,
     traits::{TxnEnvelope, TxnFee, TxnModeStakingFee, TxnSign},
 };
-use helium_api::{hotspots, Dbi};
+use helium_api::{hotspots, models::HotspotStakingMode, Dbi};
 
 #[derive(Debug, StructOpt)]
 /// Assert a hotspot location on the blockchain. The original transaction is
@@ -40,9 +40,10 @@ pub struct Cmd {
     #[structopt(long)]
     onboarding: bool,
 
-    /// The staking mode for the assert location (full, light, dataonly)
-    #[structopt(long, default_value = "full")]
-    mode: StakingMode,
+    /// The staking mode for the assert location (full, light, dataonly).
+    /// Defaults to the stakng mode the hotspot was added with.
+    #[structopt(long)]
+    mode: Option<HotspotStakingMode>,
 
     /// Commit the transaction to the blockchain
     #[structopt(long)]
@@ -70,11 +71,10 @@ impl Cmd {
         };
 
         let wallet_key = keypair.public_key();
+        let hotspot = helium_api::hotspots::get(&client, &self.gateway.to_string()).await?;
         // Get the next likely gateway nonce for the new transaction
-        let nonce = helium_api::hotspots::get(&client, &self.gateway.to_string())
-            .await?
-            .speculative_nonce
-            + 1;
+        let nonce = hotspot.speculative_nonce + 1;
+        let mode = self.mode.unwrap_or(hotspot.mode);
         let payer = if self.onboarding {
             staking_client.address_for(&self.gateway).await?.into()
         } else {
@@ -97,7 +97,7 @@ impl Cmd {
 
         let fees = &get_txn_fees(&client).await?;
         txn.fee = txn.txn_fee(fees)?;
-        txn.staking_fee = txn.txn_mode_staking_fee(&self.mode, fees)?;
+        txn.staking_fee = txn.txn_mode_staking_fee(&mode, fees)?;
 
         txn.owner_signature = txn.sign(&keypair)?;
 

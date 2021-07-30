@@ -32,7 +32,7 @@ pub struct Cmd {
     #[structopt(long)]
     gain: Option<Dbi>,
 
-    /// The elevation for the asserted hotspot in meters relative to sea level.
+    /// The elevation for the asserted hotspot in meters above ground level.
     /// Defaults to the last assserted value
     #[structopt(long)]
     elevation: Option<i32>,

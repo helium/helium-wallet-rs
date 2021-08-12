@@ -304,7 +304,7 @@ impl Builder {
     pub fn create(self) -> Result<Wallet> {
         let keypair = gen_keypair(self.key_tag, self.seed_words, self.seed_type.as_ref())?;
 
-        let wallet = if let Some(shard_config) = self.shard {
+        let wallet = if let Some(shard_config) = &self.shard {
             let format = format::Sharded {
                 key_share_count: shard_config.key_share_count,
                 recovery_threshold: shard_config.recovery_threshold,

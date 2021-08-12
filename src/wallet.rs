@@ -221,6 +221,8 @@ pub struct Builder {
     /// Password to access wallet
     password: String,
 
+    pwhash: PwHash,
+
     /// Overwrite an existing file
     force: bool,
 
@@ -243,6 +245,7 @@ impl Builder {
         Builder {
             output: PathBuf::from("wallet.key"),
             password: Default::default(),
+            pwhash: PwHash::argon2id13_default(),
             force: false,
             seed_type: None,
             seed_words: None,
@@ -262,6 +265,13 @@ impl Builder {
     /// Defaults to '' (empty string)
     pub fn password(mut self, pwd: &str) -> Builder {
         self.password = pwd.to_owned();
+        self
+    }
+
+    /// Sets the wallet's password hasher
+    /// Defaults to `PwHash::argon2id13_default()`
+    pub fn pwhash(mut self, pwhash: PwHash) -> Builder {
+        self.pwhash = pwhash.to_owned();
         self
     }
 
@@ -308,7 +318,7 @@ impl Builder {
             let format = format::Sharded {
                 key_share_count: shard_config.key_share_count,
                 recovery_threshold: shard_config.recovery_threshold,
-                pwhash: PwHash::argon2id13_default(),
+                pwhash: self.pwhash,
                 key_shares: vec![],
             };
             Wallet::encrypt(&keypair, self.password.as_bytes(), Format::Sharded(format))?

@@ -235,7 +235,7 @@ pub struct Builder {
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
-    shard_config: Option<ShardConfig>,
+    shard: Option<ShardConfig>,
 }
 
 impl Builder {
@@ -247,7 +247,7 @@ impl Builder {
             seed_type: None,
             seed_words: None,
             key_tag: Default::default(),
-            shard_config: None,
+            shard: None,
         }
     }
 
@@ -295,8 +295,8 @@ impl Builder {
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
-    pub fn shard_config(mut self, shard_config: Option<ShardConfig>) -> Builder {
-        self.shard_config = shard_config;
+    pub fn shard(mut self, shard_config: Option<ShardConfig>) -> Builder {
+        self.shard = shard_config;
         self
     }
 
@@ -304,7 +304,7 @@ impl Builder {
     pub fn create(self) -> Result<Wallet> {
         let keypair = gen_keypair(self.key_tag, self.seed_words, self.seed_type.as_ref())?;
 
-        let wallet = if let Some(shard_config) = self.shard_config {
+        let wallet = if let Some(shard_config) = self.shard {
             let format = format::Sharded {
                 key_share_count: shard_config.key_share_count,
                 recovery_threshold: shard_config.recovery_threshold,
@@ -319,7 +319,7 @@ impl Builder {
             Wallet::encrypt(&keypair, self.password.as_bytes(), Format::Basic(format))?
         };
 
-        if self.shard_config.is_some() {
+        if self.shard.is_some() {
             let extension = self
                 .output
                 .extension()
@@ -475,7 +475,7 @@ mod tests {
             .key_tag(&tag)
             .seed_words(Some(seed_words.clone()))
             .seed_type(Some(SeedType::Bip39))
-            .shard_config(Some(shard_config))
+            .shard(Some(shard_config))
             .create()
             .expect("wallet to be created");
 

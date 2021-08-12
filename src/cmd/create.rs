@@ -127,7 +127,7 @@ impl Sharded {
             .force(self.force)
             .seed_type(self.seed.to_owned())
             .seed_words(seed_words)
-            .shard_config(Some(shard_config))
+            .shard(Some(shard_config))
             .create()?;
 
         verify::print_result(&wallet, true, opts.format)

@@ -205,7 +205,7 @@ impl Wallet {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct ShardConfig {
     /// Number of shards to break the key into
     pub key_share_count: u8,

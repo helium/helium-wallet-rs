@@ -2,7 +2,7 @@ pub use self::b64::B64;
 pub use self::json::ToJson;
 pub use self::read_write::ReadWrite;
 pub use self::txn_envelope::TxnEnvelope;
-pub use self::txn_fee::{StakingMode, TxnFee, TxnFeeConfig, TxnModeStakingFee, TxnStakingFee};
+pub use self::txn_fee::{TxnFee, TxnFeeConfig, TxnModeStakingFee, TxnStakingFee};
 pub use self::txn_payer::TxnPayer;
 pub use self::txn_sign::TxnSign;
 

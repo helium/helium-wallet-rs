@@ -2,10 +2,13 @@ use crate::{
     keypair::{Network, PublicKey},
     mnemonic,
     result::{bail, Error, Result},
-    traits::{StakingMode, TxnFeeConfig, B64},
+    traits::{TxnFeeConfig, B64},
     wallet::Wallet,
 };
-pub use helium_api::{models::PendingTxnStatus, Client, Hnt, Hst, Usd};
+pub use helium_api::{
+    models::{Hnt, Hst, PendingTxnStatus, Usd},
+    Client,
+};
 pub use helium_proto::*;
 pub use serde_json::json;
 

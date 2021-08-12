@@ -1,37 +1,8 @@
 use super::TxnEnvelope;
-use crate::result::{bail, Error, Result};
+use crate::result::Result;
+use helium_api::models::HotspotStakingMode;
 use helium_proto::*;
 use serde_derive::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
-
-#[derive(Debug)]
-pub enum StakingMode {
-    DataOnly,
-    Light,
-    Full,
-}
-
-impl fmt::Display for StakingMode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            StakingMode::DataOnly => f.write_str("dataonly"),
-            StakingMode::Full => f.write_str("full"),
-            StakingMode::Light => f.write_str("light"),
-        }
-    }
-}
-
-impl FromStr for StakingMode {
-    type Err = Error;
-    fn from_str(v: &str) -> Result<Self> {
-        match v.to_lowercase().as_ref() {
-            "light" => Ok(Self::Light),
-            "full" => Ok(Self::Full),
-            "dataonly" => Ok(Self::DataOnly),
-            _ => bail!("invalid staking mode {}", v),
-        }
-    }
-}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TxnFeeConfig {
@@ -125,7 +96,8 @@ pub trait TxnStakingFee {
 }
 
 pub trait TxnModeStakingFee {
-    fn txn_mode_staking_fee(&self, mode: &StakingMode, config: &TxnFeeConfig) -> Result<u64>;
+    fn txn_mode_staking_fee(&self, mode: &HotspotStakingMode, config: &TxnFeeConfig)
+        -> Result<u64>;
 }
 
 fn calculate_txn_fee(payload_size: usize, config: &TxnFeeConfig) -> u64 {
@@ -181,11 +153,15 @@ macro_rules! impl_txn_staking_fee {
 }
 
 impl TxnModeStakingFee for BlockchainTxnAddGatewayV1 {
-    fn txn_mode_staking_fee(&self, mode: &StakingMode, config: &TxnFeeConfig) -> Result<u64> {
+    fn txn_mode_staking_fee(
+        &self,
+        mode: &HotspotStakingMode,
+        config: &TxnFeeConfig,
+    ) -> Result<u64> {
         let result = match mode {
-            StakingMode::Full => config.staking_fee_txn_add_gateway_v1,
-            StakingMode::DataOnly => config.staking_fee_txn_add_dataonly_gateway_v1,
-            StakingMode::Light => config.staking_fee_txn_add_light_gateway_v1,
+            HotspotStakingMode::Full => config.staking_fee_txn_add_gateway_v1,
+            HotspotStakingMode::DataOnly => config.staking_fee_txn_add_dataonly_gateway_v1,
+            HotspotStakingMode::Light => config.staking_fee_txn_add_light_gateway_v1,
         };
         Ok(result)
     }
@@ -193,16 +169,22 @@ impl TxnModeStakingFee for BlockchainTxnAddGatewayV1 {
 
 impl TxnStakingFee for BlockchainTxnAddGatewayV1 {
     fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {
-        self.txn_mode_staking_fee(&StakingMode::Full, config)
+        self.txn_mode_staking_fee(&HotspotStakingMode::Full, config)
     }
 }
 
 impl TxnModeStakingFee for BlockchainTxnAssertLocationV2 {
-    fn txn_mode_staking_fee(&self, mode: &StakingMode, config: &TxnFeeConfig) -> Result<u64> {
+    fn txn_mode_staking_fee(
+        &self,
+        mode: &HotspotStakingMode,
+        config: &TxnFeeConfig,
+    ) -> Result<u64> {
         let result = match mode {
-            StakingMode::Full => config.staking_fee_txn_assert_location_v1,
-            StakingMode::DataOnly => config.staking_fee_txn_assert_location_dataonly_gateway_v1,
-            StakingMode::Light => config.staking_fee_txn_assert_location_light_gateway_v1,
+            HotspotStakingMode::Full => config.staking_fee_txn_assert_location_v1,
+            HotspotStakingMode::DataOnly => {
+                config.staking_fee_txn_assert_location_dataonly_gateway_v1
+            }
+            HotspotStakingMode::Light => config.staking_fee_txn_assert_location_light_gateway_v1,
         };
         Ok(result)
     }
@@ -210,7 +192,7 @@ impl TxnModeStakingFee for BlockchainTxnAssertLocationV2 {
 
 impl TxnStakingFee for BlockchainTxnAssertLocationV2 {
     fn txn_staking_fee(&self, config: &TxnFeeConfig) -> Result<u64> {
-        self.txn_mode_staking_fee(&StakingMode::Full, config)
+        self.txn_mode_staking_fee(&HotspotStakingMode::Full, config)
     }
 }
 
@@ -441,7 +423,7 @@ mod tests {
         assert_txn_fee!(txn, &TxnFeeConfig::legacy(), 0);
         assert_txn_mode_staking_fee!(
             txn,
-            &StakingMode::Full,
+            &HotspotStakingMode::Full,
             &TxnFeeConfig::legacy(),
             LEGACY_STAKING_FEE
         );
@@ -452,19 +434,19 @@ mod tests {
         assert_txn_staking_fee!(txn, &fee_config, STAKING_FEE_ADD_GATEWAY);
         assert_txn_mode_staking_fee!(
             txn,
-            &StakingMode::Full,
+            &HotspotStakingMode::Full,
             &fee_config,
             STAKING_FEE_ADD_GATEWAY
         );
         assert_txn_mode_staking_fee!(
             txn,
-            &StakingMode::DataOnly,
+            &HotspotStakingMode::DataOnly,
             &fee_config,
             STAKING_FEE_ADD_DATAONLY_GATEWAY
         );
         assert_txn_mode_staking_fee!(
             txn,
-            &StakingMode::Light,
+            &HotspotStakingMode::Light,
             &fee_config,
             STAKING_FEE_ADD_LIGHT_GATEWAY
         );

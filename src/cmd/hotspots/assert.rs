@@ -17,15 +17,19 @@ pub struct Cmd {
     #[structopt(long)]
     gateway: PublicKey,
 
-    /// Lattitude of hotspot location to assert.
+    /// Lattitude of hotspot location to assert. Defaults to the last asserted
+    /// value.
+    ///
     /// For negative values use '=", for example: "--lat=-xx.xxxxxxx".
     #[structopt(long)]
-    lat: f64,
+    lat: Option<f64>,
 
-    /// Longitude of hotspot location to assert.
+    /// Longitude of hotspot location to assert. Defaults to the last asserted
+    /// value.
+    ///
     /// For negative values use '=", for example: "--lon=-xx.xxxxxxx".
     #[structopt(long)]
-    lon: f64,
+    lon: Option<f64>,
 
     /// The antenna gain for the asserted hotspotin dBi, with one digit of
     /// accuracy. Defaults to the last asserted value.
@@ -33,7 +37,9 @@ pub struct Cmd {
     gain: Option<Dbi>,
 
     /// The elevation for the asserted hotspot in meters above ground level.
-    /// Defaults to the last assserted value
+    /// Defaults to the last assserted value.
+    ///
+    /// For negative values use '=", for example: "--elevation=-xx".
     #[structopt(long)]
     elevation: Option<i32>,
 
@@ -83,12 +89,24 @@ impl Cmd {
         } else {
             wallet.public_key.into()
         };
-        let location: geo_types::Point<f64> = (self.lon, self.lat).into();
+
+        let lat = if let Some(lat) = self.lat.or(hotspot.lat) {
+            lat
+        } else {
+            bail!("no latitiude specified or found on chain")
+        };
+        let lon = if let Some(lon) = self.lon.or(hotspot.lng) {
+            lon
+        } else {
+            bail!("no longitude specified or found on chain")
+        };
+        let geo_point: geo_types::Point<f64> = (lon, lat).into();
+        let location = h3ron::H3Cell::from_point(&geo_point, 12)?.to_string();
         let mut txn = BlockchainTxnAssertLocationV2 {
             payer,
             owner: wallet_key.into(),
             gateway: self.gateway.clone().into(),
-            location: h3ron::H3Cell::from_point(&location, 12)?.to_string(),
+            location: location.clone(),
             elevation,
             gain,
             nonce,
@@ -100,7 +118,10 @@ impl Cmd {
 
         let fees = &get_txn_fees(&client).await?;
         txn.fee = txn.txn_fee(fees)?;
-        txn.staking_fee = txn.txn_mode_staking_fee(&mode, fees)?;
+        txn.staking_fee = match hotspot.location {
+            Some(hotspot_location) if hotspot_location == location => 0,
+            _ => txn.txn_mode_staking_fee(&mode, fees)?,
+        };
 
         txn.owner_signature = txn.sign(&keypair)?;
 

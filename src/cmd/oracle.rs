@@ -127,6 +127,7 @@ enum Price {
     Bilaxy,
     BinanceUs,
     BinanceInt,
+    Ftx,
     Usd(Usd),
 }
 
@@ -168,6 +169,12 @@ impl Price {
                     .ok_or_else(|| anyhow!("No USD value found"))?;
                 Ok(Usd::from_str(amount)?)
             }
+            Self::Ftx => {
+                let response = reqwest::get("https://ftx.com/api/markets/HNT/USD").await?;
+                let json: serde_json::Value = response.json().await?;
+                let amount = &json["result"]["price"].to_string();
+                Ok(Usd::from_str(amount)?)
+            }
             Self::Usd(v) => Ok(*v),
         }
     }
@@ -184,6 +191,7 @@ impl FromStr for Price {
             "binance" => Ok(Self::BinanceUs),
             "binance-us" => Ok(Self::BinanceUs),
             "binance-int" => Ok(Self::BinanceInt),
+            "ftx" => Ok(Self::Ftx),
             _ => {
                 let data = Decimal::from_str(s).or_else(|_| Decimal::from_scientific(s))?;
                 Ok(Self::Usd(Usd::new(data.round_dp_with_strategy(

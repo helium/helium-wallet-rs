@@ -117,7 +117,7 @@ impl Sharded {
         };
         let shard_config = ShardConfig {
             key_share_count: self.key_share_count,
-            recovery_threshold: self.key_share_count,
+            recovery_threshold: self.recovery_threshold,
         };
 
         let wallet = Wallet::builder()

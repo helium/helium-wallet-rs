@@ -1,6 +1,7 @@
 use crate::{
     format::{self, Format},
-    keypair::{Keypair, PublicKey},
+    keypair::{KeyTag, Keypair, PublicKey},
+    mnemonic::{mnemonic_to_entropy, SeedType},
     pwhash::PwHash,
     result::{anyhow, bail, Result},
     traits::ReadWrite,
@@ -12,6 +13,11 @@ use aes_gcm::{
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sodiumoxide::randombytes;
 use std::io::{self, Cursor};
+use std::{
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub type Tag = [u8; 16];
 pub type Iv = [u8; 12];
@@ -35,6 +41,11 @@ pub struct Wallet {
 }
 
 impl Wallet {
+    /// Creates a basic wallet
+    pub fn builder() -> Builder {
+        Builder::default()
+    }
+
     pub fn encrypt(keypair: &Keypair, password: &[u8], fmt: Format) -> Result<Wallet> {
         let mut encryption_key = AesKey::default();
         let mut format = fmt;
@@ -194,6 +205,185 @@ impl Wallet {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ShardConfig {
+    /// Number of shards to break the key into
+    pub key_share_count: u8,
+
+    /// Number of shards required to recover the key
+    pub recovery_threshold: u8,
+}
+
+pub struct Builder {
+    /// Output file to store the key in
+    output: PathBuf,
+
+    /// Password to access wallet
+    password: String,
+
+    pwhash: PwHash,
+
+    /// Overwrite an existing file
+    force: bool,
+
+    /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
+    seed_type: Option<SeedType>,
+
+    /// The seed words used to create this wallet
+    seed_words: Option<Vec<String>>,
+
+    /// The KeyTag (network and key type) to use for this wallet
+    key_tag: KeyTag,
+
+    /// Optional shard config info to use in order to create a sharded wallet
+    /// otherwise, creates a basic non-sharded wallet
+    shard: Option<ShardConfig>,
+}
+
+impl Builder {
+    pub fn new() -> Builder {
+        Builder {
+            output: PathBuf::from("wallet.key"),
+            password: Default::default(),
+            pwhash: PwHash::argon2id13_default(),
+            force: false,
+            seed_type: None,
+            seed_words: None,
+            key_tag: Default::default(),
+            shard: None,
+        }
+    }
+
+    /// Sets the output file for the wallet.
+    /// Defaults to 'main.key'
+    pub fn output(mut self, path: &Path) -> Builder {
+        self.output = path.to_path_buf();
+        self
+    }
+
+    /// Sets the wallet's password
+    /// Defaults to '' (empty string)
+    pub fn password(mut self, pwd: &str) -> Builder {
+        self.password = pwd.to_owned();
+        self
+    }
+
+    /// Sets the wallet's password hasher
+    /// Defaults to `PwHash::argon2id13_default()`
+    pub fn pwhash(mut self, pwhash: PwHash) -> Builder {
+        self.pwhash = pwhash.to_owned();
+        self
+    }
+
+    /// Force overwrite of wallet if output already exists
+    /// Defaults to false
+    pub fn force(mut self, overwrite: bool) -> Builder {
+        self.force = overwrite;
+        self
+    }
+
+    /// Set the seed type if using seed words to create this wallet
+    /// Defaults to None
+    pub fn seed_type(mut self, seed_type: Option<SeedType>) -> Builder {
+        self.seed_type = seed_type;
+        self
+    }
+
+    /// The seed words used to create this wallet
+    /// Defaults to None
+    pub fn seed_words(mut self, seed_words: Option<Vec<String>>) -> Builder {
+        self.seed_words = seed_words;
+        self
+    }
+
+    /// The type of key to generate (ecc_compact/ed25519)
+    /// Defaults to ed25519
+    pub fn key_tag(mut self, key_tag: &KeyTag) -> Builder {
+        self.key_tag = *key_tag;
+        self
+    }
+
+    /// Optional shard config info to use in order to create a sharded wallet
+    /// otherwise, creates a basic non-sharded wallet
+    pub fn shard(mut self, shard_config: Option<ShardConfig>) -> Builder {
+        self.shard = shard_config;
+        self
+    }
+
+    /// Creates a new wallet
+    pub fn create(self) -> Result<Wallet> {
+        let keypair = gen_keypair(self.key_tag, self.seed_words, self.seed_type.as_ref())?;
+
+        let wallet = if let Some(shard_config) = &self.shard {
+            let format = format::Sharded {
+                key_share_count: shard_config.key_share_count,
+                recovery_threshold: shard_config.recovery_threshold,
+                pwhash: self.pwhash,
+                key_shares: vec![],
+            };
+            Wallet::encrypt(&keypair, self.password.as_bytes(), Format::Sharded(format))?
+        } else {
+            let format = format::Basic {
+                pwhash: PwHash::argon2id13_default(),
+            };
+            Wallet::encrypt(&keypair, self.password.as_bytes(), Format::Basic(format))?
+        };
+
+        if self.shard.is_some() {
+            let extension = self
+                .output
+                .extension()
+                .unwrap_or_else(|| OsStr::new(""))
+                .to_str()
+                .unwrap()
+                .to_string();
+            for (i, shard) in wallet.shards()?.iter().enumerate() {
+                let mut filename = self.output.clone();
+                let share_extension = format!("{}.{}", extension, (i + 1).to_string());
+                filename.set_extension(share_extension);
+                let mut writer = open_output_file(&filename, !self.force)?;
+                shard.write(&mut writer)?;
+            }
+        } else {
+            let mut writer = open_output_file(&self.output, !self.force)?;
+            wallet.write(&mut writer)?;
+        }
+
+        Ok(wallet)
+    }
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn gen_keypair(
+    tag: KeyTag,
+    seed_words: Option<Vec<String>>,
+    seed_type: Option<&SeedType>,
+) -> Result<Keypair> {
+    // Callers of this function should either have Some of both or None of both.
+    // Anything else is an error.
+    match (seed_words, seed_type) {
+        (Some(words), Some(seed_type)) => {
+            let entropy = mnemonic_to_entropy(words, seed_type)?;
+            Keypair::generate_from_entropy(tag, &entropy)
+        }
+        (None, None) => Ok(Keypair::generate(tag)),
+        _ => bail!("Invalid parameters in gen_keypair(). Report this to the development team."),
+    }
+}
+
+fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .create_new(create)
+        .open(filename)
+}
+
 //
 // Test
 //
@@ -213,6 +403,105 @@ mod tests {
             .expect("wallet creation");
         let to_keypair = wallet.decrypt(password).expect("wallet to keypair");
         assert_eq!(from_keypair, to_keypair);
+    }
+
+    #[test]
+    fn basic_from_builder() {
+        use std::fs;
+        let path: PathBuf = ".test-basic.key".into();
+        // Delete Any existing test wallet in case prev error
+        let _ = fs::remove_file(&path);
+
+        let password = String::from("password");
+        let tag = KeyTag::default();
+        let seed_words: Vec<String> = vec![
+            "drill".to_string(),
+            "toddler".to_string(),
+            "tongue".to_string(),
+            "laundry".to_string(),
+            "access".to_string(),
+            "silly".to_string(),
+            "few".to_string(),
+            "faint".to_string(),
+            "glove".to_string(),
+            "birth".to_string(),
+            "crumble".to_string(),
+            "add".to_string(),
+        ];
+        let from_keypair = gen_keypair(tag, Some(seed_words.clone()), Some(&SeedType::Bip39))
+            .expect("to generate a keypair");
+
+        let wallet = Wallet::builder()
+            .password(&password)
+            .output(&path)
+            .key_tag(&tag)
+            .seed_words(Some(seed_words.clone()))
+            .seed_type(Some(SeedType::Bip39))
+            .create()
+            .expect("wallet to be created");
+
+        let to_keypair = wallet
+            .decrypt(password.as_bytes())
+            .expect("wallet to keypair");
+        assert_eq!(from_keypair, to_keypair);
+
+        // clean up
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn sharded_from_builder() {
+        let path = Path::new(".test-sharded.key");
+        // Delete Any existing test wallet in case prev error
+        let _ = clean_up_shards(&path, 3);
+
+        let password = String::from("password");
+        let tag = KeyTag::default();
+        let shard_config = ShardConfig {
+            key_share_count: 3,
+            recovery_threshold: 2,
+        };
+
+        let seed_words: Vec<String> = vec![
+            "drill".to_string(),
+            "toddler".to_string(),
+            "tongue".to_string(),
+            "laundry".to_string(),
+            "access".to_string(),
+            "silly".to_string(),
+            "few".to_string(),
+            "faint".to_string(),
+            "glove".to_string(),
+            "birth".to_string(),
+            "crumble".to_string(),
+            "add".to_string(),
+        ];
+        let from_keypair = gen_keypair(tag, Some(seed_words.clone()), Some(&SeedType::Bip39))
+            .expect("to generate a keypair");
+
+        let wallet = Wallet::builder()
+            .password(&password)
+            .output(&path)
+            .key_tag(&tag)
+            .seed_words(Some(seed_words.clone()))
+            .seed_type(Some(SeedType::Bip39))
+            .shard(Some(shard_config))
+            .create()
+            .expect("wallet to be created");
+
+        let to_keypair = wallet
+            .decrypt(password.as_bytes())
+            .expect("wallet to keypair");
+        assert_eq!(from_keypair, to_keypair);
+
+        // clean up
+        let _ = clean_up_shards(&path, 3);
+    }
+
+    fn clean_up_shards(path: &Path, shards: u8) {
+        for i in 1..=shards {
+            let _ = fs::remove_file(format!("{}.{}", path.to_string_lossy(), i));
+        }
     }
 
     #[test]

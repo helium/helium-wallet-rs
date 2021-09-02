@@ -1,16 +1,11 @@
 use crate::{
     cmd::*,
-    format::{self, Format},
-    keypair::{KeyTag, KeyType, Keypair, Network, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR},
-    mnemonic::{mnemonic_to_entropy, SeedType},
-    pwhash::PwHash,
+    keypair::{KeyTag, KeyType, Network, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR},
+    mnemonic::SeedType,
     result::Result,
-    wallet::Wallet,
+    wallet::{ShardConfig, Wallet},
 };
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 #[derive(Debug, StructOpt)]
 /// Create a new wallet
@@ -95,13 +90,16 @@ impl Basic {
             network: self.network,
             key_type: self.key_type,
         };
-        let keypair = gen_keypair(tag, seed_words, self.seed.as_ref())?;
-        let format = format::Basic {
-            pwhash: PwHash::argon2id13_default(),
-        };
-        let wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Basic(format))?;
-        let mut writer = open_output_file(&self.output, !self.force)?;
-        wallet.write(&mut writer)?;
+
+        let wallet = Wallet::builder()
+            .output(&self.output)
+            .password(&password)
+            .key_tag(&tag)
+            .force(self.force)
+            .seed_type(self.seed.to_owned())
+            .seed_words(seed_words)
+            .create()?;
+
         verify::print_result(&wallet, true, opts.format)
     }
 }
@@ -117,49 +115,21 @@ impl Sharded {
             network: self.network,
             key_type: self.key_type,
         };
-
-        let keypair = gen_keypair(tag, seed_words, self.seed.as_ref())?;
-        let format = format::Sharded {
+        let shard_config = ShardConfig {
             key_share_count: self.key_share_count,
             recovery_threshold: self.recovery_threshold,
-            pwhash: PwHash::argon2id13_default(),
-            key_shares: vec![],
         };
-        let wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Sharded(format))?;
 
-        let extension = get_file_extension(&self.output);
-        for (i, shard) in wallet.shards()?.iter().enumerate() {
-            let mut filename = self.output.clone();
-            let share_extension = format!("{}.{}", extension, (i + 1).to_string());
-            filename.set_extension(share_extension);
-            let mut writer = open_output_file(&filename, !self.force)?;
-            shard.write(&mut writer)?;
-        }
+        let wallet = Wallet::builder()
+            .output(&self.output)
+            .password(&password)
+            .key_tag(&tag)
+            .force(self.force)
+            .seed_type(self.seed.to_owned())
+            .seed_words(seed_words)
+            .shard(Some(shard_config))
+            .create()?;
+
         verify::print_result(&wallet, true, opts.format)
     }
-}
-
-fn gen_keypair(
-    tag: KeyTag,
-    seed_words: Option<Vec<String>>,
-    seed_type: Option<&SeedType>,
-) -> Result<Keypair> {
-    // Callers of this function should either have Some of both or None of both.
-    // Anything else is an error.
-    match (seed_words, seed_type) {
-        (Some(words), Some(seed_type)) => {
-            let entropy = mnemonic_to_entropy(words, seed_type)?;
-            Keypair::generate_from_entropy(tag, &entropy)
-        }
-        (None, None) => Ok(Keypair::generate(tag)),
-        _ => bail!("Invalid parameters in gen_keypair(). Report this to the development team."),
-    }
-}
-
-fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
-    fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .create_new(create)
-        .open(filename)
 }

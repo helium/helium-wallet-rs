@@ -49,6 +49,7 @@ angry-purple-tiger = "0"
 helium-crypto = {git = "https://github.com/helium/helium-crypto-rs", tag="v0.2.2"}
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
 tokio = {version = "1", features = ["full"]}
+bitvec = "*" # inherits from elliptic-curve crate
 
 [dev-dependencies]
 bs58 = "0.4"

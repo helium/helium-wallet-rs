@@ -100,7 +100,12 @@ impl Basic {
             .seed_words(seed_words)
             .create()?;
 
-        verify::print_result(&wallet, true, opts.format)
+        verify::print_result(
+            &wallet,
+            &wallet.decrypt(password.as_bytes()),
+            None,
+            opts.format,
+        )
     }
 }
 
@@ -130,6 +135,11 @@ impl Sharded {
             .shard(Some(shard_config))
             .create()?;
 
-        verify::print_result(&wallet, true, opts.format)
+        verify::print_result(
+            &wallet,
+            &wallet.decrypt(password.as_bytes()),
+            None,
+            opts.format,
+        )
     }
 }

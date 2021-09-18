@@ -1,4 +1,8 @@
-use crate::{result::Result, traits::ReadWrite};
+use crate::{
+    mnemonic::{entropy_to_mnemonic, SeedType},
+    result::Result,
+    traits::ReadWrite,
+};
 use byteorder::ReadBytesExt;
 use std::{convert::TryFrom, io};
 
@@ -40,6 +44,14 @@ impl Keypair {
 
     pub fn sign(&self, msg: &[u8]) -> Result<Vec<u8>> {
         Ok(self.0.sign(msg)?)
+    }
+
+    /// Return the mnemonic phrase that can be used to recreate this Keypair.
+    /// This function is implemented here to avoid passing the secret between
+    /// too many modules.
+    pub fn phrase(&self, seed_type: &SeedType) -> Result<Vec<String>> {
+        let entropy: Vec<u8> = self.0.to_bytes()[1..33].to_vec();
+        entropy_to_mnemonic(&entropy, seed_type)
     }
 }
 

@@ -99,6 +99,9 @@ impl Basic {
 #[derive(Clone)]
 pub struct KeyShare(pub(crate) [u8; 33]);
 
+// alow default derivation since nightly clippy believes we can derive Default
+// when we really can't for the nested type
+#[allow(clippy::derivable_impls)]
 impl Default for KeyShare {
     fn default() -> Self {
         KeyShare([0; 33])

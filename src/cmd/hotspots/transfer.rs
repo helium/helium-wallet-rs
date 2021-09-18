@@ -103,17 +103,12 @@ impl Cmd {
 fn print_txn(
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
-    format: OutputFormat,
+    _format: OutputFormat,
 ) -> Result {
     let encoded = envelope.to_b64()?;
-    match format {
-        OutputFormat::Table => Err(anyhow!("Table format not supported for transaction output")),
-        OutputFormat::Json => {
-            let table = json!({
-                "txn": encoded,
-                "hash": status_json(status)
-            });
-            print_json(&table)
-        }
-    }
+    let table = json!({
+        "txn": encoded,
+        "hash": status_json(status)
+    });
+    print_json(&table)
 }

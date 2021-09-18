@@ -48,10 +48,6 @@ pub struct Redeem {
     #[structopt(short = "p", long = "preimage")]
     preimage: String,
 
-    /// Only output the submitted transaction hash.
-    #[structopt(long)]
-    hash: bool,
-
     /// Commit the payment to the API
     #[structopt(long)]
     commit: bool,

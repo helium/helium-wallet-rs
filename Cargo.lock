@@ -1013,7 +1013,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.6.7"
+version = "1.6.8-dev"
 dependencies = [
  "aes-gcm",
  "angry-purple-tiger",

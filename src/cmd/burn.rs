@@ -23,6 +23,14 @@ pub struct Cmd {
     #[structopt(long)]
     amount: Hnt,
 
+    /// Manually set the nonce to use for the transaction
+    #[structopt(long)]
+    nonce: Option<u64>,
+
+    /// Manually set the DC fee to pay for the transaction
+    #[structopt(long)]
+    fee: Option<u64>,
+
     /// Commit the payment to the API
     #[structopt(long)]
     commit: bool,
@@ -36,7 +44,6 @@ impl Cmd {
         let client = Client::new_with_base_url(api_url(wallet.public_key.network));
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
 
         let mut txn = BlockchainTxnTokenBurnV1 {
             fee: 0,
@@ -44,10 +51,20 @@ impl Cmd {
             amount: u64::from(self.amount),
             payer: keypair.public_key().into(),
             memo: u64::from(&self.memo),
-            nonce: account.speculative_nonce + 1,
+            nonce: if let Some(nonce) = self.nonce {
+                nonce
+            } else {
+                let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
+                account.speculative_nonce + 1
+            },
             signature: Vec::new(),
         };
-        txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
+
+        txn.fee = if let Some(fee) = self.fee {
+            fee
+        } else {
+            txn.txn_fee(&get_txn_fees(&client).await?)?
+        };
         txn.signature = txn.sign(&keypair)?;
 
         let envelope = txn.in_envelope();

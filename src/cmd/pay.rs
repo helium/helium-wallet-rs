@@ -109,7 +109,7 @@ impl Cmd {
     fn collect_payments(&self) -> Result<Vec<Payment>> {
         match &self {
             Self::One(one) => Ok(vec![Payment {
-                payee: one.payee.address.to_bytes().to_vec(),
+                payee: one.payee.address.to_vec(),
                 amount: u64::from(one.payee.amount),
                 memo: u64::from(&one.payee.memo),
             }]),

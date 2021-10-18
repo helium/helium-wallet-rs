@@ -47,7 +47,7 @@ impl Cmd {
 
         let mut txn = BlockchainTxnTokenBurnV1 {
             fee: 0,
-            payee: self.payee.to_bytes().to_vec(),
+            payee: self.payee.to_vec(),
             amount: u64::from(self.amount),
             payer: keypair.public_key().into(),
             memo: u64::from(&self.memo),

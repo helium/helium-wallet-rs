@@ -62,7 +62,7 @@ impl Wallet {
 
         match aead.encrypt_in_place_detached(
             iv.as_ref().into(),
-            &public_key.to_bytes(),
+            &public_key.to_vec(),
             &mut encrypted,
         ) {
             Err(_) => Err(anyhow!("Failed to encrypt wallet")),
@@ -85,7 +85,7 @@ impl Wallet {
         let mut buffer = self.encrypted.to_owned();
         match aead.decrypt_in_place_detached(
             self.iv.as_ref().into(),
-            &self.public_key.to_bytes(),
+            &self.public_key.to_vec(),
             &mut buffer,
             self.tag.as_ref().into(),
         ) {

@@ -56,7 +56,7 @@ fn print_results(results: Vec<(PublicKey, Result<Vec<Hotspot>>)>, format: Output
                             table.add_row(row![
                                 hotspot.address,
                                 hotspot.name.unwrap_or_else(|| "unknown".to_string()),
-                                hotspot.location.unwrap_or_else(|| "uknnown".to_string()),
+                                hotspot.location.unwrap_or_else(|| "unknown".to_string()),
                                 hotspot
                                     .geocode
                                     .short_city
@@ -84,7 +84,7 @@ fn print_results(results: Vec<(PublicKey, Result<Vec<Hotspot>>)>, format: Output
                         table_hotspots.push(json!({
                             "address": hotspot.address,
                             "name":  hotspot.name.unwrap_or_else(|| "unknown".to_string()),
-                            "location": hotspot.location.unwrap_or_else(|| "uknnown".to_string()),
+                            "location": hotspot.location.unwrap_or_else(|| "unknown".to_string()),
                             "city":
                                 hotspot
                                     .geocode

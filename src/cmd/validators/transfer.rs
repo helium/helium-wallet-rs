@@ -8,8 +8,8 @@ use crate::{
 /// Onboard a given encoded validator staking transaction with this wallet.
 /// transaction signed by the Helium staking server.
 pub enum Cmd {
-    Create(Create),
-    Accept(Accept),
+    Create(Box<Create>),
+    Accept(Box<Accept>),
 }
 
 #[derive(Debug, StructOpt)]

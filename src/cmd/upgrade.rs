@@ -90,7 +90,7 @@ impl Sharded {
         let extension = get_file_extension(&self.output);
         for (i, shard) in new_wallet.shards()?.iter().enumerate() {
             let mut filename = self.output.clone();
-            let share_extension = format!("{}.{}", extension, (i + 1).to_string());
+            let share_extension = format!("{}.{}", extension, (i + 1));
             filename.set_extension(share_extension);
             let mut writer = open_output_file(&filename, !self.force)?;
             shard.write(&mut writer)?;

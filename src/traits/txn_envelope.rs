@@ -40,6 +40,7 @@ impl_txn_envelope!(BlockchainTxnAssertLocationV1, AssertLocation);
 impl_txn_envelope!(BlockchainTxnAssertLocationV2, AssertLocationV2);
 impl_txn_envelope!(BlockchainTxnVarsV1, Vars);
 impl_txn_envelope!(BlockchainTxnTransferHotspotV1, TransferHotspot);
+impl_txn_envelope!(BlockchainTxnTransferHotspotV2, TransferHotspotV2);
 impl_txn_envelope!(BlockchainTxnStakeValidatorV1, StakeValidator);
 impl_txn_envelope!(BlockchainTxnUnstakeValidatorV1, UnstakeValidator);
 impl_txn_envelope!(BlockchainTxnTransferValidatorStakeV1, TransferValStake);

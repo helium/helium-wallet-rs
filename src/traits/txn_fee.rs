@@ -224,6 +224,7 @@ impl_txn_fee!(
     buyer_signature,
     seller_signature
 );
+impl_txn_fee!(BlockchainTxnTransferHotspotV2, owner_signature);
 impl_txn_fee!(BlockchainTxnStakeValidatorV1, owner_signature);
 impl_txn_fee!(BlockchainTxnUnstakeValidatorV1, owner_signature);
 impl_txn_fee!(

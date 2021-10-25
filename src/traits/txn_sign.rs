@@ -68,6 +68,7 @@ impl_sign!(
     buyer_signature,
     seller_signature
 );
+impl_sign!(BlockchainTxnTransferHotspotV2, owner_signature);
 impl_sign!(BlockchainTxnStakeValidatorV1, owner_signature);
 impl_sign!(BlockchainTxnUnstakeValidatorV1, owner_signature);
 impl_sign!(

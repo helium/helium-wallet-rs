@@ -19,7 +19,7 @@ pub enum Cmd {
     /// Pay a single payee.
     ///
     /// Note that HNT only goes to 8 decimals of precision.
-    One(One),
+    One(Box<One>),
     /// Pay multiple payees
     Multi(Multi),
 }

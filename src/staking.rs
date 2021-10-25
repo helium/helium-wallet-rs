@@ -47,7 +47,7 @@ impl Client {
 
     /// Fetch the public maker key for a given onboarding key
     pub async fn address_for(&self, gateway: &PublicKey) -> Result<PublicKey> {
-        let request_url = format!("{}/hotspots/{}", self.base_url, gateway.to_string());
+        let request_url = format!("{}/hotspots/{}", self.base_url, gateway);
         let response: serde_json::Value = self
             .client
             .get(&request_url)

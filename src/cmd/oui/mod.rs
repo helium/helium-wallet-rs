@@ -10,7 +10,7 @@ use update::*;
 /// Create or update an OUI
 #[derive(Debug, StructOpt)]
 pub enum Cmd {
-    Create(Create),
+    Create(Box<Create>),
     Update(Update),
 }
 

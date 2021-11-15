@@ -48,6 +48,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
             table.set_titles(row![
                 "Address",
                 "Balance",
+                "Staked Balance",
                 "Data Credits",
                 "Security Tokens"
             ]);
@@ -56,6 +57,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                     Ok(account) => table.add_row(row![
                         address,
                         account.balance,
+                        account.staked_balance,
                         account.dc_balance,
                         account.sec_balance
                     ]),
@@ -71,6 +73,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                     rows.push(json!({
                         "address": address,
                         "dc_balance": account.dc_balance,
+                        "staked_balance": account.staked_balance,
                         "sec_balance": account.sec_balance,
                         "balance": account.balance,
                     }));

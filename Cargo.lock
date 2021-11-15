@@ -969,9 +969,9 @@ dependencies = [
 
 [[package]]
 name = "helium-api"
-version = "3.1.0"
+version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2cf895c75ee34be24eca84e5b2e18446658bf0768cb9400cf9fe56624ed350d"
+checksum = "aba3bbb922a600832a585ecd2bcd3b4783ba11ff5d415bd490c4d1608dec4194"
 dependencies = [
  "async-trait",
  "base64 0.13.0",

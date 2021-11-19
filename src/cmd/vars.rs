@@ -70,7 +70,7 @@ impl Current {
     pub async fn run(&self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
         let network = self.network.unwrap_or(wallet.public_key.network);
-        let client = Client::new_with_base_url(api_url(network));
+        let client = new_client(api_url(network));
         let vars = vars::get(&client).await?;
         print_json(&vars)
     }
@@ -80,7 +80,7 @@ impl Create {
     pub async fn run(&self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
         let network = self.network.unwrap_or(wallet.public_key.network);
-        let client = Client::new_with_base_url(api_url(network));
+        let client = new_client(api_url(network));
         let vars = vars::get(&client).await?;
 
         let mut txn = BlockchainTxnVarsV1 {

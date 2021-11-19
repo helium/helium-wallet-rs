@@ -18,7 +18,7 @@ impl Cmd {
         let envelope = read_txn(&self.txn)?;
 
         let wallet = load_wallet(opts.files)?;
-        let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let status = maybe_submit_txn(true, &client, &envelope).await?;
         print_txn(&envelope, &status, opts.format)

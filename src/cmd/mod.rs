@@ -121,6 +121,13 @@ fn api_url(network: Network) -> String {
     }
 }
 
+pub(crate) static USER_AGENT: &str =
+    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
+fn new_client(base_url: String) -> Client {
+    Client::new_with_base_url(base_url, USER_AGENT)
+}
+
 fn read_txn(txn: &Option<Transaction>) -> Result<BlockchainTxn> {
     match txn {
         Some(txn) => Ok(txn.0.clone()),

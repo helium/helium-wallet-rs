@@ -23,7 +23,7 @@ impl Cmd {
                 .map(|key| key.network)
                 .ok_or_else(|| anyhow!("at least one address expected"))?,
         );
-        let client = Client::new_with_base_url(api_url);
+        let client = new_client(api_url);
         let mut results: Vec<(PublicKey, Result<Vec<Validator>>)> =
             Vec::with_capacity(self.addresses.len());
         for address in addresses {

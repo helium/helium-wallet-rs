@@ -66,7 +66,7 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let staking_client = staking::Client::default();
-        let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
         let hotspot = hotspots::get(&client, &self.gateway.to_string()).await?;
         let gain: i32 = if let Some(gain) = self.gain.or(hotspot.gain) {
             gain.into()

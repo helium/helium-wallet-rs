@@ -66,7 +66,7 @@ impl Cmd {
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
         let fee_config = if self.fee().is_none() {
             Some(get_txn_fees(&client).await?)
         } else {

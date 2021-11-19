@@ -2,7 +2,7 @@ use crate::{
     cmd::oui::*,
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee, B64},
 };
-use helium_api::{models::transactions::PendingTxnStatus, ouis, Client};
+use helium_api::{models::transactions::PendingTxnStatus, ouis};
 use serde_json::json;
 use structopt::StructOpt;
 
@@ -104,7 +104,7 @@ impl Update {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let client = Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let (oui, commit, nonce, update) = match self {
             Update::Routers(routers) => (

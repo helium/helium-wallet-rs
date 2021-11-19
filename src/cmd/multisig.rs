@@ -118,7 +118,7 @@ impl Combine {
         }
         combined_proofs.apply(&mut envelope)?;
 
-        let client = Client::new_with_base_url(api_url(self.network));
+        let client = new_client(api_url(self.network));
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
         print_txn(&envelope, &status)
     }

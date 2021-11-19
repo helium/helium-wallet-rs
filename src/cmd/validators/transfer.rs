@@ -86,7 +86,7 @@ impl Create {
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let old_owner = self.old_owner.as_ref().unwrap_or(&wallet.public_key);
 
@@ -151,7 +151,7 @@ impl Accept {
             txn.new_owner_signature = txn.sign(&keypair)?;
         }
 
-        let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;

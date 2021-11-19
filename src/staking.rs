@@ -1,4 +1,5 @@
 use crate::{
+    cmd::USER_AGENT,
     keypair::PublicKey,
     result::{anyhow, Result},
     traits::B64,
@@ -39,6 +40,7 @@ impl Client {
     pub fn new_with_timeout(base_url: String, timeout: u64) -> Self {
         let client = reqwest::Client::builder()
             .gzip(true)
+            .user_agent(USER_AGENT)
             .timeout(Duration::from_secs(timeout))
             .build()
             .unwrap();

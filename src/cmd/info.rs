@@ -26,7 +26,7 @@ impl Cmd {
                     print_qr(&wallet.public_key.to_string())?;
                     Ok(())
                 } else {
-                    let client = Client::new_with_base_url(api_url(wallet.public_key.network));
+                    let client = new_client(api_url(wallet.public_key.network));
                     let account = accounts::get(&client, &wallet.address()?).await?;
                     print_wallet(&wallet, &account, opts.format)
                 }

@@ -77,7 +77,7 @@ impl Cmd {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
 
-        let client = Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let keypair = wallet.decrypt(password.as_bytes())?;
 

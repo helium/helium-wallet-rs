@@ -2,7 +2,7 @@ use crate::{
     cmd::oui::*,
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee},
 };
-use helium_api::{ouis, Client};
+use helium_api::ouis;
 use structopt::StructOpt;
 
 /// Allocates an Organizational Unique Identifier (OUI) which
@@ -53,7 +53,7 @@ impl Create {
         let keypair = wallet.decrypt(password.as_bytes())?;
         let wallet_key = keypair.public_key();
 
-        let client = Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let oui = if let Some(oui) = self.last_oui {
             oui

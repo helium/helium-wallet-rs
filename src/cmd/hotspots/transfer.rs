@@ -20,7 +20,7 @@ pub struct Cmd {
 impl Cmd {
     pub async fn run(self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
-        let client = Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let hotspot = helium_api::hotspots::get(&client, &self.gateway.to_string()).await?;
         // Get the next likely gateway nonce for the new transaction

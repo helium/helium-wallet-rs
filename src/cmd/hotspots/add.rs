@@ -35,7 +35,7 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let staking_client = staking::Client::default();
-        let client = helium_api::Client::new_with_base_url(api_url(wallet.public_key.network));
+        let client = new_client(api_url(wallet.public_key.network));
 
         let wallet_key = keypair.public_key();
 

@@ -18,16 +18,14 @@ pub struct Cmd {
     gateway: PublicKey,
 
     /// Lattitude of hotspot location to assert. Defaults to the last asserted
-    /// value.
+    /// value. For negative values use '=", for example: "--lat=-xx.xxxxxxx".
     ///
-    /// For negative values use '=", for example: "--lat=-xx.xxxxxxx".
     #[structopt(long)]
     lat: Option<f64>,
 
     /// Longitude of hotspot location to assert. Defaults to the last asserted
-    /// value.
+    /// value. For negative values use '=", for example: "--lon=-xx.xxxxxxx".
     ///
-    /// For negative values use '=", for example: "--lon=-xx.xxxxxxx".
     #[structopt(long)]
     lon: Option<f64>,
 
@@ -37,9 +35,8 @@ pub struct Cmd {
     gain: Option<Dbi>,
 
     /// The elevation for the asserted hotspot in meters above ground level.
-    /// Defaults to the last assserted value.
+    /// Defaults to the last assserted value. For negative values use '=", for example: "--elevation=-xx".
     ///
-    /// For negative values use '=", for example: "--elevation=-xx".
     #[structopt(long)]
     elevation: Option<i32>,
 

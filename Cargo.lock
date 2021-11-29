@@ -1008,12 +1008,12 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.6.10-dev"
+version = "1.6.10"
 dependencies = [
  "aes-gcm",
  "angry-purple-tiger",
  "anyhow",
- "base64 0.13.0",
+ "base64 0.12.3",
  "bitvec",
  "bs58",
  "byteorder",

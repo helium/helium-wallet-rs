@@ -127,7 +127,7 @@ pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<S
         bail!("Incorrect entropy length: {}", working_bits)
     }
 
-    let mut word_bits = BitVec::<Msb0>::with_capacity(MAX_ENTROPY_BITS);
+    let mut word_bits = BitVec::with_capacity(MAX_ENTROPY_BITS);
     word_bits.extend_from_bitslice(working_entropy.view_bits::<Msb0>());
 
     // For every 32-bits of entropy, add one bit of checksum to

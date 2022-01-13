@@ -34,7 +34,7 @@ pub struct Cmd {
     gain: Option<Dbi>,
 
     /// The elevation for the asserted hotspot in meters above ground level.
-    /// Defaults to the last assserted value. For negative values use '=', 
+    /// Defaults to the last assserted value. For negative values use '=',
     /// for example: "--elevation=-xx".
     #[structopt(long)]
     elevation: Option<i32>,

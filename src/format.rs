@@ -3,7 +3,7 @@ use crate::{
     result::{bail, Result},
 };
 use byteorder::{ReadBytesExt, WriteBytesExt};
-use hmac::{Hmac, Mac, NewMac};
+use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use shamirsecretsharing::hazmat::{combine_keyshares, create_keyshares};
 use sodiumoxide::randombytes;

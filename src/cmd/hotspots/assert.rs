@@ -25,7 +25,6 @@ pub struct Cmd {
 
     /// Longitude of hotspot location to assert. Defaults to the last asserted
     /// value. For negative values use '=', for example: "--lon=-xx.xxxxxxx".
-    ///
     #[structopt(long)]
     lon: Option<f64>,
 

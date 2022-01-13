@@ -18,7 +18,7 @@ pub struct Cmd {
     gateway: PublicKey,
 
     /// Lattitude of hotspot location to assert. Defaults to the last asserted
-    /// value. For negative values use '=", for example: "--lat=-xx.xxxxxxx".
+    /// value. For negative values use '=', for example: "--lat=-xx.xxxxxxx".
     ///
     #[structopt(long)]
     lat: Option<f64>,

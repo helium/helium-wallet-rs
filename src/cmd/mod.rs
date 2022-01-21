@@ -31,6 +31,7 @@ pub mod oui;
 pub mod pay;
 pub mod request;
 pub mod securities;
+pub mod sign;
 pub mod upgrade;
 pub mod validators;
 pub mod vars;

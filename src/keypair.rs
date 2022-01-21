@@ -86,6 +86,7 @@ impl ReadWrite for Keypair {
                 reader.read_exact(&mut sk_buf[1..])?;
                 Ok(Keypair(ecc_compact::Keypair::try_from(&sk_buf[..])?.into()))
             }
+            KeyType::MultiSig => Err(helium_crypto::Error::invalid_keytype(tag).into()),
         }
     }
 }

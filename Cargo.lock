@@ -1127,8 +1127,8 @@ dependencies = [
 
 [[package]]
 name = "helium-crypto"
-version = "0.3.3-dev"
-source = "git+https://github.com/helium/helium-crypto-rs?branch=madninja/multisig#30c0574663eea1f20fd562ad00d43314c72c9316"
+version = "0.3.3"
+source = "git+https://github.com/helium/helium-crypto-rs?tag=v0.3.3#882749ff33f1eab9d41ea78e8cdae4420627e4b7"
 dependencies = [
  "base64 0.12.3",
  "bs58",

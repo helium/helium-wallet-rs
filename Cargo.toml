@@ -26,8 +26,8 @@ structopt = "0.3"
 dialoguer = "0.8"
 sodiumoxide = "~0.2"
 hex = "0.4"
-hmac = "0"
-sha2 = "0"
+hmac = "*"
+sha2 = "*" 
 base64 = "0"
 reqwest = {version = "0", default-features=false, features=["rustls-tls"]}
 pbkdf2 = {version = "0", default-features=false }

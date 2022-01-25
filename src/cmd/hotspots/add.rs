@@ -48,7 +48,7 @@ impl Cmd {
             _key if self.onboarding.is_some() && self.commit => {
                 // Only have staking server sign if there's an onboarding key,
                 // and we're actually going to commit
-                let onboarding_key = self.onboarding.as_ref().unwrap().replace("\"", "");
+                let onboarding_key = self.onboarding.as_ref().unwrap().replace('\"', "");
                 staking_client
                     .sign(&onboarding_key, &txn.in_envelope())
                     .await

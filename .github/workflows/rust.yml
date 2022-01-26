@@ -142,15 +142,7 @@ jobs:
         with:
           access_token: ${{ github.token }}
 
-      - name: Print path contents
-        env:
-          LIBCLANG_PATH: ${{ runner.temp }}/llvm/bin
-        run: dir "$env:LIBCLANG_PATH"
-
       - name: Build
-        env:
-          RUST_BACKTRACE: 1
-          LIBCLANG_PATH: ${{ runner.temp }}/llvm/bin/
         run: cargo build --all --release
 
       - name: Name Release

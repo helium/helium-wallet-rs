@@ -27,7 +27,7 @@ dialoguer = "0.8"
 sodiumoxide = "~0.2"
 hex = "0.4"
 hmac = "*"
-sha2 = "*" 
+sha2 = "*"
 base64 = "0"
 reqwest = {version = "0", default-features=false, features=["rustls-tls"]}
 pbkdf2 = {version = "0", default-features=false }
@@ -43,7 +43,7 @@ serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
 h3ron = "^0.13"
-geo-types = "^0.7" # pinned by h3ron but required here for geo_types::Point
+geo-types = "*"
 helium-api = "3"
 angry-purple-tiger = "0"
 helium-crypto = {git = "https://github.com/helium/helium-crypto-rs", tag="v0.3.3", features = ["multisig"]}

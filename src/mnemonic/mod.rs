@@ -1,16 +1,19 @@
 use crate::result::{bail, Result};
 
 use bitvec::prelude::*;
+use lazy_static::lazy_static;
 use regex::Regex;
 use sha2::{digest::generic_array::GenericArray, Digest, Sha256};
+use std::{fmt::Write, ops::Index};
 use structopt::{clap::arg_enum, StructOpt};
 
-include!(concat!(env!("OUT_DIR"), "/english.rs"));
-
-type WordList = &'static [&'static str];
+lazy_static! {
+    static ref WORDS_ENGLISH: Vec<&'static str> =
+        include_str!("wordlists/english.txt").lines().collect();
+}
 
 arg_enum! {
-    #[derive( Debug, Clone, StructOpt)]
+    #[derive( Debug, Clone, Copy, StructOpt)]
     pub enum SeedType {
         Bip39,
         Mobile,
@@ -21,15 +24,39 @@ pub enum Language {
     English,
 }
 
-fn get_wordlist(language: Language) -> WordList {
-    match language {
-        Language::English => WORDS_ENGLISH,
+impl Language {
+    pub fn find_word(&self, user_word: &str) -> Option<usize> {
+        match self {
+            Language::English => Self::find_english_word(user_word),
+        }
+    }
+
+    fn find_english_word(user_word: &str) -> Option<usize> {
+        // BIP39: the wordlist is created in such a way that it's
+        //        enough to type the first four letters to
+        //        unambiguously identify the word
+        const MIN_CMP_LEN: usize = 4;
+        let user_word = user_word.to_ascii_lowercase();
+        WORDS_ENGLISH.iter().position(|&bip39_word| {
+            user_word == bip39_word
+                || (user_word.len() >= MIN_CMP_LEN
+                    && bip39_word.len() >= user_word.len()
+                    && user_word == bip39_word[..user_word.len()])
+        })
+    }
+}
+
+impl Index<usize> for Language {
+    type Output = str;
+    fn index(&self, index: usize) -> &str {
+        WORDS_ENGLISH[index]
     }
 }
 
 /// Converts a 12 or 24 word mnemonic to entropy that can be used to
 /// generate a keypair
 pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[u8; 32]> {
+    const BITS_PER_WORD: usize = 11;
     match seed_type {
         SeedType::Bip39 => {
             if words.len() != 12 && words.len() != 24 {
@@ -47,17 +74,21 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
         }
     };
 
-    let wordlist = get_wordlist(Language::English);
+    let language = Language::English;
 
-    let mut bit_vec = Vec::with_capacity(words.len());
-    for word in words.iter() {
-        let idx_bits = match wordlist.iter().position(|s| *s == word.to_lowercase()) {
-            Some(idx) => format!("{:011b}", idx),
-            _ => bail!("Seed word {} not found in wordlist", word),
-        };
-        bit_vec.push(idx_bits);
-    }
-    let bits = bit_vec.join("");
+    let bits = words.iter().try_fold(
+        String::with_capacity(words.len() * BITS_PER_WORD),
+        |mut acc, w| {
+            language
+                .find_word(w)
+                .ok_or_else(|| anyhow::anyhow!("Seed word {} not found in wordlist", w))
+                .map(|idx| {
+                    write!(acc, "{:011b}", idx)
+                        .expect("Writing to a string should always succeed.");
+                    acc
+                })
+        },
+    )?;
 
     let divider_index: usize = ((bits.len() as f64 / 33.0) * 32.0).floor() as usize;
     let (entropy_bits, checksum_bits) = bits.split_at(divider_index);
@@ -139,8 +170,9 @@ pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<S
 
     let check_bits = checksum.view_bits::<Msb0>();
     word_bits.extend_from_bitslice(&check_bits[..working_bits / ENTROPY_MULTIPLE]);
-    let wordlist = get_wordlist(Language::English);
     let mut words = Vec::with_capacity(word_bits.len() / WORD_BIT_CHUNK_SIZE);
+
+    let language = Language::English;
 
     // For every group of 11 bits, use the value as an index into the word list.
     for c in word_bits.chunks(11) {
@@ -148,7 +180,7 @@ pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<S
         let idx_bits = idx.view_bits_mut::<Msb0>();
         let len = idx_bits.len() - WORD_BIT_CHUNK_SIZE;
         idx_bits[len..].copy_from_bitslice(c);
-        words.push(wordlist[idx].to_string());
+        words.push(language[idx].to_string());
     }
 
     Ok(words)
@@ -177,6 +209,19 @@ mod tests {
     fn decode_mobile_12_words() {
         // The words and entropy here were generated as follows: from the JS mobile-wallet implementation
         let words = "catch poet clog intact scare jacket throw palm illegal buyer allow figure";
+        let expected_entropy = bs58::decode("3RrA1FDa6mdw5JwKbUxEbZbMcJgSyWjhNwxsbX5pSos8")
+            .into_vec()
+            .expect("decoded entropy");
+
+        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
+        let entropy = mnemonic_to_entropy(word_list, &SeedType::Mobile).expect("entropy");
+        assert_eq!(expected_entropy, entropy);
+    }
+
+    #[test]
+    fn decode_tuncated_mobile_12_words() {
+        // The words and entropy here were generated as follows: from the JS mobile-wallet implementation
+        let words = "catc poet clog inta scar jack throw palm ille buye allo figu";
         let expected_entropy = bs58::decode("3RrA1FDa6mdw5JwKbUxEbZbMcJgSyWjhNwxsbX5pSos8")
             .into_vec()
             .expect("decoded entropy");
@@ -221,6 +266,25 @@ mod tests {
     }
 
     #[test]
+    fn decode_truncated_bip39_12_words() {
+        // The words and entropy here were generated as follows:
+        // - Generate 12-words using https://iancoleman.io/bip39/. Record the words and the hex
+        //   string of the entropy data: "ba8e05a43008eb85cbde771e945b53c6". Repeat this twice
+        //   to expand it to 256-bit of entropy:
+        //   "ba8e05a43008eb85cbde771e945b53c6ba8e05a43008eb85cbde771e945b53c6"
+        // - Use https://www.appdevtools.com/base58-encoder-decoder with "Treat Input as HEX" to
+        //   get the base58 encoded string of the expanded hex entropy
+        let words = "ritu ice harb gas modi seed contr solv burd people stay millio";
+        let expected_entropy = bs58::decode("DZESLNVfmfzdkwAPEjyUXQ8cBtLDCHX13wXMA6pyP7uP")
+            .into_vec()
+            .expect("decoded entropy");
+
+        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
+        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
+        assert_eq!(expected_entropy, entropy);
+    }
+
+    #[test]
     fn encode_bip39_12_words() {
         // The words and entropy here were generated as follows: from the JS mobile-wallet implementation
         let entropy = bs58::decode("DZESLNVfmfzdkwAPEjyUXQ8cBtLDCHX13wXMA6pyP7uP")
@@ -244,6 +308,24 @@ mod tests {
         // - Use https://www.appdevtools.com/base58-encoder-decoder with "Treat Input as HEX" to
         //   get the base58 encoded string.
         let words = "pelican sphere tackle click broken hurt fork nephew choice seven announce moment tobacco tribe topple pause october drama sock erase news glove okay bubble";
+        let expected_entropy = bs58::decode("BvkoqCYcm8Ukcm6tsuRyovQRxMPNwvc6Ag3LR1ZfjRPm")
+            .into_vec()
+            .expect("decoded entropy");
+
+        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
+        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
+        assert_eq!(expected_entropy, entropy);
+    }
+
+    #[test]
+    fn decode_tuncated_bip39_24_words() {
+        // The words and entropy here were generated as follows:
+        // - Generate 24-words using https://iancoleman.io/bip39/. Record the words and the hex
+        //   string of the entropy data:
+        //   "a25a2f741551c8df96dca228389425477e33d0b94d0b99084738263952c76678"
+        // - Use https://www.appdevtools.com/base58-encoder-decoder with "Treat Input as HEX" to
+        //   get the base58 encoded string.
+        let words = "peli sphe tack click brok hurt fork neph choic seve anno mome toba trib topp paus octo dram sock eras news glov okay bubb";
         let expected_entropy = bs58::decode("BvkoqCYcm8Ukcm6tsuRyovQRxMPNwvc6Ag3LR1ZfjRPm")
             .into_vec()
             .expect("decoded entropy");

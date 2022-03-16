@@ -50,6 +50,11 @@ pub struct Cmd {
     #[structopt(long)]
     mode: Option<HotspotStakingMode>,
 
+    /// The speculative nonce to use for the transaction. Defaults to the
+    /// one more than the last observed nonce for the hotspot.
+    #[structopt(long)]
+    nonce: Option<u64>,
+
     /// Commit the transaction to the blockchain
     #[structopt(long)]
     commit: bool,
@@ -78,7 +83,7 @@ impl Cmd {
         let wallet_key = keypair.public_key();
         let hotspot = helium_api::hotspots::get(&client, &self.gateway.to_string()).await?;
         // Get the next likely gateway nonce for the new transaction
-        let nonce = hotspot.speculative_nonce + 1;
+        let nonce = self.nonce.unwrap_or(hotspot.speculative_nonce + 1);
         let mode = self.mode.unwrap_or(hotspot.mode);
         let payer = if self.onboarding {
             staking_client.address_for(&self.gateway).await?.into()

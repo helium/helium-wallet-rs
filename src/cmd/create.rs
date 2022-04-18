@@ -1,7 +1,6 @@
 use crate::{
     cmd::*,
     keypair::{KeyTag, KeyType, Network},
-    mnemonic::SeedType,
     result::Result,
     wallet::{ShardConfig, Wallet},
 };
@@ -25,9 +24,9 @@ pub struct Basic {
     /// Overwrite an existing file
     force: bool,
 
-    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true, conflicts_with = "swarm")]
+    #[structopt(long, conflicts_with = "swarm")]
     /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
-    seed: Option<SeedType>,
+    seed: bool,
 
     #[structopt(long, conflicts_with = "swarm")]
     /// The network to generate the wallet (testnet/mainnet) [default: mainnet]
@@ -62,9 +61,9 @@ pub struct Sharded {
     /// Number of shards required to recover the key
     recovery_threshold: u8,
 
-    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true, conflicts_with = "swarm")]
+    #[structopt(long, conflicts_with = "swarm")]
     /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
-    seed: Option<SeedType>,
+    seed: bool,
 
     #[structopt(long, conflicts_with = "swarm")]
     /// The network to generate the wallet (testnet/mainnet) [default: mainnet]
@@ -91,9 +90,10 @@ impl Cmd {
 
 impl Basic {
     pub async fn run(&self, opts: Opts) -> Result {
-        let seed_words = match &self.seed {
-            Some(seed_type) => Some(get_seed_words(seed_type)?),
-            None => None,
+        let seed_words = if self.seed {
+            Some(get_seed_words()?)
+        } else {
+            None
         };
         let password = get_password(true)?;
 
@@ -109,29 +109,18 @@ impl Basic {
                     network: network.unwrap_or_default(),
                     key_type: key_type.unwrap_or_default(),
                 };
-                builder
-                    .key_tag(&tag)
-                    .seed_type(self.seed.to_owned())
-                    .seed_words(seed_words)
+                builder.key_tag(&tag).seed_words(seed_words)
             }
         };
         let wallet = builder.create()?;
 
-        verify::print_result(
-            &wallet,
-            &wallet.decrypt(password.as_bytes()),
-            None,
-            opts.format,
-        )
+        verify::print_result(&wallet, &wallet.decrypt(password.as_bytes()), opts.format)
     }
 }
 
 impl Sharded {
     pub async fn run(&self, opts: Opts) -> Result {
-        let seed_words = match &self.seed {
-            Some(seed_type) => Some(get_seed_words(seed_type)?),
-            None => None,
-        };
+        let seed_words = self.seed.then_some(get_seed_words()?);
         let password = get_password(true)?;
 
         let shard_config = ShardConfig {
@@ -152,20 +141,11 @@ impl Sharded {
                     network: network.unwrap_or(Network::MainNet),
                     key_type: key_type.unwrap_or(KeyType::Ed25519),
                 };
-                builder
-                    .key_tag(&tag)
-                    .seed_type(self.seed.to_owned())
-                    .seed_words(seed_words)
+                builder.key_tag(&tag).seed_words(seed_words)
             }
         };
 
         let wallet = builder.create()?;
-
-        verify::print_result(
-            &wallet,
-            &wallet.decrypt(password.as_bytes()),
-            None,
-            opts.format,
-        )
+        verify::print_result(&wallet, &wallet.decrypt(password.as_bytes()), opts.format)
     }
 }

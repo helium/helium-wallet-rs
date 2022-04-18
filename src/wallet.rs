@@ -1,7 +1,7 @@
 use crate::{
     format::{self, Format},
     keypair::{KeyTag, Keypair, PublicKey},
-    mnemonic::{mnemonic_to_entropy, SeedType},
+    mnemonic::mnemonic_to_entropy,
     pwhash::PwHash,
     result::{anyhow, bail, Result},
     traits::ReadWrite,
@@ -226,9 +226,6 @@ pub struct Builder {
     /// Overwrite an existing file
     force: bool,
 
-    /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
-    seed_type: Option<SeedType>,
-
     /// The seed words used to create this wallet
     seed_words: Option<Vec<String>>,
 
@@ -250,7 +247,6 @@ impl Builder {
             password: Default::default(),
             pwhash: PwHash::argon2id13_default(),
             force: false,
-            seed_type: None,
             seed_words: None,
             key_tag: None,
             shard: None,
@@ -286,13 +282,6 @@ impl Builder {
         self
     }
 
-    /// Set the seed type if using seed words to create this wallet
-    /// Defaults to None
-    pub fn seed_type(mut self, seed_type: Option<SeedType>) -> Builder {
-        self.seed_type = seed_type;
-        self
-    }
-
     /// The seed words used to create this wallet
     /// Defaults to None
     pub fn seed_words(mut self, seed_words: Option<Vec<String>>) -> Builder {
@@ -322,12 +311,12 @@ impl Builder {
 
     /// Creates a new wallet
     pub fn create(self) -> Result<Wallet> {
-        let keypair = match (self.swarm_input, self.key_tag, self.seed_type) {
-            (Some(swarm_input_path), None, None) =>
+        let keypair = match (self.swarm_input, self.key_tag) {
+            (Some(swarm_input_path), None) =>
                 load_keypair_from_swarm(&swarm_input_path)?,
-            (None, key_tag_opt, seed_type_opt) =>
-                gen_keypair(key_tag_opt.unwrap_or_default(), self.seed_words, seed_type_opt.as_ref())?,
-            (Some(_), _, _) => return Err(anyhow!("Can't import from swarm key and also set key type, network, or seed words at the same time."))
+            (None, key_tag_opt) =>
+                gen_keypair(key_tag_opt.unwrap_or_default(), self.seed_words)?,
+            (Some(_), _) => return Err(anyhow!("Can't import from swarm key and also set key type, network, or seed words at the same time."))
         };
 
         let wallet = if let Some(shard_config) = &self.shard {
@@ -375,20 +364,15 @@ impl Default for Builder {
     }
 }
 
-fn gen_keypair(
-    tag: KeyTag,
-    seed_words: Option<Vec<String>>,
-    seed_type: Option<&SeedType>,
-) -> Result<Keypair> {
+fn gen_keypair(tag: KeyTag, seed_words: Option<Vec<String>>) -> Result<Keypair> {
     // Callers of this function should either have Some of both or None of both.
     // Anything else is an error.
-    match (seed_words, seed_type) {
-        (Some(words), Some(seed_type)) => {
-            let entropy = mnemonic_to_entropy(words, seed_type)?;
+    match seed_words {
+        Some(words) => {
+            let entropy = mnemonic_to_entropy(words)?;
             Keypair::generate_from_entropy(tag, &entropy)
         }
-        (None, None) => Ok(Keypair::generate(tag)),
-        _ => bail!("Invalid parameters in gen_keypair(). Report this to the development team."),
+        None => Ok(Keypair::generate(tag)),
     }
 }
 
@@ -449,15 +433,14 @@ mod tests {
             "crumble".to_string(),
             "add".to_string(),
         ];
-        let from_keypair = gen_keypair(tag, Some(seed_words.clone()), Some(&SeedType::Bip39))
-            .expect("to generate a keypair");
+        let from_keypair =
+            gen_keypair(tag, Some(seed_words.clone())).expect("to generate a keypair");
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(&path)
             .key_tag(&tag)
             .seed_words(Some(seed_words.clone()))
-            .seed_type(Some(SeedType::Bip39))
             .create()
             .expect("wallet to be created");
 
@@ -497,15 +480,14 @@ mod tests {
             "crumble".to_string(),
             "add".to_string(),
         ];
-        let from_keypair = gen_keypair(tag, Some(seed_words.clone()), Some(&SeedType::Bip39))
-            .expect("to generate a keypair");
+        let from_keypair =
+            gen_keypair(tag, Some(seed_words.clone())).expect("to generate a keypair");
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(&path)
             .key_tag(&tag)
             .seed_words(Some(seed_words.clone()))
-            .seed_type(Some(SeedType::Bip39))
             .shard(Some(shard_config))
             .create()
             .expect("wallet to be created");
@@ -618,8 +600,7 @@ mod tests {
     fn swarm_keypair_test(swarm_key_bytes: &mut &[u8], seed_words: [&str; 24], key_type: KeyTag) {
         let seed_words_vec = seed_words.iter().map(|&s| s.to_owned()).collect();
         let from_swarm = Keypair::read(swarm_key_bytes).unwrap();
-        let from_seed =
-            gen_keypair(key_type, Some(seed_words_vec), Some(&SeedType::Bip39)).unwrap();
+        let from_seed = gen_keypair(key_type, Some(seed_words_vec)).unwrap();
         assert_eq!(from_seed, from_swarm);
     }
 }

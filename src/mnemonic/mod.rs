@@ -2,9 +2,8 @@ use crate::result::{bail, Result};
 
 use bitvec::prelude::*;
 use lazy_static::lazy_static;
-use regex::Regex;
 use sha2::{digest::generic_array::GenericArray, Digest, Sha256};
-use std::{fmt::Write, ops::Index};
+use std::ops::Index;
 use structopt::{clap::arg_enum, StructOpt};
 
 lazy_static! {
@@ -56,7 +55,10 @@ impl Index<usize> for Language {
 /// Converts a 12 or 24 word mnemonic to entropy that can be used to
 /// generate a keypair
 pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[u8; 32]> {
+    const MAX_ENTROPY_BITS: usize = 256;
     const BITS_PER_WORD: usize = 11;
+    const CHECKSUM_BITS_PER_WORD: usize = 3;
+
     match seed_type {
         SeedType::Bip39 => {
             if words.len() != 12 && words.len() != 24 {
@@ -74,64 +76,61 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
         }
     };
 
+    // Build of word_bits in an accumulator by iterating thru the word vector, looking
+    // up the index of each word. For each index, copy only the least-significant
+    // BITS_PER_WORD bits onto the end of the accumulator.
     let language = Language::English;
+    let word_bits =
+        words
+            .iter()
+            .try_fold(BitVec::with_capacity(MAX_ENTROPY_BITS), |mut acc, w| {
+                language
+                    .find_word(w)
+                    .ok_or_else(|| anyhow::anyhow!("Seed word {} not found in wordlist", w))
+                    .map(|idx| {
+                        let idx_bits = &idx.view_bits::<Msb0>();
+                        acc.extend_from_bitslice(&idx_bits[idx_bits.len() - BITS_PER_WORD..]);
+                        acc
+                    })
+            })?;
 
-    let bits = words.iter().try_fold(
-        String::with_capacity(words.len() * BITS_PER_WORD),
-        |mut acc, w| {
-            language
-                .find_word(w)
-                .ok_or_else(|| anyhow::anyhow!("Seed word {} not found in wordlist", w))
-                .map(|idx| {
-                    write!(acc, "{:011b}", idx)
-                        .expect("Writing to a string should always succeed.");
-                    acc
-                })
-        },
-    )?;
-
-    let divider_index: usize = ((bits.len() as f64 / 33.0) * 32.0).floor() as usize;
-    let (entropy_bits, checksum_bits) = bits.split_at(divider_index);
-
-    lazy_static! {
-        static ref RE_BYTES: Regex = Regex::new("(.{1,8})").unwrap();
-    }
-
+    let divider_index: usize = word_bits.len() - (words.len() / CHECKSUM_BITS_PER_WORD);
+    let (entropy_bits, checksum_bits) = word_bits.split_at(divider_index);
     // For up to 24 words, checksum should only ever be a single byte
-    let mut checksum_bytes = [0u8; 1];
-    for (idx, matched) in RE_BYTES.find_iter(checksum_bits).enumerate() {
-        checksum_bytes[idx] = binary_to_bytes(matched.as_str()) as u8;
-    }
+    let checksum_byte: u8 = checksum_bits.load::<u8>();
 
     let mut entropy_bytes = [0u8; 32];
-    let valid_checksum;
-    if words.len() == 12 {
-        let mut entropy_base = [0u8; 16];
-        for (idx, matched) in RE_BYTES.find_iter(entropy_bits).enumerate() {
-            entropy_base[idx] = binary_to_bytes(matched.as_str()) as u8;
-        }
+    let valid_checksum = if words.len() == 12 {
+        // Duplicate entropy bits into the first half and last half of the final
+        // byte array so we can always return an 256 bits (32 bytes) of entropy.
+        // Keep entropy_half instead of doing this inline so we can calculate the
+        // checksum.
+        let mut entropy_half = [0u8; 16];
+        entropy_half
+            .view_bits_mut::<Msb0>()
+            .copy_from_bitslice(entropy_bits);
+        entropy_bytes[..16].copy_from_slice(&entropy_half);
+        entropy_bytes[16..].copy_from_slice(&entropy_half);
 
         // If this is supposed to be a BIP39 12-word phrase, verify the
         // checksum. Otherwise assume it is a phrase from the mobile app.
         // The mobile wallet does not calculate the checksum bits right so
         // its checksums are always 0
-        valid_checksum = match seed_type {
-            SeedType::Bip39 => calc_checksum_128(entropy_base),
+        match seed_type {
+            SeedType::Bip39 => calc_checksum_128(entropy_half),
             SeedType::Mobile => 0,
-        };
-        entropy_bytes[..16].copy_from_slice(&entropy_base);
-        entropy_bytes[16..].copy_from_slice(&entropy_base);
-    } else {
-        for (idx, matched) in RE_BYTES.find_iter(entropy_bits).enumerate() {
-            entropy_bytes[idx] = binary_to_bytes(matched.as_str()) as u8;
         }
+    } else {
+        entropy_bytes
+            .view_bits_mut::<Msb0>()
+            .copy_from_bitslice(entropy_bits);
 
         // 24-word phrases can't be from the mobile wallet so it should have
         // a valid BIP39 checksum.
-        valid_checksum = calc_checksum_256(entropy_bytes);
-    }
+        calc_checksum_256(entropy_bytes)
+    };
 
-    if checksum_bytes[0] != valid_checksum {
+    if checksum_byte != valid_checksum {
         bail!("Checksum failed. Invalid seed phrase.");
     }
 
@@ -144,7 +143,7 @@ pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<S
     const MAX_ENTROPY_BITS: usize = 256;
     const MIN_ENTROPY_BITS: usize = 128;
     const ENTROPY_MULTIPLE: usize = 32;
-    const WORD_BIT_CHUNK_SIZE: usize = 11;
+    const BITS_PER_WORD: usize = 11;
 
     let midpoint = entropy.len() / 2;
     let (front, back) = entropy.split_at(midpoint);
@@ -170,15 +169,15 @@ pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<S
 
     let check_bits = checksum.view_bits::<Msb0>();
     word_bits.extend_from_bitslice(&check_bits[..working_bits / ENTROPY_MULTIPLE]);
-    let mut words = Vec::with_capacity(word_bits.len() / WORD_BIT_CHUNK_SIZE);
-
-    let language = Language::English;
+    let mut words = Vec::with_capacity(word_bits.len() / BITS_PER_WORD);
 
     // For every group of 11 bits, use the value as an index into the word list.
-    for c in word_bits.chunks(11) {
+    // Then push the resulting word string into our words vector.
+    let language = Language::English;
+    for c in word_bits.chunks(BITS_PER_WORD) {
         let mut idx: usize = 0;
         let idx_bits = idx.view_bits_mut::<Msb0>();
-        let len = idx_bits.len() - WORD_BIT_CHUNK_SIZE;
+        let len = idx_bits.len() - BITS_PER_WORD;
         idx_bits[len..].copy_from_bitslice(c);
         words.push(language[idx].to_string());
     }
@@ -194,11 +193,6 @@ fn calc_checksum_128(bytes: [u8; 16]) -> u8 {
 fn calc_checksum_256(bytes: [u8; 32]) -> u8 {
     // For 256-bit entropy, checksum is the first byte of the sha256 hash
     Sha256::digest(&bytes)[0]
-}
-
-/// Converts a binary string into an integer
-fn binary_to_bytes(bin: &str) -> usize {
-    usize::from_str_radix(bin, 2).unwrap() as usize
 }
 
 #[cfg(test)]

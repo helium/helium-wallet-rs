@@ -153,22 +153,24 @@ fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<PublicKey>) -> Resu
 }
 
 fn get_seed_words(seed_type: &mnemonic::SeedType) -> Result<Vec<String>> {
-    use dialoguer::Input;
     let split_str = |s: &String| s.split_whitespace().map(|w| w.to_string()).collect();
-    let word_string = Input::<String>::new()
-        .with_prompt("Space separated seed words")
-        .validate_with(|v: &String| {
-            let word_list = split_str(v);
-            match mnemonic::mnemonic_to_entropy(word_list, seed_type) {
-                Ok(_) => Ok(()),
-                Err(err) => Err(err),
-            }
-        })
-        .interact()?;
-    Ok(word_string
-        .split_whitespace()
-        .map(|w| w.to_string())
-        .collect())
+    match env::var("HELIUM_WALLET_SEED_WORDS") {
+        Ok(word_string) => Ok(split_str(&word_string)),
+        _ => {
+            use dialoguer::Input;
+            let word_string = Input::<String>::new()
+                .with_prompt("Space separated seed words")
+                .validate_with(|v: &String| {
+                    let word_list = split_str(v);
+                    match mnemonic::mnemonic_to_entropy(word_list, seed_type) {
+                        Ok(_) => Ok(()),
+                        Err(err) => Err(err),
+                    }
+                })
+                .interact()?;
+            Ok(split_str(&word_string))
+        }
+    }
 }
 
 pub fn get_payer(staking_address: PublicKey, payer: &Option<String>) -> Result<Option<PublicKey>> {

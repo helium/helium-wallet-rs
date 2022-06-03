@@ -112,6 +112,7 @@ impl Cmd {
                 payee: one.payee.address.to_vec(),
                 amount: u64::from(one.payee.amount),
                 memo: u64::from(&one.payee.memo),
+                max: false,
             }]),
             Self::Multi(multi) => {
                 let file = std::fs::File::open(multi.path.clone())?;
@@ -122,6 +123,7 @@ impl Cmd {
                         payee: p.address.to_vec(),
                         amount: u64::from(p.amount),
                         memo: u64::from(&p.memo),
+                        max: false,
                     })
                     .collect();
                 Ok(payments)

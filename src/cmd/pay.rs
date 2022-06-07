@@ -2,13 +2,14 @@ use crate::{
     cmd::*,
     keypair::PublicKey,
     memo::Memo,
-    result::Result,
+    result::{anyhow, Result},
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
-use helium_api::accounts;
+use helium_api::{accounts, models::Oui, ouis, IntoVec};
 use prettytable::Table;
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashSet;
 
 #[derive(Debug, StructOpt)]
 /// Send one (or more) payments to given addresses.
@@ -29,6 +30,7 @@ pub struct One {
     #[structopt(flatten)]
     payee: Payee,
     /// Manually set the nonce to use for the transaction
+    /// NOTE: Passing nonce will bypass the payee OUI address check
     #[structopt(long)]
     nonce: Option<u64>,
     /// Manually set the DC fee to pay for the transaction
@@ -81,16 +83,39 @@ impl Cmd {
 
         let keypair = wallet.decrypt(password.as_bytes())?;
 
+        let nonce = if let Some(nonce) = self.nonce() {
+            nonce
+        } else {
+            let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
+            let next_nonce = account.speculative_nonce + 1;
+
+            let ouis = ouis::all(&client).into_vec().await?;
+
+            if let Some(intersection) = self.payee_oui_address_intersection(&ouis, &payments) {
+                let payee_display = intersection
+                    .iter()
+                    .map(|x| format!("  - {}", x))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                return Err(anyhow!(
+                    r#"Payee is an OUI address!
+{}
+Maybe you meant to burn to this address instead?
+To continue, pass the nonce explicitly `--nonce={}`
+"#,
+                    payee_display,
+                    next_nonce
+                ));
+            }
+
+            next_nonce
+        };
+
         let mut txn = BlockchainTxnPaymentV2 {
             fee: 0,
             payments,
             payer: keypair.public_key().to_vec(),
-            nonce: if let Some(nonce) = self.nonce() {
-                nonce
-            } else {
-                let account = accounts::get(&client, &keypair.public_key().to_string()).await?;
-                account.speculative_nonce + 1
-            },
+            nonce,
             signature: Vec::new(),
         };
 
@@ -149,6 +174,34 @@ impl Cmd {
         match &self {
             Self::One(one) => one.commit,
             Self::Multi(multi) => multi.commit,
+        }
+    }
+
+    fn payee_oui_address_intersection(
+        &self,
+        ouis: &[Oui],
+        payments: &[Payment],
+    ) -> Option<Vec<String>> {
+        let payee_addresses: HashSet<String> = payments
+            .iter()
+            .map(|payment| {
+                PublicKey::from_bytes(payment.payee.clone())
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        let oui_addresses: HashSet<String> =
+            ouis.iter().flat_map(|oui| oui.addresses.clone()).collect();
+
+        let intersection = oui_addresses
+            .intersection(&payee_addresses)
+            .map(|x| x.to_owned())
+            .collect::<Vec<String>>();
+
+        if intersection.is_empty() {
+            None
+        } else {
+            Some(intersection)
         }
     }
 }

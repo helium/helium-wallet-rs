@@ -1,6 +1,6 @@
 use crate::{
     cmd::*,
-    keypair::{KeyTag, KeyType, Network, KEYTYPE_ED25519_STR, NETTYPE_MAIN_STR},
+    keypair::{KeyTag, KeyType, Network},
     mnemonic::SeedType,
     result::Result,
     wallet::{ShardConfig, Wallet},
@@ -25,17 +25,22 @@ pub struct Basic {
     /// Overwrite an existing file
     force: bool,
 
-    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true)]
+    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true, conflicts_with = "swarm")]
     /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
     seed: Option<SeedType>,
 
-    #[structopt(long, default_value = NETTYPE_MAIN_STR)]
-    /// The network to generate the wallet (testnet/mainnet)
-    network: Network,
+    #[structopt(long, conflicts_with = "swarm")]
+    /// The network to generate the wallet (testnet/mainnet) [default: mainnet]
+    network: Option<Network>,
 
-    #[structopt(long, default_value = KEYTYPE_ED25519_STR)]
-    /// The type of key to generate (ecc_compact/ed25519)
-    key_type: KeyType,
+    #[structopt(long, conflicts_with = "swarm")]
+    /// The type of key to generate (ecc_compact/ed25519) [default: ed25519]
+    key_type: Option<KeyType>,
+
+    #[structopt(long)]
+    /// Import a swarm_key file from a miner, gateway, validator, or other
+    /// blockchain actor.
+    swarm: Option<PathBuf>,
 }
 
 #[derive(Debug, StructOpt)]
@@ -57,17 +62,22 @@ pub struct Sharded {
     /// Number of shards required to recover the key
     recovery_threshold: u8,
 
-    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true)]
+    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true, conflicts_with = "swarm")]
     /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
     seed: Option<SeedType>,
 
-    #[structopt(long, default_value = NETTYPE_MAIN_STR)]
-    /// The network to generate the wallet (testnet/mainnet)
-    network: Network,
+    #[structopt(long, conflicts_with = "swarm")]
+    /// The network to generate the wallet (testnet/mainnet) [default: mainnet]
+    network: Option<Network>,
 
-    #[structopt(long, default_value = KEYTYPE_ED25519_STR)]
-    /// The type of key to generate (ecc_compact/ed25519)
-    key_type: KeyType,
+    #[structopt(long, conflicts_with = "swarm")]
+    /// The type of key to generate (ecc_compact/ed25519) [default: ed25519]
+    key_type: Option<KeyType>,
+
+    #[structopt(long)]
+    /// Import a swarm_key file from a miner, gateway, validator, or other
+    /// blockchain actor.
+    swarm: Option<PathBuf>,
 }
 
 impl Cmd {
@@ -86,19 +96,26 @@ impl Basic {
             None => None,
         };
         let password = get_password(true)?;
-        let tag = KeyTag {
-            network: self.network,
-            key_type: self.key_type,
-        };
 
-        let wallet = Wallet::builder()
+        let mut builder = Wallet::builder()
             .output(&self.output)
             .password(&password)
-            .key_tag(&tag)
-            .force(self.force)
-            .seed_type(self.seed.to_owned())
-            .seed_words(seed_words)
-            .create()?;
+            .force(self.force);
+
+        builder = match (self.network, self.key_type, &self.swarm) {
+            (_, _, Some(swarm)) => builder.from_swarm(swarm.to_path_buf()),
+            (network, key_type, None) => {
+                let tag = KeyTag {
+                    network: network.unwrap_or(Network::MainNet),
+                    key_type: key_type.unwrap_or(KeyType::Ed25519),
+                };
+                builder
+                    .key_tag(&tag)
+                    .seed_type(self.seed.to_owned())
+                    .seed_words(seed_words)
+            }
+        };
+        let wallet = builder.create()?;
 
         verify::print_result(
             &wallet,
@@ -116,24 +133,33 @@ impl Sharded {
             None => None,
         };
         let password = get_password(true)?;
-        let tag = KeyTag {
-            network: self.network,
-            key_type: self.key_type,
-        };
+
         let shard_config = ShardConfig {
             key_share_count: self.key_share_count,
             recovery_threshold: self.recovery_threshold,
         };
 
-        let wallet = Wallet::builder()
+        let mut builder = Wallet::builder()
             .output(&self.output)
             .password(&password)
-            .key_tag(&tag)
             .force(self.force)
-            .seed_type(self.seed.to_owned())
-            .seed_words(seed_words)
-            .shard(Some(shard_config))
-            .create()?;
+            .shard(Some(shard_config));
+
+        builder = match (self.network, self.key_type, &self.swarm) {
+            (_, _, Some(swarm)) => builder.from_swarm(swarm.to_path_buf()),
+            (network, key_type, None) => {
+                let tag = KeyTag {
+                    network: network.unwrap_or(Network::MainNet),
+                    key_type: key_type.unwrap_or(KeyType::Ed25519),
+                };
+                builder
+                    .key_tag(&tag)
+                    .seed_type(self.seed.to_owned())
+                    .seed_words(seed_words)
+            }
+        };
+
+        let wallet = builder.create()?;
 
         verify::print_result(
             &wallet,

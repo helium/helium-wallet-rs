@@ -542,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn keypair_from_swarm() {
+    fn keypair_from_ecc_compact_swarm() {
         use crate::keypair::{KeyType, Network};
 
         let mut swarm_key: &[u8] = &[
@@ -566,24 +566,60 @@ mod tests {
             // End Y-coordinate
             // End public key
         ];
-        let from_swarm = Keypair::read(&mut swarm_key).unwrap();
 
-        let seed_words: Vec<String> = [
+        let seed_words = [
             "squeeze", "shoot", "lecture", "leader", "season", "devote", "pen", "dwarf", "ready",
             "once", "record", "icon", "friend", "theme", "giraffe", "road", "upgrade", "oblige",
             "business", "false", "mouse", "used", "prize", "foster",
-        ]
-        .iter()
-        .map(|&s| s.to_owned())
-        .collect();
+        ];
 
         let tag = KeyTag {
             key_type: KeyType::EccCompact,
             network: Network::MainNet,
         };
 
-        let from_seed = gen_keypair(tag, Some(seed_words), Some(&SeedType::Bip39)).unwrap();
+        swarm_keypair_test(&mut swarm_key, seed_words, tag)
+    }
 
+    #[test]
+    fn keypair_from_ed25519_testnet_swarm() {
+        use crate::keypair::{KeyType, Network};
+
+        let mut swarm_key: &[u8] = &[
+            0x11, // <- Type/Network: ed25519/testnet
+            // Private key
+            0xE6, 0xAB, 0x3A, 0x58, 0x3C, 0x6F, 0x7B, 0xDE, 0x59, 0x9B, 0xC9, 0x07, 0x2E, 0xE6,
+            0xA2, 0xED, 0xA4, 0xFC, 0xF0, 0x81, 0x0E, 0xC7, 0x26, 0x9B, 0x98, 0xC8, 0xD3, 0x6A,
+            0xBA, 0x67, 0xF5, 0x81, 0x04, 0xF1, 0x88, 0x52, 0x62, 0x64, 0x3F, 0x12, 0xB7, 0x5F,
+            0x75, 0x3B, 0x0F, 0x6A, 0xD9, 0xB5, 0x83, 0xCE, 0xE0, 0x50, 0xC9, 0xA1, 0xEE, 0xBA,
+            0x20, 0x14, 0x63, 0xF0, 0x3B, 0xB1, 0xFE, 0x13,
+            // End private key
+            // Begin public key
+            0x04, 0xF1, 0x88, 0x52, 0x62, 0x64, 0x3F, 0x12, 0xB7, 0x5F, 0x75, 0x3B, 0x0F, 0x6A,
+            0xD9, 0xB5, 0x83, 0xCE, 0xE0, 0x50, 0xC9, 0xA1, 0xEE, 0xBA, 0x20, 0x14, 0x63, 0xF0,
+            0x3B, 0xB1, 0xFE, 0x13,
+            // End public key
+        ];
+
+        let seed_words = [
+            "trade", "flush", "noodle", "juice", "waste", "upset", "grid", "junior", "already",
+            "jaguar", "post", "swap", "exist", "joke", "aerobic", "suggest", "charge", "system",
+            "cram", "plug", "produce", "crop", "stock", "couple",
+        ];
+
+        let tag = KeyTag {
+            key_type: KeyType::Ed25519,
+            network: Network::TestNet,
+        };
+
+        swarm_keypair_test(&mut swarm_key, seed_words, tag)
+    }
+
+    fn swarm_keypair_test(swarm_key_bytes: &mut &[u8], seed_words: [&str; 24], key_type: KeyTag) {
+        let seed_words_vec = seed_words.iter().map(|&s| s.to_owned()).collect();
+        let from_swarm = Keypair::read(swarm_key_bytes).unwrap();
+        let from_seed =
+            gen_keypair(key_type, Some(seed_words_vec), Some(&SeedType::Bip39)).unwrap();
         assert_eq!(from_seed, from_swarm);
     }
 }

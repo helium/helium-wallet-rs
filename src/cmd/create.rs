@@ -106,8 +106,8 @@ impl Basic {
             (_, _, Some(swarm)) => builder.from_swarm(swarm.to_path_buf()),
             (network, key_type, None) => {
                 let tag = KeyTag {
-                    network: network.unwrap_or(Network::MainNet),
-                    key_type: key_type.unwrap_or(KeyType::Ed25519),
+                    network: network.unwrap_or_default(),
+                    key_type: key_type.unwrap_or_default(),
                 };
                 builder
                     .key_tag(&tag)

@@ -342,6 +342,7 @@ mod tests {
             payee: payee.public_key().to_vec(),
             memo: 0,
             amount: 10_000,
+            max: false,
         };
         let txn = BlockchainTxnPaymentV2 {
             payer: payer.public_key().to_vec(),

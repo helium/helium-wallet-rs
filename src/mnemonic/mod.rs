@@ -102,7 +102,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
     let mut entropy_bytes = [0u8; 32];
     let valid_checksum = if words.len() == 12 {
         // Duplicate entropy bits into the first half and last half of the final
-        // byte array so we can always return an 256 bits (32 bytes) of entropy.
+        // byte array so we can always return 256 bits (32 bytes) of entropy.
         // Keep entropy_half instead of doing this inline so we can calculate the
         // checksum.
         let mut entropy_half = [0u8; 16];

@@ -233,11 +233,14 @@ pub struct Builder {
     seed_words: Option<Vec<String>>,
 
     /// The KeyTag (network and key type) to use for this wallet
-    key_tag: KeyTag,
+    key_tag: Option<KeyTag>,
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
     shard: Option<ShardConfig>,
+
+    /// Optional swarm file to import instead of generating from scratch.
+    swarm_input: Option<PathBuf>,
 }
 
 impl Builder {
@@ -249,13 +252,14 @@ impl Builder {
             force: false,
             seed_type: None,
             seed_words: None,
-            key_tag: Default::default(),
+            key_tag: None,
             shard: None,
+            swarm_input: None,
         }
     }
 
     /// Sets the output file for the wallet.
-    /// Defaults to 'main.key'
+    /// Defaults to 'wallet.key'
     pub fn output(mut self, path: &Path) -> Builder {
         self.output = path.to_path_buf();
         self
@@ -299,7 +303,7 @@ impl Builder {
     /// The type of key to generate (ecc_compact/ed25519)
     /// Defaults to ed25519
     pub fn key_tag(mut self, key_tag: &KeyTag) -> Builder {
-        self.key_tag = *key_tag;
+        self.key_tag = Some(*key_tag);
         self
     }
 
@@ -310,9 +314,21 @@ impl Builder {
         self
     }
 
+    /// Load an Erlang-based node swarm key.
+    pub fn from_swarm(mut self, path: PathBuf) -> Builder {
+        self.swarm_input = Some(path);
+        self
+    }
+
     /// Creates a new wallet
     pub fn create(self) -> Result<Wallet> {
-        let keypair = gen_keypair(self.key_tag, self.seed_words, self.seed_type.as_ref())?;
+        let keypair = match (self.swarm_input, self.key_tag, self.seed_type) {
+            (Some(swarm_input_path), None, None) =>
+                load_keypair_from_swarm(&swarm_input_path)?,
+            (None, key_tag_opt, seed_type_opt) =>
+                gen_keypair(key_tag_opt.unwrap_or_default(), self.seed_words, seed_type_opt.as_ref())?,
+            (Some(_), _, _) => return Err(anyhow!("Can't import from swarm key and also set key type, network, or seed words at the same time."))
+        };
 
         let wallet = if let Some(shard_config) = &self.shard {
             let format = format::Sharded {
@@ -374,6 +390,11 @@ fn gen_keypair(
         (None, None) => Ok(Keypair::generate(tag)),
         _ => bail!("Invalid parameters in gen_keypair(). Report this to the development team."),
     }
+}
+
+fn load_keypair_from_swarm(filename: &Path) -> Result<Keypair> {
+    let mut stream = fs::OpenOptions::new().read(true).open(filename)?;
+    Keypair::read(&mut stream)
 }
 
 fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
@@ -518,5 +539,87 @@ mod tests {
             .expect("wallet creation");
         let to_keypair = wallet.decrypt(password).expect("wallet to keypair");
         assert_eq!(from_keypair, to_keypair);
+    }
+
+    #[test]
+    fn keypair_from_ecc_compact_swarm() {
+        use crate::keypair::{KeyType, Network};
+
+        let mut swarm_key: &[u8] = &[
+            0x00, // <- Type/Network: ecc_compact/mainnet
+            // Private exponent
+            0xd3, 0x98, 0xd1, 0xfc, 0x3f, 0x4c, 0x22, 0x79, 0xa8, 0x9a, 0x25, 0xb2, 0xd3, 0x52,
+            0xcf, 0x38, 0x25, 0xcf, 0xc0, 0x18, 0x8d, 0xd7, 0xee, 0xb3, 0x04, 0x7c, 0x29, 0x29,
+            0x0b, 0xdf, 0xaa, 0xd2,
+            // End private exponent
+            // Begin public key
+            0x04, // <- ECC Point tag: Full X/Y pair
+            // Begin X-coordinate
+            0x33, 0x4b, 0xb9, 0x5a, 0x68, 0x15, 0x4a, 0x74, 0xed, 0xf6, 0x51, 0x81, 0x6b, 0xd5,
+            0x56, 0x11, 0xb5, 0xba, 0x85, 0x04, 0x3f, 0xbd, 0x20, 0xa3, 0x74, 0xa3, 0x83, 0x1b,
+            0x83, 0x98, 0x04, 0x35,
+            // End X-coordinate
+            // Begin Y-coordinate
+            0x2e, 0x7d, 0xcd, 0x51, 0xa1, 0x90, 0x92, 0x63, 0x77, 0x9e, 0x4d, 0x0c, 0x6d, 0xb5,
+            0x2e, 0x23, 0x2c, 0x9b, 0xdb, 0x64, 0xe1, 0x94, 0x24, 0x08, 0x99, 0x1c, 0x4b, 0x29,
+            0xac, 0xd7, 0x6c, 0xce,
+            // End Y-coordinate
+            // End public key
+        ];
+
+        let seed_words = [
+            "squeeze", "shoot", "lecture", "leader", "season", "devote", "pen", "dwarf", "ready",
+            "once", "record", "icon", "friend", "theme", "giraffe", "road", "upgrade", "oblige",
+            "business", "false", "mouse", "used", "prize", "foster",
+        ];
+
+        let tag = KeyTag {
+            key_type: KeyType::EccCompact,
+            network: Network::MainNet,
+        };
+
+        swarm_keypair_test(&mut swarm_key, seed_words, tag)
+    }
+
+    #[test]
+    fn keypair_from_ed25519_testnet_swarm() {
+        use crate::keypair::{KeyType, Network};
+
+        let mut swarm_key: &[u8] = &[
+            0x11, // <- Type/Network: ed25519/testnet
+            // Private key
+            0xE6, 0xAB, 0x3A, 0x58, 0x3C, 0x6F, 0x7B, 0xDE, 0x59, 0x9B, 0xC9, 0x07, 0x2E, 0xE6,
+            0xA2, 0xED, 0xA4, 0xFC, 0xF0, 0x81, 0x0E, 0xC7, 0x26, 0x9B, 0x98, 0xC8, 0xD3, 0x6A,
+            0xBA, 0x67, 0xF5, 0x81, 0x04, 0xF1, 0x88, 0x52, 0x62, 0x64, 0x3F, 0x12, 0xB7, 0x5F,
+            0x75, 0x3B, 0x0F, 0x6A, 0xD9, 0xB5, 0x83, 0xCE, 0xE0, 0x50, 0xC9, 0xA1, 0xEE, 0xBA,
+            0x20, 0x14, 0x63, 0xF0, 0x3B, 0xB1, 0xFE, 0x13,
+            // End private key
+            // Begin public key
+            0x04, 0xF1, 0x88, 0x52, 0x62, 0x64, 0x3F, 0x12, 0xB7, 0x5F, 0x75, 0x3B, 0x0F, 0x6A,
+            0xD9, 0xB5, 0x83, 0xCE, 0xE0, 0x50, 0xC9, 0xA1, 0xEE, 0xBA, 0x20, 0x14, 0x63, 0xF0,
+            0x3B, 0xB1, 0xFE, 0x13,
+            // End public key
+        ];
+
+        let seed_words = [
+            "trade", "flush", "noodle", "juice", "waste", "upset", "grid", "junior", "already",
+            "jaguar", "post", "swap", "exist", "joke", "aerobic", "suggest", "charge", "system",
+            "cram", "plug", "produce", "crop", "stock", "couple",
+        ];
+
+        let tag = KeyTag {
+            key_type: KeyType::Ed25519,
+            network: Network::TestNet,
+        };
+
+        swarm_keypair_test(&mut swarm_key, seed_words, tag)
+    }
+
+    fn swarm_keypair_test(swarm_key_bytes: &mut &[u8], seed_words: [&str; 24], key_type: KeyTag) {
+        let seed_words_vec = seed_words.iter().map(|&s| s.to_owned()).collect();
+        let from_swarm = Keypair::read(swarm_key_bytes).unwrap();
+        let from_seed =
+            gen_keypair(key_type, Some(seed_words_vec), Some(&SeedType::Bip39)).unwrap();
+        assert_eq!(from_seed, from_swarm);
     }
 }

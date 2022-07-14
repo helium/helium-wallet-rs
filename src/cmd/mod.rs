@@ -230,8 +230,11 @@ pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
     Ok(())
 }
 
-pub fn print_table(table: &prettytable::Table) -> Result {
+pub fn print_table(table: &prettytable::Table, footnote: Option<&String>) -> Result {
     table.printstd();
+    if let Some(f) = footnote {
+        println!("{}", f);
+    }
     Ok(())
 }
 

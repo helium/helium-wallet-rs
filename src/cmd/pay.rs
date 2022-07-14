@@ -170,7 +170,7 @@ fn print_txn(
                     Memo::from(payment.memo).to_string(),
                 ]);
             }
-            print_table(&table)?;
+            print_table(&table, None)?;
 
             ptable!(
                 ["Key", "Value"],

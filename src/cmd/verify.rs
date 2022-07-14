@@ -25,6 +25,12 @@ pub fn print_result(
         .as_ref()
         .map_or(Some(vec![]), |dw| dw.phrase().ok());
 
+    let phrase_footnote = phrase.as_deref()
+                                .filter(|p| p.len() == 12)
+                                .map(|_x| String::from("* This 12-word phrase is output with bip39-compliant words even \n\
+                                                          if they were once generated via mobile app. The last word may \n\
+                                                          be different."));
+
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
@@ -39,9 +45,13 @@ pub fn print_result(
                 for segment in phrase.chunks(4) {
                     phrase_table.add_row(Row::new(segment.iter().map(|s| Cell::new(s)).collect()));
                 }
-                table.add_row(row!["Phrase", phrase_table]);
+                if phrase_footnote.is_some() {
+                    table.add_row(row!["Phrase *", phrase_table]);
+                } else {
+                    table.add_row(row!["Phrase", phrase_table]);
+                }
             }
-            print_table(&table)
+            print_table(&table, phrase_footnote.as_ref())
         }
         OutputFormat::Json => {
             let mut table = json!({

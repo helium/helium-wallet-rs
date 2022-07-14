@@ -70,7 +70,7 @@ fn print_results(
                     }
                 };
             }
-            print_table(&table)
+            print_table(&table, None)
         }
         OutputFormat::Json => {
             let mut table = Vec::with_capacity(results.len());

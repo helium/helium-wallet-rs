@@ -43,7 +43,7 @@ fn print_public_key(public_key: &PublicKey, format: OutputFormat) -> Result {
             table.add_row(row!["Address", public_key.to_string()]);
             table.add_row(row!["Network", public_key.key_tag().network]);
             table.add_row(row!["Type", public_key.key_tag().key_type]);
-            print_table(&table)
+            print_table(&table, None)
         }
         OutputFormat::Json => {
             let table = json!({
@@ -68,7 +68,7 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             table.add_row(row!["Balance", account.balance]);
             table.add_row(row!["DC Balance", account.dc_balance]);
             table.add_row(row!["Securities Balance", account.sec_balance]);
-            print_table(&table)
+            print_table(&table, None)
         }
         OutputFormat::Json => {
             let table = json!({

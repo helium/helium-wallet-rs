@@ -24,7 +24,7 @@ pub enum Cmd {
 #[derive(Debug, StructOpt)]
 pub struct One {
     #[structopt(flatten)]
-    validator: Validator,
+    validator: StakeValidator,
     /// Manually set fee to pay for the transaction(s)
     #[structopt(long)]
     fee: Option<u64>,
@@ -60,7 +60,7 @@ pub struct Multi {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let validators = self.collect_validators()?;
+        let validators = self.collect_stake_validators()?;
 
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
@@ -93,7 +93,7 @@ impl Cmd {
         &self,
         keypair: &Keypair,
         fee_config: &Option<TxnFeeConfig>,
-        validator: &Validator,
+        validator: &StakeValidator,
     ) -> Result<BlockchainTxnStakeValidatorV1> {
         let mut txn = BlockchainTxnStakeValidatorV1 {
             address: validator.address.to_vec(),
@@ -111,12 +111,12 @@ impl Cmd {
         Ok(txn)
     }
 
-    fn collect_validators(&self) -> Result<Vec<Validator>> {
+    fn collect_stake_validators(&self) -> Result<Vec<StakeValidator>> {
         match &self {
             Self::One(one) => Ok(vec![one.validator.clone()]),
             Self::Multi(multi) => {
                 let file = std::fs::File::open(multi.path.clone())?;
-                let validators: Vec<Validator> = serde_json::from_reader(file)?;
+                let validators: Vec<StakeValidator> = serde_json::from_reader(file)?;
                 Ok(validators)
             }
         }
@@ -172,7 +172,7 @@ fn print_txn(
 }
 
 #[derive(Debug, Deserialize, StructOpt, Clone)]
-pub struct Validator {
+pub struct StakeValidator {
     /// The validator address to stake
     address: PublicKey,
     /// The amount of HNT to stake

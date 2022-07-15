@@ -152,7 +152,7 @@ fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<PublicKey>) -> Resu
     Ok(addresses)
 }
 
-fn get_seed_words(seed_type: &mnemonic::SeedType) -> Result<Vec<String>> {
+fn get_seed_words() -> Result<Vec<String>> {
     let split_str = |s: &String| s.split_whitespace().map(|w| w.to_string()).collect();
     match env::var("HELIUM_WALLET_SEED_WORDS") {
         Ok(word_string) => Ok(split_str(&word_string)),
@@ -162,7 +162,7 @@ fn get_seed_words(seed_type: &mnemonic::SeedType) -> Result<Vec<String>> {
                 .with_prompt("Space separated seed words")
                 .validate_with(|v: &String| {
                     let word_list = split_str(v);
-                    match mnemonic::mnemonic_to_entropy(word_list, seed_type) {
+                    match mnemonic::mnemonic_to_entropy(word_list) {
                         Ok(_) => Ok(()),
                         Err(err) => Err(err),
                     }
@@ -230,8 +230,11 @@ pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
     Ok(())
 }
 
-pub fn print_table(table: &prettytable::Table) -> Result {
+pub fn print_table(table: &prettytable::Table, footnote: Option<&String>) -> Result {
     table.printstd();
+    if let Some(f) = footnote {
+        println!("{}", f);
+    }
     Ok(())
 }
 

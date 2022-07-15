@@ -2,21 +2,12 @@ use crate::result::{bail, Result};
 
 use bitvec::prelude::*;
 use lazy_static::lazy_static;
-use sha2::{digest::generic_array::GenericArray, Digest, Sha256};
+use sha2::{Digest, Sha256};
 use std::ops::Index;
-use structopt::{clap::arg_enum, StructOpt};
 
 lazy_static! {
     static ref WORDS_ENGLISH: Vec<&'static str> =
         include_str!("wordlists/english.txt").lines().collect();
-}
-
-arg_enum! {
-    #[derive( Debug, Clone, Copy, StructOpt)]
-    pub enum SeedType {
-        Bip39,
-        Mobile,
-    }
 }
 
 pub enum Language {
@@ -54,27 +45,14 @@ impl Index<usize> for Language {
 
 /// Converts a 12 or 24 word mnemonic to entropy that can be used to
 /// generate a keypair
-pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[u8; 32]> {
+pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32]> {
     const MAX_ENTROPY_BITS: usize = 256;
     const BITS_PER_WORD: usize = 11;
     const CHECKSUM_BITS_PER_WORD: usize = 3;
 
-    match seed_type {
-        SeedType::Bip39 => {
-            if words.len() != 12 && words.len() != 24 {
-                bail!(
-                    "Invalid number of BIP39 seed words. Only 12 or 24 word phrases are supported."
-                );
-            }
-        }
-        SeedType::Mobile => {
-            if words.len() != 12 {
-                bail!(
-                    "Invalid number of mobile app seed words. Only 12 word phrases are supported."
-                );
-            }
-        }
-    };
+    if words.len() != 12 && words.len() != 24 {
+        bail!("Invalid number of seed words. Only 12 or 24 word phrases are supported.");
+    }
 
     // Build of word_bits in an accumulator by iterating thru the word vector, looking
     // up the index of each word. For each index, copy only the least-significant
@@ -112,25 +90,18 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
         entropy_bytes[..16].copy_from_slice(&entropy_half);
         entropy_bytes[16..].copy_from_slice(&entropy_half);
 
-        // If this is supposed to be a BIP39 12-word phrase, verify the
-        // checksum. Otherwise assume it is a phrase from the mobile app.
-        // The mobile wallet does not calculate the checksum bits right so
-        // its checksums are always 0
-        match seed_type {
-            SeedType::Bip39 => calc_checksum_128(entropy_half),
-            SeedType::Mobile => 0,
-        }
+        calc_checksum_128(entropy_half)
     } else {
         entropy_bytes
             .view_bits_mut::<Msb0>()
             .copy_from_bitslice(entropy_bits);
 
-        // 24-word phrases can't be from the mobile wallet so it should have
-        // a valid BIP39 checksum.
         calc_checksum_256(entropy_bytes)
     };
 
-    if checksum_byte != valid_checksum {
+    // Some wallet apps have produced phrases with a checksum of '0'
+    // so allow those for backwards compatibility.
+    if (checksum_byte != valid_checksum) && (checksum_byte != 0) {
         bail!("Checksum failed. Invalid seed phrase.");
     }
 
@@ -139,7 +110,7 @@ pub fn mnemonic_to_entropy(words: Vec<String>, seed_type: &SeedType) -> Result<[
 
 /// Given some entropy of the proper length, return a mnemonic phrase.
 /// Inspired by the bip39 crate. https://docs.rs/bip39/1.0.1/bip39/index.html
-pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<String>> {
+pub fn entropy_to_mnemonic(entropy: &[u8]) -> Result<Vec<String>> {
     const MAX_ENTROPY_BITS: usize = 256;
     const MIN_ENTROPY_BITS: usize = 128;
     const ENTROPY_MULTIPLE: usize = 32;
@@ -162,10 +133,7 @@ pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<S
 
     // For every 32-bits of entropy, add one bit of checksum to
     // the end of word_bits.
-    let checksum = match seed_type {
-        SeedType::Bip39 => Sha256::digest(working_entropy),
-        SeedType::Mobile => GenericArray::clone_from_slice(&[0u8; 32]),
-    };
+    let checksum = Sha256::digest(working_entropy);
 
     let check_bits = checksum.view_bits::<Msb0>();
     word_bits.extend_from_bitslice(&check_bits[..working_bits / ENTROPY_MULTIPLE]);
@@ -208,7 +176,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, &SeedType::Mobile).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -221,23 +189,40 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, &SeedType::Mobile).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
     #[test]
     fn encode_mobile_12_words() {
-        // The words and entropy here were generated as follows: from the JS mobile-wallet implementation
-        let entropy = bs58::decode("3RrA1FDa6mdw5JwKbUxEbZbMcJgSyWjhNwxsbX5pSos8")
-            .into_vec()
-            .expect("decoded entropy");
+        // This test starts with zero-checksum 12 word phrase from the helium-hotspot-app, turns it into
+        // entropy, then decodes that entropy back into a 12 word phrase with a proper checksum.
+        let hotspot_app_word_list =
+            "catch poet clog intact scare jacket throw palm illegal buyer allow figure"
+                .split_whitespace()
+                .map(|w| w.to_string())
+                .collect();
+        let bip39_words_list: Vec<String> =
+            "catch poet clog intact scare jacket throw palm illegal buyer allow firm"
+                .split_whitespace()
+                .map(|w| w.to_string())
+                .collect();
 
-        let expected_words =
-            "catch poet clog intact scare jacket throw palm illegal buyer allow figure";
-        let words = entropy_to_mnemonic(&entropy, &SeedType::Mobile)
-            .expect("mnemonic")
-            .join(" ");
-        assert_eq!(expected_words, words);
+        let hotspot_app_entropy =
+            mnemonic_to_entropy(hotspot_app_word_list).expect("hotspot_app_entropy");
+        let bip39_entropy = mnemonic_to_entropy(bip39_words_list.to_vec()).expect("bip39_entropy");
+
+        let expected_entropy = bs58::decode("3RrA1FDa6mdw5JwKbUxEbZbMcJgSyWjhNwxsbX5pSos8")
+            .into_vec()
+            .expect("expected_entropy");
+
+        assert_eq!(expected_entropy, hotspot_app_entropy);
+        assert_eq!(expected_entropy, bip39_entropy);
+
+        let decoded_hotspot_word_list =
+            entropy_to_mnemonic(&hotspot_app_entropy).expect("decoded_hotspot_words");
+
+        assert_eq!(bip39_words_list, decoded_hotspot_word_list);
     }
 
     #[test]
@@ -255,7 +240,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -274,7 +259,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -287,9 +272,7 @@ mod tests {
 
         let expected_words =
             "ritual ice harbor gas modify seed control solve burden people stay million";
-        let words = entropy_to_mnemonic(&entropy, &SeedType::Bip39)
-            .expect("mnemonic")
-            .join(" ");
+        let words = entropy_to_mnemonic(&entropy).expect("mnemonic").join(" ");
         assert_eq!(expected_words, words);
     }
 
@@ -307,7 +290,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -325,7 +308,7 @@ mod tests {
             .expect("decoded entropy");
 
         let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list, &SeedType::Bip39).expect("entropy");
+        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -337,9 +320,7 @@ mod tests {
             .expect("decoded entropy");
 
         let expected_words = "pelican sphere tackle click broken hurt fork nephew choice seven announce moment tobacco tribe topple pause october drama sock erase news glove okay bubble";
-        let words = entropy_to_mnemonic(&entropy, &SeedType::Bip39)
-            .expect("mnemonic")
-            .join(" ");
+        let words = entropy_to_mnemonic(&entropy).expect("mnemonic").join(" ");
         assert_eq!(expected_words, words);
     }
 }

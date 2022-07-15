@@ -1,38 +1,35 @@
-use crate::{cmd::*, keypair::Keypair, mnemonic::SeedType, result::Result, wallet::Wallet};
+use crate::{cmd::*, keypair::Keypair, result::Result, wallet::Wallet};
 use prettytable::{Cell, Row, Table};
 use serde_json::json;
 
 /// Verify an encypted wallet
 #[derive(Debug, StructOpt)]
-pub struct Cmd {
-    #[structopt(long, possible_values = &["bip39", "mobile"], case_insensitive = true)]
-    /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
-    seed: Option<SeedType>,
-}
+pub struct Cmd {}
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let decryped_wallet = wallet.decrypt(password.as_bytes());
-        print_result(&wallet, &decryped_wallet, self.seed.as_ref(), opts.format)
+        print_result(&wallet, &decryped_wallet, opts.format)
     }
 }
 
 pub fn print_result(
     wallet: &Wallet,
     decrypted_wallet: &Result<Keypair>,
-    seed_type: Option<&SeedType>,
     format: OutputFormat,
 ) -> Result {
     let address = wallet.address().unwrap_or_else(|_| "unknown".to_string());
-    let phrase = seed_type.map(|seed_type| {
-        decrypted_wallet
-            .as_ref()
-            .map_or(Ok(vec![]), |decrypted_wallet| {
-                decrypted_wallet.phrase(seed_type)
-            })
-    });
+    let phrase = decrypted_wallet
+        .as_ref()
+        .map_or(Some(vec![]), |dw| dw.phrase().ok());
+
+    let phrase_footnote = phrase.as_deref()
+                                .filter(|p| p.len() == 12)
+                                .map(|_x| String::from("* This 12-word phrase is output with bip39-compliant words even \n\
+                                                          if they were once generated via mobile app. The last word may \n\
+                                                          be different."));
 
     match format {
         OutputFormat::Table => {
@@ -45,12 +42,16 @@ pub fn print_result(
             if let Some(phrase) = phrase {
                 let mut phrase_table = Table::new();
                 phrase_table.set_format(*prettytable::format::consts::FORMAT_CLEAN);
-                for segment in phrase?.chunks(4) {
+                for segment in phrase.chunks(4) {
                     phrase_table.add_row(Row::new(segment.iter().map(|s| Cell::new(s)).collect()));
                 }
-                table.add_row(row!["Phrase", phrase_table]);
+                if phrase_footnote.is_some() {
+                    table.add_row(row!["Phrase *", phrase_table]);
+                } else {
+                    table.add_row(row!["Phrase", phrase_table]);
+                }
             }
-            print_table(&table)
+            print_table(&table, phrase_footnote.as_ref())
         }
         OutputFormat::Json => {
             let mut table = json!({
@@ -60,7 +61,7 @@ pub fn print_result(
                 "pwhash": wallet.pwhash().to_string()
             });
             if let Some(phrase) = phrase {
-                table["phrase"] = serde_json::Value::String(phrase?.join(" "));
+                table["phrase"] = serde_json::Value::String(phrase.join(" "));
             }
             print_json(&table)
         }

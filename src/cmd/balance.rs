@@ -64,7 +64,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                     Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
                 };
             }
-            print_table(&table)
+            print_table(&table, None)
         }
         OutputFormat::Json => {
             let mut rows = Vec::with_capacity(results.len());

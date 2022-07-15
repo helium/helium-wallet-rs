@@ -12,23 +12,23 @@ use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Debug, Deserialize)]
-pub enum Token {
+pub enum TokenInput {
     Hnt,
     Iot,
     Mobile,
     Hst,
 }
 
-impl std::str::FromStr for Token {
+impl std::str::FromStr for TokenInput {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
         let s = s.to_lowercase();
         match s.as_str() {
-            "hnt" => Ok(Token::Hnt),
-            "iot" => Ok(Token::Iot),
-            "mobile" => Ok(Token::Mobile),
-            "hst" => Ok(Token::Hst),
+            "hnt" => Ok(TokenInput::Hnt),
+            "iot" => Ok(TokenInput::Iot),
+            "mobile" => Ok(TokenInput::Mobile),
+            "hst" => Ok(TokenInput::Hst),
             _ => Err(anyhow::anyhow!("Invalid token input {s}")),
         }
     }
@@ -134,16 +134,16 @@ impl Cmd {
         match &self {
             Self::One(one) => Ok(vec![Payment {
                 payee: one.payee.address.to_vec(),
-                // we safely create u64 from the amount of type Generic
+                // we safely create u64 from the amount of type Token
                 // only because each token_type has the same amount of decimals
                 amount: u64::from(one.payee.amount),
                 memo: u64::from(&one.payee.memo),
                 max: false,
                 token_type: match one.payee.token {
-                    Token::Hnt => BlockchainTokenTypeV1::Hnt.into(),
-                    Token::Hst => BlockchainTokenTypeV1::Hst.into(),
-                    Token::Iot => BlockchainTokenTypeV1::Iot.into(),
-                    Token::Mobile => BlockchainTokenTypeV1::Mobile.into(),
+                    TokenInput::Hnt => BlockchainTokenTypeV1::Hnt.into(),
+                    TokenInput::Hst => BlockchainTokenTypeV1::Hst.into(),
+                    TokenInput::Iot => BlockchainTokenTypeV1::Iot.into(),
+                    TokenInput::Mobile => BlockchainTokenTypeV1::Mobile.into(),
                 },
             }]),
             Self::Multi(multi) => {
@@ -153,16 +153,16 @@ impl Cmd {
                     .iter()
                     .map(|p| Payment {
                         payee: p.address.to_vec(),
-                        // we safely create u64 from the amount of type Generic
+                        // we safely create u64 from the amount of type Token
                         // only because each token_type has the same amount of decimals
                         amount: u64::from(p.amount),
                         memo: u64::from(&p.memo),
                         max: false,
                         token_type: match p.token {
-                            Token::Hnt => BlockchainTokenTypeV1::Hnt.into(),
-                            Token::Hst => BlockchainTokenTypeV1::Hst.into(),
-                            Token::Iot => BlockchainTokenTypeV1::Iot.into(),
-                            Token::Mobile => BlockchainTokenTypeV1::Mobile.into(),
+                            TokenInput::Hnt => BlockchainTokenTypeV1::Hnt.into(),
+                            TokenInput::Hst => BlockchainTokenTypeV1::Hst.into(),
+                            TokenInput::Iot => BlockchainTokenTypeV1::Iot.into(),
+                            TokenInput::Mobile => BlockchainTokenTypeV1::Mobile.into(),
                         },
                     })
                     .collect();
@@ -207,7 +207,7 @@ fn print_txn(
             for payment in txn.payments.clone() {
                 let token_type = BlockchainTokenTypeV1::from_i32(payment.token_type)
                     .expect("Invalid token_type found in transaction!");
-                let amount_decimal = Generic::from(payment.amount);
+                let amount_decimal = Token::from(payment.amount);
                 let amount_units = match token_type {
                     BlockchainTokenTypeV1::Hnt => "HNT",
                     BlockchainTokenTypeV1::Hst => "HST",
@@ -258,10 +258,10 @@ pub struct Payee {
     /// Address to send the tokens to.
     address: PublicKey,
     /// Amount of token to send
-    amount: Generic,
+    amount: Token,
     /// Type of token to send (hnt, iot, mobile, hst).
     #[structopt(default_value = "hnt")]
-    token: Token,
+    token: TokenInput,
     /// Memo field to include. Provide as a base64 encoded string
     #[serde(default)]
     #[structopt(long, default_value = "AAAAAAAAAAA=")]

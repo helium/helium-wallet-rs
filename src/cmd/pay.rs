@@ -134,6 +134,8 @@ impl Cmd {
         match &self {
             Self::One(one) => Ok(vec![Payment {
                 payee: one.payee.address.to_vec(),
+                // we safely create u64 from the amount of type Generic
+                // only because each token_type has the same amount of decimals
                 amount: u64::from(one.payee.amount),
                 memo: u64::from(&one.payee.memo),
                 max: false,
@@ -151,6 +153,8 @@ impl Cmd {
                     .iter()
                     .map(|p| Payment {
                         payee: p.address.to_vec(),
+                        // we safely create u64 from the amount of type Generic
+                        // only because each token_type has the same amount of decimals
                         amount: u64::from(p.amount),
                         memo: u64::from(&p.memo),
                         max: false,

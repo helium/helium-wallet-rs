@@ -47,10 +47,12 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
             table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
             table.set_titles(row![
                 "Address",
-                "Balance",
-                "Staked Balance",
+                "HNT Balance",
+                "Staked HNT Balance",
                 "Data Credits",
-                "Security Tokens"
+                "Security Tokens",
+                "IOT Balance",
+                "MOB Balance"
             ]);
             for (address, result) in results {
                 match result {
@@ -59,7 +61,9 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                         account.balance,
                         account.staked_balance,
                         account.dc_balance,
-                        account.sec_balance
+                        account.sec_balance,
+                        account.iot_balance,
+                        account.mobile_balance,
                     ]),
                     Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
                 };

@@ -6,9 +6,33 @@ use crate::{
     traits::{TxnEnvelope, TxnFee, TxnSign, B64},
 };
 use helium_api::accounts;
+use helium_proto::BlockchainTokenTypeV1;
 use prettytable::Table;
 use serde::Deserialize;
 use serde_json::json;
+
+#[derive(Debug, Deserialize)]
+pub enum Token {
+    Hnt,
+    Iot,
+    Mobile,
+    Hst,
+}
+
+impl std::str::FromStr for Token {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let s = s.to_lowercase();
+        match s.as_str() {
+            "hnt" => Ok(Token::Hnt),
+            "iot" => Ok(Token::Iot),
+            "mobile" => Ok(Token::Mobile),
+            "hst" => Ok(Token::Hst),
+            _ => Err(anyhow::anyhow!("Invalid token input {s}")),
+        }
+    }
+}
 
 #[derive(Debug, StructOpt)]
 /// Send one (or more) payments to given addresses.
@@ -113,6 +137,12 @@ impl Cmd {
                 amount: u64::from(one.payee.amount),
                 memo: u64::from(&one.payee.memo),
                 max: false,
+                token_type: match one.payee.token {
+                    Token::Hnt => BlockchainTokenTypeV1::Hnt.into(),
+                    Token::Hst => BlockchainTokenTypeV1::Hst.into(),
+                    Token::Iot => BlockchainTokenTypeV1::Iot.into(),
+                    Token::Mobile => BlockchainTokenTypeV1::Mobile.into(),
+                },
             }]),
             Self::Multi(multi) => {
                 let file = std::fs::File::open(multi.path.clone())?;
@@ -124,6 +154,12 @@ impl Cmd {
                         amount: u64::from(p.amount),
                         memo: u64::from(&p.memo),
                         max: false,
+                        token_type: match p.token {
+                            Token::Hnt => BlockchainTokenTypeV1::Hnt.into(),
+                            Token::Hst => BlockchainTokenTypeV1::Hst.into(),
+                            Token::Iot => BlockchainTokenTypeV1::Iot.into(),
+                            Token::Mobile => BlockchainTokenTypeV1::Mobile.into(),
+                        },
                     })
                     .collect();
                 Ok(payments)
@@ -162,11 +198,22 @@ fn print_txn(
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
-            table.add_row(row!["Payee", "Amount (HNT)", "Memo"]);
+
+            table.add_row(row!["Payee", "Amount", "Memo"]);
             for payment in txn.payments.clone() {
+                let token_type = BlockchainTokenTypeV1::from_i32(payment.token_type)
+                    .expect("Invalid token_type found in transaction!");
+                let amount_decimal = Generic::from(payment.amount);
+                let amount_units = match token_type {
+                    BlockchainTokenTypeV1::Hnt => "HNT",
+                    BlockchainTokenTypeV1::Hst => "HST",
+                    BlockchainTokenTypeV1::Iot => "IOT",
+                    BlockchainTokenTypeV1::Mobile => "MOB",
+                };
+
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
-                    Hnt::from(payment.amount),
+                    format!("{amount_decimal} {amount_units}"),
                     Memo::from(payment.memo).to_string(),
                 ]);
             }
@@ -206,8 +253,11 @@ fn print_txn(
 pub struct Payee {
     /// Address to send the tokens to.
     address: PublicKey,
-    /// Amount of HNT to send
-    amount: Hnt,
+    /// Amount of token to send
+    amount: Generic,
+    /// Type of token to send (hnt, iot, mobile, hst).
+    #[structopt(default_value = "hnt")]
+    token: Token,
     /// Memo field to include. Provide as a base64 encoded string
     #[serde(default)]
     #[structopt(long, default_value = "AAAAAAAAAAA=")]

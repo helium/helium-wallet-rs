@@ -14,7 +14,7 @@ use serde::Deserialize;
 /// be at least the current block height plus the chain cooldown period (as
 /// defined by a chain variable), and 5-10 blocks to allow for chain
 /// processing delays.
-/// 
+///
 /// Note that multiple staking transactions are submitted individually and not as a
 /// single transaction. Any failures will abort the remaining staking entries.
 pub enum Cmd {
@@ -53,7 +53,7 @@ pub struct One {
 ///         "stake": 10000
 ///     }
 /// ]
-/// 
+///
 /// If stake_release_height is not specified for a validator in this array, it will be taken from the command argument with the same name.
 pub struct Multi {
     /// File to read multiple stakes from
@@ -92,7 +92,9 @@ impl Cmd {
                     wallet.public_key.network
                 )
             }
-            let txn = self.mk_txn(&client, &keypair, &fee_config, &validator).await?;
+            let txn = self
+                .mk_txn(&client, &keypair, &fee_config, &validator)
+                .await?;
             let envelope = txn.in_envelope();
             let status = maybe_submit_txn(self.commit(), &client, &envelope).await?;
             print_txn(&envelope, &txn, &status, &opts.format)?
@@ -143,11 +145,17 @@ impl Cmd {
 
     fn collect_unstake_validators(&self) -> Result<Vec<UnstakeValidator>> {
         match &self {
-            Self::One(one) => Ok(vec![self.mk_unstake_validator(&one.validator, one.stake_release_height)?]),
+            Self::One(one) => {
+                Ok(vec![self.mk_unstake_validator(
+                    &one.validator,
+                    one.stake_release_height,
+                )?])
+            }
             Self::Multi(multi) => {
                 let file = std::fs::File::open(multi.path.clone())?;
                 let validators: Vec<UnstakeValidator> = serde_json::from_reader(file)?;
-                let validators = validators.iter()
+                let validators = validators
+                    .iter()
                     .map(|v| self.mk_unstake_validator(&v, multi.stake_release_height))
                     .collect::<Result<Vec<UnstakeValidator>>>()?;
                 Ok(validators)
@@ -155,7 +163,11 @@ impl Cmd {
         }
     }
 
-    fn mk_unstake_validator(&self, validator: &UnstakeValidator, stake_release_height: Option<u64>) -> Result<UnstakeValidator> {
+    fn mk_unstake_validator(
+        &self,
+        validator: &UnstakeValidator,
+        stake_release_height: Option<u64>,
+    ) -> Result<UnstakeValidator> {
         let mut validator = validator.clone();
         validator.stake_release_height = match validator.stake_release_height {
             Some(h) => Some(h),
@@ -166,7 +178,6 @@ impl Cmd {
         };
         Ok(validator)
     }
-
 
     fn commit(&self) -> bool {
         match &self {

@@ -11,29 +11,6 @@ use prettytable::Table;
 use serde::Deserialize;
 use serde_json::json;
 
-#[derive(Debug, Deserialize)]
-pub enum TokenInput {
-    Hnt,
-    Iot,
-    Mobile,
-    Hst,
-}
-
-impl std::str::FromStr for TokenInput {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        let s = s.to_lowercase();
-        match s.as_str() {
-            "hnt" => Ok(TokenInput::Hnt),
-            "iot" => Ok(TokenInput::Iot),
-            "mobile" => Ok(TokenInput::Mobile),
-            "hst" => Ok(TokenInput::Hst),
-            _ => Err(anyhow::anyhow!("Invalid token input {s}")),
-        }
-    }
-}
-
 #[derive(Debug, StructOpt)]
 /// Send one (or more) payments to given addresses.
 ///
@@ -266,4 +243,27 @@ pub struct Payee {
     #[serde(default)]
     #[structopt(long, default_value = "AAAAAAAAAAA=")]
     memo: Memo,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum TokenInput {
+    Hnt,
+    Iot,
+    Mobile,
+    Hst,
+}
+
+impl std::str::FromStr for TokenInput {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let s = s.to_lowercase();
+        match s.as_str() {
+            "hnt" => Ok(TokenInput::Hnt),
+            "iot" => Ok(TokenInput::Iot),
+            "mob" | "mobile" => Ok(TokenInput::Mobile),
+            "hst" => Ok(TokenInput::Hst),
+            _ => Err(anyhow::anyhow!("Invalid token input {s}")),
+        }
+    }
 }

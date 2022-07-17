@@ -19,9 +19,9 @@ use serde::Deserialize;
 /// single transaction. Any failures will abort the remaining staking entries.
 pub enum Cmd {
     /// Unstake a single validator
-    One(One),
+    One(Box<One>),
     /// Unstake multiple validators via file import
-    Multi(Multi),
+    Multi(Box<Multi>),
 }
 
 #[derive(Debug, StructOpt)]
@@ -156,7 +156,7 @@ impl Cmd {
                 let validators: Vec<UnstakeValidator> = serde_json::from_reader(file)?;
                 let validators = validators
                     .iter()
-                    .map(|v| self.mk_unstake_validator(&v, multi.stake_release_height))
+                    .map(|v| self.mk_unstake_validator(v, multi.stake_release_height))
                     .collect::<Result<Vec<UnstakeValidator>>>()?;
                 Ok(validators)
             }

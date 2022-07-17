@@ -48,7 +48,7 @@ pub struct Create {
 
 impl Create {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_password(false)?;
+        let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let wallet_key = keypair.public_key();

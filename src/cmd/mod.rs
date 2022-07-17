@@ -22,6 +22,7 @@ pub mod balance;
 pub mod burn;
 pub mod commit;
 pub mod create;
+pub mod export;
 pub mod hotspots;
 pub mod htlc;
 pub mod info;
@@ -94,19 +95,21 @@ fn load_wallet(files: Vec<PathBuf>) -> Result<Wallet> {
     Ok(first_wallet)
 }
 
-fn get_password(confirm: bool) -> std::io::Result<String> {
+fn get_wallet_password(confirm: bool) -> std::io::Result<String> {
     match env::var("HELIUM_WALLET_PASSWORD") {
         Ok(str) => Ok(str),
-        _ => {
-            use dialoguer::Password;
-            let mut builder = Password::new();
-            builder.with_prompt("Password");
-            if confirm {
-                builder.with_confirmation("Confirm password", "Passwords do not match");
-            };
-            builder.interact()
-        }
+        _ => get_password("Wallet Password", confirm),
     }
+}
+
+fn get_password(prompt: &str, confirm: bool) -> std::io::Result<String> {
+    use dialoguer::Password;
+    let mut builder = Password::new();
+    builder.with_prompt(prompt);
+    if confirm {
+        builder.with_confirmation("Confirm password", "Passwords do not match");
+    };
+    builder.interact()
 }
 
 const DEFAULT_TESTNET_BASE_URL: &str = "https://testnet-api.helium.wtf/v1";

@@ -1,7 +1,7 @@
 use helium_wallet::{
     cmd::{
-        balance, burn, commit, create, hotspots, htlc, info, multisig, oracle, oui, pay, request,
-        sign, upgrade, validators, vars, verify, Opts,
+        balance, burn, commit, create, export, hotspots, htlc, info, multisig, oracle, oui, pay,
+        request, sign, upgrade, validators, vars, verify, Opts,
     },
     result::Result,
 };
@@ -36,6 +36,7 @@ pub enum Cmd {
     Validators(validators::Cmd),
     Commit(commit::Cmd),
     Sign(sign::Cmd),
+    Export(export::Cmd),
 }
 
 #[tokio::main]
@@ -66,5 +67,6 @@ async fn run(cli: Cli) -> Result {
         Cmd::Validators(cmd) => cmd.run(cli.opts).await,
         Cmd::Commit(cmd) => cmd.run(cli.opts).await,
         Cmd::Sign(cmd) => cmd.run(cli.opts).await,
+        Cmd::Export(cmd) => cmd.run(cli.opts).await,
     }
 }

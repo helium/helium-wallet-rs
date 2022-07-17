@@ -35,7 +35,7 @@ impl Cmd {
             owner_signature: vec![],
         };
         txn.fee = txn.txn_fee(&get_txn_fees(&client).await?)?;
-        let password = get_password(false)?;
+        let password = get_wallet_password(false)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         txn.owner_signature = txn.sign(&keypair)?;
 

@@ -10,7 +10,7 @@ mod unstake;
 /// Commands for validators
 pub enum Cmd {
     /// Stake a validator with the given wallet as the owner.
-    Stake(stake::Cmd),
+    Stake(Box<stake::Cmd>),
     /// Unstake a validator
     Unstake(unstake::Cmd),
     /// Transfer a validator stake to a new validator and owner

@@ -1111,7 +1111,7 @@ dependencies = [
 [[package]]
 name = "helium-api"
 version = "3.2.2-dev"
-source = "git+https://github.com/helium/helium-api-rs?branch=lthiery/add-new-tokens#4ee9e3f671d056d6b99b87203cd75c016c03a629"
+source = "git+https://github.com/helium/helium-api-rs?branch=lthiery/add-new-tokens#6460e10952470dfba991cc219e547f44b6946862"
 dependencies = [
  "async-trait",
  "base64 0.12.3",

@@ -52,7 +52,7 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                 "Data Credits",
                 "Security Tokens",
                 "IOT Balance",
-                "MOB Balance"
+                "MOBILE Balance"
             ]);
             for (address, result) in results {
                 match result {

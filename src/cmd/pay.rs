@@ -42,21 +42,29 @@ pub struct One {
 
 #[derive(Debug, StructOpt)]
 /// The input file for multiple payments is expected to be json file with a list
-/// of payees, amounts, and optional memos. For example:
+/// of payees, amounts (in bones), token, and optional memos.
+///
+/// For example:
 ///
 /// [
 ///     {
 ///         "address": "<adddress1>",
-///         "amount": 1.6,
-///         "memo": "AAAAAAAAAAA="
+///         "amount": 160000000,
+///         "memo": "AAAAAAAAAAA=",
+///         "token": "Hnt",
 ///     },
 ///     {
 ///         "address": "<adddress2>",
-///         "amount": 0.5
+///         "amount": 50000000
+///         "token": "Mobile"
 ///     }
 /// ]
 ///
-/// Note that HNT only goes to 8 decimals of precision.
+/// Recall that all amounts given in bones are 10^8.
+/// That is to say, 1 HNT    = 100000000 bones
+///                 1 MOBILE = 100000000 Mbones
+///                 1 HST    = 100000000 Sbones
+///
 pub struct Multi {
     /// File to read multiple payments from.
     path: PathBuf,
@@ -189,7 +197,7 @@ fn print_txn(
                     BlockchainTokenTypeV1::Hnt => "HNT",
                     BlockchainTokenTypeV1::Hst => "HST",
                     BlockchainTokenTypeV1::Iot => "IOT",
-                    BlockchainTokenTypeV1::Mobile => "MOB",
+                    BlockchainTokenTypeV1::Mobile => "MOBILE",
                 };
 
                 table.add_row(row![

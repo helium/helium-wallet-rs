@@ -1110,11 +1110,12 @@ dependencies = [
 
 [[package]]
 name = "helium-api"
-version = "3.2.2-dev"
-source = "git+https://github.com/helium/helium-api-rs?branch=lthiery/add-new-tokens#6460e10952470dfba991cc219e547f44b6946862"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b65e73b392df563b29559c7ab573635906b4921d75d0a7fd6dc2f12303bb0de5"
 dependencies = [
  "async-trait",
- "base64 0.12.3",
+ "base64 0.13.0",
  "chrono",
  "futures",
  "reqwest",

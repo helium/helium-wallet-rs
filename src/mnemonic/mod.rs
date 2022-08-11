@@ -151,8 +151,7 @@ pub fn entropy_to_mnemonic(entropy: &[u8], seed_type: &SeedType) -> Result<Vec<S
     let working_bits = working_entropy.len() * 8;
 
     if working_bits % ENTROPY_MULTIPLE != 0
-        || working_bits < MIN_ENTROPY_BITS
-        || working_bits > MAX_ENTROPY_BITS
+        || !(MIN_ENTROPY_BITS..=MAX_ENTROPY_BITS).contains(&working_bits)
     {
         bail!("Incorrect entropy length: {}", working_bits)
     }

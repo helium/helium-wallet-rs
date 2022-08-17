@@ -6,10 +6,7 @@ use crate::{
     result::{anyhow, bail, Result},
     traits::ReadWrite,
 };
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    AeadInPlace, Aes256Gcm,
-};
+use aes_gcm::{aead::generic_array::GenericArray, AeadInPlace, Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sodiumoxide::randombytes;
 use std::io::{self, Cursor};

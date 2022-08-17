@@ -46,7 +46,7 @@ geo-types = "*"
 helium-api = "3.3"
 angry-purple-tiger = "0"
 helium-crypto = {git = "https://github.com/helium/helium-crypto-rs", tag="v0.3.3", features = ["multisig"]}
-helium-proto = { git = "https://github.com/helium/proto", branch="master"}
+helium-proto = { git = "https://github.com/helium/proto", branch="jsk/windows-specific-build"}
 tokio = {version = "1", features = ["full"]}
 bitvec = "*" # inherits from elliptic-curve crate
 

@@ -5,7 +5,7 @@ use crate::{
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 use std::{fmt, str::FromStr};
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 pub struct Memo(u64);
 
 impl FromStr for Memo {

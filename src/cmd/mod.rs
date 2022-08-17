@@ -6,7 +6,7 @@ use crate::{
     wallet::Wallet,
 };
 pub use helium_api::{
-    models::{transactions::PendingTxnStatus, Hnt, Hst, Usd},
+    models::{transactions::PendingTxnStatus, Hnt, Hst, Iot, Mobile, Token, Usd},
     Client,
 };
 pub use helium_proto::*;

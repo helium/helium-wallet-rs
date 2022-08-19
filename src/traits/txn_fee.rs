@@ -343,6 +343,7 @@ mod tests {
             memo: 0,
             amount: 10_000,
             max: false,
+            token_type: BlockchainTokenTypeV1::Hnt.into(),
         };
         let txn = BlockchainTxnPaymentV2 {
             payer: payer.public_key().to_vec(),

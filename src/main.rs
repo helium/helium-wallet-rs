@@ -1,7 +1,7 @@
 use helium_wallet::{
     cmd::{
         balance, burn, commit, create, hotspots, htlc, info, multisig, oracle, oui, pay, request,
-        securities, sign, upgrade, validators, vars, verify, Opts,
+        sign, upgrade, validators, vars, verify, Opts,
     },
     result::Result,
 };
@@ -29,7 +29,6 @@ pub enum Cmd {
     Htlc(htlc::Cmd),
     Oui(oui::Cmd),
     Oracle(oracle::Cmd),
-    Securities(securities::Cmd),
     Burn(burn::Cmd),
     Multisig(multisig::Cmd),
     Request(request::Cmd),
@@ -60,7 +59,6 @@ async fn run(cli: Cli) -> Result {
         Cmd::Htlc(cmd) => cmd.run(cli.opts).await,
         Cmd::Oui(cmd) => cmd.run(cli.opts).await,
         Cmd::Oracle(cmd) => cmd.run(cli.opts).await,
-        Cmd::Securities(cmd) => cmd.run(cli.opts).await,
         Cmd::Burn(cmd) => cmd.run(cli.opts).await,
         Cmd::Multisig(cmd) => cmd.run(cli.opts).await,
         Cmd::Request(cmd) => cmd.run(cli.opts).await,

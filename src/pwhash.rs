@@ -106,11 +106,23 @@ impl Default for Argon2id13 {
 
 impl Argon2id13 {
     pub fn with_limits(ops_limit: argon2id13::OpsLimit, mem_limit: argon2id13::MemLimit) -> Self {
+        Self::with_salt_and_limits(argon2id13::gen_salt(), ops_limit, mem_limit)
+    }
+
+    pub fn with_salt_and_limits(
+        salt: argon2id13::Salt,
+        ops_limit: argon2id13::OpsLimit,
+        mem_limit: argon2id13::MemLimit,
+    ) -> Self {
         Self {
-            salt: argon2id13::gen_salt(),
-            mem_limit,
+            salt,
             ops_limit,
+            mem_limit,
         }
+    }
+
+    pub fn salt(&self) -> argon2id13::Salt {
+        self.salt
     }
 
     pub fn pwhash(&self, password: &[u8], hash: &mut [u8]) -> Result {

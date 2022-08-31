@@ -95,7 +95,7 @@ impl Basic {
         } else {
             None
         };
-        let password = get_password(true)?;
+        let password = get_wallet_password(true)?;
 
         let mut builder = Wallet::builder()
             .output(&self.output)
@@ -121,7 +121,7 @@ impl Basic {
 impl Sharded {
     pub async fn run(&self, opts: Opts) -> Result {
         let seed_words = self.seed.then_some(get_seed_words()?);
-        let password = get_password(true)?;
+        let password = get_wallet_password(true)?;
 
         let shard_config = ShardConfig {
             key_share_count: self.key_share_count,

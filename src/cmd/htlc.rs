@@ -64,7 +64,7 @@ impl Cmd {
 
 impl Create {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_password(false)?;
+        let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let client = new_client(api_url(wallet.public_key.network));
 
@@ -133,7 +133,7 @@ fn print_create_txn(
 
 impl Redeem {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_password(false)?;
+        let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let client = new_client(api_url(wallet.public_key.network));

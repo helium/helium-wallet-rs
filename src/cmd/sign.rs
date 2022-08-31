@@ -30,7 +30,7 @@ pub struct File {
 impl File {
     pub async fn run(&self, opts: Opts) -> Result {
         use std::io::Read;
-        let password = get_password(false)?;
+        let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let mut data = Vec::new();
@@ -50,7 +50,7 @@ pub struct Msg {
 
 impl Msg {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_password(false)?;
+        let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let signature = keypair.sign(self.msg.as_bytes())?;

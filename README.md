@@ -197,8 +197,8 @@ The following environment variables are supported:
   wallet. Useful for scripting or other non-interactive commands, but
   use with care.
 
-* `HELIUM_WALLET_SEED_WORDS` - Seed words to use when restoring an
-  existing `mobile` or `bip39` wallet from a mnemonic word list.
+* `HELIUM_WALLET_SEED_WORDS` - Space separated list of seed words to use
+  when restoring a wallet from a mnemonic word list.
 
 ### Building from Source
 

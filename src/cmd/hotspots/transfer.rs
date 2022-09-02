@@ -20,8 +20,9 @@ pub struct Cmd {
 impl Cmd {
     pub async fn run(self, opts: Opts) -> Result {
         let wallet = load_wallet(opts.files)?;
-        let client = new_client(api_url(wallet.public_key.network));
-
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let hotspot = helium_api::hotspots::get(&client, &self.gateway.to_string()).await?;
         // Get the next likely gateway nonce for the new transaction
         let nonce = hotspot.speculative_nonce + 1;
@@ -41,7 +42,7 @@ impl Cmd {
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(&txn, &envelope, &status, opts.format)
+        print_txn(&txn, &envelope, &status, &pending_url, opts.format)
     }
 }
 
@@ -49,10 +50,12 @@ fn print_txn(
     txn: &BlockchainTxnTransferHotspotV2,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
     let address = PublicKey::from_bytes(&txn.gateway)?.to_string();
     let new_owner = PublicKey::from_bytes(&txn.new_owner)?.to_string();
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
@@ -61,7 +64,8 @@ fn print_txn(
                 ["New Owner", new_owner],
                 ["Nonce", txn.nonce],
                 ["Fee (DC)", txn.fee],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
             print_footer(status)
         }
@@ -73,6 +77,7 @@ fn print_txn(
                 "nonce": txn.nonce,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
+                "status": status_endpoint
             });
             print_json(&table)
         }

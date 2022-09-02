@@ -85,11 +85,10 @@ impl Create {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-
-        let client = new_client(api_url(wallet.public_key.network));
-
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let old_owner = self.old_owner.as_ref().unwrap_or(&wallet.public_key);
-
         let mut txn = BlockchainTxnTransferValidatorStakeV1 {
             old_address: self.old_address.to_vec(),
             new_address: self.new_address.to_vec(),
@@ -130,18 +129,19 @@ impl Create {
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(Some(&envelope), &txn, &status, opts.format)
+        print_txn(Some(&envelope), &txn, &status, &pending_url, opts.format)
     }
 }
 
 impl Accept {
     pub async fn run(&self, opts: Opts) -> Result {
         let mut txn = BlockchainTxnTransferValidatorStakeV1::from_envelope(&read_txn(&self.txn)?)?;
-
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         if !txn.old_owner.is_empty() && PublicKey::from_bytes(&txn.old_owner)? == wallet.public_key
         {
             txn.old_owner_signature = txn.sign(&keypair)?;
@@ -151,11 +151,9 @@ impl Accept {
             txn.new_owner_signature = txn.sign(&keypair)?;
         }
 
-        let client = new_client(api_url(wallet.public_key.network));
-
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(Some(&envelope), &txn, &status, opts.format)
+        print_txn(Some(&envelope), &txn, &status, &pending_url, opts.format)
     }
 }
 
@@ -163,6 +161,7 @@ fn print_txn(
     envelope: Option<&BlockchainTxn>,
     txn: &BlockchainTxnTransferValidatorStakeV1,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
     let old_address = PublicKey::from_bytes(&txn.old_address)?.to_string();
@@ -173,6 +172,7 @@ fn print_txn(
     } else {
         PublicKey::from_bytes(&txn.new_owner)?.to_string()
     };
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
@@ -183,7 +183,8 @@ fn print_txn(
                 ["New owner", new_owner],
                 ["Fee (DC)", txn.fee],
                 ["Amount (HNT)", Hnt::from(txn.payment_amount)],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
             print_footer(status)
         }
@@ -195,7 +196,8 @@ fn print_txn(
                 "new_owner" : new_owner,
                 "fee": txn.fee,
                 "amount": Hnt::from(txn.payment_amount),
-                "hash": status_json(status)
+                "hash": status_json(status),
+                "status": status_endpoint
             });
             if let Some(envelope) = envelope {
                 table["txn"] = envelope.to_b64()?.into();

@@ -50,11 +50,11 @@ impl Create {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let keypair = wallet.decrypt(password.as_bytes())?;
         let wallet_key = keypair.public_key();
-
-        let client = new_client(api_url(wallet.public_key.network));
-
         let oui = if let Some(oui) = self.last_oui {
             oui
         } else {
@@ -86,12 +86,12 @@ impl Create {
             key if key == Some(wallet_key) || key.is_none() => {
                 // Payer is the wallet submit if ready to commit
                 let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-                print_txn(&txn, &envelope, &status, opts.format)
+                print_txn(&txn, &envelope, &status, &pending_url, opts.format)
             }
             _ => {
                 // Payer is something else.
                 // can't commit this transaction but we can display it
-                print_txn(&txn, &envelope, &None, opts.format)
+                print_txn(&txn, &envelope, &None, &pending_url, opts.format)
             }
         }
     }
@@ -101,8 +101,10 @@ fn print_txn(
     txn: &BlockchainTxnOuiV1,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
@@ -113,7 +115,8 @@ fn print_txn(
                     "Addresses",
                     map_addresses(txn.addresses.clone(), |v| v.to_string())?.join("\n")
                 ],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
 
             print_footer(status)
@@ -125,6 +128,7 @@ fn print_txn(
                 "requested_subnet_size": txn.requested_subnet_size,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
+                "status": status_endpoint
             });
 
             print_json(&table)

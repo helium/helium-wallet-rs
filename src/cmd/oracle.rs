@@ -47,8 +47,9 @@ impl Report {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-
-        let client = new_client(api_url(wallet.public_key.network));
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let block_height = self.block.to_block(&client).await?;
         let price = u64::from(self.price.to_usd().await?);
         let mut txn = BlockchainTxnPriceOracleV1 {
@@ -61,7 +62,7 @@ impl Report {
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(&txn, &envelope, &status, opts.format)
+        print_txn(&txn, &envelope, &status, &pending_url, opts.format)
     }
 }
 
@@ -69,16 +70,19 @@ fn print_txn(
     txn: &BlockchainTxnPriceOracleV1,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
     let encoded = envelope.to_b64()?;
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
                 ["Key", "Value"],
                 ["Block Height", txn.block_height],
                 ["Price", Usd::from(txn.price)],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
 
             print_footer(status)
@@ -88,7 +92,8 @@ fn print_txn(
                 "price": txn.price,
                 "block_height": txn.block_height,
                 "txn": encoded,
-                "hash": status_json(status)
+                "hash": status_json(status),
+                "status": status_endpoint
             });
             print_json(&table)
         }

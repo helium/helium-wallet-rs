@@ -176,5 +176,35 @@ pub struct StakeValidator {
     /// The validator address to stake
     address: PublicKey,
     /// The amount of HNT to stake
+    #[serde(deserialize_with = "hnt_decimal_deserializer")]
     stake: Hnt,
+}
+
+// By default, helium-api-rs serializes and deserializes tokens as u64s (ie: bones).
+// This overrides the default serializer when parsing JSON.
+// Structopt deserializes using "from_str", which also expects Decimal representation
+fn hnt_decimal_deserializer<'de, D>(deserializer: D) -> std::result::Result<Hnt, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let decimal: rust_decimal::Decimal = Deserialize::deserialize(deserializer)?;
+    Ok(Hnt::new(decimal))
+}
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_json_validator_stake() {
+        let json_stake_input = "{\
+            \"address\": \"13buBykFQf5VaQtv7mWj2PBY9Lq4i1DeXhg7C4Vbu3ppzqqNkTH\",\
+            \"stake\": 10000\
+        }";
+
+        let stake: StakeValidator = serde_json::from_str(json_stake_input).unwrap();
+        assert_eq!(Hnt::new(Decimal::new(10000, 0)), stake.stake);
+    }
 }

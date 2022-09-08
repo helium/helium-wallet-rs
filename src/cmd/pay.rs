@@ -10,6 +10,7 @@ use helium_proto::BlockchainTokenTypeV1;
 use prettytable::Table;
 use serde::Deserialize;
 use serde_json::json;
+use std::str::FromStr;
 
 #[derive(Debug, StructOpt)]
 /// Send one (or more) payments to given addresses.
@@ -42,28 +43,23 @@ pub struct One {
 
 #[derive(Debug, StructOpt)]
 /// The input file for multiple payments is expected to be json file with a list
-/// of payees, amounts (in bones), token, and optional memos.
+/// of payees, amounts token, and optional memos.
 ///
 /// For example:
 ///
 /// [
 ///     {
 ///         "address": "<adddress1>",
-///         "amount": 160000000,
+///         "amount": 1.6,
 ///         "memo": "AAAAAAAAAAA=",
 ///         "token": "Hnt",
 ///     },
 ///     {
 ///         "address": "<adddress2>",
-///         "amount": 50000000
+///         "amount": 0.5,
 ///         "token": "Mobile"
 ///     }
 /// ]
-///
-/// Recall that all amounts given in bones are 10^8.
-/// That is to say, 1 HNT    = 100000000 bones
-///                 1 MOBILE = 100000000 Mbones
-///                 1 HST    = 100000000 Sbones
 ///
 pub struct Multi {
     /// File to read multiple payments from.
@@ -243,8 +239,10 @@ pub struct Payee {
     /// Address to send the tokens to.
     address: PublicKey,
     /// Amount of token to send
+    #[serde(deserialize_with = "token_decimal_deserializer")]
     amount: Token,
     /// Type of token to send (hnt, iot, mobile, hst).
+    #[serde(default)]
     #[structopt(default_value = "hnt")]
     token: TokenInput,
     /// Memo field to include. Provide as a base64 encoded string
@@ -253,7 +251,7 @@ pub struct Payee {
     memo: Memo,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq)]
 pub enum TokenInput {
     Hnt,
     Iot,
@@ -261,7 +259,18 @@ pub enum TokenInput {
     Hst,
 }
 
-impl std::str::FromStr for TokenInput {
+// By default, helium-api-rs serializes and deserializes tokens as u64s (ie: bones).
+// This overrides the default serializer when parsing JSON.
+// Structopt deserializes using "from_str", which also expects Decimal representation
+fn token_decimal_deserializer<'de, D>(deserializer: D) -> std::result::Result<Token, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let decimal: rust_decimal::Decimal = Deserialize::deserialize(deserializer)?;
+    Ok(Token::new(decimal))
+}
+
+impl FromStr for TokenInput {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
@@ -273,5 +282,42 @@ impl std::str::FromStr for TokenInput {
             "hst" => Ok(TokenInput::Hst),
             _ => Err(anyhow::anyhow!("Invalid token input {s}")),
         }
+    }
+}
+
+impl Default for TokenInput {
+    fn default() -> Self {
+        Self::Hnt
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_json_hnt_input() {
+        let json_hnt_input = "{\
+            \"address\": \"13buBykFQf5VaQtv7mWj2PBY9Lq4i1DeXhg7C4Vbu3ppzqqNkTH\",\
+            \"amount\": 1.6,\
+            \"memo\": \"AAAAAAAAAAA=\"\
+        }";
+
+        let payee: Payee = serde_json::from_str(json_hnt_input).unwrap();
+        assert_eq!(Token::from(160000000), payee.amount);
+    }
+
+    #[test]
+    fn test_json_mobile_input() {
+        let json_hnt_input = "{\
+            \"address\": \"13buBykFQf5VaQtv7mWj2PBY9Lq4i1DeXhg7C4Vbu3ppzqqNkTH\",\
+            \"amount\": 0.5,\
+            \"token\": \"Mobile\"\
+        }";
+
+        let payee: Payee = serde_json::from_str(json_hnt_input).unwrap();
+        assert_eq!(Token::from(50000000), payee.amount);
+        assert_eq!(TokenInput::Mobile, payee.token);
     }
 }

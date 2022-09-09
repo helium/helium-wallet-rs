@@ -194,7 +194,7 @@ fn print_txn(
                 "old_owner" : old_owner,
                 "new_owner" : new_owner,
                 "fee": txn.fee,
-                "amount": Hnt::from(txn.payment_amount),
+                "amount": Hnt::from(txn.payment_amount).to_f64(),
                 "hash": status_json(status)
             });
             if let Some(envelope) = envelope {

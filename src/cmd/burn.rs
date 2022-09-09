@@ -95,7 +95,7 @@ fn print_txn(
         OutputFormat::Json => {
             let table = json!({
                 "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
-                "amount": Hnt::from(txn.amount),
+                "amount": Hnt::from(txn.amount).to_f64(),
                 "memo": Memo::from(txn.memo).to_string(),
                 "fee": txn.fee,
                 "nonce": txn.nonce,

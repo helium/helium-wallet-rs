@@ -162,7 +162,7 @@ fn print_txn(
             let table = json!({
                 "validator" : validator,
                 "fee": txn.fee,
-                "staking_fee": txn.stake,
+                "stake": Hnt::from(txn.stake).to_f64(),
                 "txn": envelope.to_b64()?,
                 "hash": status_json(status)
             });

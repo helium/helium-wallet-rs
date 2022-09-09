@@ -220,9 +220,17 @@ fn print_txn(
         OutputFormat::Json => {
             let mut payments = Vec::with_capacity(txn.payments.len());
             for payment in txn.payments.clone() {
+                let token_type = BlockchainTokenTypeV1::from_i32(payment.token_type)
+                    .expect("Invalid token_type found in transaction!");
                 payments.push(json!({
                     "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
-                    "amount": Hnt::from(payment.amount),
+                    "amount": Token::from(payment.amount).to_f64(),
+                    "token_type": match token_type {
+                        BlockchainTokenTypeV1::Hnt => "HNT",
+                        BlockchainTokenTypeV1::Hst => "HST",
+                        BlockchainTokenTypeV1::Iot => "IOT",
+                        BlockchainTokenTypeV1::Mobile => "MOBILE",
+                    },
                     "memo": Memo::from(payment.memo).to_string()
                 }))
             }

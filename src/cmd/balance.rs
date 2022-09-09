@@ -76,10 +76,12 @@ fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) 
                 if let Ok(account) = result {
                     rows.push(json!({
                         "address": address,
+                        "balance": account.balance.to_f64(),
+                        "staked_balance": account.staked_balance.to_f64(),
                         "dc_balance": account.dc_balance,
-                        "staked_balance": account.staked_balance,
-                        "sec_balance": account.sec_balance,
-                        "balance": account.balance,
+                        "sec_balance": account.sec_balance.to_f64(),
+                        "iot_balance": account.iot_balance.to_f64(),
+                        "mobile_balance": account.mobile_balance.to_f64()
                     }));
                 };
             }

@@ -190,15 +190,11 @@ fn print_txn(
 
             table.add_row(row!["Payee", "Amount", "Memo"]);
             for payment in txn.payments.clone() {
-                let token_type = BlockchainTokenTypeV1::from_i32(payment.token_type)
-                    .expect("Invalid token_type found in transaction!");
                 let amount_decimal = Token::from(payment.amount);
-                let amount_units = match token_type {
-                    BlockchainTokenTypeV1::Hnt => "HNT",
-                    BlockchainTokenTypeV1::Hst => "HST",
-                    BlockchainTokenTypeV1::Iot => "IOT",
-                    BlockchainTokenTypeV1::Mobile => "MOBILE",
-                };
+                let amount_units = BlockchainTokenTypeV1::from_i32(payment.token_type)
+                    .expect("Invalid token_type found in transaction!")
+                    .as_str_name()
+                    .to_uppercase();
 
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
@@ -225,12 +221,7 @@ fn print_txn(
                 payments.push(json!({
                     "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
                     "amount": Token::from(payment.amount).to_f64(),
-                    "token_type": match token_type {
-                        BlockchainTokenTypeV1::Hnt => "HNT",
-                        BlockchainTokenTypeV1::Hst => "HST",
-                        BlockchainTokenTypeV1::Iot => "IOT",
-                        BlockchainTokenTypeV1::Mobile => "MOBILE",
-                    },
+                    "token_type": token_type.as_str_name(),
                     "memo": Memo::from(payment.memo).to_string()
                 }))
             }

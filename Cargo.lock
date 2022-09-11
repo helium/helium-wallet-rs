@@ -1162,10 +1162,10 @@ checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
 [[package]]
 name = "helium-api"
 version = "3.3.0"
-source = "git+https://github.com/helium/helium-api-rs?branch=lthiery/token-to-float#95876c551bb8867be08891f1e125322b8df06378"
+source = "git+https://github.com/helium/helium-api-rs#788715363b3661d6b2755cd04704a3b6696c7ebe"
 dependencies = [
  "async-trait",
- "base64 0.13.0",
+ "base64 0.12.3",
  "chrono",
  "futures",
  "num-traits",

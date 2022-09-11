@@ -193,8 +193,7 @@ fn print_txn(
                 let amount_decimal = Token::from(payment.amount);
                 let amount_units = BlockchainTokenTypeV1::from_i32(payment.token_type)
                     .expect("Invalid token_type found in transaction!")
-                    .as_str_name()
-                    .to_uppercase();
+                    .as_str_name();
 
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),

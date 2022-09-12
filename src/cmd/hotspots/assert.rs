@@ -65,10 +65,12 @@ impl Cmd {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-
         let staking_client = staking::Client::default();
-        let client = new_client(api_url(wallet.public_key.network));
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let hotspot = hotspots::get(&client, &self.gateway.to_string()).await?;
+
         let gain: i32 = if let Some(gain) = self.gain.or(hotspot.gain) {
             gain.into()
         } else {
@@ -140,7 +142,7 @@ impl Cmd {
         }?;
 
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(&txn, &envelope, &status, opts.format)
+        print_txn(&txn, &envelope, &status, &pending_url, opts.format)
     }
 }
 
@@ -148,6 +150,7 @@ fn print_txn(
     txn: &BlockchainTxnAssertLocationV2,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
     let address = PublicKey::from_bytes(&txn.gateway)?.to_string();
@@ -156,6 +159,7 @@ fn print_txn(
     } else {
         PublicKey::from_bytes(&txn.payer)?.to_string()
     };
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
@@ -168,7 +172,8 @@ fn print_txn(
                 ["Staking Fee (DC)", txn.staking_fee],
                 ["Gain (dBi)", Dbi::from(txn.gain)],
                 ["Elevation", txn.elevation],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
             print_footer(status)
         }
@@ -184,6 +189,7 @@ fn print_txn(
                 "staking_fee": txn.staking_fee,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
+                "status": status_endpoint
             });
             print_json(&table)
         }

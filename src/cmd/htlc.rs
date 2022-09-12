@@ -66,7 +66,9 @@ impl Create {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
-        let client = new_client(api_url(wallet.public_key.network));
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
 
         let keypair = wallet.decrypt(password.as_bytes())?;
         let wallet_address = keypair.public_key();
@@ -89,7 +91,7 @@ impl Create {
         let envelope = txn.in_envelope();
 
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_create_txn(&txn, &envelope, &status, opts.format)
+        print_create_txn(&txn, &envelope, &status, &pending_url, opts.format)
     }
 }
 
@@ -97,8 +99,10 @@ fn print_create_txn(
     txn: &BlockchainTxnCreateHtlcV1,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
@@ -110,7 +114,8 @@ fn print_create_txn(
                 ["Hashlock", hex::encode(&txn.hashlock)],
                 ["Timelock", txn.timelock],
                 ["Nonce", txn.nonce],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
             print_footer(status)
         }
@@ -125,6 +130,7 @@ fn print_create_txn(
                 "nonce": txn.nonce,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
+                "Status": status_endpoint
             });
             print_json(&table)
         }
@@ -135,9 +141,10 @@ impl Redeem {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let client = new_client(api_url(wallet.public_key.network));
-
         let mut txn = BlockchainTxnRedeemHtlcV1 {
             fee: 0,
             payee: keypair.public_key().to_vec(),
@@ -150,7 +157,7 @@ impl Redeem {
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_redeem_txn(&txn, &envelope, &status, opts.format)
+        print_redeem_txn(&txn, &envelope, &status, &pending_url, opts.format)
     }
 }
 
@@ -158,8 +165,10 @@ fn print_redeem_txn(
     txn: &BlockchainTxnRedeemHtlcV1,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
@@ -167,7 +176,8 @@ fn print_redeem_txn(
                 ["Payee", PublicKey::from_bytes(&txn.payee)?.to_string()],
                 ["Address", PublicKey::from_bytes(&txn.address)?.to_string()],
                 ["Preimage", std::str::from_utf8(&txn.preimage)?],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
             print_footer(status)
         }
@@ -177,6 +187,7 @@ fn print_redeem_txn(
                 "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
+                "status": status_endpoint
             });
             print_json(&table)
         }

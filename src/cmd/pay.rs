@@ -78,14 +78,12 @@ pub struct Multi {
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let payments = self.collect_payments()?;
-
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
-
-        let client = new_client(api_url(wallet.public_key.network));
-
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let keypair = wallet.decrypt(password.as_bytes())?;
-
         let mut txn = BlockchainTxnPaymentV2 {
             fee: 0,
             payments,
@@ -108,7 +106,7 @@ impl Cmd {
 
         let envelope = txn.in_envelope();
         let status = maybe_submit_txn(self.commit(), &client, &envelope).await?;
-        print_txn(&txn, &envelope, &status, opts.format)
+        print_txn(&txn, &envelope, &status, &pending_url, opts.format)
     }
 
     fn collect_payments(&self) -> Result<Vec<Payment>> {
@@ -178,8 +176,10 @@ fn print_txn(
     txn: &BlockchainTxnPaymentV2,
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             let mut table = Table::new();
@@ -208,7 +208,8 @@ fn print_txn(
                 ["Key", "Value"],
                 ["Fee (DC)", txn.fee],
                 ["Nonce", txn.nonce],
-                ["Hash", status_str(status)]
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
             );
 
             print_footer(status)
@@ -228,6 +229,7 @@ fn print_txn(
                 "nonce": txn.nonce,
                 "hash": status_json(status),
                 "txn": envelope.to_b64()?,
+                "status": status_endpoint
             });
             print_json(&table)
         }

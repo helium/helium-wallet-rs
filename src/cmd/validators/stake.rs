@@ -61,12 +61,12 @@ pub struct Multi {
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let validators = self.collect_stake_validators()?;
-
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-
-        let client = new_client(api_url(wallet.public_key.network));
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
+        let pending_url = base_url + "/pending_transactions/";
         let fee_config = if self.fee().is_none() {
             Some(get_txn_fees(&client).await?)
         } else {
@@ -84,7 +84,7 @@ impl Cmd {
             let txn = self.mk_txn(&keypair, &fee_config, &validator)?;
             let envelope = txn.in_envelope();
             let status = maybe_submit_txn(self.commit(), &client, &envelope).await?;
-            print_txn(&envelope, &txn, &status, &opts.format)?
+            print_txn(&envelope, &txn, &status, &pending_url, &opts.format)?
         }
         Ok(())
     }
@@ -141,9 +141,11 @@ fn print_txn(
     envelope: &BlockchainTxn,
     txn: &BlockchainTxnStakeValidatorV1,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: &OutputFormat,
 ) -> Result {
     let validator = PublicKey::from_bytes(&txn.address)?.to_string();
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
             ptable!(
@@ -152,6 +154,7 @@ fn print_txn(
                 ["Stake (HNT)", Hnt::from(txn.stake)],
                 ["Fee (DC)", txn.fee],
                 ["Hash", status_str(status)],
+                ["Status", status_endpoint],
                 [Frb => "WARNING",
                 "Once staked an owner cannot access the staked amount until\n\
                 250,000 blocks (approx. 5 months) after unstaking."]
@@ -164,7 +167,8 @@ fn print_txn(
                 "fee": txn.fee,
                 "stake": Hnt::from(txn.stake).to_f64(),
                 "txn": envelope.to_b64()?,
-                "hash": status_json(status)
+                "hash": status_json(status),
+                "status": status_endpoint
             });
             print_json(&table)
         }
@@ -176,5 +180,35 @@ pub struct StakeValidator {
     /// The validator address to stake
     address: PublicKey,
     /// The amount of HNT to stake
+    #[serde(deserialize_with = "hnt_decimal_deserializer")]
     stake: Hnt,
+}
+
+// By default, helium-api-rs serializes and deserializes tokens as u64s (ie: bones).
+// This overrides the default serializer when parsing JSON.
+// Structopt deserializes using "from_str", which also expects Decimal representation
+fn hnt_decimal_deserializer<'de, D>(deserializer: D) -> std::result::Result<Hnt, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let decimal: rust_decimal::Decimal = Deserialize::deserialize(deserializer)?;
+    Ok(Hnt::new(decimal))
+}
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_json_validator_stake() {
+        let json_stake_input = "{\
+            \"address\": \"13buBykFQf5VaQtv7mWj2PBY9Lq4i1DeXhg7C4Vbu3ppzqqNkTH\",\
+            \"stake\": 10000\
+        }";
+
+        let stake: StakeValidator = serde_json::from_str(json_stake_input).unwrap();
+        assert_eq!(Hnt::new(Decimal::new(10000, 0)), stake.stake);
+    }
 }

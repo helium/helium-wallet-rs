@@ -16,30 +16,38 @@ pub struct Cmd {
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let envelope = read_txn(&self.txn)?;
-
         let wallet = load_wallet(opts.files)?;
-        let client = new_client(api_url(wallet.public_key.network));
-
+        let base_url: String = api_url(wallet.public_key.network);
+        let client = new_client(base_url.clone());
         let status = maybe_submit_txn(true, &client, &envelope).await?;
-        print_txn(&envelope, &status, opts.format)
+        let pending_url = base_url + "/pending_transactions/";
+
+        print_txn(&envelope, &status, &pending_url, opts.format)
     }
 }
 
 fn print_txn(
     envelope: &BlockchainTxn,
     status: &Option<PendingTxnStatus>,
+    pending_url: &str,
     format: OutputFormat,
 ) -> Result {
+    let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {
-            ptable!(["Key", "Value"], ["Hash", status_str(status)]);
+            ptable!(
+                ["Key", "Value"],
+                ["Hash", status_str(status)],
+                ["Status", status_endpoint]
+            );
 
             print_footer(status)
         }
         OutputFormat::Json => {
             let table = json!({
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?
+                "txn": envelope.to_b64()?,
+                "status": status_endpoint
             });
 
             print_json(&table)

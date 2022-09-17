@@ -197,7 +197,7 @@ fn print_txn(
                 "fee": txn.fee,
                 "amount": Hnt::from(txn.payment_amount),
                 "hash": status_json(status),
-                "status": status_endpoint
+                "status": status_endpoint,
             });
             if let Some(envelope) = envelope {
                 table["txn"] = envelope.to_b64()?.into();

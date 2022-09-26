@@ -8,8 +8,9 @@ use crate::{
 use helium_api::accounts;
 use helium_proto::BlockchainTokenTypeV1;
 use prettytable::Table;
-use serde::Deserialize;
-use serde_json::json;
+use rust_decimal::Decimal;
+use serde::{de::Error as deError, Deserialize, Deserializer};
+use serde_json::{json, Value};
 use std::str::FromStr;
 
 #[derive(Debug, StructOpt)]
@@ -43,20 +44,30 @@ pub struct One {
 
 #[derive(Debug, StructOpt)]
 /// The input file for multiple payments is expected to be json file with a list
-/// of payees, amounts token, and optional memos.
+/// of payees, amounts, tokens, and optional memos.
+/// Notes:
+///   "address" is required.
+///   "amount" is required. It must be a number or the string "max". When "max"
+///            the entire balance (minus fees) will be sent.
+///   "token" is optional and defaults to "Hnt".
+///   "memo" is optional.
 ///
 /// For example:
 ///
 /// [
 ///     {
-///         "address": "<adddress1>",
+///         "address": "<address1>",
 ///         "amount": 1.6,
 ///         "memo": "AAAAAAAAAAA=",
-///         "token": "Hnt",
+///         "token": "Hnt"
 ///     },
 ///     {
-///         "address": "<adddress2>",
-///         "amount": 0.5,
+///         "address": "<address2>",
+///         "amount": "max"
+///     },
+///     {
+///         "address": "<address3>",
+///         "amount": 3,
 ///         "token": "Mobile"
 ///     }
 /// ]
@@ -111,20 +122,22 @@ impl Cmd {
 
     fn collect_payments(&self) -> Result<Vec<Payment>> {
         match &self {
-            Self::One(one) => Ok(vec![Payment {
-                payee: one.payee.address.to_vec(),
-                // we safely create u64 from the amount of type Token
-                // only because each token_type has the same amount of decimals
-                amount: u64::from(one.payee.amount),
-                memo: u64::from(&one.payee.memo),
-                max: false,
-                token_type: match one.payee.token {
-                    TokenInput::Hnt => BlockchainTokenTypeV1::Hnt.into(),
-                    TokenInput::Hst => BlockchainTokenTypeV1::Hst.into(),
-                    TokenInput::Iot => BlockchainTokenTypeV1::Iot.into(),
-                    TokenInput::Mobile => BlockchainTokenTypeV1::Mobile.into(),
-                },
-            }]),
+            Self::One(one) => {
+                Ok(vec![Payment {
+                    payee: one.payee.address.to_vec(),
+                    // we safely create u64 from the amount of type Token
+                    // only because each token_type has the same amount of decimals
+                    amount: u64::from(one.payee.amount.token_amount()),
+                    memo: u64::from(&one.payee.memo),
+                    max: one.payee.amount == Amount::Max,
+                    token_type: match one.payee.token {
+                        TokenInput::Hnt => BlockchainTokenTypeV1::Hnt.into(),
+                        TokenInput::Hst => BlockchainTokenTypeV1::Hst.into(),
+                        TokenInput::Iot => BlockchainTokenTypeV1::Iot.into(),
+                        TokenInput::Mobile => BlockchainTokenTypeV1::Mobile.into(),
+                    },
+                }])
+            }
             Self::Multi(multi) => {
                 let file = std::fs::File::open(multi.path.clone())?;
                 let payees: Vec<Payee> = serde_json::from_reader(file)?;
@@ -134,9 +147,9 @@ impl Cmd {
                         payee: p.address.to_vec(),
                         // we safely create u64 from the amount of type Token
                         // only because each token_type has the same amount of decimals
-                        amount: u64::from(p.amount),
+                        amount: u64::from(p.amount.token_amount()),
                         memo: u64::from(&p.memo),
-                        max: false,
+                        max: p.amount == Amount::Max,
                         token_type: match p.token {
                             TokenInput::Hnt => BlockchainTokenTypeV1::Hnt.into(),
                             TokenInput::Hst => BlockchainTokenTypeV1::Hst.into(),
@@ -186,14 +199,18 @@ fn print_txn(
 
             table.add_row(row!["Payee", "Amount", "Memo"]);
             for payment in txn.payments.clone() {
-                let amount_decimal = Token::from(payment.amount);
+                let amount_str = if payment.max {
+                    String::from("**MAX**")
+                } else {
+                    Token::from(payment.amount).to_string()
+                };
                 let amount_units = BlockchainTokenTypeV1::from_i32(payment.token_type)
                     .expect("Invalid token_type found in transaction!")
                     .as_str_name();
 
                 table.add_row(row![
                     PublicKey::from_bytes(payment.payee)?.to_string(),
-                    format!("{amount_decimal} {amount_units}"),
+                    format!("{amount_str} {amount_units}"),
                     Memo::from(payment.memo).to_string(),
                 ]);
             }
@@ -218,6 +235,7 @@ fn print_txn(
                     "payee": PublicKey::from_bytes(payment.payee)?.to_string(),
                     "amount": Token::from(payment.amount).to_f64(),
                     "token_type": token_type.as_str_name(),
+                    "max": payment.max,
                     "memo": Memo::from(payment.memo).to_string()
                 }))
             }
@@ -239,8 +257,7 @@ pub struct Payee {
     /// Address to send the tokens to.
     address: PublicKey,
     /// Amount of token to send
-    #[serde(deserialize_with = "token_decimal_deserializer")]
-    amount: Token,
+    amount: Amount,
     /// Type of token to send (hnt, iot, mobile, hst).
     #[serde(default)]
     #[structopt(default_value = "hnt")]
@@ -259,15 +276,53 @@ pub enum TokenInput {
     Hst,
 }
 
-// By default, helium-api-rs serializes and deserializes tokens as u64s (ie: bones).
-// This overrides the default serializer when parsing JSON.
-// Structopt deserializes using "from_str", which also expects Decimal representation
-fn token_decimal_deserializer<'de, D>(deserializer: D) -> std::result::Result<Token, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let decimal: rust_decimal::Decimal = Deserialize::deserialize(deserializer)?;
-    Ok(Token::new(decimal))
+#[derive(Debug, PartialEq)]
+// An amount can be either the string "max" or a number, the deserializer handles both cases.
+// token_amount() will return 0 (when Amount::Max) or a valid token amount. Use this instead
+// of Token::Dec directly.
+//
+// We use decimal for all numbers because the helium-api-rs serializes and deserializes tokens as
+// u64s (ie: bones).
+enum Amount {
+    Token(Token),
+    Max,
+}
+
+impl Amount {
+    pub fn token_amount(&self) -> Token {
+        match self {
+            Amount::Token(raw) => *raw,
+            _ => Token::new(Decimal::from(0)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Amount {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Amount, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // use the JSON deserialize so as to accept strings or nums
+        let s = Value::deserialize(deserializer)?.to_string();
+        Amount::from_str(&s).map_err(D::Error::custom)
+    }
+}
+
+impl FromStr for Amount {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        if let Ok(t) = Token::from_str(s) {
+            Ok(Amount::Token(t))
+        } else if s.eq("max") || s.eq("\"max\"") {
+            Ok(Amount::Max)
+        } else {
+            Err(anyhow::anyhow!(
+                "Invalid amount \"{}\" Amount must be a number or \"max\"",
+                s
+            ))
+        }
+    }
 }
 
 impl FromStr for TokenInput {
@@ -305,7 +360,8 @@ mod tests {
         }";
 
         let payee: Payee = serde_json::from_str(json_hnt_input).unwrap();
-        assert_eq!(Token::from(160000000), payee.amount);
+        assert_eq!(Token::from(160000000), payee.amount.token_amount());
+        assert_ne!(payee.amount, Amount::Max);
     }
 
     #[test]
@@ -317,7 +373,46 @@ mod tests {
         }";
 
         let payee: Payee = serde_json::from_str(json_hnt_input).unwrap();
-        assert_eq!(Token::from(50000000), payee.amount);
+        assert_eq!(Token::from(50000000), payee.amount.token_amount());
+        assert_ne!(payee.amount, Amount::Max);
         assert_eq!(TokenInput::Mobile, payee.token);
+    }
+
+    #[test]
+    fn test_json_max_input() {
+        let json_hnt_input = "{\
+            \"address\": \"13buBykFQf5VaQtv7mWj2PBY9Lq4i1DeXhg7C4Vbu3ppzqqNkTH\",\
+            \"amount\": \"max\"\
+        }";
+
+        let payee: Payee = serde_json::from_str(json_hnt_input).unwrap();
+        assert_eq!(Token::from(0), payee.amount.token_amount());
+        assert_eq!(payee.amount, Amount::Max);
+    }
+
+    #[test]
+    fn test_json_bad_amount() {
+        let json_hnt_input = "{\
+            \"address\": \"13buBykFQf5VaQtv7mWj2PBY9Lq4i1DeXhg7C4Vbu3ppzqqNkTH\",\
+            \"amount\": \"foo\",\
+        }";
+
+        let result: std::result::Result<Payee, serde_json::Error> =
+            serde_json::from_str(json_hnt_input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_json_defaults_input() {
+        let json_hnt_input = "{\
+            \"address\": \"13buBykFQf5VaQtv7mWj2PBY9Lq4i1DeXhg7C4Vbu3ppzqqNkTH\",\
+            \"amount\": 12\
+        }";
+
+        let payee: Payee = serde_json::from_str(json_hnt_input).unwrap();
+        assert_eq!(Token::from(1200000000), payee.amount.token_amount());
+        assert_ne!(payee.amount, Amount::Max);
+        assert_eq!(TokenInput::Hnt, payee.token);
+        assert_eq!(Memo::default(), payee.memo);
     }
 }

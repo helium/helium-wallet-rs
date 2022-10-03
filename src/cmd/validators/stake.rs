@@ -157,7 +157,7 @@ fn print_txn(
                 ["Status", status_endpoint],
                 [Frb => "WARNING",
                 "Once staked an owner cannot access the staked amount until\n\
-                250,000 blocks (approx. 5 months) after unstaking."]
+                125,000 blocks (approx. 2.5 months) after unstaking."]
             );
             print_footer(status)
         }

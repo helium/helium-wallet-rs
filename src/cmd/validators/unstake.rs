@@ -207,7 +207,7 @@ fn print_txn(
                 ["Status", status_endpoint],
                 [Frb => "WARNING",
                 "After unstaking, a validator can not access the staked amount\n\
-                nor earn rewards for 250,000 blocks (approx. five months)."]
+                nor earn rewards for 125,000 blocks (approx. 2.5 months)."]
             );
             print_footer(status)
         }

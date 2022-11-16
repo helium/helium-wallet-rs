@@ -10,7 +10,7 @@ mod transfer;
 /// or transfer a hotspot to another wallet
 pub enum Cmd {
     Add(add::Cmd),
-    Assert(assert::Cmd),
+    Assert(Box<assert::Cmd>),
     List(list::Cmd),
     Transfer(Box<transfer::Cmd>),
 }

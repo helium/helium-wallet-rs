@@ -125,7 +125,7 @@ impl VerifyMsg {
 fn print_signature(public_key: &PublicKey, signature: Vec<u8>) -> Result {
     let json = json!({
         "address": public_key.to_string(),
-        "signature": base64::encode(&signature)
+        "signature": base64::encode(signature)
     });
     print_json(&json)
 }

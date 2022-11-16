@@ -143,7 +143,7 @@ impl Update {
 
         let mut txn = BlockchainTxnRoutingV1 {
             // the type in the proto diverges from the more common u64
-            oui: oui as u32,
+            oui,
             owner: keypair.public_key().into(),
             fee: 0,
             signature: vec![],

@@ -23,7 +23,7 @@ impl Cmd {
             None => {
                 let wallet = load_wallet(opts.files)?;
                 if self.qr_code {
-                    print_qr(&wallet.public_key.to_string())?;
+                    print_qr(wallet.public_key.to_string())?;
                     Ok(())
                 } else {
                     let client = new_client(api_url(wallet.public_key.network));

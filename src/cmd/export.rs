@@ -32,7 +32,7 @@ impl Cmd {
             "seed": encrypt_seed_v1(&keypair, &seed_pwd)?,
         });
 
-        print_qr(&json_data.to_string())?;
+        print_qr(json_data.to_string())?;
         Ok(())
     }
 }

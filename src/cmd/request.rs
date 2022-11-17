@@ -76,7 +76,7 @@ fn print_request(request: &serde_json::Value, format: OutputFormat) -> Result {
     match format {
         OutputFormat::Json => print_json(request),
         OutputFormat::Table => {
-            print_qr(&serde_json::to_string(&request)?)?;
+            print_qr(serde_json::to_string(&request)?)?;
             Ok(())
         }
     }

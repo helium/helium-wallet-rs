@@ -154,12 +154,12 @@ pub fn entropy_to_mnemonic(entropy: &[u8]) -> Result<Vec<String>> {
 
 fn calc_checksum_128(bytes: [u8; 16]) -> u8 {
     // For 128-bit entropy, checksum is the first four bits of the sha256 hash
-    (Sha256::digest(&bytes)[0] & 0b11110000) >> 4
+    (Sha256::digest(bytes)[0] & 0b11110000) >> 4
 }
 
 fn calc_checksum_256(bytes: [u8; 32]) -> u8 {
     // For 256-bit entropy, checksum is the first byte of the sha256 hash
-    Sha256::digest(&bytes)[0]
+    Sha256::digest(bytes)[0]
 }
 
 #[cfg(test)]

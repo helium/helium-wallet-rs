@@ -146,7 +146,7 @@ fn collect_addresses(files: Vec<PathBuf>, mut addresses: Vec<PublicKey>) -> Resu
     // Any given addresses override _all_ the file parameters
     if addresses.is_empty() {
         for file in files {
-            let mut reader = fs::File::open(&file)?;
+            let mut reader = fs::File::open(file)?;
             let enc_wallet = Wallet::read(&mut reader)?;
             addresses.push(enc_wallet.public_key);
         }

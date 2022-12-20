@@ -43,6 +43,10 @@ fn print_public_key(public_key: &PublicKey, format: OutputFormat) -> Result {
             table.add_row(row!["Address", public_key.to_string()]);
             table.add_row(row!["Network", public_key.key_tag().network]);
             table.add_row(row!["Type", public_key.key_tag().key_type]);
+            // if this is an ED25519 key type, result will be the Solana address
+            if let Ok(solana_key) = solana_sdk::pubkey::Pubkey::try_from(public_key.clone()) {
+                table.add_row(row!["Solana Address", solana_key.to_string()]);
+            }
             print_table(&table, None)
         }
         OutputFormat::Json => {
@@ -63,6 +67,11 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             table.add_row(row!["Address", account.address]);
             table.add_row(row!["Network", wallet.public_key.key_tag().network]);
             table.add_row(row!["Type", wallet.public_key.key_tag().key_type]);
+            // if this is an ED25519 key type, result will be the Solana address
+            if let Ok(solana_key) = solana_sdk::pubkey::Pubkey::try_from(wallet.public_key.clone())
+            {
+                table.add_row(row!["Solana Address", solana_key.to_string()]);
+            }
             table.add_row(row!["Sharded", wallet.is_sharded()]);
             table.add_row(row!["PwHash", wallet.pwhash()]);
             table.add_row(row!["Balance", account.balance]);

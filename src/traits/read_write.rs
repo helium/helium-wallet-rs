@@ -1,4 +1,7 @@
-use crate::{keypair::PublicKey, result::Result};
+use crate::{
+    keypair::PublicKey,
+    result::{bail, Result},
+};
 use helium_crypto::{ecc_compact, ed25519, multisig, KeyType};
 use io::{Read, Write};
 use std::{convert::TryFrom, io};
@@ -22,6 +25,7 @@ impl ReadWrite for PublicKey {
             KeyType::Ed25519 => ed25519::PUBLIC_KEY_LENGTH,
             KeyType::EccCompact => ecc_compact::PUBLIC_KEY_LENGTH,
             KeyType::MultiSig => multisig::PUBLIC_KEY_LENGTH,
+            KeyType::Secp256k1 => bail!("Secp256k1 key type unsupported for read."),
         };
         data.resize(key_size, 0);
         reader.read_exact(&mut data[1..])?;

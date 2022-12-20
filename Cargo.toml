@@ -45,8 +45,9 @@ h3ron = "^0.13"
 geo-types = "*"
 helium-api = { git = "https://github.com/helium/helium-api-rs" }
 angry-purple-tiger = "0"
-helium-crypto = {git = "https://github.com/helium/helium-crypto-rs", tag="v0.3.3", features = ["multisig"]}
+helium-crypto = { git = "https://github.com/helium/helium-crypto-rs", features = ["multisig", "solana"]}
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
+solana-sdk = "1"
 tokio = {version = "1", features = ["full"]}
 bitvec = "*" # inherits from elliptic-curve crate
 

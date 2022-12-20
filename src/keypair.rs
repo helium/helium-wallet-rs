@@ -1,4 +1,8 @@
-use crate::{mnemonic::entropy_to_mnemonic, result::Result, traits::ReadWrite};
+use crate::{
+    mnemonic::entropy_to_mnemonic,
+    result::{bail, Result},
+    traits::ReadWrite,
+};
 use byteorder::ReadBytesExt;
 use std::{convert::TryFrom, io};
 
@@ -62,6 +66,9 @@ impl ReadWrite for Keypair {
                 writer.write_all(&key.to_vec())?;
                 writer.write_all(&key.public_key.to_vec())?;
             }
+            helium_crypto::Keypair::Secp256k1(_) => {
+                bail!("Secp256k1 key type unsupported for write.")
+            }
         }
         Ok(())
     }
@@ -83,6 +90,7 @@ impl ReadWrite for Keypair {
                 Ok(Keypair(ecc_compact::Keypair::try_from(&sk_buf[..])?.into()))
             }
             KeyType::MultiSig => Err(helium_crypto::Error::invalid_keytype(tag).into()),
+            KeyType::Secp256k1 => bail!("Secp256k1 key type unsupported for read."),
         }
     }
 }

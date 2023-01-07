@@ -53,6 +53,24 @@ impl Keypair {
         let entropy = self.0.secret_to_vec();
         entropy_to_mnemonic(&entropy)
     }
+
+    /// Extract the underlying seed. We only support this method for ED25519
+    /// since we provide this functionality for exporting seed to Solana CLI.
+    pub fn unencrypted_seed(&self) -> Result<Vec<u8>> {
+        match &self.0 {
+            helium_crypto::Keypair::Ed25519(key) => {
+                // Note we strip the leading helium type byte. What remains is a
+                // standard ed25519 private key (secret followed by public key)
+                Ok(key.to_vec()[1..].to_vec())
+            }
+            helium_crypto::Keypair::EccCompact(_) => {
+                bail!("EccCompact key type unsupported for unencrypted seed write.")
+            }
+            helium_crypto::Keypair::Secp256k1(_) => {
+                bail!("Secp256k1 key type unsupported for unencrypted seed write.")
+            }
+        }
+    }
 }
 
 impl ReadWrite for Keypair {
@@ -131,5 +149,12 @@ mod tests {
         let decoded =
             PublicKey::from_str(&pk.public_key().to_string()).expect("Failed to decode public key");
         assert_eq!(pk.public_key(), &decoded);
+    }
+
+    #[test]
+    fn test_seed_output() {
+        let pk = Keypair::default();
+        let seed = pk.unencrypted_seed().expect("ed25519 keypair seed");
+        assert_eq!(64, seed.len());
     }
 }

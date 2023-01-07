@@ -9,9 +9,25 @@ use sodiumoxide::crypto::{pwhash::argon2id13 as pwhash, secretbox::xsalsa20poly1
 const ARGON_OPS_LIMIT: pwhash::OpsLimit = pwhash::OPSLIMIT_MODERATE;
 const ARGON_MEM_LIMIT: pwhash::MemLimit = pwhash::MEMLIMIT_MODERATE;
 
-/// Export an encypted wallet seed as JSON
+arg_enum! {
+    #[derive(Debug)]
+    pub enum OutputFormat {
+        Seed,
+        Qr,
+    }
+}
+
+/// Exports encrypted wallet seed as QR-encoded JSON or raw seed via stdout.
 #[derive(Debug, StructOpt)]
-pub struct Cmd {}
+pub struct Cmd {
+    /// Output format to use. "--format seed" writes  the raw seed (Solana CLI compatible) to stdout.
+    /// "--format qr is the encrypted seed presented via QR-encoded JSON.
+    #[structopt(long,
+    possible_values = &["qr", "seed"],
+    case_insensitive = true,
+    default_value = "qr")]
+    format: OutputFormat,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptedSeed {
@@ -26,20 +42,29 @@ impl Cmd {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let seed_pwd = get_password("Export Password", true)?;
-        let json_data = json!({
-            "address": wallet.public_key.to_string(),
-            "seed": encrypt_seed_v1(&keypair, &seed_pwd)?,
-        });
 
-        print_qr(json_data.to_string())?;
+        match self.format {
+            OutputFormat::Qr => {
+                let seed_pwd = get_password("Export Password", true)?;
+                let json_data = json!({
+                    "address": wallet.public_key.to_string(),
+                    "seed": encrypt_seed_v1(&keypair, &seed_pwd)?,
+                });
+                print_qr(json_data.to_string())?;
+            }
+            OutputFormat::Seed => {
+                let seed = json!(keypair.unencrypted_seed()?);
+                println!("{seed}");
+            }
+        }
+
         Ok(())
     }
 }
 
 /// Encrypted seeds V1:
 ///  1) Given the user entered password, generate an encryption key using the same pwhash
-///     alogrithm (Argong2id13) as the existing wallet.
+///     algorithm (Argong2id13) as the existing wallet.
 ///  2) Use libsodium xsalsa20poly1305 and the encryption key to encrypt the seed phrase.
 ///  3) base64 encode the salt, the nonce, and the encrypted result so it is easier to
 ///     render in JSON later.
@@ -63,7 +88,7 @@ pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<Encrypted
     };
 
     if cfg!(debug_assertions) {
-        println!("DEBUG encrypt_seed_v1:  password: {}", password);
+        println!("DEBUG encrypt_seed_v1:  password: {password}");
         println!(
             "DEBUG encrypt_seed_v1:  key: {}",
             base64::encode(key.clone())
@@ -78,7 +103,7 @@ pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<Encrypted
     Ok(result)
 }
 
-/// Decrypt an EncyptedSeed that was encrypted by encrypt_seed_v1
+/// Decrypt an EncryptedSeed that was encrypted by encrypt_seed_v1
 ///
 pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> {
     if es.version != 1 {
@@ -95,12 +120,9 @@ pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> 
     let ciphertext = base64::decode(&es.ciphertext)?;
 
     if cfg!(debug_assertions) {
-        println!("DEBUG decrypt_seed_v1: password: {}", password);
-        println!("DEBUG decrypt_seed_v1: es: {:?}", es);
-        println!(
-            "DEBUG decrypt_seed_v1: nonce: {:?}, salt: {:?}",
-            nonce, salt
-        );
+        println!("DEBUG decrypt_seed_v1: password: {password}");
+        println!("DEBUG decrypt_seed_v1: es: {es:?}");
+        println!("DEBUG decrypt_seed_v1: nonce: {nonce:?}, salt: {salt:?}");
     };
 
     if let Ok(decrypted_bytes) = secretbox::open(&ciphertext, &secretbox::Nonce(nonce), &key) {

@@ -121,7 +121,7 @@ impl FromStr for VarSet {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let pos = s
             .find('=')
-            .ok_or_else(|| format!("invalid KEY=value: missing `=`  in `{}`", s))?;
+            .ok_or_else(|| format!("invalid KEY=value: missing `=`  in `{s}`"))?;
         let name = s[..pos].to_string();
         let value: serde_json::Value = s[pos + 1..].parse()?;
         let var = match value {

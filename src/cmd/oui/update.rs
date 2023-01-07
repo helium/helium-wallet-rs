@@ -183,7 +183,7 @@ fn print_txn(
         blockchain_txn_routing_v1::Update::NewXor(_) => "NewXor".into(),
         blockchain_txn_routing_v1::Update::UpdateXor(txn) => format!("Update Xor {}", txn.index),
         blockchain_txn_routing_v1::Update::RequestSubnet(size) => {
-            format!("Request subnet of size {}", size)
+            format!("Request subnet of size {size}")
         }
     };
 

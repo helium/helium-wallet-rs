@@ -88,7 +88,7 @@ pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<Encrypted
     };
 
     if cfg!(debug_assertions) {
-        println!("DEBUG encrypt_seed_v1:  password: {}", password);
+        println!("DEBUG encrypt_seed_v1:  password: {password}");
         println!(
             "DEBUG encrypt_seed_v1:  key: {}",
             base64::encode(key.clone())
@@ -120,12 +120,9 @@ pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> 
     let ciphertext = base64::decode(&es.ciphertext)?;
 
     if cfg!(debug_assertions) {
-        println!("DEBUG decrypt_seed_v1: password: {}", password);
-        println!("DEBUG decrypt_seed_v1: es: {:?}", es);
-        println!(
-            "DEBUG decrypt_seed_v1: nonce: {:?}, salt: {:?}",
-            nonce, salt
-        );
+        println!("DEBUG decrypt_seed_v1: password: {password}");
+        println!("DEBUG decrypt_seed_v1: es: {es:?}");
+        println!("DEBUG decrypt_seed_v1: nonce: {nonce:?}, salt: {salt:?}");
     };
 
     if let Ok(decrypted_bytes) = secretbox::open(&ciphertext, &secretbox::Nonce(nonce), &key) {

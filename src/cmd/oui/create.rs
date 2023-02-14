@@ -71,7 +71,13 @@ impl Create {
             owner_signature: vec![],
             payer_signature: vec![],
             requested_subnet_size: self.subnet_size,
-            filter: base64::decode(&self.filter)?,
+            filter: base64::decode_engine(
+                &self.filter,
+                &base64::engine::fast_portable::FastPortable::from(
+                    &base64::alphabet::STANDARD,
+                    base64::engine::fast_portable::NO_PAD,
+                ),
+            )?,
         };
 
         let fees = &get_txn_fees(&client).await?;

@@ -121,7 +121,13 @@ impl Update {
                     filter.oui,
                     filter.commit,
                     filter.nonce,
-                    blockchain_txn_routing_v1::Update::NewXor(base64::decode(&filter.filter)?),
+                    blockchain_txn_routing_v1::Update::NewXor(base64::decode_engine(
+                        &filter.filter,
+                        &base64::engine::fast_portable::FastPortable::from(
+                            &base64::alphabet::STANDARD,
+                            base64::engine::fast_portable::NO_PAD,
+                        )?,
+                    )),
                 ),
                 Xor::Update(update) => (
                     update.oui,

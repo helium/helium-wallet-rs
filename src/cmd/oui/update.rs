@@ -126,8 +126,8 @@ impl Update {
                         &base64::engine::fast_portable::FastPortable::from(
                             &base64::alphabet::STANDARD,
                             base64::engine::fast_portable::NO_PAD,
-                        )?,
-                    )),
+                        ),
+                    )?),
                 ),
                 Xor::Update(update) => (
                     update.oui,

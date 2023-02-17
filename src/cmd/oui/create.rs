@@ -24,7 +24,7 @@ pub struct Create {
     /// overwrite this at any time.
     #[structopt(
         long,
-        default_value = "wVwCiewtCpEKAAAAAAAAAAAAcCK3fwAAAAAAAAAAAABI7IQOAHAAAAAAAAAAAAAAAQAAADBlAAAAAAAAAAAAADEAAAA2AAAAOgAAAA"
+        default_value = "wVwCiewtCpEKAAAAAAAAAAAAcCK3fwAAAAAAAAAAAABI7IQOAHAAAAAAAAAAAAAAAQAAADBlAAAAAAAAAAAAADEAAAA2AAAAOgAAAA=="
     )]
     filter: String,
 

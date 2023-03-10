@@ -80,13 +80,18 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             print_table(&table, None)
         }
         OutputFormat::Json => {
-            let table = json!({
-                "sharded": wallet.is_sharded(),
-                "network": wallet.public_key.key_tag().network.to_string(),
-                "type": wallet.public_key.key_tag().key_type.to_string(),
-                "pwhash": wallet.pwhash().to_string(),
-                "account": account,
-            });
+            let mut value = json!({});
+            let table = value.as_object_mut().unwrap();
+            table.insert(String::from("sharded"), json!(wallet.is_sharded()));
+            table.insert(String::from("network"), json!(wallet.public_key.key_tag().network.to_string()));
+            table.insert(String::from("type"), json!(wallet.public_key.key_tag().key_type.to_string()));
+            table.insert(String::from("pwhash"), json!(wallet.pwhash().to_string()));
+            table.insert(String::from("account"), json!(account));
+            // if this is an ED25519 key type, result will be the Solana address
+            if let Ok(solana_key) = solana_sdk::pubkey::Pubkey::try_from(wallet.public_key.clone())
+            {
+                table.insert(String::from("solana_address"), json!(solana_key.to_string()));
+            }
             print_json(&table)
         }
     }

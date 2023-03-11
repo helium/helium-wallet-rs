@@ -86,12 +86,7 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
                 "type": wallet.public_key.key_tag().key_type.to_string(),
                 "pwhash": wallet.pwhash().to_string(),
                 "account": account,
-                "solana_address": if let Ok(solana_key) = solana_sdk::pubkey::Pubkey::try_from(wallet.public_key.clone())
-                {
-                    Some(solana_key.to_string())
-                } else {
-                    None
-                }
+                "solana_address": solana_sdk::pubkey::Pubkey::try_from(wallet.public_key.clone()).ok(),
             });
             print_json(&json)
         }

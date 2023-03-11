@@ -80,14 +80,15 @@ fn print_wallet(wallet: &Wallet, account: &Account, format: OutputFormat) -> Res
             print_table(&table, None)
         }
         OutputFormat::Json => {
-            let table = json!({
+            let json = json!({
                 "sharded": wallet.is_sharded(),
                 "network": wallet.public_key.key_tag().network.to_string(),
                 "type": wallet.public_key.key_tag().key_type.to_string(),
                 "pwhash": wallet.pwhash().to_string(),
                 "account": account,
+                "solana_address": solana_sdk::pubkey::Pubkey::try_from(wallet.public_key.clone()).ok(),
             });
-            print_json(&table)
+            print_json(&json)
         }
     }
 }

@@ -129,10 +129,8 @@ impl Block {
 #[derive(Debug)]
 enum Price {
     CoinGecko,
-    Bilaxy,
     BinanceUs,
     BinanceInt,
-    Ftx,
     Usd(Usd),
 }
 
@@ -144,15 +142,6 @@ impl Price {
                     reqwest::get("https://api.coingecko.com/api/v3/coins/helium").await?;
                 let json: serde_json::Value = response.json().await?;
                 let amount = &json["market_data"]["current_price"]["usd"].to_string();
-                Ok(Usd::from_str(amount)?)
-            }
-            Self::Bilaxy => {
-                let response =
-                    reqwest::get("https://newapi.bilaxy.com/v1/valuation?currency=HNT").await?;
-                let json: serde_json::Value = response.json().await?;
-                let amount = &json["HNT"]["usd_value"]
-                    .as_str()
-                    .ok_or_else(|| anyhow!("No USD value found"))?;
                 Ok(Usd::from_str(amount)?)
             }
             Self::BinanceUs => {
@@ -174,12 +163,6 @@ impl Price {
                     .ok_or_else(|| anyhow!("No USD value found"))?;
                 Ok(Usd::from_str(amount)?)
             }
-            Self::Ftx => {
-                let response = reqwest::get("https://ftx.com/api/markets/HNT/USD").await?;
-                let json: serde_json::Value = response.json().await?;
-                let amount = &json["result"]["price"].to_string();
-                Ok(Usd::from_str(amount)?)
-            }
             Self::Usd(v) => Ok(*v),
         }
     }
@@ -191,12 +174,10 @@ impl FromStr for Price {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "coingecko" => Ok(Self::CoinGecko),
-            "bilaxy" => Ok(Self::Bilaxy),
             // don't break old interface so maintain "binance" to Binance US
             "binance" => Ok(Self::BinanceUs),
             "binance-us" => Ok(Self::BinanceUs),
             "binance-int" => Ok(Self::BinanceInt),
-            "ftx" => Ok(Self::Ftx),
             _ => {
                 let data = Decimal::from_str(s).or_else(|_| Decimal::from_scientific(s))?;
                 Ok(Self::Usd(Usd::new(data.round_dp_with_strategy(

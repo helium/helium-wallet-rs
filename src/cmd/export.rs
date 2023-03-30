@@ -20,13 +20,13 @@ arg_enum! {
 /// Exports encrypted wallet seed as QR-encoded JSON or raw seed via stdout.
 #[derive(Debug, StructOpt)]
 pub struct Cmd {
-    /// Output format to use. "--format seed" writes  the raw seed (Solana CLI compatible) to stdout.
-    /// "--format qr is the encrypted seed presented via QR-encoded JSON.
+    /// Output format to use. "--output seed" writes  the raw seed (Solana CLI compatible) to stdout.
+    /// "--output qr is the encrypted seed presented via QR-encoded JSON.
     #[structopt(long,
     possible_values = &["qr", "seed"],
     case_insensitive = true,
     default_value = "qr")]
-    format: OutputFormat,
+    output: OutputFormat,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -43,7 +43,7 @@ impl Cmd {
         let wallet = load_wallet(opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        match self.format {
+        match self.output {
             OutputFormat::Qr => {
                 let seed_pwd = get_password("Export Password", true)?;
                 let json_data = json!({

@@ -1475,12 +1475,12 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "1.7.8"
+version = "1.7.9"
 dependencies = [
  "aes-gcm",
  "angry-purple-tiger",
  "anyhow",
- "base64 0.20.0",
+ "base64 0.12.3",
  "bitvec",
  "bs58",
  "byteorder",
@@ -1493,7 +1493,7 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "lazy_static",
- "pbkdf2 0.11.0",
+ "pbkdf2",
  "prettytable-rs",
  "qr2term",
  "rand 0.8.5",
@@ -2121,15 +2121,6 @@ name = "pbkdf2"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "271779f35b581956db91a3e55737327a03aa051e90b1c47aeb189508533adfd7"
-dependencies = [
- "digest 0.10.6",
-]
-
-[[package]]
-name = "pbkdf2"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83a0692ec44e4cf1ef28ca317f14f8f07da2d95ec3fa01f86e4467b725e60917"
 dependencies = [
  "digest 0.10.6",
 ]
@@ -3161,7 +3152,7 @@ dependencies = [
  "memmap2",
  "num-derive",
  "num-traits",
- "pbkdf2 0.10.1",
+ "pbkdf2",
  "qstring",
  "rand 0.7.3",
  "rand_chacha 0.2.2",

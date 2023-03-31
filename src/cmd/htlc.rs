@@ -1,8 +1,9 @@
 use crate::{
+    b64,
     cmd::*,
     keypair::{Keypair, PublicKey},
     result::Result,
-    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign},
 };
 use helium_api::accounts;
 use serde_json::json;
@@ -129,7 +130,7 @@ fn print_create_txn(
                 "timelock": txn.timelock,
                 "nonce": txn.nonce,
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "Status": status_endpoint
             });
             print_json(&table)
@@ -186,7 +187,7 @@ fn print_redeem_txn(
                 "address": PublicKey::from_bytes(&txn.address)?.to_string(),
                 "payee": PublicKey::from_bytes(&txn.payee)?.to_string(),
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "status": status_endpoint
             });
             print_json(&table)

@@ -1,4 +1,4 @@
-use crate::{cmd::*, result::Result};
+use crate::{b64, cmd::*, result::Result};
 use serde_json::json;
 use std::{fs, path::PathBuf};
 
@@ -92,7 +92,7 @@ impl VerifyFile {
         let wallet = load_wallet(opts.files)?;
         let mut data = Vec::new();
         fs::File::open(&self.input)?.read_to_end(&mut data)?;
-        let signature = base64::decode(&self.signature)?;
+        let signature = b64::decode(&self.signature)?;
         let verified = wallet.public_key.verify(&data, &signature).is_ok();
         print_verified(&wallet.public_key, verified)
     }
@@ -113,7 +113,7 @@ impl VerifyMsg {
     pub async fn run(&self, opts: Opts) -> Result {
         use helium_crypto::Verify;
         let wallet = load_wallet(opts.files)?;
-        let signature = base64::decode(&self.signature)?;
+        let signature = b64::decode(&self.signature)?;
         let verified = wallet
             .public_key
             .verify(self.msg.as_bytes(), &signature)
@@ -125,7 +125,7 @@ impl VerifyMsg {
 fn print_signature(public_key: &PublicKey, signature: Vec<u8>) -> Result {
     let json = json!({
         "address": public_key.to_string(),
-        "signature": base64::encode(signature)
+        "signature": b64::encode(signature)
     });
     print_json(&json)
 }

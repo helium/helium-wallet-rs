@@ -1,8 +1,9 @@
 use crate::{
+    b64,
     cmd::*,
     keypair::PublicKey,
     result::Result,
-    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign},
 };
 
 #[derive(Debug, StructOpt)]
@@ -76,7 +77,7 @@ fn print_txn(
                 "fee": txn.fee,
                 "nonce": txn.nonce,
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "status": status_endpoint
             });
             print_json(&table)

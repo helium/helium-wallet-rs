@@ -1,8 +1,9 @@
 use crate::{
+    b64,
     keypair::{Network, PublicKey},
     mnemonic,
     result::{bail, Error, Result},
-    traits::{TxnFeeConfig, B64},
+    traits::TxnFeeConfig,
     wallet::Wallet,
 };
 pub use helium_api::{
@@ -72,7 +73,7 @@ impl std::str::FromStr for Transaction {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        Ok(Self(BlockchainTxn::from_b64(s)?))
+        Ok(Self(b64::decode_message(s)?))
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
+    b64,
     result::{anyhow, Result},
-    traits::B64,
 };
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 use std::{fmt, str::FromStr};
@@ -12,7 +12,7 @@ impl FromStr for Memo {
     type Err = crate::result::Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        match u64::from_b64(s) {
+        match b64::decode_u64(s) {
             Ok(v) => Ok(Memo(v)),
             Err(_) => Err(anyhow!("Invalid base64 memo")),
         }
@@ -33,7 +33,7 @@ impl From<&Memo> for u64 {
 
 impl fmt::Display for Memo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0.to_b64().unwrap())
+        f.write_str(&b64::encode_u64(self.0))
     }
 }
 
@@ -55,7 +55,7 @@ impl<'de> Deserialize<'de> for Memo {
             where
                 E: de::Error,
             {
-                match u64::from_b64(value) {
+                match b64::decode_u64(value) {
                     Ok(v) => Ok(Memo(v)),
                     Err(_) => Err(de::Error::custom("invalid memo")),
                 }

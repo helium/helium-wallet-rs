@@ -1,4 +1,5 @@
 use crate::{
+    b64,
     cmd::*,
     keypair::Keypair,
     result::Result,
@@ -216,7 +217,7 @@ fn print_txn(
                 "validator" : validator,
                 "fee": txn.fee,
                 "stake_amount": txn.stake_amount,
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "hash": status_json(status),
                 "status": status_endpoint
             });

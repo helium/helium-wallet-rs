@@ -1,8 +1,9 @@
 use crate::{
+    b64,
     cmd::*,
     keypair::{Keypair, Network},
     result::{bail, Result},
-    traits::{ToJson, TxnSign, B64},
+    traits::{ToJson, TxnSign},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -130,7 +131,7 @@ fn print_txn(envelope: &BlockchainTxn, status: &Option<PendingTxnStatus>) -> Res
         _ => bail!("Unsupported transaction for multisig"),
     };
     json["hash"] = status_json(status);
-    json["txn"] = envelope.to_b64()?.into();
+    json["txn"] = b64::encode_message(envelope)?.into();
     print_json(&json)
 }
 
@@ -153,11 +154,11 @@ impl Proofs {
         match &envelope.txn {
             Some(Txn::Vars(t)) => {
                 for signature in &t.multi_key_proofs {
-                    proofs.key_proofs.push(signature.to_b64()?);
+                    proofs.key_proofs.push(b64::encode(signature));
                 }
                 let multi_proofs = t.multi_proofs.clone().into_iter();
                 for signature in multi_proofs {
-                    proofs.proofs.push(signature.to_b64()?);
+                    proofs.proofs.push(b64::encode(signature));
                 }
             }
             _ => bail!("Invalid transaction for proof"),
@@ -170,11 +171,11 @@ impl Proofs {
             Some(Txn::Vars(t)) => {
                 t.multi_key_proofs = Vec::with_capacity(self.key_proofs.len());
                 for signature in &self.key_proofs {
-                    t.multi_key_proofs.push(Vec::<u8>::from_b64(signature)?);
+                    t.multi_key_proofs.push(b64::decode(signature)?);
                 }
                 t.multi_proofs = Vec::with_capacity(self.proofs.len());
                 for signature in &self.proofs {
-                    t.multi_proofs.push(Vec::<u8>::from_b64(signature)?);
+                    t.multi_proofs.push(b64::decode(signature)?);
                 }
             }
             _ => bail!("Invalid transaction for proof"),
@@ -190,7 +191,7 @@ impl Proofs {
     ) -> Result {
         match &envelope.txn {
             Some(Txn::Vars(t)) => {
-                let signature = t.sign(keypair)?.to_b64()?;
+                let signature = b64::encode(t.sign(keypair)?);
                 match proof_type {
                     ProofType::KeyProof => self.key_proofs.push(signature),
                     ProofType::Proof => self.proofs.push(signature),
@@ -222,10 +223,12 @@ impl Artifact {
     }
 
     pub fn from_txn(txn: &BlockchainTxn) -> Result<Self> {
-        Ok(Self { txn: txn.to_b64()? })
+        Ok(Self {
+            txn: b64::encode_message(txn)?,
+        })
     }
 
     pub fn to_txn(&self) -> Result<BlockchainTxn> {
-        BlockchainTxn::from_b64(&self.txn)
+        b64::decode_message(&self.txn)
     }
 }

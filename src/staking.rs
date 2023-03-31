@@ -1,8 +1,8 @@
 use crate::{
+    b64,
     cmd::USER_AGENT,
     keypair::PublicKey,
     result::{anyhow, Result},
-    traits::B64,
 };
 use helium_proto::BlockchainTxn;
 use serde_json::json;
@@ -68,7 +68,7 @@ impl Client {
     /// Get the staking server to sign a given transaction using the
     /// given onboarding key
     pub async fn sign(&self, onboarding_key: &str, txn: &BlockchainTxn) -> Result<BlockchainTxn> {
-        let encoded = txn.to_b64()?;
+        let encoded = b64::encode_message(txn)?;
         let json = json!({ "transaction": encoded });
 
         let request_url = format!("{}/transactions/pay/{}", self.base_url, onboarding_key);
@@ -84,6 +84,6 @@ impl Client {
         let txn_data = response["data"]["transaction"]
             .as_str()
             .ok_or_else(|| anyhow!("Unexpected transaction response from staking server"))?;
-        BlockchainTxn::from_b64(txn_data)
+        b64::decode_message(txn_data)
     }
 }

@@ -25,6 +25,9 @@ jobs:
         with:
           access_token: ${{ github.token }}
 
+      - name: Install Protoc
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Check formatting
         run: cargo fmt  -- --check
 
@@ -83,6 +86,9 @@ jobs:
         uses: styfle/cancel-workflow-action@0.5.0
         with:
           access_token: ${{ github.token }}
+
+      - name: Install Protoc
+        run: brew install protobuf
 
       - name: Build
         run: cargo build --all --release
@@ -144,6 +150,9 @@ jobs:
         uses: styfle/cancel-workflow-action@0.5.0
         with:
           access_token: ${{ github.token }}
+
+      - name: Install Protoc
+        run: choco install protoc
 
       - name: Build
         run: cargo build --all --release

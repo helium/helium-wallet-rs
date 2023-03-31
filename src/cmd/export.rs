@@ -1,4 +1,4 @@
-use crate::{cmd::*, keypair::Keypair, pwhash::*, result::Result};
+use crate::{b64, cmd::*, keypair::Keypair, pwhash::*, result::Result};
 use qr2term::print_qr;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -82,17 +82,14 @@ pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<Encrypted
 
     let result = EncryptedSeed {
         version: 1,
-        salt: base64::encode(hasher.salt()),
-        nonce: base64::encode(nonce),
-        ciphertext: base64::encode(ciphertext),
+        salt: b64::encode(hasher.salt()),
+        nonce: b64::encode(nonce),
+        ciphertext: b64::encode(ciphertext),
     };
 
     if cfg!(debug_assertions) {
         println!("DEBUG encrypt_seed_v1:  password: {password}");
-        println!(
-            "DEBUG encrypt_seed_v1:  key: {}",
-            base64::encode(key.clone())
-        );
+        println!("DEBUG encrypt_seed_v1:  key: {}", b64::encode(key));
         let json_data = json!({
             "address": address,
             "seed": result,
@@ -109,15 +106,15 @@ pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> 
     if es.version != 1 {
         bail!("Incompatible version format");
     }
-    let salt = pwhash::Salt::from_slice(base64::decode(&es.salt)?.as_slice())
+    let salt = pwhash::Salt::from_slice(b64::decode(&es.salt)?.as_slice())
         .ok_or_else(|| anyhow::anyhow!("Failed to decode salt"))?;
     let hasher = Argon2id13::with_salt_and_limits(salt, ARGON_OPS_LIMIT, ARGON_MEM_LIMIT);
     let mut key = secretbox::Key([0; secretbox::KEYBYTES]);
     let secretbox::Key(ref mut key_buffer) = key;
     hasher.pwhash(password.as_bytes(), key_buffer)?;
 
-    let nonce: [u8; secretbox::NONCEBYTES] = base64::decode(&es.nonce)?.as_slice().try_into()?;
-    let ciphertext = base64::decode(&es.ciphertext)?;
+    let nonce: [u8; secretbox::NONCEBYTES] = b64::decode(&es.nonce)?.as_slice().try_into()?;
+    let ciphertext = b64::decode(&es.ciphertext)?;
 
     if cfg!(debug_assertions) {
         println!("DEBUG decrypt_seed_v1: password: {password}");

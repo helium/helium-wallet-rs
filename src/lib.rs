@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate prettytable;
 
+pub mod b64;
 pub mod cmd;
 pub mod format;
 pub mod keypair;

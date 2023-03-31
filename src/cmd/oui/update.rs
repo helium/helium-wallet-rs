@@ -1,6 +1,7 @@
 use crate::{
+    b64,
     cmd::oui::*,
-    traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee},
 };
 use helium_api::{models::transactions::PendingTxnStatus, ouis};
 use serde_json::json;
@@ -121,7 +122,7 @@ impl Update {
                     filter.oui,
                     filter.commit,
                     filter.nonce,
-                    blockchain_txn_routing_v1::Update::NewXor(base64::decode(&filter.filter)?),
+                    blockchain_txn_routing_v1::Update::NewXor(b64::decode(&filter.filter)?),
                 ),
                 Xor::Update(update) => (
                     update.oui,
@@ -129,7 +130,7 @@ impl Update {
                     update.nonce,
                     blockchain_txn_routing_v1::Update::UpdateXor(UpdateXor {
                         index: update.index,
-                        filter: base64::decode(&update.filter)?,
+                        filter: b64::decode(&update.filter)?,
                     }),
                 ),
             },
@@ -204,7 +205,7 @@ fn print_txn(
                 "last_oui": txn.oui,
                 "update": update,
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "status": status_endpoint
             });
             print_json(&table)

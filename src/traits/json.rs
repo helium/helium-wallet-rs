@@ -1,7 +1,7 @@
 use crate::{
+    b64,
     keypair::PublicKey,
     result::{anyhow, Result},
-    traits::B64,
 };
 use helium_proto::*;
 use serde_json::json;
@@ -18,7 +18,7 @@ pub(crate) fn maybe_b64_url(data: &[u8]) -> Result<Option<String>> {
     if data.is_empty() {
         Ok(None)
     } else {
-        Ok(Some(data.to_vec().to_b64_url()?))
+        Ok(Some(b64::url_encode(data)))
     }
 }
 
@@ -58,7 +58,7 @@ fn vec_to_b58s(vec: &[Vec<u8>]) -> Result<Vec<String>> {
 fn vec_to_b64_urls(vec: &[Vec<u8>]) -> Result<Vec<String>> {
     let mut seq = Vec::with_capacity(vec.len());
     for entry in vec {
-        seq.push(entry.to_b64_url()?);
+        seq.push(b64::url_encode(entry));
     }
     Ok(seq)
 }

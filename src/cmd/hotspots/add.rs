@@ -1,4 +1,5 @@
 use crate::{
+    b64,
     cmd::*,
     result::Result,
     staking,
@@ -96,7 +97,7 @@ fn print_txn(
                 "fee": txn.fee,
                 "staking fee": txn.staking_fee,
                 "hash": status_json(status),
-                "txn": txn.in_envelope().to_b64()?,
+                "txn": b64::encode_message(&txn.in_envelope())?,
                 "status": status_endpoint
             });
             print_json(&table)

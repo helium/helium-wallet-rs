@@ -1,9 +1,10 @@
 use crate::{
+    b64,
     cmd::*,
     keypair::PublicKey,
     memo::Memo,
     result::Result,
-    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign},
 };
 use helium_api::accounts;
 use helium_proto::BlockchainTokenTypeV1;
@@ -244,7 +245,7 @@ fn print_txn(
                 "fee": txn.fee,
                 "nonce": txn.nonce,
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "status": status_endpoint
             });
             print_json(&table)

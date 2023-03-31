@@ -1,7 +1,8 @@
 use crate::{
+    b64,
     cmd::*,
     result::Result,
-    traits::{TxnEnvelope, TxnSign, B64},
+    traits::{TxnEnvelope, TxnSign},
 };
 use helium_api::blocks;
 use rust_decimal::{prelude::*, Decimal};
@@ -73,7 +74,7 @@ fn print_txn(
     pending_url: &str,
     format: OutputFormat,
 ) -> Result {
-    let encoded = envelope.to_b64()?;
+    let encoded = b64::encode_message(envelope)?;
     let status_endpoint = pending_url.to_owned() + status_str(status);
     match format {
         OutputFormat::Table => {

@@ -1,4 +1,4 @@
-use crate::{cmd::*, result::Result};
+use crate::{b64, cmd::*, result::Result};
 use serde_json::json;
 
 #[derive(Debug, StructOpt)]
@@ -46,7 +46,7 @@ fn print_txn(
         OutputFormat::Json => {
             let table = json!({
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "status": status_endpoint
             });
 

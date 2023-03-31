@@ -1,4 +1,5 @@
 use crate::{
+    b64,
     cmd::*,
     staking,
     traits::{TxnEnvelope, TxnFee, TxnModeStakingFee, TxnSign},
@@ -104,7 +105,7 @@ impl Cmd {
             bail!("no longitude specified or found on chain")
         };
         let geo_point: geo_types::Point<f64> = (lon, lat).into();
-        let location = h3ron::H3Cell::from_point(&geo_point, 12)?.to_string();
+        let location = h3ron::H3Cell::from_point(geo_point, 12)?.to_string();
         let mut txn = BlockchainTxnAssertLocationV2 {
             payer,
             owner: wallet_key.into(),
@@ -188,7 +189,7 @@ fn print_txn(
                 "nonce": txn.nonce,
                 "staking_fee": txn.staking_fee,
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "status": status_endpoint
             });
             print_json(&table)

@@ -1,4 +1,5 @@
 use crate::{
+    b64,
     cmd::oui::*,
     traits::{TxnEnvelope, TxnFee, TxnSign, TxnStakingFee},
 };
@@ -71,7 +72,7 @@ impl Create {
             owner_signature: vec![],
             payer_signature: vec![],
             requested_subnet_size: self.subnet_size,
-            filter: base64::decode(&self.filter)?,
+            filter: b64::decode(&self.filter)?,
         };
 
         let fees = &get_txn_fees(&client).await?;
@@ -127,7 +128,7 @@ fn print_txn(
                 "addresses": map_addresses(txn.addresses.clone(), |v| v.to_string())?,
                 "requested_subnet_size": txn.requested_subnet_size,
                 "hash": status_json(status),
-                "txn": envelope.to_b64()?,
+                "txn": b64::encode_message(envelope)?,
                 "status": status_endpoint
             });
 

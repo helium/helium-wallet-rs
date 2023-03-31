@@ -1,7 +1,8 @@
 use crate::{
+    b64,
     cmd::*,
     result::Result,
-    traits::{TxnEnvelope, TxnFee, TxnSign, B64},
+    traits::{TxnEnvelope, TxnFee, TxnSign},
 };
 
 #[derive(Debug, StructOpt)]
@@ -200,7 +201,7 @@ fn print_txn(
                 "status": status_endpoint,
             });
             if let Some(envelope) = envelope {
-                table["txn"] = envelope.to_b64()?.into();
+                table["txn"] = b64::encode_message(envelope)?.into();
             };
             print_json(&table)
         }

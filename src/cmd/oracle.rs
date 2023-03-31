@@ -1,6 +1,6 @@
 use crate::{
     cmd::*,
-    result::{anyhow, Result},
+    result::Result,
     traits::{TxnEnvelope, TxnSign, B64},
 };
 use helium_api::blocks;
@@ -20,7 +20,7 @@ pub enum Cmd {
 /// Helium Blockchain.
 pub struct Report {
     /// The oracle price to report. Specify in USD or supply one of the
-    /// supported price lookup services ("coingecko", "bilaxy", "binance").
+    /// supported price lookup services ("coingecko").
     #[structopt(long)]
     price: Price,
 
@@ -129,8 +129,6 @@ impl Block {
 #[derive(Debug)]
 enum Price {
     CoinGecko,
-    BinanceUs,
-    BinanceInt,
     Usd(Usd),
 }
 
@@ -144,25 +142,6 @@ impl Price {
                 let amount = &json["market_data"]["current_price"]["usd"].to_string();
                 Ok(Usd::from_str(amount)?)
             }
-            Self::BinanceUs => {
-                let response =
-                    reqwest::get("https://api.binance.us/api/v3/ticker/price?symbol=HNTUSD")
-                        .await?;
-                let json: serde_json::Value = response.json().await?;
-                let amount = &json["price"]
-                    .as_str()
-                    .ok_or_else(|| anyhow!("No USD value found"))?;
-                Ok(Usd::from_str(amount)?)
-            }
-            Self::BinanceInt => {
-                let response =
-                    reqwest::get("https://api.binance.us/api/v3/avgPrice?symbol=HNTUSDT").await?;
-                let json: serde_json::Value = response.json().await?;
-                let amount = &json["price"]
-                    .as_str()
-                    .ok_or_else(|| anyhow!("No USD value found"))?;
-                Ok(Usd::from_str(amount)?)
-            }
             Self::Usd(v) => Ok(*v),
         }
     }
@@ -174,10 +153,6 @@ impl FromStr for Price {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "coingecko" => Ok(Self::CoinGecko),
-            // don't break old interface so maintain "binance" to Binance US
-            "binance" => Ok(Self::BinanceUs),
-            "binance-us" => Ok(Self::BinanceUs),
-            "binance-int" => Ok(Self::BinanceInt),
             _ => {
                 let data = Decimal::from_str(s).or_else(|_| Decimal::from_scientific(s))?;
                 Ok(Self::Usd(Usd::new(data.round_dp_with_strategy(

@@ -71,7 +71,7 @@ impl Pbkdf2 {
     }
 
     pub fn pwhash(&self, password: &[u8], hash: &mut [u8]) -> Result {
-        pbkdf2::pbkdf2::<Hmac<Sha256>>(password, &self.salt, self.iterations, hash)?;
+        pbkdf2::pbkdf2::<Hmac<Sha256>>(password, &self.salt, self.iterations, hash);
         Ok(())
     }
 

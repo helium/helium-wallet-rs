@@ -7,51 +7,72 @@ on:
   pull_request:
     branches: [master]
 
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+  RUSTFLAGS: "-D warnings"
+  RUSTUP_MAX_RETRIES: 10
+
 jobs:
-  build-linux:
+  hygiene:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
-          components: clippy, rustfmt
-
-      - name: Cancel previous runs
-        uses: styfle/cancel-workflow-action@0.5.0
+      - name: Setup | Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.11.0
         with:
           access_token: ${{ github.token }}
 
-      - name: Install Protoc
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup | Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Setup | Tools
         run: sudo apt-get install -y protobuf-compiler
 
-      - name: Check formatting
-        run: cargo fmt  -- --check
+      - name: Setup | Cache
+        uses: Swatinem/rust-cache@v2
 
-      - name: Clippy
-        uses: actions-rs/clippy-check@v1
+      - name: Build | Hygiene
+        run: |
+          cargo fmt  -- --check
+          cargo clippy --all-features --locked -- -D clippy::all
+
+      - name: Build | Test
+        run: |
+          cargo test
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.11.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: -- -Dclippy::all
+          access_token: ${{ github.token }}
 
-      - name: Run tests
-        run: cargo test
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
 
-      - name: Build
-        run: cargo build --all --release
+      - name: Setup | Tools
+        run: sudo apt-get install -y protobuf-compiler
 
-      - name: Name Release
-        if: startsWith(github.ref, 'refs/tags/')
-        id: name_release
-        run: echo ::set-output name=RELEASE::helium-wallet-${GITHUB_REF/refs\/tags\//}-x86-64-linux
+      - name: Setup | Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Prepare Release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          NAME: ${{ steps.name_release.outputs.RELEASE }}
+      - name: Setup | Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build | Compile
+        run: cargo build --all --locked --release
+
+      - name: Build | Name
+        run: echo "NAME=helium-wallet-$(git describe --always)-x86-64-linux" >> $GITHUB_ENV
+
+      - name: Build | Package
         run: |
           mkdir $NAME
           mv target/release/helium-wallet $NAME/
@@ -60,48 +81,40 @@ jobs:
           tar -zcvf $NAME.tar.gz $NAME/
           sha256sum -b --tag $NAME.tar.gz > $NAME.checksum
 
-      - name: Push Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Build | Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          files: |
-            ${{ steps.name_release.outputs.RELEASE }}.tar.gz
-            ${{ steps.name_release.outputs.RELEASE }}.checksum
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: helium-wallet-x86-64-linux
+          if-no-files-found: error
+          path: helium-wallet-*.tar.gz
 
   build-mac:
     runs-on: macos-latest
-
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-apple-darwin
-          default: true
-          override: true
-
-      - name: Cancel previous runs
-        uses: styfle/cancel-workflow-action@0.5.0
+      - name: Setup | Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.11.0
         with:
           access_token: ${{ github.token }}
 
-      - name: Install Protoc
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup | Tools
         run: brew install protobuf
 
-      - name: Build
-        run: cargo build --all --release
+      - name: Setup | Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Name Release
-        if: startsWith(github.ref, 'refs/tags/')
-        id: name_release
-        run: echo ::set-output name=RELEASE::helium-wallet-${GITHUB_REF/refs\/tags\//}-x86-64-macos
+      - name: Setup | Rust Cache
+        uses: Swatinem/rust-cache@v2
 
-      - name: Prepare Release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          NAME: ${{ steps.name_release.outputs.RELEASE }}
+      - name: Build | Compile
+        run: cargo build --all --locked --release
+
+      - name: Build | Name
+        run: echo "NAME=helium-wallet-$(git describe --always)-x86-64-macos" >> $GITHUB_ENV
+
+      - name: Build | Package
         run: |
           mkdir $NAME
           mv target/release/helium-wallet $NAME/
@@ -110,63 +123,48 @@ jobs:
           gtar -zcvf $NAME.tar.gz $NAME/
           shasum -a 256 -b --tag $NAME.tar.gz > $NAME.checksum
 
-      - name: Push Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Build | Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          files: |
-            ${{ steps.name_release.outputs.RELEASE }}.tar.gz
-            ${{ steps.name_release.outputs.RELEASE }}.checksum
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: helium-wallet-x86-64-macos
+          if-no-files-found: error
+          path: helium-wallet-*.tar.gz
 
   build-windows:
     runs-on: windows-latest
-
     steps:
-      - name: Cache LLVM and Clang
+      - name: Setup | Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.11.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup | LLVM Cache
         id: cache-llvm
         uses: actions/cache@v2
         with:
           path: ${{ runner.temp }}/llvm
           key: llvm-12.0
 
-      - name: Install LLVM and Clang
+      - name: Setup | LLVM
         uses: KyleMayes/install-llvm-action@v1
         with:
           version: "12.0"
           directory: ${{ runner.temp }}/llvm
           cached: ${{ steps.cache-llvm.outputs.cache-hit }}
 
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-pc-windows-gnu
-          default: true
-          override: true
-
-      - name: Cancel previous runs
-        uses: styfle/cancel-workflow-action@0.5.0
-        with:
-          access_token: ${{ github.token }}
-
-      - name: Install Protoc
+      - name: Setup | Protoc
         run: choco install protoc
 
-      - name: Build
-        run: cargo build --all --release
+      - name: Build | Compile
+        run: cargo build --all --release --locked
 
-      - name: Name Release
-        if: startsWith(github.ref, 'refs/tags/')
-        id: name_release
-        run: echo ::set-output name=RELEASE::helium-wallet-${GITHUB_REF/refs\/tags\//}-x86-64-win
-        shell: bash
+      - name: Build | Name
+        run: echo "NAME=helium-wallet-$(git describe --always)-x86-64-win" >> $GITHUB_ENV
 
-      - name: Prepare Release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          NAME: ${{ steps.name_release.outputs.RELEASE }}
+      - name: Build | Package
         run: |
           mkdir $env:NAME
           mv target/release/helium-wallet.exe $env:NAME/
@@ -175,12 +173,35 @@ jobs:
           7z a "$env:NAME.zip" "$env:NAME/"
           certUtil -hashfile "$env:NAME.zip" SHA256 > "$env:NAME.checksum"
 
-      - name: Push Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Build | Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          files: |
-            ${{ steps.name_release.outputs.RELEASE }}.zip
-            ${{ steps.name_release.outputs.RELEASE }}.checksum
+          name: helium-wallet-x86-64-win
+          if-no-files-found: error
+          path: helium-wallet-*.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags')
+    needs: [hygiene, build-linux, build-mac, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.11.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Setup | Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: helium-wallet-*
+
+      - name: Release | Artifacts
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          fail_on_unmatched_files: true
+          name: ${{github.ref_name}}
+          files: |
+            helium-wallet-*.zip
+            helium-wallet-*.checksum

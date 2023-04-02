@@ -46,8 +46,12 @@ jobs:
         run: |
           cargo test
 
-  build-linux:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
     steps:
       - name: Setup | Cancel Previous Runs
         uses: styfle/cancel-workflow-action@0.11.0
@@ -58,131 +62,76 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Setup | Tools
-        run: sudo apt-get install -y protobuf-compiler
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+              sudo apt-get install -y protobuf-compiler
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+              choco install protoc
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              brew install protobuf
+          else
+              echo "$RUNNER_OS not supported"
+              exit 1
+          fi
 
       - name: Setup | Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup | Rust Cache
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
 
       - name: Build | Compile
         run: cargo build --all --locked --release
 
       - name: Build | Name
-        run: echo "NAME=helium-wallet-$(git describe --always)-x86-64-linux" >> $GITHUB_ENV
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+              ARCH=x86-64-linux
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+              ARCH=x86-64-win
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              ARCH=x86-64-macos
+          else
+              echo "$RUNNER_OS not supported"
+              exit 1
+          fi
+          echo "NAME=helium-wallet-$(git describe --always)-${ARCH}" >> $GITHUB_ENV
 
       - name: Build | Package
+        shell: bash
         run: |
           mkdir $NAME
           mv target/release/helium-wallet $NAME/
           cp README.md $NAME/
           cp LICENSE $NAME/
-          tar -zcvf $NAME.tar.gz $NAME/
-          sha256sum -b --tag $NAME.tar.gz > $NAME.checksum
+          if [ "$RUNNER_OS" == "Linux" ]; then
+              tar -zcvf $NAME.tar.gz $NAME/
+              sha256sum -b --tag $NAME.tar.gz > $NAME.checksum
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+              7z a $NAME.zip $NAME/
+              certUtil -hashfile $NAME.zip SHA256 > $NAME.checksum
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+              gtar -zcvf $NAME.tar.gz $NAME/
+              shasum -a 256 -b --tag $NAME.tar.gz > $NAME.checksum
+          else
+              echo "$RUNNER_OS not supported"
+              exit 1
+          fi
 
       - name: Build | Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: helium-wallet-x86-64-linux
+          name: ${{ env.NAME }}
           if-no-files-found: error
-          path: helium-wallet-*.tar.gz
-
-  build-mac:
-    runs-on: macos-latest
-    steps:
-      - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.11.0
-        with:
-          access_token: ${{ github.token }}
-
-      - name: Setup | Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup | Tools
-        run: brew install protobuf
-
-      - name: Setup | Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup | Rust Cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build | Compile
-        run: cargo build --all --locked --release
-
-      - name: Build | Name
-        run: echo "NAME=helium-wallet-$(git describe --always)-x86-64-macos" >> $GITHUB_ENV
-
-      - name: Build | Package
-        run: |
-          mkdir $NAME
-          mv target/release/helium-wallet $NAME/
-          cp README.md $NAME/
-          cp LICENSE $NAME/
-          gtar -zcvf $NAME.tar.gz $NAME/
-          shasum -a 256 -b --tag $NAME.tar.gz > $NAME.checksum
-
-      - name: Build | Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: helium-wallet-x86-64-macos
-          if-no-files-found: error
-          path: helium-wallet-*.tar.gz
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.11.0
-        with:
-          access_token: ${{ github.token }}
-
-      - name: Setup | Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup | LLVM Cache
-        id: cache-llvm
-        uses: actions/cache@v2
-        with:
-          path: ${{ runner.temp }}/llvm
-          key: llvm-12.0
-
-      - name: Setup | LLVM
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "12.0"
-          directory: ${{ runner.temp }}/llvm
-          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
-
-      - name: Setup | Protoc
-        run: choco install protoc
-
-      - name: Build | Compile
-        run: cargo build --all --release --locked
-
-      - name: Build | Name
-        run: echo "NAME=helium-wallet-$(git describe --always)-x86-64-win" >> $GITHUB_ENV
-
-      - name: Build | Package
-        run: |
-          mkdir $env:NAME
-          mv target/release/helium-wallet.exe $env:NAME/
-          cp README.md $env:NAME/
-          cp LICENSE $env:NAME/
-          7z a "$env:NAME.zip" "$env:NAME/"
-          certUtil -hashfile "$env:NAME.zip" SHA256 > "$env:NAME.checksum"
-
-      - name: Build | Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: helium-wallet-x86-64-win
-          if-no-files-found: error
-          path: helium-wallet-*.tar.gz
+          path: helium-wallet-*
 
   release:
     if: startsWith(github.ref, 'refs/tags')
-    needs: [hygiene, build-linux, build-mac, build-windows]
+    needs: [hygiene, build]
     runs-on: ubuntu-latest
     steps:
       - name: Setup | Cancel Previous Runs
@@ -203,5 +152,4 @@ jobs:
           fail_on_unmatched_files: true
           name: ${{github.ref_name}}
           files: |
-            helium-wallet-*.zip
-            helium-wallet-*.checksum
+            **/helium-wallet-*

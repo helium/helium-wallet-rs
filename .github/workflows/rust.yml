@@ -101,7 +101,7 @@ jobs:
               echo "$RUNNER_OS not supported"
               exit 1
           fi
-          echo "NAME=helium-wallet-$(git describe --always)-${ARCH}" >> $GITHUB_ENV
+          echo "NAME=helium-wallet-${ARCH}" >> $GITHUB_ENV
 
       - name: Build | Package
         shell: bash

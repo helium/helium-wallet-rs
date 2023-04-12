@@ -20,7 +20,7 @@ pub fn decode_message<T>(v: &str) -> Result<T>
 where
     T: Message + Default,
 {
-    let decoded = URL_SAFE_NO_PAD.decode(v)?;
+    let decoded = STANDARD.decode(v)?;
     let message = T::decode(&decoded[..])?;
     Ok(message)
 }

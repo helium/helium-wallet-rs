@@ -1,9 +1,9 @@
 use crate::{
     format::{self, Format},
-    keypair::{KeyTag, Keypair, PublicKey},
-    mnemonic::mnemonic_to_entropy,
+    keypair::{Keypair, Pubkey},
     pwhash::PwHash,
-    result::{anyhow, bail, Result},
+    result::{anyhow, bail, Error, Result},
+    solana_sdk,
     traits::ReadWrite,
 };
 use aes_gcm::{aead::generic_array::GenericArray, AeadInPlace, Aes256Gcm, KeyInit};
@@ -22,19 +22,22 @@ pub type AesKey = [u8; 32];
 
 const WALLET_KIND_BASIC_V1: u16 = 0x0001;
 const WALLET_KIND_BASIC_V2: u16 = 0x0002;
+const WALLET_KIND_BASIC_V3: u16 = 0x0003;
 
 const WALLET_KIND_SHARDED_V1: u16 = 0x0101;
 const WALLET_KIND_SHARDED_V2: u16 = 0x0102;
+const WALLET_KIND_SHARDED_V3: u16 = 0x0103;
 
 const PWHASH_KIND_PBKDF2: u8 = 0;
 const PWHASH_KIND_ARGON2ID13: u8 = 1;
 
 pub struct Wallet {
-    pub public_key: PublicKey,
+    pub public_key: Pubkey,
     pub iv: Iv,
     pub tag: Tag,
     pub encrypted: Vec<u8>,
     pub format: Format,
+    pub kind: u16,
 }
 
 impl Wallet {
@@ -56,19 +59,21 @@ impl Wallet {
 
         let mut encrypted = vec![];
         keypair.write(&mut encrypted)?;
+        let kind = Self::format_to_kind(&format);
 
         match aead.encrypt_in_place_detached(
             iv.as_ref().into(),
-            &public_key.to_vec(),
+            &public_key.to_bytes(),
             &mut encrypted,
         ) {
             Err(_) => Err(anyhow!("Failed to encrypt wallet")),
             Ok(gtag) => Ok(Wallet {
-                public_key: public_key.clone(),
+                public_key,
                 iv,
                 tag: gtag.into(),
                 encrypted,
                 format,
+                kind,
             }),
         }
     }
@@ -79,17 +84,37 @@ impl Wallet {
         format.derive_key(password, &mut encryption_key)?;
 
         let aead = Aes256Gcm::new(GenericArray::from_slice(&encryption_key));
+        let pubkey_bytes: Vec<u8> = match self.kind {
+            WALLET_KIND_BASIC_V1
+            | WALLET_KIND_BASIC_V2
+            | WALLET_KIND_SHARDED_V1
+            | WALLET_KIND_SHARDED_V2 => {
+                let mut bytes = vec![0; solana_sdk::pubkey::PUBKEY_BYTES + 1];
+                bytes[0] = helium_crypto::KeyTag {
+                    network: helium_crypto::Network::MainNet,
+                    key_type: helium_crypto::KeyType::Ed25519,
+                }
+                .into();
+                bytes[1..].copy_from_slice(&self.public_key.to_bytes());
+                bytes
+            }
+            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => self.public_key.to_bytes().to_vec(),
+            _ => unreachable!(),
+        };
+
         let mut buffer = self.encrypted.to_owned();
-        match aead.decrypt_in_place_detached(
-            self.iv.as_ref().into(),
-            &self.public_key.to_vec(),
-            &mut buffer,
-            self.tag.as_ref().into(),
-        ) {
-            Err(_) => Err(anyhow!("Failed to decrypt wallet")),
-            _ => Ok(()),
-        }?;
-        let keypair = Keypair::read(&mut Cursor::new(buffer))?;
+        if aead
+            .decrypt_in_place_detached(
+                self.iv.as_ref().into(),
+                &pubkey_bytes,
+                &mut buffer,
+                self.tag.as_ref().into(),
+            )
+            .is_err()
+        {
+            bail!("Failed to decrypt wallet");
+        }
+        let keypair = Self::read_keypair(&mut Cursor::new(buffer), self.kind)?;
         Ok(keypair)
     }
 
@@ -126,7 +151,7 @@ impl Wallet {
             wallets.push(Self {
                 format: Format::Sharded(shard),
                 encrypted: self.encrypted.clone(),
-                public_key: self.public_key.clone(),
+                public_key: self.public_key,
                 ..*self
             })
         }
@@ -149,17 +174,60 @@ impl Wallet {
         }
     }
 
+    fn read_pubkey(reader: &mut dyn io::Read, kind: u16) -> Result<Pubkey> {
+        match kind {
+            WALLET_KIND_BASIC_V1
+            | WALLET_KIND_BASIC_V2
+            | WALLET_KIND_SHARDED_V1
+            | WALLET_KIND_SHARDED_V2 => {
+                let helium_pubkey = helium_crypto::PublicKey::read(reader)?;
+                Pubkey::try_from(helium_pubkey).map_err(Error::from)
+            }
+            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => Pubkey::read(reader),
+            _ => bail!("Invalid wallet kind {kind}"),
+        }
+    }
+
+    fn read_keypair(reader: &mut dyn io::Read, kind: u16) -> Result<Keypair> {
+        use helium_crypto::KeyType;
+        match kind {
+            WALLET_KIND_BASIC_V1
+            | WALLET_KIND_BASIC_V2
+            | WALLET_KIND_SHARDED_V1
+            | WALLET_KIND_SHARDED_V2 => {
+                let tag = reader.read_u8()?;
+                match KeyType::try_from(tag)? {
+                    KeyType::Ed25519 => Keypair::read(reader),
+                    _ => bail!("Unsupported key type: {tag}"),
+                }
+            }
+            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => Keypair::read(reader),
+            _ => bail!("Invalid wallet kind {kind}"),
+        }
+    }
+
+    fn format_to_kind(format: &Format) -> u16 {
+        match format {
+            Format::Basic(_) => WALLET_KIND_BASIC_V3,
+            Format::Sharded(_) => WALLET_KIND_SHARDED_V3,
+        }
+    }
+
     pub fn read(reader: &mut dyn io::Read) -> Result<Wallet> {
         let kind = reader.read_u16::<LittleEndian>()?;
         let mut format = match kind {
             WALLET_KIND_BASIC_V1 => Format::basic(PwHash::pbkdf2_default()),
-            WALLET_KIND_BASIC_V2 => Format::basic(Self::read_pwhash(reader)?),
+            WALLET_KIND_BASIC_V2 | WALLET_KIND_BASIC_V3 => {
+                Format::basic(Self::read_pwhash(reader)?)
+            }
             WALLET_KIND_SHARDED_V1 => Format::sharded_default(PwHash::pbkdf2_default()),
-            WALLET_KIND_SHARDED_V2 => Format::sharded_default(Self::read_pwhash(reader)?),
-            _ => bail!("Invalid wallet kind {}", kind),
+            WALLET_KIND_SHARDED_V2 | WALLET_KIND_SHARDED_V3 => {
+                Format::sharded_default(Self::read_pwhash(reader)?)
+            }
+            _ => bail!("Invalid wallet kind {kind}"),
         };
         format.read(reader)?;
-        let public_key = PublicKey::read(reader)?;
+        let public_key = Self::read_pubkey(reader, kind)?;
         let mut iv = Iv::default();
         reader.read_exact(&mut iv)?;
         format.mut_pwhash().read(reader)?;
@@ -174,6 +242,7 @@ impl Wallet {
             tag,
             encrypted,
             format,
+            kind,
         })
     }
 
@@ -186,10 +255,7 @@ impl Wallet {
     }
 
     pub fn write(&self, writer: &mut dyn io::Write) -> Result {
-        let kind = match self.format {
-            Format::Basic(_) => WALLET_KIND_BASIC_V2,
-            Format::Sharded(_) => WALLET_KIND_SHARDED_V2,
-        };
+        let kind = Self::format_to_kind(&self.format);
         writer.write_u16::<LittleEndian>(kind)?;
         Self::write_pwhash(self.format.pwhash(), writer)?;
         self.format.write(writer)?;
@@ -223,18 +289,12 @@ pub struct Builder {
     /// Overwrite an existing file
     force: bool,
 
-    /// The seed words used to create this wallet
-    seed_words: Option<Vec<String>>,
-
-    /// The KeyTag (network and key type) to use for this wallet
-    key_tag: Option<KeyTag>,
+    /// The seed phrase used to create this wallet
+    seed_phrase: Option<String>,
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
     shard: Option<ShardConfig>,
-
-    /// Optional swarm file to import instead of generating from scratch.
-    swarm_input: Option<PathBuf>,
 }
 
 impl Builder {
@@ -244,10 +304,8 @@ impl Builder {
             password: Default::default(),
             pwhash: PwHash::argon2id13_default(),
             force: false,
-            seed_words: None,
-            key_tag: None,
+            seed_phrase: None,
             shard: None,
-            swarm_input: None,
         }
     }
 
@@ -281,15 +339,8 @@ impl Builder {
 
     /// The seed words used to create this wallet
     /// Defaults to None
-    pub fn seed_words(mut self, seed_words: Option<Vec<String>>) -> Builder {
-        self.seed_words = seed_words;
-        self
-    }
-
-    /// The type of key to generate (ecc_compact/ed25519)
-    /// Defaults to ed25519
-    pub fn key_tag(mut self, key_tag: &KeyTag) -> Builder {
-        self.key_tag = Some(*key_tag);
+    pub fn seed_phrase(mut self, seed_phrase: Option<String>) -> Builder {
+        self.seed_phrase = seed_phrase;
         self
     }
 
@@ -300,21 +351,9 @@ impl Builder {
         self
     }
 
-    /// Load an Erlang-based node swarm key.
-    pub fn from_swarm(mut self, path: PathBuf) -> Builder {
-        self.swarm_input = Some(path);
-        self
-    }
-
     /// Creates a new wallet
     pub fn create(self) -> Result<Wallet> {
-        let keypair = match (self.swarm_input, self.key_tag) {
-            (Some(swarm_input_path), None) =>
-                load_keypair_from_swarm(&swarm_input_path)?,
-            (None, key_tag_opt) =>
-                gen_keypair(key_tag_opt.unwrap_or_default(), self.seed_words)?,
-            (Some(_), _) => return Err(anyhow!("Can't import from swarm key and also set key type, network, or seed words at the same time."))
-        };
+        let keypair = gen_keypair(self.seed_phrase)?;
 
         let wallet = if let Some(shard_config) = &self.shard {
             let format = format::Sharded {
@@ -361,21 +400,13 @@ impl Default for Builder {
     }
 }
 
-fn gen_keypair(tag: KeyTag, seed_words: Option<Vec<String>>) -> Result<Keypair> {
+fn gen_keypair(seed_words: Option<String>) -> Result<Keypair> {
     // Callers of this function should either have Some of both or None of both.
     // Anything else is an error.
     match seed_words {
-        Some(words) => {
-            let entropy = mnemonic_to_entropy(words)?;
-            Keypair::generate_from_entropy(tag, &entropy)
-        }
-        None => Ok(Keypair::generate(tag)),
+        Some(words) => Keypair::from_phrase(&words),
+        None => Ok(Keypair::generate()),
     }
-}
-
-fn load_keypair_from_swarm(filename: &Path) -> Result<Keypair> {
-    let mut stream = fs::OpenOptions::new().read(true).open(filename)?;
-    Keypair::read(&mut stream)
 }
 
 fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
@@ -415,29 +446,15 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         let password = String::from("password");
-        let tag = KeyTag::default();
-        let seed_words: Vec<String> = vec![
-            "drill".to_string(),
-            "toddler".to_string(),
-            "tongue".to_string(),
-            "laundry".to_string(),
-            "access".to_string(),
-            "silly".to_string(),
-            "few".to_string(),
-            "faint".to_string(),
-            "glove".to_string(),
-            "birth".to_string(),
-            "crumble".to_string(),
-            "add".to_string(),
-        ];
-        let from_keypair =
-            gen_keypair(tag, Some(seed_words.clone())).expect("to generate a keypair");
+        let seed_phrase: String =
+            "drill toddler tongue laundry access silly few faint glove birth crumble add"
+                .to_string();
+        let from_keypair = gen_keypair(Some(seed_phrase.clone())).expect("to generate a keypair");
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(&path)
-            .key_tag(&tag)
-            .seed_words(Some(seed_words.clone()))
+            .seed_phrase(Some(seed_phrase.clone()))
             .create()
             .expect("wallet to be created");
 
@@ -457,34 +474,20 @@ mod tests {
         let _ = clean_up_shards(&path, 3);
 
         let password = String::from("password");
-        let tag = KeyTag::default();
         let shard_config = ShardConfig {
             key_share_count: 3,
             recovery_threshold: 2,
         };
 
-        let seed_words: Vec<String> = vec![
-            "drill".to_string(),
-            "toddler".to_string(),
-            "tongue".to_string(),
-            "laundry".to_string(),
-            "access".to_string(),
-            "silly".to_string(),
-            "few".to_string(),
-            "faint".to_string(),
-            "glove".to_string(),
-            "birth".to_string(),
-            "crumble".to_string(),
-            "add".to_string(),
-        ];
-        let from_keypair =
-            gen_keypair(tag, Some(seed_words.clone())).expect("to generate a keypair");
+        let seed_phrase: String =
+            "moment case dirt ski tool dynamic sort ugly pluck drop kiwi knee jar easy verb canal nuclear survey before dwarf prosper cave pottery target"
+                .to_string();
+        let from_keypair = gen_keypair(Some(seed_phrase.clone())).expect("to generate a keypair");
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(&path)
-            .key_tag(&tag)
-            .seed_words(Some(seed_words.clone()))
+            .seed_phrase(Some(seed_phrase.clone()))
             .shard(Some(shard_config))
             .create()
             .expect("wallet to be created");
@@ -518,86 +521,5 @@ mod tests {
             .expect("wallet creation");
         let to_keypair = wallet.decrypt(password).expect("wallet to keypair");
         assert_eq!(from_keypair, to_keypair);
-    }
-
-    #[test]
-    fn keypair_from_ecc_compact_swarm() {
-        use crate::keypair::{KeyType, Network};
-
-        let mut swarm_key: &[u8] = &[
-            0x00, // <- Type/Network: ecc_compact/mainnet
-            // Private exponent
-            0xd3, 0x98, 0xd1, 0xfc, 0x3f, 0x4c, 0x22, 0x79, 0xa8, 0x9a, 0x25, 0xb2, 0xd3, 0x52,
-            0xcf, 0x38, 0x25, 0xcf, 0xc0, 0x18, 0x8d, 0xd7, 0xee, 0xb3, 0x04, 0x7c, 0x29, 0x29,
-            0x0b, 0xdf, 0xaa, 0xd2,
-            // End private exponent
-            // Begin public key
-            0x04, // <- ECC Point tag: Full X/Y pair
-            // Begin X-coordinate
-            0x33, 0x4b, 0xb9, 0x5a, 0x68, 0x15, 0x4a, 0x74, 0xed, 0xf6, 0x51, 0x81, 0x6b, 0xd5,
-            0x56, 0x11, 0xb5, 0xba, 0x85, 0x04, 0x3f, 0xbd, 0x20, 0xa3, 0x74, 0xa3, 0x83, 0x1b,
-            0x83, 0x98, 0x04, 0x35,
-            // End X-coordinate
-            // Begin Y-coordinate
-            0x2e, 0x7d, 0xcd, 0x51, 0xa1, 0x90, 0x92, 0x63, 0x77, 0x9e, 0x4d, 0x0c, 0x6d, 0xb5,
-            0x2e, 0x23, 0x2c, 0x9b, 0xdb, 0x64, 0xe1, 0x94, 0x24, 0x08, 0x99, 0x1c, 0x4b, 0x29,
-            0xac, 0xd7, 0x6c, 0xce,
-            // End Y-coordinate
-            // End public key
-        ];
-
-        let seed_words = [
-            "squeeze", "shoot", "lecture", "leader", "season", "devote", "pen", "dwarf", "ready",
-            "once", "record", "icon", "friend", "theme", "giraffe", "road", "upgrade", "oblige",
-            "business", "false", "mouse", "used", "prize", "foster",
-        ];
-
-        let tag = KeyTag {
-            key_type: KeyType::EccCompact,
-            network: Network::MainNet,
-        };
-
-        swarm_keypair_test(&mut swarm_key, seed_words, tag)
-    }
-
-    #[test]
-    fn keypair_from_ed25519_testnet_swarm() {
-        use crate::keypair::{KeyType, Network};
-
-        let mut swarm_key: &[u8] = &[
-            0x11, // <- Type/Network: ed25519/testnet
-            // Private key
-            0xE6, 0xAB, 0x3A, 0x58, 0x3C, 0x6F, 0x7B, 0xDE, 0x59, 0x9B, 0xC9, 0x07, 0x2E, 0xE6,
-            0xA2, 0xED, 0xA4, 0xFC, 0xF0, 0x81, 0x0E, 0xC7, 0x26, 0x9B, 0x98, 0xC8, 0xD3, 0x6A,
-            0xBA, 0x67, 0xF5, 0x81, 0x04, 0xF1, 0x88, 0x52, 0x62, 0x64, 0x3F, 0x12, 0xB7, 0x5F,
-            0x75, 0x3B, 0x0F, 0x6A, 0xD9, 0xB5, 0x83, 0xCE, 0xE0, 0x50, 0xC9, 0xA1, 0xEE, 0xBA,
-            0x20, 0x14, 0x63, 0xF0, 0x3B, 0xB1, 0xFE, 0x13,
-            // End private key
-            // Begin public key
-            0x04, 0xF1, 0x88, 0x52, 0x62, 0x64, 0x3F, 0x12, 0xB7, 0x5F, 0x75, 0x3B, 0x0F, 0x6A,
-            0xD9, 0xB5, 0x83, 0xCE, 0xE0, 0x50, 0xC9, 0xA1, 0xEE, 0xBA, 0x20, 0x14, 0x63, 0xF0,
-            0x3B, 0xB1, 0xFE, 0x13,
-            // End public key
-        ];
-
-        let seed_words = [
-            "trade", "flush", "noodle", "juice", "waste", "upset", "grid", "junior", "already",
-            "jaguar", "post", "swap", "exist", "joke", "aerobic", "suggest", "charge", "system",
-            "cram", "plug", "produce", "crop", "stock", "couple",
-        ];
-
-        let tag = KeyTag {
-            key_type: KeyType::Ed25519,
-            network: Network::TestNet,
-        };
-
-        swarm_keypair_test(&mut swarm_key, seed_words, tag)
-    }
-
-    fn swarm_keypair_test(swarm_key_bytes: &mut &[u8], seed_words: [&str; 24], key_type: KeyTag) {
-        let seed_words_vec = seed_words.iter().map(|&s| s.to_owned()).collect();
-        let from_swarm = Keypair::read(swarm_key_bytes).unwrap();
-        let from_seed = gen_keypair(key_type, Some(seed_words_vec)).unwrap();
-        assert_eq!(from_seed, from_swarm);
     }
 }

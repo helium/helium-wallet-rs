@@ -9,23 +9,18 @@ use sodiumoxide::crypto::{pwhash::argon2id13 as pwhash, secretbox::xsalsa20poly1
 const ARGON_OPS_LIMIT: pwhash::OpsLimit = pwhash::OPSLIMIT_MODERATE;
 const ARGON_MEM_LIMIT: pwhash::MemLimit = pwhash::MEMLIMIT_MODERATE;
 
-arg_enum! {
-    #[derive(Debug)]
-    pub enum OutputFormat {
-        Seed,
-        Qr,
-    }
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum OutputFormat {
+    Seed,
+    Qr,
 }
 
 /// Exports encrypted wallet seed as QR-encoded JSON or raw seed via stdout.
-#[derive(Debug, StructOpt)]
+#[derive(Debug, clap::Args)]
 pub struct Cmd {
     /// Output format to use. "--output seed" writes  the raw seed (Solana CLI compatible) to stdout.
     /// "--output qr is the encrypted seed presented via QR-encoded JSON.
-    #[structopt(long,
-    possible_values = &["qr", "seed"],
-    case_insensitive = true,
-    default_value = "qr")]
+    #[arg(long, default_value = "seed")]
     output: OutputFormat,
 }
 
@@ -40,25 +35,26 @@ pub struct EncryptedSeed {
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = load_wallet(opts.files)?;
+        let wallet = load_wallet(&opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         match self.output {
             OutputFormat::Qr => {
                 let seed_pwd = get_password("Export Password", true)?;
-                let json_data = json!({
+                let json = json!({
                     "address": wallet.public_key.to_string(),
                     "seed": encrypt_seed_v1(&keypair, &seed_pwd)?,
                 });
-                print_qr(json_data.to_string())?;
+                print_qr(json.to_string())?;
+                Ok(())
             }
             OutputFormat::Seed => {
-                let seed = json!(keypair.unencrypted_seed()?);
-                println!("{seed}");
+                let json = json!({
+                    "phrase": keypair.phrase()?,
+                });
+                print_json(&json)
             }
         }
-
-        Ok(())
     }
 }
 
@@ -70,7 +66,7 @@ impl Cmd {
 ///     render in JSON later.
 pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<EncryptedSeed> {
     let address = keypair.public_key().to_string();
-    let phrase = keypair.phrase()?.join(" ");
+    let phrase = keypair.phrase()?;
 
     let hasher = Argon2id13::with_limits(ARGON_OPS_LIMIT, ARGON_MEM_LIMIT);
     let mut key = secretbox::Key([0; secretbox::KEYBYTES]);
@@ -132,7 +128,7 @@ pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keypair::KeyTag;
+    use bip39::{Language, Mnemonic};
 
     const JSON_DATA: &str = r#"
         {
@@ -149,12 +145,8 @@ mod tests {
     const SEED_PWD: &str = "h3l1Um";
 
     fn create_test_keypair() -> Keypair {
-        let word_list = String::from(MNEMONIC_PHRASE)
-            .split_whitespace()
-            .map(|w| w.to_string())
-            .collect();
-        let entropy = mnemonic::mnemonic_to_entropy(word_list).unwrap();
-        Keypair::generate_from_entropy(KeyTag::default(), &entropy).unwrap()
+        let mnemonic = Mnemonic::from_phrase(MNEMONIC_PHRASE, Language::English).expect("mnemonic");
+        Keypair::generate_from_entropy(mnemonic.entropy()).unwrap()
     }
 
     #[test]

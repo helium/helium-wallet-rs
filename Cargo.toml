@@ -19,37 +19,40 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-anyhow = "1.0"
+anyhow = "1"
+thiserror = "1"
 byteorder = "1.3.2"
-structopt = "0.3"
 dialoguer = "0.8"
 sodiumoxide = "~0.2"
 hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
 base64 = ">=0.21"
+bs58 = "0"
 reqwest = {version = "0", default-features=false, features=["rustls-tls"]}
 pbkdf2 = {version = "0", default-features=false }
 aes-gcm = "0"
 shamirsecretsharing = {version="0.1.5", features=["have_libsodium"]}
-prettytable-rs = "0.10"
 lazy_static = "1"
-regex = "1"
 rand = "0.8"
 qr2term = "0.2"
 serde =  "1"
-serde_derive = "1"
 serde_json = "1"
 rust_decimal = {version = "1", features = ["serde-float"] }
-h3ron = "0.16"
-geo-types = "*"
-helium-api = { git = "https://github.com/helium/helium-api-rs" }
+h3o = "0"
+rayon = "1"
 angry-purple-tiger = "0"
-helium-crypto = { version = "0.6.9", features = ["multisig", "solana"]}
+clap = {version = "4", features = ["derive"]}
+helium-crypto = { version = "0.6.3", features = ["multisig", "solana"]}
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
-solana-sdk = "1"
-tokio = {version = "1", features = ["full"]}
-bitvec = "*" # inherits from elliptic-curve crate
+data-credits = { git = "https://github.com/helium/helium-program-library", tag="v0.1.2" }
+lazy-distributor = { git = "https://github.com/helium/helium-program-library", tag="v0.1.2" }
+helium-entity-manager = { git = "https://github.com/helium/helium-program-library", tag="v0.1.2" }
+anchor-client = "0"
+anchor-spl = "0"
+tiny-bip39 = "0"
+http = "0"
+jsonrpc = "0"
 
 [dev-dependencies]
 bs58 = "0.4"

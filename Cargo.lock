@@ -2069,6 +2069,7 @@ dependencies = [
  "lazy-distributor",
  "lazy_static",
  "pbkdf2 0.12.1",
+ "pyth-sdk-solana",
  "qr2term",
  "rand 0.8.5",
  "rayon",

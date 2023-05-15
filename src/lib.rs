@@ -14,6 +14,3 @@ pub mod traits;
 pub mod wallet;
 
 pub use anchor_client::solana_sdk;
-
-// pub use client::Client;
-// pub use solana_client::nonblocking::rpc_client::RpcClient;

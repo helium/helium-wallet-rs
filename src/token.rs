@@ -13,6 +13,8 @@ pub enum TokenError {
 
 lazy_static::lazy_static! {
     static ref HNT_MINT: Pubkey = Pubkey::from_str("hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux").unwrap();
+    static ref HNT_PRICE_KEY: Pubkey = Pubkey::from_str("7moA1i5vQUpfDwSpK6Pw9s56ahB7WFGidtbL2ujWrVvm").unwrap();
+
     static ref MOBILE_MINT: Pubkey = Pubkey::from_str("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6").unwrap();
     static ref IOT_MINT: Pubkey = Pubkey::from_str("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns").unwrap();
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
@@ -63,13 +65,12 @@ impl Token {
 pub struct TokenAmount {
     pub token: Token,
     pub amount: u64,
-    pub decimals: u8,
 }
 
 impl TryFrom<&TokenAmount> for f64 {
     type Error = TokenError;
     fn try_from(value: &TokenAmount) -> std::result::Result<Self, Self::Error> {
-        Ok(value.amount as f64 / 10_usize.pow(value.decimals as u32) as f64)
+        Ok(value.amount as f64 / 10_usize.pow(value.token.decimals() as u32) as f64)
     }
 }
 
@@ -93,50 +94,19 @@ impl Default for TokenAmount {
         Self {
             token: Token::Dc,
             amount: 0,
-            decimals: 0,
         }
     }
 }
 
 impl Token {
-    // pub async fn get_balance_for_account(
-    //     &self,
-    //     client: Arc<RpcClient>,
-    //     pubkey: &Pubkey,
-    // ) -> Result<TokenAmount> {
-    //     match self {
-    //         Self::Sol => {
-    //             let account = client.get_account(pubkey).await?;
-    //             Ok(self.to_balance(account.lamports))
-    //         }
-    //         _ => {
-    //             let spl_atc =
-    //                 spl_associated_token_account::get_associated_token_address(pubkey, self.mint());
-    //             self.get_balance_for_address(client, spl_atc).await
-    //         }
-    //     }
-    // }
-
-    // pub async fn get_balance_for_address(
-    //     &self,
-    //     client: Arc<RpcClient>,
-    //     pubkey: Pubkey,
-    // ) -> Result<TokenAmount> {
-    //     let program_rpc_client = ProgramRpcClient::new(client, ProgramRpcClientSendTransaction);
-
-    //     match program_rpc_client
-    //         .get_account(pubkey)
-    //         .await
-    //         .map_err(TokenError::from)?
-    //     {
-    //         Some(account) => {
-    //             let account_data =
-    //                 StateWithExtensions::<spl_token_2022::state::Account>::unpack(&account.data)?;
-    //             Ok(self.to_balance(account_data.base.amount))
-    //         }
-    //         None => Ok(self.to_balance(0)),
-    //     }
-    // }
+    pub fn decimals(&self) -> u8 {
+        match self {
+            Self::Hnt => 8,
+            Self::Iot | Self::Mobile => 6,
+            Self::Dc => 0,
+            Self::Sol => 9,
+        }
+    }
 
     pub fn mint(&self) -> &Pubkey {
         match self {
@@ -148,11 +118,17 @@ impl Token {
         }
     }
 
-    pub fn to_balance(&self, amount: u64, decimals: u8) -> TokenAmount {
+    pub fn price_key(&self) -> Option<&Pubkey> {
+        match self {
+            Self::Hnt => Some(&HNT_PRICE_KEY),
+            _ => None,
+        }
+    }
+
+    pub fn to_balance(&self, amount: u64) -> TokenAmount {
         TokenAmount {
             token: *self,
             amount,
-            decimals,
         }
     }
 }

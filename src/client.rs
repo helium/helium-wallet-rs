@@ -5,11 +5,15 @@ use crate::{
     result::{anyhow, Error, Result},
     token::{Token, TokenAmount},
 };
-use anchor_client::{solana_sdk::signer::Signer, Client as AnchorClient};
+use anchor_client::{
+    solana_client::rpc_client::RpcClient as SolanaRpcClient, solana_sdk::signer::Signer,
+    Client as AnchorClient,
+};
 use http::Uri;
 use jsonrpc::Client as JsonRpcClient;
 use rayon::prelude::*;
 use reqwest::blocking::Client as RestClient;
+use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::json;
 use std::{boxed::Box, collections::HashMap, rc::Rc, result::Result as StdResult, str::FromStr};
@@ -50,6 +54,10 @@ impl Settings {
     fn mk_anchor_client(&self, payer: Rc<dyn Signer>) -> Result<AnchorClient> {
         let cluster = anchor_client::Cluster::from_str(&self.to_string())?;
         Ok(AnchorClient::new(cluster, payer.clone()))
+    }
+
+    fn mk_solana_client(&self) -> Result<SolanaRpcClient> {
+        Ok(SolanaRpcClient::new(self.to_string()))
     }
 
     fn mk_jsonrpc_client(&self) -> Result<JsonRpcClient> {
@@ -158,24 +166,22 @@ impl Client {
         #[derive(Debug, Deserialize)]
         struct TokenBalance {
             amount: u64,
-            decimals: u8,
             mint: String,
         }
 
         impl TryFrom<Balances> for TokenBalances {
             type Error = Error;
             fn try_from(value: Balances) -> Result<Self> {
-                let map: HashMap<Token, TokenAmount> = value
+                let map: TokenBalances = value
                     .tokens
                     .iter()
                     .filter_map(|entry| {
                         Pubkey::from_str(&entry.mint).ok().and_then(|mint_key| {
-                            Token::from_mint(mint_key).map(|token| {
-                                (token, token.to_balance(entry.amount, entry.decimals))
-                            })
+                            Token::from_mint(mint_key)
+                                .map(|token| (token, token.to_balance(entry.amount)))
                         })
                     })
-                    .chain([(Token::Sol, Token::Sol.to_balance(value.native_balance, 9))])
+                    .chain([(Token::Sol, Token::Sol.to_balance(value.native_balance))])
                     .collect();
                 Ok(map)
             }
@@ -326,5 +332,29 @@ impl Client {
             )
             .collect::<Result<Vec<(SubDao, HotspotInfo)>>>()?;
         Hotspot::for_address(key.clone(), Some(HashMap::from_iter(infos)))
+    }
+
+    pub fn get_pyth_price(&self, token: Token) -> Result<Decimal> {
+        let price_key = token
+            .price_key()
+            .ok_or_else(|| anyhow!("No pyth price key for {token}"))?;
+        let client = self.settings.mk_solana_client()?;
+        let mut price_account = client.get_account(price_key)?;
+        let price_feed =
+            pyth_sdk_solana::load_price_feed_from_account(&price_key, &mut price_account)?;
+
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?;
+        let token_price = price_feed
+            .get_ema_price_no_older_than(current_time.as_secs().try_into()?, 10 * 60)
+            .ok_or_else(|| anyhow!("No token price found"))?;
+
+        // Remove the confidence from the price to use the most conservative price
+        // https://docs.pyth.network/pythnet-price-feeds/best-practices
+        let price_with_conf = token_price
+            .price
+            .checked_sub(i64::try_from(token_price.conf.checked_mul(2).unwrap()).unwrap())
+            .unwrap();
+        Ok(Decimal::new(price_with_conf, token_price.expo.abs() as u32))
     }
 }

@@ -19,8 +19,7 @@ impl Cmd {
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
-/// Display list of hotspots associated with wallet
-/// or transfer a hotspot to another wallet
+/// Commands on hotspots
 pub enum HotspotCommand {
     // Add(add::Cmd),
     // Assert(Box<assert::Cmd>),

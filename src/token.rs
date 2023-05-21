@@ -1,12 +1,8 @@
-use crate::keypair::Pubkey;
-use std::str::FromStr;
+use crate::keypair::{serde_pubkey, Pubkey};
+use std::{result::Result as StdResult, str::FromStr};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
-    #[error("DC can not be represented with decimals")]
-    InvalidDCConversion,
-    #[error("{0}")]
-    ProgramRpcError(#[from] Box<dyn std::error::Error + Send + Sync>),
     #[error("Invalid token type: {0}")]
     InvalidToken(String),
 }
@@ -42,7 +38,7 @@ impl std::fmt::Display for Token {
 
 impl std::str::FromStr for Token {
     type Err = TokenError;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
         serde_json::from_str(s).map_err(|_| TokenError::InvalidToken(s.to_string()))
     }
 }
@@ -62,15 +58,25 @@ impl Token {
     }
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct TokenBalance {
+    #[serde(with = "serde_pubkey")]
+    pub address: Pubkey,
+    pub amount: TokenAmount,
+}
+
+#[derive(Debug)]
 pub struct TokenAmount {
     pub token: Token,
     pub amount: u64,
 }
 
-impl TryFrom<&TokenAmount> for f64 {
-    type Error = TokenError;
-    fn try_from(value: &TokenAmount) -> std::result::Result<Self, Self::Error> {
-        Ok(value.amount as f64 / 10_usize.pow(value.token.decimals() as u32) as f64)
+impl From<&TokenAmount> for f64 {
+    fn from(value: &TokenAmount) -> Self {
+        match value.token.decimals() {
+            0 => value.amount as f64,
+            decimals => value.amount as f64 / 10_usize.pow(decimals) as f64,
+        }
     }
 }
 
@@ -79,12 +85,10 @@ impl serde::Serialize for TokenAmount {
     where
         S: serde::Serializer,
     {
-        use serde::ser::Error;
-        match self.token {
-            Token::Sol | Token::Hnt | Token::Iot | Token::Mobile => {
-                serializer.serialize_f64(self.try_into().map_err(S::Error::custom)?)
-            }
-            Token::Dc => serializer.serialize_u64(self.amount),
+        if self.token.decimals() == 0 {
+            serializer.serialize_u64(self.amount)
+        } else {
+            serializer.serialize_f64(self.into())
         }
     }
 }
@@ -98,8 +102,19 @@ impl Default for TokenAmount {
     }
 }
 
+impl TokenAmount {
+    pub fn from_f64(token: Token, amount: f64) -> Self {
+        let amount = (amount * 10_usize.pow(token.decimals()) as f64) as u64;
+        Self { token, amount }
+    }
+
+    pub fn from_u64(token: Token, amount: u64) -> Self {
+        Self { token, amount }
+    }
+}
+
 impl Token {
-    pub fn decimals(&self) -> u8 {
+    pub fn decimals(&self) -> u32 {
         match self {
             Self::Hnt => 8,
             Self::Iot | Self::Mobile => 6,
@@ -125,10 +140,10 @@ impl Token {
         }
     }
 
-    pub fn to_balance(&self, amount: u64) -> TokenAmount {
-        TokenAmount {
-            token: *self,
-            amount,
+    pub fn to_balance(self, address: Pubkey, amount: u64) -> TokenBalance {
+        TokenBalance {
+            address,
+            amount: TokenAmount::from_u64(self, amount),
         }
     }
 }

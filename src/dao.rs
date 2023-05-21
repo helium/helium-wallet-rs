@@ -1,13 +1,5 @@
-use crate::{keypair::Pubkey, result::Result, token::Token};
+use crate::{keypair::Pubkey, program::*, result::Result, token::Token};
 use sha2::{Digest, Sha256};
-use std::str::FromStr;
-
-lazy_static::lazy_static! {
-    static ref HNT_PROGRAM_ID: Pubkey = Pubkey::from_str("hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR").unwrap();
-    static ref DC_PROGRAM_ID: Pubkey = Pubkey::from_str("credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT").unwrap();
-    static ref HEM_PROGRAM_ID: Pubkey = Pubkey::from_str("hemjuPXBpNvggtaUnN1MwT3wrdhttKEfosTcc2P9Pg8").unwrap();
-    static ref LAZY_DISTRIBUTOR_PROGRAM_ID: Pubkey = Pubkey::from_str("1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w").unwrap();
-}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, clap::ValueEnum, serde::Serialize)]
 #[serde(rename_all = "lowercase")]

@@ -1,5 +1,6 @@
 use crate::{cmd::*, keypair::Keypair, result::Result, wallet::Wallet};
 use serde_json::json;
+use std::rc::Rc;
 
 /// Verify an encypted wallet
 #[derive(Debug, clap::Args)]
@@ -14,7 +15,7 @@ impl Cmd {
     }
 }
 
-pub fn print_result(wallet: &Wallet, decrypted_wallet: &Result<Keypair>) -> Result {
+pub fn print_result(wallet: &Wallet, decrypted_wallet: &Result<Rc<Keypair>>) -> Result {
     let address = wallet.address().unwrap_or_else(|_| "unknown".to_string());
     let phrase = decrypted_wallet
         .as_ref()

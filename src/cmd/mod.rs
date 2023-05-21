@@ -13,6 +13,8 @@ use std::{
     sync::Arc,
 };
 
+use anchor_client::{solana_client, solana_sdk};
+
 pub mod balance;
 pub mod dc;
 // pub mod commit;
@@ -136,4 +138,22 @@ pub fn get_file_extension(filename: &Path) -> String {
 pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
     println!("{}", serde_json::to_string_pretty(value)?);
     Ok(())
+}
+
+pub fn print_commit_result(signature: solana_sdk::signature::Signature) -> Result {
+    let json = json!({
+        "result": "ok",
+        "txid": signature.to_string(),
+    });
+    print_json(&json)
+}
+
+pub fn print_simulation_response(
+    result: &solana_client::rpc_response::RpcSimulateTransactionResult,
+) -> Result {
+    if result.err.is_some() {
+        let _ = print_json(&result);
+        bail!("Transaction simulation failed");
+    }
+    print_json(result)
 }

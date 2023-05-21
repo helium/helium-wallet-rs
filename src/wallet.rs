@@ -14,6 +14,7 @@ use std::{
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 pub type Tag = [u8; 16];
@@ -78,7 +79,7 @@ impl Wallet {
         }
     }
 
-    pub fn decrypt(&self, password: &[u8]) -> Result<Keypair> {
+    pub fn decrypt(&self, password: &[u8]) -> Result<Rc<Keypair>> {
         let mut encryption_key = AesKey::default();
         let mut format = self.format.clone();
         format.derive_key(password, &mut encryption_key)?;
@@ -115,7 +116,7 @@ impl Wallet {
             bail!("Failed to decrypt wallet");
         }
         let keypair = Self::read_keypair(&mut Cursor::new(buffer), self.kind)?;
-        Ok(keypair)
+        Ok(Rc::new(keypair))
     }
 
     pub fn address(&self) -> Result<String> {
@@ -400,12 +401,12 @@ impl Default for Builder {
     }
 }
 
-fn gen_keypair(seed_words: Option<String>) -> Result<Keypair> {
+fn gen_keypair(seed_words: Option<String>) -> Result<Rc<Keypair>> {
     // Callers of this function should either have Some of both or None of both.
     // Anything else is an error.
     match seed_words {
         Some(words) => Keypair::from_phrase(&words),
-        None => Ok(Keypair::generate()),
+        None => Ok(Keypair::generate().into()),
     }
 }
 
@@ -427,7 +428,7 @@ mod tests {
 
     #[test]
     fn rountrip_basic() {
-        let from_keypair = Keypair::default();
+        let from_keypair: Rc<Keypair> = Keypair::default().into();
         let format = format::Basic {
             pwhash: PwHash::argon2id13_default(),
         };
@@ -509,7 +510,7 @@ mod tests {
 
     #[test]
     fn rountrip_sharded() {
-        let from_keypair = Keypair::default();
+        let from_keypair = Rc::new(Keypair::default());
         let format = format::Sharded {
             key_share_count: 5,
             recovery_threshold: 3,

@@ -6,18 +6,34 @@ use crate::{
     },
     traits::ReadWrite,
 };
-use std::io;
-
-// pub use helium_crypto::{
-//     ecc_compact, ed25519, KeyTag, KeyType, Network, PublicKey, Sign, Verify, KEYTYPE_ED25519_STR,
-//     NETTYPE_MAIN_STR,
-// };
+use std::{io, rc::Rc};
 
 #[derive(PartialEq, Debug)]
 pub struct Keypair(solana_sdk::signer::keypair::Keypair);
 pub struct VoidKeypair;
 
 pub use solana_sdk::pubkey::Pubkey;
+
+pub mod serde_pubkey {
+    use super::*;
+    use serde::de::{self, Deserialize};
+    use std::str::FromStr;
+
+    pub fn serialize<S>(value: &Pubkey, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deser: D) -> std::result::Result<Pubkey, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let str = String::deserialize(deser)?;
+        Pubkey::from_str(&str).map_err(|_| de::Error::custom("invalid public key"))
+    }
+}
 
 static START: std::sync::Once = std::sync::Once::new();
 
@@ -36,8 +52,8 @@ impl Keypair {
         Keypair(solana_sdk::signer::keypair::Keypair::new())
     }
 
-    pub fn void() -> VoidKeypair {
-        VoidKeypair
+    pub fn void() -> Rc<VoidKeypair> {
+        Rc::new(VoidKeypair)
     }
 
     pub fn generate_from_entropy(entropy: &[u8]) -> Result<Self> {
@@ -64,7 +80,7 @@ impl Keypair {
         Ok(mnemonic.into_phrase())
     }
 
-    pub fn from_phrase(phrase: &str) -> Result<Self> {
+    pub fn from_phrase(phrase: &str) -> Result<Rc<Self>> {
         use bip39::{Language, Mnemonic};
         let mnemonic = Mnemonic::from_phrase(phrase, Language::English)?;
         let mut entropy_bytes = [0u8; 32];
@@ -77,7 +93,7 @@ impl Keypair {
         }
         let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
             .map_err(|e| anyhow!("failed to create keypair: {e}"))?;
-        Ok(Self(keypair))
+        Ok(Self(keypair).into())
     }
 }
 

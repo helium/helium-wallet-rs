@@ -1,6 +1,6 @@
 use crate::{cmd::*, result::Result};
 
-// mod burn;
+mod mint;
 mod price;
 
 #[derive(Debug, clap::Args)]
@@ -19,12 +19,14 @@ impl Cmd {
 /// Commands on data credits
 pub enum DcCommand {
     Price(price::Cmd),
+    Mint(mint::Cmd),
 }
 
 impl DcCommand {
     pub fn run(&self, opts: Opts) -> Result {
         match self {
             Self::Price(cmd) => cmd.run(opts),
+            Self::Mint(cmd) => cmd.run(opts),
         }
     }
 }

@@ -18,7 +18,7 @@ impl Cmd {
             "router": self.router_key,
             "delegated_dc_key": delegated_dc_key.to_string(),
             "balance": {
-                "dc": balances.remove(&Token::Dc).unwrap_or_default(),
+                "dc": balances.remove(&Token::Dc).map(|balance| balance.amount).unwrap_or_default(),
             }
         });
         print_json(&json)

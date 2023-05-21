@@ -1,10 +1,17 @@
-use crate::{cmd::*, result::Result, token::Token};
+use crate::{
+    cmd::*,
+    result::{anyhow, Result},
+    token::Token,
+};
+use rust_decimal::prelude::*;
+use rust_decimal_macros::dec;
 use serde_json::json;
 
 #[derive(Clone, Debug, clap::Args)]
-/// Get the current HNT price for Data Credits
+/// Get the amount of HNT needed to buy a given number of USD worth of Data
+/// Credits
 pub struct Cmd {
-    /// The USD value for amount of DC that is intended to be created.
+    /// The USD value of the Data Credits to convert to HNT amount.
     usd: f64,
 }
 
@@ -12,12 +19,25 @@ impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let client = new_client(&opts.url)?;
         let price = client.get_pyth_price(Token::Hnt)?;
+        let decimals = price.expo.unsigned_abs();
+
+        // Remove the confidence from the price to use the most conservative price
+        // https://docs.pyth.network/pythnet-price-feeds/best-practices
+        let hnt_price = Decimal::new(price.price, decimals)
+            - (Decimal::new(price.conf as i64, decimals) * dec!(2));
+
+        let usd_amount =
+            Decimal::from_f64(self.usd).ok_or_else(|| anyhow!("Invalid USD amount"))?;
+        let dc_amount = (usd_amount * dec!(100_000))
+            .to_u64()
+            .ok_or_else(|| anyhow!("Invalid USD amount"))?;
+        let hnt_amount = (usd_amount / hnt_price).round_dp(Token::Hnt.decimals());
+
         let json = json!({
                 "usd": self.usd,
-                "dc": (self.usd * 100_000_000.0).abs() as u64,
-                "price": {
-                    "hnt": price,
-                }
+                "hnt": hnt_amount,
+                "dc": dc_amount,
+                "hnt_price": hnt_price,
         });
         print_json(&json)
     }

@@ -1,19 +1,21 @@
 use crate::{
     dao::SubDao,
     hotspot::{Hotspot, HotspotInfo},
-    keypair::{Keypair, Pubkey},
+    keypair::{serde_pubkey, Keypair, Pubkey},
     result::{anyhow, Error, Result},
-    token::{Token, TokenAmount},
+    token::{Token, TokenAmount, TokenBalance},
 };
 use anchor_client::{
-    solana_client::rpc_client::RpcClient as SolanaRpcClient, solana_sdk::signer::Signer,
+    solana_client,
+    solana_client::rpc_client::RpcClient as SolanaRpcClient,
+    solana_sdk::{self, signer::Signer},
     Client as AnchorClient,
 };
+use anchor_spl::associated_token::get_associated_token_address;
 use http::Uri;
 use jsonrpc::Client as JsonRpcClient;
 use rayon::prelude::*;
 use reqwest::blocking::Client as RestClient;
-use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::json;
 use std::{boxed::Box, collections::HashMap, rc::Rc, result::Result as StdResult, str::FromStr};
@@ -53,11 +55,18 @@ impl ToString for Settings {
 impl Settings {
     fn mk_anchor_client(&self, payer: Rc<dyn Signer>) -> Result<AnchorClient> {
         let cluster = anchor_client::Cluster::from_str(&self.to_string())?;
-        Ok(AnchorClient::new(cluster, payer.clone()))
+        Ok(AnchorClient::new_with_options(
+            cluster,
+            payer.clone(),
+            solana_sdk::commitment_config::CommitmentConfig::confirmed(),
+        ))
     }
 
     fn mk_solana_client(&self) -> Result<SolanaRpcClient> {
-        Ok(SolanaRpcClient::new(self.to_string()))
+        Ok(SolanaRpcClient::new_with_commitment(
+            self.to_string(),
+            solana_sdk::commitment_config::CommitmentConfig::confirmed(),
+        ))
     }
 
     fn mk_jsonrpc_client(&self) -> Result<JsonRpcClient> {
@@ -139,7 +148,7 @@ impl jsonrpc::Transport for JsonRpcTransport {
     }
 }
 
-pub type TokenBalances = HashMap<Token, TokenAmount>;
+pub type TokenBalances = HashMap<Token, TokenBalance>;
 
 impl Client {
     pub fn new(url: &str) -> Result<Self> {
@@ -160,13 +169,16 @@ impl Client {
         #[serde(rename_all = "camelCase")]
         struct Balances {
             native_balance: u64,
-            tokens: Vec<TokenBalance>,
+            tokens: Vec<BalancesToken>,
         }
 
         #[derive(Debug, Deserialize)]
-        struct TokenBalance {
+        #[serde(rename_all = "camelCase")]
+        struct BalancesToken {
             amount: u64,
             mint: String,
+            #[serde(with = "serde_pubkey")]
+            token_account: Pubkey,
         }
 
         impl TryFrom<Balances> for TokenBalances {
@@ -177,11 +189,11 @@ impl Client {
                     .iter()
                     .filter_map(|entry| {
                         Pubkey::from_str(&entry.mint).ok().and_then(|mint_key| {
-                            Token::from_mint(mint_key)
-                                .map(|token| (token, token.to_balance(entry.amount)))
+                            Token::from_mint(mint_key).map(|token| {
+                                (token, token.to_balance(entry.token_account, entry.amount))
+                            })
                         })
                     })
-                    .chain([(Token::Sol, Token::Sol.to_balance(value.native_balance))])
                     .collect();
                 Ok(map)
             }
@@ -193,7 +205,9 @@ impl Client {
             .query(&[("session-key", &self.settings.session_key)])
             .send()?;
         let balances: Balances = response.json()?;
-        let map = balances.try_into()?;
+        let native_balance = Token::Sol.to_balance(*account, balances.native_balance);
+        let mut map: TokenBalances = balances.try_into()?;
+        map.insert(Token::Sol, native_balance);
         Ok(map)
     }
 
@@ -291,7 +305,7 @@ impl Client {
     ) -> Result<Option<HotspotInfo>> {
         fn maybe_info<T>(
             result: StdResult<T, anchor_client::ClientError>,
-        ) -> crate::result::Result<Option<HotspotInfo>>
+        ) -> Result<Option<HotspotInfo>>
         where
             T: Into<HotspotInfo>,
         {
@@ -302,7 +316,7 @@ impl Client {
             }
         }
 
-        let client = settings.mk_anchor_client(Rc::new(Keypair::void()))?;
+        let client = settings.mk_anchor_client(Keypair::void())?;
         let hotspot_key = sub_dao.info_key(key)?;
         let program = client.program(helium_entity_manager::id());
         match sub_dao {
@@ -334,27 +348,104 @@ impl Client {
         Hotspot::for_address(key.clone(), Some(HashMap::from_iter(infos)))
     }
 
-    pub fn get_pyth_price(&self, token: Token) -> Result<Decimal> {
+    pub fn get_pyth_price(&self, token: Token) -> Result<pyth_sdk_solana::Price> {
         let price_key = token
             .price_key()
             .ok_or_else(|| anyhow!("No pyth price key for {token}"))?;
         let client = self.settings.mk_solana_client()?;
         let mut price_account = client.get_account(price_key)?;
         let price_feed =
-            pyth_sdk_solana::load_price_feed_from_account(&price_key, &mut price_account)?;
+            pyth_sdk_solana::load_price_feed_from_account(price_key, &mut price_account)?;
 
         use std::time::{SystemTime, UNIX_EPOCH};
         let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?;
-        let token_price = price_feed
+        price_feed
             .get_ema_price_no_older_than(current_time.as_secs().try_into()?, 10 * 60)
-            .ok_or_else(|| anyhow!("No token price found"))?;
+            .ok_or_else(|| anyhow!("No token price found"))
+    }
 
-        // Remove the confidence from the price to use the most conservative price
-        // https://docs.pyth.network/pythnet-price-feeds/best-practices
-        let price_with_conf = token_price
-            .price
-            .checked_sub(i64::try_from(token_price.conf.checked_mul(2).unwrap()).unwrap())
-            .unwrap();
-        Ok(Decimal::new(price_with_conf, token_price.expo.abs() as u32))
+    pub fn mint_dc(
+        &self,
+        amount: TokenAmount,
+        payee: &Pubkey,
+        keypair: Rc<Keypair>,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        impl TryFrom<TokenAmount> for data_credits::MintDataCreditsArgsV0 {
+            type Error = Error;
+            fn try_from(value: TokenAmount) -> StdResult<Self, Self::Error> {
+                match value.token {
+                    Token::Hnt => Ok(Self {
+                        hnt_amount: Some(value.amount),
+                        dc_amount: None,
+                    }),
+                    Token::Dc => Ok(Self {
+                        hnt_amount: None,
+                        dc_amount: Some(value.amount),
+                    }),
+                    other => Err(anyhow!("Invalid token type: {other}")),
+                }
+            }
+        }
+
+        let client = self.settings.mk_anchor_client(keypair.clone())?;
+        let dc_program = client.program(data_credits::id());
+        let (data_credits, _) =
+            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &dc_program.id());
+        let hnt_price_oracle = dc_program
+            .account::<data_credits::DataCreditsV0>(data_credits)?
+            .hnt_price_oracle;
+
+        let (circuit_breaker, _) = Pubkey::find_program_address(
+            &[b"mint_windowed_breaker", Token::Dc.mint().as_ref()],
+            &circuit_breaker::id(),
+        );
+
+        let burner = get_associated_token_address(&keypair.pubkey(), Token::Hnt.mint());
+
+        let recipient_token_account = get_associated_token_address(payee, Token::Dc.mint());
+
+        let accounts = data_credits::accounts::MintDataCreditsV0 {
+            data_credits,
+            owner: keypair.public_key(),
+            hnt_mint: *Token::Hnt.mint(),
+            dc_mint: *Token::Dc.mint(),
+            recipient: *payee,
+            recipient_token_account,
+            system_program: solana_sdk::system_program::ID,
+            token_program: anchor_spl::token::ID,
+            associated_token_program: anchor_spl::associated_token::ID,
+            hnt_price_oracle,
+            circuit_breaker_program: circuit_breaker::id(),
+            circuit_breaker,
+            burner,
+        };
+
+        let args = data_credits::instruction::MintDataCreditsV0 {
+            args: amount.try_into()?,
+        };
+        let tx = dc_program
+            .request()
+            .accounts(accounts)
+            .args(args)
+            .signed_transaction()?;
+        Ok(tx)
+    }
+
+    pub fn simulate_transaction(
+        &self,
+        tx: &solana_sdk::transaction::Transaction,
+    ) -> Result<solana_client::rpc_response::RpcSimulateTransactionResult> {
+        let client = self.settings.mk_anchor_client(Keypair::void())?;
+        let dc_program = client.program(data_credits::id());
+        Ok(dc_program.rpc().simulate_transaction(tx)?.value)
+    }
+
+    pub fn send_and_confirm_transaction(
+        &self,
+        tx: &solana_sdk::transaction::Transaction,
+    ) -> Result<solana_sdk::signature::Signature> {
+        let client = self.settings.mk_anchor_client(Keypair::void())?;
+        let dc_program = client.program(data_credits::id());
+        Ok(dc_program.rpc().send_and_confirm_transaction(tx)?)
     }
 }

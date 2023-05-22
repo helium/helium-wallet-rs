@@ -155,5 +155,7 @@ pub fn print_simulation_response(
         let _ = print_json(&result);
         bail!("Transaction simulation failed");
     }
-    print_json(result)
+    print_json(&json!({
+        "result": "ok",
+    }))
 }

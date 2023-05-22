@@ -1,5 +1,6 @@
 use crate::{cmd::*, result::Result};
 
+mod delegate;
 mod mint;
 mod price;
 
@@ -20,6 +21,7 @@ impl Cmd {
 pub enum DcCommand {
     Price(price::Cmd),
     Mint(mint::Cmd),
+    Delegate(delegate::Cmd),
 }
 
 impl DcCommand {
@@ -27,6 +29,7 @@ impl DcCommand {
         match self {
             Self::Price(cmd) => cmd.run(opts),
             Self::Mint(cmd) => cmd.run(opts),
+            Self::Delegate(cmd) => cmd.run(opts),
         }
     }
 }

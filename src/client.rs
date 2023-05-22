@@ -1,5 +1,5 @@
 use crate::{
-    dao::SubDao,
+    dao::{Dao, SubDao},
     hotspot::{Hotspot, HotspotInfo},
     keypair::{serde_pubkey, Keypair, Pubkey},
     result::{anyhow, Error, Result},
@@ -300,7 +300,7 @@ impl Client {
 
     fn get_hotspot_info_in_dao(
         settings: &Settings,
-        sub_dao: &SubDao,
+        subdao: &SubDao,
         key: &helium_crypto::PublicKey,
     ) -> Result<Option<HotspotInfo>> {
         fn maybe_info<T>(
@@ -317,9 +317,9 @@ impl Client {
         }
 
         let client = settings.mk_anchor_client(Keypair::void())?;
-        let hotspot_key = sub_dao.info_key(key)?;
+        let hotspot_key = subdao.info_key(key)?;
         let program = client.program(helium_entity_manager::id());
-        match sub_dao {
+        match subdao {
             SubDao::Iot => {
                 maybe_info(program.account::<helium_entity_manager::IotHotspotInfoV0>(hotspot_key))
             }
@@ -331,15 +331,15 @@ impl Client {
 
     pub fn get_hotspot_info(
         &self,
-        sub_daos: &[SubDao],
+        subdaos: &[SubDao],
         key: &helium_crypto::PublicKey,
     ) -> Result<Hotspot> {
         let settings = self.settings.clone();
-        let infos = sub_daos
+        let infos = subdaos
             .par_iter()
             .filter_map(
-                |sub_dao| match Self::get_hotspot_info_in_dao(&settings, sub_dao, key) {
-                    Ok(Some(metadata)) => Some(Ok((*sub_dao, metadata))),
+                |subdao| match Self::get_hotspot_info_in_dao(&settings, subdao, key) {
+                    Ok(Some(metadata)) => Some(Ok((*subdao, metadata))),
                     Ok(None) => None,
                     Err(err) => Some(Err(err)),
                 },
@@ -389,8 +389,7 @@ impl Client {
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let dc_program = client.program(data_credits::id());
-        let (data_credits, _) =
-            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &dc_program.id());
+        let data_credits = SubDao::dc_key();
         let hnt_price_oracle = dc_program
             .account::<data_credits::DataCreditsV0>(data_credits)?
             .hnt_price_oracle;
@@ -422,6 +421,47 @@ impl Client {
 
         let args = data_credits::instruction::MintDataCreditsV0 {
             args: amount.try_into()?,
+        };
+        let tx = dc_program
+            .request()
+            .accounts(accounts)
+            .args(args)
+            .signed_transaction()?;
+        Ok(tx)
+    }
+
+    pub fn delegate_dc(
+        &self,
+        subdao: SubDao,
+        router_key: &str,
+        amount: u64,
+        keypair: Rc<Keypair>,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        let client = self.settings.mk_anchor_client(keypair.clone())?;
+        let dc_program = client.program(data_credits::id());
+
+        let delegated_data_credits = subdao.delegated_dc_key(router_key);
+
+        let accounts = data_credits::accounts::DelegateDataCreditsV0 {
+            delegated_data_credits,
+            data_credits: SubDao::dc_key(),
+            dc_mint: *Token::Dc.mint(),
+            dao: Dao::Hnt.key(),
+            sub_dao: subdao.key(),
+            owner: keypair.public_key(),
+            from_account: get_associated_token_address(&keypair.public_key(), Token::Dc.mint()),
+            escrow_account: subdao.escrow_account_key(&delegated_data_credits),
+            payer: keypair.public_key(),
+            associated_token_program: anchor_spl::associated_token::ID,
+            token_program: anchor_spl::token::ID,
+            system_program: solana_sdk::system_program::ID,
+        };
+
+        let args = data_credits::instruction::DelegateDataCreditsV0 {
+            args: data_credits::DelegateDataCreditsArgsV0 {
+                amount,
+                router_key: router_key.to_string(),
+            },
         };
         let tx = dc_program
             .request()

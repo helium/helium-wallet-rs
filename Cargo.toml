@@ -49,6 +49,7 @@ helium-proto = { git = "https://github.com/helium/proto", branch="master"}
 data-credits = { git = "https://github.com/helium/helium-program-library", branch="develop" }
 lazy-distributor = { git = "https://github.com/helium/helium-program-library", tag="v0.1.4" }
 helium-entity-manager = { git = "https://github.com/helium/helium-program-library", tag="v0.1.4" }
+helium-sub-daos = { git = "https://github.com/helium/helium-program-library", tag="v0.1.4" }
 circuit-breaker = { git = "https://github.com/helium/helium-program-library", tag="v0.1.4" }
 pyth-sdk-solana = "0"
 anchor-client = "0"

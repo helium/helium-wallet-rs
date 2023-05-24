@@ -1,10 +1,7 @@
-#[macro_use]
-use crate::{b64, cmd::*, result::Result, traits::txn_envelope::TxnEnvelope};
-use anchor_client::{Client, Cluster, Program};
+use crate::{cmd::*, result::Result, traits::txn_envelope::TxnEnvelope};
+use anchor_client::Program;
 use bs58;
-use clap::Parser;
 use data_credits::ID as DC_PID;
-use helium_crypto::PublicKey;
 use helium_entity_manager::{
     accounts::{IssueDataOnlyEntityV0, OnboardDataOnlyIotHotspotV0},
     DataOnlyConfigV0, IssueDataOnlyEntityArgsV0, KeyToAssetV0, OnboardDataOnlyIotHotspotArgsV0,
@@ -15,17 +12,11 @@ use mpl_bubblegum::ID as BGUM_PID;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use solana_program::system_program;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{
-    commitment_config::CommitmentConfig, compute_budget::ComputeBudgetInstruction, signer::Signer,
-    transaction::Transaction as SolanaTransaction,
-};
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair},
+    compute_budget::ComputeBudgetInstruction, transaction::Transaction as SolanaTransaction,
 };
 use spl_associated_token_account::get_associated_token_address;
-use std::env;
-use std::rc::Rc;
 use std::str::FromStr;
 use BlockchainTxnAddGatewayV1;
 

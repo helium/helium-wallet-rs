@@ -27,7 +27,7 @@ pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
 
 pub struct Client {
-    settings: Settings,
+    pub settings: Settings,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,7 +56,7 @@ impl ToString for Settings {
 }
 
 impl Settings {
-    fn mk_anchor_client(&self, payer: Rc<dyn Signer>) -> Result<AnchorClient> {
+    pub fn mk_anchor_client(&self, payer: Rc<dyn Signer>) -> Result<AnchorClient> {
         let cluster = anchor_client::Cluster::from_str(&self.to_string())?;
         Ok(AnchorClient::new_with_options(
             cluster,

@@ -1,6 +1,6 @@
 use crate::{cmd::*, result::Result};
 
-// mod add;
+mod add;
 mod assert;
 mod info;
 mod list;
@@ -21,8 +21,8 @@ impl Cmd {
 #[derive(Debug, Clone, clap::Subcommand)]
 /// Commands on hotspots
 pub enum HotspotCommand {
-    // Add(add::Cmd),
     Assert(assert::Cmd),
+    Add(add::Cmd),
     List(list::Cmd),
     Info(info::Cmd),
     // Transfer(Box<transfer::Cmd>),
@@ -31,8 +31,8 @@ pub enum HotspotCommand {
 impl HotspotCommand {
     pub fn run(&self, opts: Opts) -> Result {
         match self {
-            // Self::Add(cmd) => cmd.run(opts).await,
             Self::Assert(cmd) => cmd.run(opts),
+            Self::Add(cmd) => cmd.run(opts),
             Self::List(cmd) => cmd.run(opts),
             Self::Info(cmd) => cmd.run(opts),
             // Self::Transfer(cmd) => cmd.run(opts).await,

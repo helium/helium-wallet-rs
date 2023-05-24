@@ -126,16 +126,16 @@ fn new_client(url: &str) -> Result<Arc<Client>> {
     Ok(Arc::new(Client::new(url)?))
 }
 
-// fn read_txn(txn: &Option<Transaction>) -> Result<BlockchainTxn> {
-//     match txn {
-//         Some(txn) => Ok(txn.0.clone()),
-//         None => {
-//             let mut buffer = String::new();
-//             io::stdin().read_line(&mut buffer)?;
-//             Ok(buffer.trim().parse::<Transaction>()?.0)
-//         }
-//     }
-// }
+fn read_txn(txn: &Option<Transaction>) -> Result<BlockchainTxn> {
+    match txn {
+        Some(txn) => Ok(txn.0.clone()),
+        None => {
+            let mut buffer = String::new();
+            io::stdin().read_line(&mut buffer)?;
+            Ok(buffer.trim().parse::<Transaction>()?.0)
+        }
+    }
+}
 
 pub fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
     fs::OpenOptions::new()

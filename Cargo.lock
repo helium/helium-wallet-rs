@@ -313,8 +313,8 @@ dependencies = [
  "anchor-lang",
  "mpl-token-metadata 1.8.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "solana-program",
- "spl-associated-token-account",
- "spl-token",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -854,11 +854,31 @@ dependencies = [
 [[package]]
 name = "circuit-breaker"
 version = "0.0.1"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "shared-utils",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+]
+
+[[package]]
+name = "circuit-breaker"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+]
+
+[[package]]
+name = "circuit-breaker"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
 ]
 
 [[package]]
@@ -1354,13 +1374,26 @@ dependencies = [
 [[package]]
 name = "data-credits"
 version = "0.1.2"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "circuit-breaker",
- "helium-sub-daos",
- "lazy-transactions",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "helium-sub-daos 0.0.9 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "lazy-transactions 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "pyth-sdk-solana",
+]
+
+[[package]]
+name = "data-credits"
+version = "0.1.2"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "helium-sub-daos 0.0.9 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "lazy-transactions 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
  "pyth-sdk-solana",
 ]
 
@@ -1995,20 +2028,20 @@ dependencies = [
 
 [[package]]
 name = "helium-entity-manager"
-version = "0.0.8"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
  "angry-purple-tiger",
  "bs58 0.3.1",
  "bytemuck",
- "data-credits",
- "helium-sub-daos",
- "lazy-transactions",
- "mpl-bubblegum",
- "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=master)",
- "shared-utils",
+ "data-credits 0.1.2 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "helium-sub-daos 0.0.9 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "lazy-transactions 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "mpl-bubblegum 0.6.0 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
  "spl-account-compression 0.1.5",
 ]
 
@@ -2027,19 +2060,55 @@ dependencies = [
 [[package]]
 name = "helium-sub-daos"
 version = "0.0.9"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "circuit-breaker",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
  "clockwork-sdk",
- "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=master)",
- "shared-utils",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
  "spl-governance-tools",
  "switchboard-v2",
  "time 0.3.20",
- "treasury-management",
- "voter-stake-registry",
+ "treasury-management 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "voter-stake-registry 0.0.6 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+]
+
+[[package]]
+name = "helium-sub-daos"
+version = "0.0.9"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "clockwork-sdk",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "spl-governance-tools",
+ "switchboard-v2",
+ "time 0.3.20",
+ "treasury-management 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "voter-stake-registry 0.0.6 (git+https://github.com/helium/helium-program-library?branch=develop)",
+]
+
+[[package]]
+name = "helium-sub-daos"
+version = "0.0.9"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "clockwork-sdk",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "spl-governance-tools",
+ "switchboard-v2",
+ "time 0.3.20",
+ "treasury-management 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "voter-stake-registry 0.0.6 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
 ]
 
 [[package]]
@@ -2055,21 +2124,22 @@ dependencies = [
  "bincode",
  "bs58 0.4.0",
  "byteorder",
- "circuit-breaker",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
  "clap 4.2.7",
- "data-credits",
+ "data-credits 0.1.2 (git+https://github.com/helium/helium-program-library?branch=develop)",
  "dialoguer 0.8.0",
  "h3o",
  "helium-crypto",
  "helium-entity-manager",
  "helium-proto",
- "helium-sub-daos",
+ "helium-sub-daos 0.0.9 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
  "hex",
  "hmac 0.12.1",
  "http",
  "jsonrpc",
  "lazy-distributor",
  "lazy_static",
+ "mpl-bubblegum 0.6.0 (git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd)",
  "pbkdf2 0.12.1",
  "pyth-sdk-solana",
  "qr2term",
@@ -2083,7 +2153,8 @@ dependencies = [
  "sha2 0.10.6",
  "shamirsecretsharing",
  "sodiumoxide",
- "spl-associated-token-account",
+ "solana-program",
+ "spl-associated-token-account 1.1.2 (git+https://github.com/ChewingGlass/solana-program-library)",
  "thiserror",
  "tiny-bip39",
 ]
@@ -2467,21 +2538,32 @@ dependencies = [
 [[package]]
 name = "lazy-distributor"
 version = "0.0.1"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "circuit-breaker",
- "mpl-bubblegum",
- "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=master)",
- "shared-utils",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "mpl-bubblegum 0.6.0 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
  "spl-account-compression 0.1.5",
 ]
 
 [[package]]
 name = "lazy-transactions"
 version = "0.0.1"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "bytemuck",
+ "spl-concurrent-merkle-tree 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "lazy-transactions"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -2698,15 +2780,57 @@ dependencies = [
 [[package]]
 name = "mpl-bubblegum"
 version = "0.6.0"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "anchor-lang",
  "bytemuck",
- "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=master)",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
  "solana-program",
  "spl-account-compression 0.1.10",
- "spl-associated-token-account",
- "spl-token",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mpl-bubblegum"
+version = "0.6.0"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "anchor-lang",
+ "bytemuck",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "solana-program",
+ "spl-account-compression 0.1.10",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mpl-bubblegum"
+version = "0.6.0"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "anchor-lang",
+ "bytemuck",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "solana-program",
+ "spl-account-compression 0.1.10",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mpl-bubblegum"
+version = "0.6.0"
+source = "git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd#8f75abd6e8290a77bbf21adfeb4e9d1a078f63bb"
+dependencies = [
+ "anchor-lang",
+ "bytemuck",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd)",
+ "solana-program",
+ "spl-account-compression 0.1.10",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2742,27 +2866,84 @@ dependencies = [
  "num-traits",
  "shank",
  "solana-program",
- "spl-associated-token-account",
- "spl-token",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
 [[package]]
 name = "mpl-token-metadata"
 version = "1.8.3"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "arrayref",
  "borsh",
  "mpl-token-auth-rules",
- "mpl-token-metadata-context-derive 0.2.1 (git+https://github.com/helium/helium-program-library?branch=master)",
- "mpl-utils 0.1.0 (git+https://github.com/helium/helium-program-library?branch=master)",
+ "mpl-token-metadata-context-derive 0.2.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "mpl-utils 0.1.0 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
  "num-derive",
  "num-traits",
  "shank",
  "solana-program",
- "spl-associated-token-account",
- "spl-token",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+]
+
+[[package]]
+name = "mpl-token-metadata"
+version = "1.8.3"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "arrayref",
+ "borsh",
+ "mpl-token-auth-rules",
+ "mpl-token-metadata-context-derive 0.2.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "mpl-utils 0.1.0 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "num-derive",
+ "num-traits",
+ "shank",
+ "solana-program",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+]
+
+[[package]]
+name = "mpl-token-metadata"
+version = "1.8.3"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "arrayref",
+ "borsh",
+ "mpl-token-auth-rules",
+ "mpl-token-metadata-context-derive 0.2.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "mpl-utils 0.1.0 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "num-derive",
+ "num-traits",
+ "shank",
+ "solana-program",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+]
+
+[[package]]
+name = "mpl-token-metadata"
+version = "1.8.3"
+source = "git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd#8f75abd6e8290a77bbf21adfeb4e9d1a078f63bb"
+dependencies = [
+ "arrayref",
+ "borsh",
+ "mpl-token-auth-rules",
+ "mpl-token-metadata-context-derive 0.2.1 (git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd)",
+ "mpl-utils 0.1.0 (git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd)",
+ "num-derive",
+ "num-traits",
+ "shank",
+ "solana-program",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -2779,7 +2960,34 @@ dependencies = [
 [[package]]
 name = "mpl-token-metadata-context-derive"
 version = "0.2.1"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
+dependencies = [
+ "quote 1.0.26",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "mpl-token-metadata-context-derive"
+version = "0.2.1"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "quote 1.0.26",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "mpl-token-metadata-context-derive"
+version = "0.2.1"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "quote 1.0.26",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "mpl-token-metadata-context-derive"
+version = "0.2.1"
+source = "git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd#8f75abd6e8290a77bbf21adfeb4e9d1a078f63bb"
 dependencies = [
  "quote 1.0.26",
  "syn 1.0.109",
@@ -2794,18 +3002,51 @@ dependencies = [
  "arrayref",
  "borsh",
  "solana-program",
- "spl-token",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "mpl-utils"
 version = "0.1.0"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "arrayref",
  "borsh",
  "solana-program",
- "spl-token",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mpl-utils"
+version = "0.1.0"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "arrayref",
+ "borsh",
+ "solana-program",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mpl-utils"
+version = "0.1.0"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "arrayref",
+ "borsh",
+ "solana-program",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mpl-utils"
+version = "0.1.0"
+source = "git+https://github.com/metaplex-foundation/metaplex-program-library?rev=8f75abd#8f75abd6e8290a77bbf21adfeb4e9d1a078f63bb"
+dependencies = [
+ "arrayref",
+ "borsh",
+ "solana-program",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -4149,12 +4390,38 @@ dependencies = [
 [[package]]
 name = "shared-utils"
 version = "0.0.1"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "mpl-bubblegum",
- "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=master)",
+ "mpl-bubblegum 0.6.0 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "spl-account-compression 0.1.5",
+ "uint",
+]
+
+[[package]]
+name = "shared-utils"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "mpl-bubblegum 0.6.0 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "spl-account-compression 0.1.5",
+ "uint",
+]
+
+[[package]]
+name = "shared-utils"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "mpl-bubblegum 0.6.0 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
  "spl-account-compression 0.1.5",
  "uint",
 ]
@@ -4271,8 +4538,8 @@ dependencies = [
  "solana-config-program",
  "solana-sdk",
  "solana-vote-program",
- "spl-token",
- "spl-token-2022",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token-2022 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "zstd",
 ]
@@ -4377,7 +4644,7 @@ dependencies = [
  "solana-transaction-status",
  "solana-version",
  "solana-vote-program",
- "spl-token-2022",
+ "spl-token-2022 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -4419,7 +4686,7 @@ dependencies = [
  "solana-metrics",
  "solana-sdk",
  "solana-version",
- "spl-memo",
+ "spl-memo 3.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "tokio",
 ]
@@ -4774,10 +5041,10 @@ dependencies = [
  "solana-metrics",
  "solana-sdk",
  "solana-vote-program",
- "spl-associated-token-account",
- "spl-memo",
- "spl-token",
- "spl-token-2022",
+ "spl-associated-token-account 1.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-memo 3.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token-2022 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -4879,7 +5146,7 @@ dependencies = [
 [[package]]
 name = "spl-account-compression"
 version = "0.1.10"
-source = "git+https://github.com/solana-labs/solana-program-library.git#9fbf36af10324c1aaa16b22a1ac621d9aca32b43"
+source = "git+https://github.com/solana-labs/solana-program-library.git#7fc4bf1a8d6d6855761b8286fc151f05d3f75ec3"
 dependencies = [
  "anchor-lang",
  "bytemuck",
@@ -4898,8 +5165,23 @@ dependencies = [
  "num-derive",
  "num-traits",
  "solana-program",
- "spl-token",
- "spl-token-2022",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token-2022 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+]
+
+[[package]]
+name = "spl-associated-token-account"
+version = "1.1.2"
+source = "git+https://github.com/ChewingGlass/solana-program-library#9a0ecb38143b744edc87cd7b385fe77d1c0688fe"
+dependencies = [
+ "assert_matches",
+ "borsh",
+ "num-derive",
+ "num-traits",
+ "solana-program",
+ "spl-token 3.5.0 (git+https://github.com/ChewingGlass/solana-program-library)",
+ "spl-token-2022 0.5.0 (git+https://github.com/ChewingGlass/solana-program-library)",
  "thiserror",
 ]
 
@@ -4927,7 +5209,7 @@ dependencies = [
 [[package]]
 name = "spl-concurrent-merkle-tree"
 version = "0.1.3"
-source = "git+https://github.com/solana-labs/solana-program-library.git#9fbf36af10324c1aaa16b22a1ac621d9aca32b43"
+source = "git+https://github.com/solana-labs/solana-program-library.git#7fc4bf1a8d6d6855761b8286fc151f05d3f75ec3"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -4950,7 +5232,7 @@ dependencies = [
  "solana-program",
  "spl-governance-addin-api",
  "spl-governance-tools",
- "spl-token",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -4979,7 +5261,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "solana-program",
- "spl-token",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -4988,6 +5270,14 @@ name = "spl-memo"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0dc6f70db6bacea7ff25870b016a65ba1d1b6013536f08e4fd79a8f9005325"
+dependencies = [
+ "solana-program",
+]
+
+[[package]]
+name = "spl-memo"
+version = "3.0.1"
+source = "git+https://github.com/ChewingGlass/solana-program-library#9a0ecb38143b744edc87cd7b385fe77d1c0688fe"
 dependencies = [
  "solana-program",
 ]
@@ -5003,7 +5293,7 @@ dependencies = [
 [[package]]
 name = "spl-noop"
 version = "0.1.3"
-source = "git+https://github.com/solana-labs/solana-program-library.git#9fbf36af10324c1aaa16b22a1ac621d9aca32b43"
+source = "git+https://github.com/solana-labs/solana-program-library.git#7fc4bf1a8d6d6855761b8286fc151f05d3f75ec3"
 dependencies = [
  "solana-program",
 ]
@@ -5013,6 +5303,20 @@ name = "spl-token"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e85e168a785e82564160dcb87b2a8e04cee9bfd1f4d488c729d53d6a4bd300d"
+dependencies = [
+ "arrayref",
+ "bytemuck",
+ "num-derive",
+ "num-traits",
+ "num_enum",
+ "solana-program",
+ "thiserror",
+]
+
+[[package]]
+name = "spl-token"
+version = "3.5.0"
+source = "git+https://github.com/ChewingGlass/solana-program-library#9a0ecb38143b744edc87cd7b385fe77d1c0688fe"
 dependencies = [
  "arrayref",
  "bytemuck",
@@ -5036,8 +5340,25 @@ dependencies = [
  "num_enum",
  "solana-program",
  "solana-zk-token-sdk",
- "spl-memo",
- "spl-token",
+ "spl-memo 3.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+]
+
+[[package]]
+name = "spl-token-2022"
+version = "0.5.0"
+source = "git+https://github.com/ChewingGlass/solana-program-library#9a0ecb38143b744edc87cd7b385fe77d1c0688fe"
+dependencies = [
+ "arrayref",
+ "bytemuck",
+ "num-derive",
+ "num-traits",
+ "num_enum",
+ "solana-program",
+ "solana-zk-token-sdk",
+ "spl-memo 3.0.1 (git+https://github.com/ChewingGlass/solana-program-library)",
+ "spl-token 3.5.0 (git+https://github.com/ChewingGlass/solana-program-library)",
  "thiserror",
 ]
 
@@ -5094,7 +5415,7 @@ dependencies = [
  "bytemuck",
  "rust_decimal",
  "solana-program",
- "spl-token",
+ "spl-token 3.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "superslice",
 ]
 
@@ -5440,12 +5761,34 @@ dependencies = [
 [[package]]
 name = "treasury-management"
 version = "0.0.1"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "circuit-breaker",
- "shared-utils",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+]
+
+[[package]]
+name = "treasury-management"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+]
+
+[[package]]
+name = "treasury-management"
+version = "0.0.1"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "circuit-breaker 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
 ]
 
 [[package]]
@@ -5631,14 +5974,50 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "voter-stake-registry"
 version = "0.0.6"
-source = "git+https://github.com/helium/helium-program-library?branch=master#8743e696a62dc4df0a71d9ec301535cfb5628423"
+source = "git+https://github.com/helium/helium-program-library?tag=v0.1.4#69152b7aa9c5bff17e428e51279fb660fb576a31"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
  "bytemuck",
  "itertools",
- "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=master)",
- "shared-utils",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?tag=v0.1.4)",
+ "solana-program",
+ "spl-governance",
+ "spl-governance-addin-api",
+ "spl-governance-tools",
+ "static_assertions",
+]
+
+[[package]]
+name = "voter-stake-registry"
+version = "0.0.6"
+source = "git+https://github.com/helium/helium-program-library?branch=develop#fa777d78cf9dfca2613b65958fc0d7aa29095a25"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "bytemuck",
+ "itertools",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=develop)",
+ "solana-program",
+ "spl-governance",
+ "spl-governance-addin-api",
+ "spl-governance-tools",
+ "static_assertions",
+]
+
+[[package]]
+name = "voter-stake-registry"
+version = "0.0.6"
+source = "git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots#7f26191651148e90c4a80ea799260eb9406b4661"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "bytemuck",
+ "itertools",
+ "mpl-token-metadata 1.8.3 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
+ "shared-utils 0.0.1 (git+https://github.com/helium/helium-program-library?branch=feature/data-only-hotspots)",
  "solana-program",
  "spl-governance",
  "spl-governance-addin-api",

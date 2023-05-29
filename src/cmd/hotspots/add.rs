@@ -4,8 +4,6 @@ use anchor_client::{solana_sdk::signer::Signer, Program};
 use anyhow::anyhow;
 use bs58;
 use data_credits::ID as DC_PID;
-use helium_crypto::PublicKey;
-use helium_crypto::Verify;
 use helium_entity_manager::{
     accounts::{IssueDataOnlyEntityV0, OnboardDataOnlyIotHotspotV0},
     DataOnlyConfigV0, IssueDataOnlyEntityArgsV0, KeyToAssetV0, OnboardDataOnlyIotHotspotArgsV0,
@@ -17,13 +15,13 @@ use mpl_bubblegum::ID as BGUM_PID;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use solana_program::instruction::AccountMeta;
-use solana_program::{hash::Hash, system_program};
+use solana_program::system_program;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, transaction::Transaction as SolanaTransaction,
 };
 use spl_associated_token_account::get_associated_token_address;
-use std::{any, rc::Rc, str::FromStr};
+use std::{rc::Rc, str::FromStr};
 use BlockchainTxnAddGatewayV1;
 
 #[derive(Clone, Debug, clap::Args)]

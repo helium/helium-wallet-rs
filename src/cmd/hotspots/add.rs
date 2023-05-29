@@ -1,23 +1,29 @@
 use crate::{cmd::*, result::Result, traits::txn_envelope::TxnEnvelope};
-use anchor_client::Program;
+use anchor_client::solana_client::rpc_config::RpcSendTransactionConfig;
+use anchor_client::{solana_sdk::signer::Signer, Program};
+use anyhow::anyhow;
 use bs58;
 use data_credits::ID as DC_PID;
+use helium_crypto::PublicKey;
+use helium_crypto::Verify;
 use helium_entity_manager::{
     accounts::{IssueDataOnlyEntityV0, OnboardDataOnlyIotHotspotV0},
     DataOnlyConfigV0, IssueDataOnlyEntityArgsV0, KeyToAssetV0, OnboardDataOnlyIotHotspotArgsV0,
     ECC_VERIFIER, ID as HEM_PID,
 };
+use helium_proto::Message;
 use helium_sub_daos::ID as HSD_PID;
 use mpl_bubblegum::ID as BGUM_PID;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use solana_program::system_program;
+use solana_program::instruction::AccountMeta;
+use solana_program::{hash::Hash, system_program};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, transaction::Transaction as SolanaTransaction,
 };
 use spl_associated_token_account::get_associated_token_address;
-use std::str::FromStr;
+use std::{any, rc::Rc, str::FromStr};
 use BlockchainTxnAddGatewayV1;
 
 #[derive(Clone, Debug, clap::Args)]
@@ -70,9 +76,31 @@ struct VerifyRequest<'a> {
     pub signature: &'a str,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct JsonRpcRequest {
+    jsonrpc: String,
+    method: String,
+    params: serde_json::Value,
+    id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct JsonRpcResponse<T> {
+    jsonrpc: String,
+    result: Option<T>,
+    error: Option<JsonRpcError>,
+    id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct JsonRpcError {
+    code: i32,
+    message: String,
+}
+
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
-        let add_gateway_txn =
+        let mut add_gateway_txn =
             BlockchainTxnAddGatewayV1::from_envelope(&read_txn(&self.add_gateway_txn)?)?;
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(&opts.files)?;
@@ -80,7 +108,7 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
         let anchor_client = client.settings.mk_anchor_client(keypair.clone())?;
 
-        let program = anchor_client.program(helium_sub_daos::id());
+        let program = anchor_client.program(helium_entity_manager::id());
 
         let default_url = &"https://ecc-verifier.web.helium.io".to_string();
         let ecc_verifier_url = match &self.ecc_verifier_url {
@@ -114,9 +142,11 @@ impl Cmd {
                 &program,
                 Pubkey::from_str(HNT_MINT).unwrap(),
                 &entity_key,
-            );
-            let compute_ix = ComputeBudgetInstruction::set_compute_unit_limit(200000);
-            let tx = program
+            )
+            .map_err(|e| anyhow!("Failed to create issue entity accounts: {e}"))?;
+            let compute_ix = ComputeBudgetInstruction::set_compute_unit_limit(500000);
+
+            let ix = program
                 .request()
                 .args(helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
                     args: IssueDataOnlyEntityArgsV0 {
@@ -125,25 +155,38 @@ impl Cmd {
                 })
                 .accounts(issue_entity_accounts)
                 .instruction(compute_ix)
-                .signed_transaction()
+                .instructions()
                 .unwrap();
 
+            let mut tx = SolanaTransaction::new_with_payer(&ix, Some(&keypair.pubkey()));
+            let blockhash = program.rpc().get_latest_blockhash()?;
+
+            tx.try_partial_sign(&[Rc::as_ref(&keypair)], blockhash)
+                .map_err(|e| anyhow!("Error while signing tx: {e}"))?;
+
             let serialized_tx = hex::encode(&bincode::serialize(&tx).unwrap());
+            let sig = add_gateway_txn.gateway_signature.clone();
+            add_gateway_txn.gateway_signature = vec![];
+
+            let mut buf = vec![];
+            add_gateway_txn.encode(&mut buf).unwrap();
+
             // verify the base64 transaction with the ecc-sig-verifier
             let req_client = reqwest::blocking::Client::new();
             let response = req_client
-                .post(ecc_verifier_url)
+                .post(format!("{}/verify", ecc_verifier_url))
                 .json(&VerifyRequest {
                     transaction: &serialized_tx,
-                    msg: &hex::encode(bincode::serialize(&add_gateway_txn).unwrap()),
-                    signature: &hex::encode(add_gateway_txn.gateway_signature),
+                    msg: &hex::encode(&buf),
+                    signature: &hex::encode(sig),
                 })
                 .send()
-                .unwrap()
+                .map_err(|e| anyhow!("Error while sending request: {e}"))?
                 .json::<VerifyResponse>()
-                .unwrap();
+                .map_err(|e| anyhow!("Error while parsing response: {e}"))?;
             let raw_signed_tx = hex::decode(response.transaction).unwrap();
             let signed_tx: SolanaTransaction = bincode::deserialize(&raw_signed_tx).unwrap();
+            println!("Transaction signed: {:?}", signed_tx.is_signed());
 
             program
                 .rpc()
@@ -153,93 +196,99 @@ impl Cmd {
             println!("Entity already issued");
         }
 
-        // return Ok(());
-
         println!("Onboarding hotspot");
 
-        let kta_acc = program.account::<KeyToAssetV0>(key_to_asset).unwrap();
-        let issue_entity_accounts = construct_onboard_iot_accounts(
+        let kta_acc = program
+            .account::<KeyToAssetV0>(key_to_asset)
+            .map_err(|e| anyhow!("Failed to get key_to_asset account: {e}"))?;
+        let onboard_accounts = construct_onboard_iot_accounts(
             &program,
             Pubkey::from_str(HNT_MINT).unwrap(),
             &entity_key,
-        );
-        let compute_ix = ComputeBudgetInstruction::set_compute_unit_limit(200000);
+        )
+        .map_err(|e| anyhow!("Failed to create onboard iot accounts: {e}"))?;
 
         let req_client = reqwest::blocking::Client::new();
+
         let get_asset_response = req_client
             .post(program.rpc().url())
-            .body(format!(
-                "{{
-                jsonrpc: '2.0',
-                method: 'getAsset',
-                id: 'rpd-op-123',
-                params: {{ id: {} }},
-                headers: {{
-                  'Cache-Control': 'no-cache',
-                  Pragma: 'no-cache',
-                  Expires: '0',
-                }},
-              }}",
-                kta_acc.asset.to_string(),
-            ))
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
+            .header("Expires", "0")
+            .json(&JsonRpcRequest {
+                jsonrpc: "2.0".to_string(),
+                method: "getAsset".to_string(),
+                params: json!({
+                    "id": kta_acc.asset.to_string(),
+                }),
+                id: "rpd-op-123".to_string(),
+            })
             .send()
-            .unwrap()
-            .json::<serde_json::Value>()
-            .unwrap();
+            .map_err(|e| anyhow!("Failed to get asset: {e}"))?
+            .json::<JsonRpcResponse<serde_json::Value>>()
+            .map_err(|e| anyhow!("Failed to parse asset response: {e}"))?;
+        let result = get_asset_response.result.unwrap();
         let data_hash: [u8; 32] = bs58::decode(
-            get_asset_response.as_object().unwrap()["result"]["compression"]["data_hash"]
+            result.as_object().unwrap()["compression"]["data_hash"]
                 .as_str()
-                .unwrap(),
+                .ok_or(anyhow!("Failed to get data_hash"))?,
         )
         .into_vec()
-        .unwrap()
+        .map_err(|e| anyhow!("Failed to decode data_hash: {e}"))?
         .as_slice()
         .try_into()
-        .unwrap();
+        .map_err(|e| anyhow!("Failed to convert data_hash: {e}"))?;
         let creator_hash: [u8; 32] = bs58::decode(
-            get_asset_response.as_object().unwrap()["result"]["compression"]["creator_hash"]
+            result.as_object().unwrap()["compression"]["creator_hash"]
                 .as_str()
-                .unwrap(),
+                .ok_or(anyhow!("Failed to get creator_hash"))?,
         )
         .into_vec()
-        .unwrap()
+        .map_err(|e| anyhow!("Failed to decode creator_hash: {e}"))?
         .as_slice()
         .try_into()
-        .unwrap();
-        let leaf_id = get_asset_response.as_object().unwrap()["result"]["compression"]["leaf_id"]
+        .map_err(|e| anyhow!("Failed to convert creator_hash: {e}"))?;
+        let leaf_id = result.as_object().unwrap()["compression"]["leaf_id"]
             .as_u64()
-            .unwrap();
+            .ok_or(anyhow!("Failed to get leaf_id"))?;
 
         let req_client = reqwest::blocking::Client::new();
         let get_asset_proof_response = req_client
             .post(program.rpc().url())
-            .body(format!(
-                "{{
-                jsonrpc: '2.0',
-                method: 'getAssetProof',
-                id: 'rpd-op-123',
-                params: {{ id: {} }},
-                headers: {{
-                  'Cache-Control': 'no-cache',
-                  Pragma: 'no-cache',
-                  Expires: '0',
-                }},
-              }}",
-                kta_acc.asset.to_string(),
-            ))
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
+            .header("Expires", "0")
+            .json(&JsonRpcRequest {
+                jsonrpc: "2.0".to_string(),
+                method: "getAssetProof".to_string(),
+                params: json!({
+                    "id": kta_acc.asset.to_string(),
+                }),
+                id: "rpd-op-123".to_string(),
+            })
             .send()
             .unwrap()
-            .json::<serde_json::Value>()
+            .json::<JsonRpcResponse<serde_json::Value>>()
             .unwrap();
 
-        let root: [u8; 32] = Pubkey::from_str(
-            get_asset_proof_response.as_object().unwrap()["result"]["proof"]
-                .as_str()
-                .unwrap(),
-        )
-        .unwrap()
-        .to_bytes();
-        let tx = program
+        let result = get_asset_proof_response.result.unwrap();
+        let root: [u8; 32] =
+            Pubkey::from_str(result.as_object().unwrap()["root"].as_str().unwrap())
+                .unwrap()
+                .to_bytes();
+
+        let proof: Vec<AccountMeta> = result.as_object().unwrap()["proof"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| AccountMeta {
+                pubkey: Pubkey::from_str(p.as_str().unwrap()).unwrap(),
+                is_signer: false,
+                is_writable: false,
+            })
+            .collect();
+        let iot_info = onboard_accounts.iot_info.clone();
+        let mut ixs = program
             .request()
             .args(
                 helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
@@ -254,12 +303,32 @@ impl Cmd {
                     },
                 },
             )
-            .accounts(issue_entity_accounts)
-            .instruction(compute_ix)
-            .signed_transaction()?;
+            .accounts(onboard_accounts)
+            .instructions()
+            .unwrap();
 
-        program.rpc().send_and_confirm_transaction(&tx)?;
+        ixs[0].accounts.extend_from_slice(&proof.as_slice()[0..3]);
+        let mut tx = SolanaTransaction::new_with_payer(&ixs, Some(&keypair.pubkey()));
+        let blockhash = program.rpc().get_latest_blockhash()?;
 
+        tx.try_sign(&[Rc::as_ref(&keypair)], blockhash)
+            .map_err(|e| anyhow!("Error while signing tx: {e}"))?;
+        program
+            .rpc()
+            .send_transaction_with_config(
+                &tx,
+                RpcSendTransactionConfig {
+                    skip_preflight: true,
+                    ..RpcSendTransactionConfig::default()
+                },
+            )
+            .map_err(|e| anyhow!("Failed to send and confirm transaction: {e}"))?;
+
+        println!(
+            "Finished onboarding hotspot. \nHotspot asset ID: {}\nHotspot info pubkey: {}",
+            kta_acc.asset.to_string(),
+            iot_info.to_string(),
+        );
         Ok(())
     }
 }
@@ -268,19 +337,19 @@ fn construct_issue_entity_accounts(
     program: &Program,
     hnt_mint: Pubkey,
     entity_key: &Vec<u8>,
-) -> IssueDataOnlyEntityV0 {
+) -> Result<IssueDataOnlyEntityV0> {
     let token_metadata_pid = Pubkey::from_str(TOKEN_METADATA).unwrap();
     let noop_pid = Pubkey::from_str(NOOP).unwrap();
     let compression_pid = Pubkey::from_str(COMPRESSION).unwrap();
     let (dao, _dao_bump) =
-        Pubkey::find_program_address(&["dao".as_bytes(), hnt_mint.as_ref()], &HEM_PID);
+        Pubkey::find_program_address(&["dao".as_bytes(), hnt_mint.as_ref()], &HSD_PID);
 
     let (data_only_config, _data_only_bump) =
         Pubkey::find_program_address(&["data_only_config".as_bytes(), dao.as_ref()], &HEM_PID);
 
     let data_only_config_acc = program
         .account::<DataOnlyConfigV0>(data_only_config)
-        .unwrap();
+        .map_err(|e| anyhow!("Couldn't find data only config: {e}"))?;
 
     let (collection_metadata, _cm_bump) = Pubkey::find_program_address(
         &[
@@ -320,7 +389,7 @@ fn construct_issue_entity_accounts(
 
     let (bubblegum_signer, _bs_bump) =
         Pubkey::find_program_address(&["collection_cpi".as_bytes()], &BGUM_PID);
-    IssueDataOnlyEntityV0 {
+    Ok(IssueDataOnlyEntityV0 {
         payer: program.payer(),
         ecc_verifier: Pubkey::from_str(ECC_VERIFIER).unwrap(),
         collection: data_only_config_acc.collection,
@@ -340,20 +409,20 @@ fn construct_issue_entity_accounts(
         bubblegum_program: BGUM_PID,
         compression_program: compression_pid,
         system_program: system_program::id(),
-    }
+    })
 }
 
 fn construct_onboard_iot_accounts(
     program: &Program,
     hnt_mint: Pubkey,
     entity_key: &Vec<u8>,
-) -> OnboardDataOnlyIotHotspotV0 {
+) -> Result<OnboardDataOnlyIotHotspotV0> {
     let compression_program = Pubkey::from_str(COMPRESSION).unwrap();
     let iot_mint = Pubkey::from_str(IOT_MINT).unwrap();
     let dc_mint = Pubkey::from_str(DC_MINT).unwrap();
 
     let (dao, _dao_bump) =
-        Pubkey::find_program_address(&["dao".as_bytes(), hnt_mint.as_ref()], &HEM_PID);
+        Pubkey::find_program_address(&["dao".as_bytes(), hnt_mint.as_ref()], &HSD_PID);
     let (sub_dao, _sd_bump) =
         Pubkey::find_program_address(&["sub_dao".as_bytes(), iot_mint.as_ref()], &HSD_PID);
 
@@ -382,7 +451,7 @@ fn construct_onboard_iot_accounts(
 
     let data_only_config_acc = program
         .account::<DataOnlyConfigV0>(data_only_config)
-        .unwrap();
+        .map_err(|e| anyhow!("Couldn't find data only config: {e}"))?;
 
     let (key_to_asset, _kta_bump) =
         Pubkey::find_program_address(&["key_to_asset".as_bytes(), dao.as_ref(), &hash], &HEM_PID);
@@ -390,7 +459,7 @@ fn construct_onboard_iot_accounts(
     let (dc, _dc_bump) =
         Pubkey::find_program_address(&["dc".as_bytes(), dc_mint.as_ref()], &DC_PID);
 
-    OnboardDataOnlyIotHotspotV0 {
+    Ok(OnboardDataOnlyIotHotspotV0 {
         payer: program.payer(),
         dc_fee_payer: program.payer(),
         iot_info,
@@ -409,5 +478,5 @@ fn construct_onboard_iot_accounts(
         token_program: anchor_spl::token::ID,
         associated_token_program: spl_associated_token_account::id(),
         system_program: system_program::id(),
-    }
+    })
 }

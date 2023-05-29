@@ -1,8 +1,5 @@
 use crate::{
-    cmd::{
-        get_wallet_password, load_wallet, new_client, print_commit_result,
-        print_simulation_response, Opts,
-    },
+    cmd::{get_wallet_password, load_wallet, new_client, CommitOpts, Opts},
     dao::SubDao,
     result::Result,
 };
@@ -20,8 +17,8 @@ pub struct Cmd {
     dc: u64,
 
     /// Commit the delegation
-    #[arg(long)]
-    commit: bool,
+    #[command(flatten)]
+    commit: CommitOpts,
 }
 
 impl Cmd {
@@ -32,12 +29,6 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
 
         let tx = client.delegate_dc(self.subdao, &self.router, self.dc, keypair)?;
-        if self.commit {
-            let signature = client.send_and_confirm_transaction(&tx)?;
-            print_commit_result(signature)
-        } else {
-            let result = client.simulate_transaction(&tx)?;
-            print_simulation_response(&result)
-        }
+        self.commit.maybe_commit(&tx, &client)
     }
 }

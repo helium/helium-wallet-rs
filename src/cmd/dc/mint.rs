@@ -1,8 +1,5 @@
 use crate::{
-    cmd::{
-        get_wallet_password, load_wallet, new_client, print_commit_result,
-        print_simulation_response, Opts,
-    },
+    cmd::{get_wallet_password, load_wallet, new_client, CommitOpts, Opts},
     keypair::Pubkey,
     result::{anyhow, Result},
     token::{Token, TokenAmount},
@@ -25,8 +22,8 @@ pub struct Cmd {
     dc: Option<u64>,
 
     /// Commit the burn
-    #[arg(long)]
-    commit: bool,
+    #[command(flatten)]
+    commit: CommitOpts,
 }
 
 impl Cmd {
@@ -43,12 +40,6 @@ impl Cmd {
         };
 
         let tx = client.mint_dc(amount, &wallet.public_key, keypair)?;
-        if self.commit {
-            let signature = client.send_and_confirm_transaction(&tx)?;
-            print_commit_result(signature)
-        } else {
-            let result = client.simulate_transaction(&tx)?;
-            print_simulation_response(&result)
-        }
+        self.commit.maybe_commit(&tx, &client)
     }
 }

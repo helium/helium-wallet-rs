@@ -65,7 +65,7 @@ pub struct TokenBalance {
     pub amount: TokenAmount,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TokenAmount {
     pub token: Token,
     pub amount: u64,
@@ -75,7 +75,7 @@ impl From<&TokenAmount> for f64 {
     fn from(value: &TokenAmount) -> Self {
         match value.token.decimals() {
             0 => value.amount as f64,
-            decimals => value.amount as f64 / 10_usize.pow(decimals) as f64,
+            decimals => value.amount as f64 / 10_usize.pow(decimals.into()) as f64,
         }
     }
 }
@@ -104,7 +104,7 @@ impl Default for TokenAmount {
 
 impl TokenAmount {
     pub fn from_f64(token: Token, amount: f64) -> Self {
-        let amount = (amount * 10_usize.pow(token.decimals()) as f64) as u64;
+        let amount = (amount * 10_usize.pow(token.decimals().into()) as f64) as u64;
         Self { token, amount }
     }
 
@@ -114,7 +114,7 @@ impl TokenAmount {
 }
 
 impl Token {
-    pub fn decimals(&self) -> u32 {
+    pub fn decimals(&self) -> u8 {
         match self {
             Self::Hnt => 8,
             Self::Iot | Self::Mobile => 6,

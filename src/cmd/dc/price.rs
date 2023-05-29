@@ -31,7 +31,7 @@ impl Cmd {
         let dc_amount = (usd_amount * dec!(100_000))
             .to_u64()
             .ok_or_else(|| anyhow!("Invalid USD amount"))?;
-        let hnt_amount = (usd_amount / hnt_price).round_dp(Token::Hnt.decimals());
+        let hnt_amount = (usd_amount / hnt_price).round_dp(Token::Hnt.decimals().into());
 
         let json = json!({
                 "usd": self.usd,

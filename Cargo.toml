@@ -51,6 +51,7 @@ lazy-distributor = { git = "https://github.com/helium/helium-program-library", t
 helium-entity-manager = { git = "https://github.com/helium/helium-program-library", tag="v0.1.4" }
 helium-sub-daos = { git = "https://github.com/helium/helium-program-library", tag="v0.1.4" }
 circuit-breaker = { git = "https://github.com/helium/helium-program-library", tag="v0.1.4" }
+spl-associated-token-account = "*"
 pyth-sdk-solana = "0"
 anchor-client = "0"
 anchor-spl = "0"

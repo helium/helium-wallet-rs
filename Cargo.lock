@@ -2123,6 +2123,7 @@ dependencies = [
  "sha2 0.10.6",
  "shamirsecretsharing",
  "sodiumoxide",
+ "spl-associated-token-account",
  "thiserror",
  "tiny-bip39",
 ]

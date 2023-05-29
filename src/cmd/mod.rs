@@ -25,7 +25,7 @@ pub mod info;
 // pub mod multisig;
 // pub mod oracle;
 pub mod router;
-// pub mod pay;
+pub mod transfer;
 // pub mod request;
 // pub mod sign;
 pub mod upgrade;
@@ -47,6 +47,33 @@ pub struct Opts {
     /// Solana RPC URL to use.
     #[arg(long, default_value = "m")]
     url: String,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+pub struct CommitOpts {
+    /// Commit the transaction
+    #[arg(long)]
+    commit: bool,
+
+    /// Skip preflight checks when committing transaction
+    #[arg(long)]
+    skip_preflight: bool,
+}
+
+impl CommitOpts {
+    pub fn maybe_commit(
+        &self,
+        tx: &solana_sdk::transaction::Transaction,
+        client: &Client,
+    ) -> Result {
+        if self.commit {
+            let signature = client.send_and_confirm_transaction(tx, self.skip_preflight)?;
+            print_commit_result(signature)
+        } else {
+            let result = client.simulate_transaction(tx)?;
+            print_simulation_response(&result)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

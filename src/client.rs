@@ -164,6 +164,25 @@ impl Client {
         Ok(Self { settings })
     }
 
+    pub fn get_balance_for_address(&self, pubkey: &Pubkey) -> Result<Option<TokenAmount>> {
+        let client = self.settings.mk_solana_client()?;
+
+        match client
+            .get_account_with_commitment(pubkey, client.commitment())?
+            .value
+        {
+            Some(account) => {
+                use anchor_client::anchor_lang::AccountDeserialize;
+                let token_account =
+                    anchor_spl::token::TokenAccount::try_deserialize(&mut account.data.as_slice())?;
+                let token =
+                    Token::from_mint(token_account.mint).ok_or_else(|| anyhow!("Invalid mint"))?;
+                Ok(Some(TokenAmount::from_u64(token, token_account.amount)))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn get_balances(&self, account: &Pubkey) -> Result<TokenBalances> {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -471,6 +490,47 @@ impl Client {
         Ok(tx)
     }
 
+    pub fn transfer(
+        &self,
+        transfers: &[(Pubkey, TokenAmount)],
+        keypair: Rc<Keypair>,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        let client = self.settings.mk_anchor_client(keypair.clone())?;
+        let program = client.program(anchor_spl::token::spl_token::id());
+
+        let wallet_public_key = keypair.public_key();
+        let mut builder = program.request();
+
+        for (payee, token_amount) in transfers {
+            let mint_pubkey = token_amount.token.mint();
+            let source_pubkey = get_associated_token_address(&wallet_public_key, mint_pubkey);
+            let destination_pubkey = get_associated_token_address(payee, mint_pubkey);
+            let ix =
+                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    &wallet_public_key,
+                    payee,
+                    mint_pubkey,
+                    &anchor_spl::token::spl_token::id(),
+                );
+            builder = builder.instruction(ix);
+
+            let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
+                &anchor_spl::token::spl_token::id(),
+                &source_pubkey,
+                mint_pubkey,
+                &destination_pubkey,
+                &wallet_public_key,
+                &[],
+                token_amount.amount,
+                token_amount.token.decimals(),
+            )?;
+            builder = builder.instruction(ix);
+        }
+
+        let tx = builder.signed_transaction()?;
+        Ok(tx)
+    }
+
     pub fn simulate_transaction(
         &self,
         tx: &solana_sdk::transaction::Transaction,
@@ -483,9 +543,14 @@ impl Client {
     pub fn send_and_confirm_transaction(
         &self,
         tx: &solana_sdk::transaction::Transaction,
+        skip_preflight: bool,
     ) -> Result<solana_sdk::signature::Signature> {
         let client = self.settings.mk_anchor_client(Keypair::void())?;
         let dc_program = client.program(data_credits::id());
-        Ok(dc_program.rpc().send_and_confirm_transaction(tx)?)
+        let config = solana_client::rpc_config::RpcSendTransactionConfig {
+            skip_preflight,
+            ..Default::default()
+        };
+        Ok(dc_program.rpc().send_transaction_with_config(tx, config)?)
     }
 }

@@ -56,6 +56,11 @@ impl Token {
 
         Some(token)
     }
+
+    pub(crate) fn transferrable_value_parser() -> clap::builder::PossibleValuesParser {
+        let transferrable = ["iot", "mobile", "hnt", "sol"];
+        clap::builder::PossibleValuesParser::new(transferrable)
+    }
 }
 
 #[derive(Debug, serde::Serialize)]

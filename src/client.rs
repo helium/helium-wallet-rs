@@ -1,7 +1,7 @@
 use crate::{
     dao::{Dao, SubDao},
     hotspot::{Hotspot, HotspotInfo},
-    keypair::{serde_pubkey, Keypair, Pubkey},
+    keypair::{Keypair, Pubkey},
     result::{anyhow, Error, Result},
     token::{Token, TokenAmount, TokenBalance},
 };
@@ -148,7 +148,14 @@ impl jsonrpc::Transport for JsonRpcTransport {
     }
 }
 
-pub type TokenBalances = HashMap<Token, TokenBalance>;
+pub type TokenBalanceMap = HashMap<Token, TokenBalance>;
+
+pub fn to_token_balance_map(balances: Vec<TokenBalance>) -> TokenBalanceMap {
+    balances
+        .into_iter()
+        .map(|balance| (balance.amount.token, balance))
+        .collect()
+}
 
 impl Client {
     pub fn new(url: &str) -> Result<Self> {
@@ -164,70 +171,37 @@ impl Client {
         Ok(Self { settings })
     }
 
-    pub fn get_balance_for_address(&self, pubkey: &Pubkey) -> Result<Option<TokenAmount>> {
+    pub fn get_balance_for_address(&self, pubkey: &Pubkey) -> Result<Option<TokenBalance>> {
         let client = self.settings.mk_solana_client()?;
 
         match client
             .get_account_with_commitment(pubkey, client.commitment())?
             .value
         {
+            Some(account) if account.owner == solana_sdk::system_program::ID => {
+                Ok(Some(Token::Sol.to_balance(*pubkey, account.lamports)))
+            }
             Some(account) => {
                 use anchor_client::anchor_lang::AccountDeserialize;
                 let token_account =
                     anchor_spl::token::TokenAccount::try_deserialize(&mut account.data.as_slice())?;
                 let token =
                     Token::from_mint(token_account.mint).ok_or_else(|| anyhow!("Invalid mint"))?;
-                Ok(Some(TokenAmount::from_u64(token, token_account.amount)))
+                Ok(Some(token.to_balance(*pubkey, token_account.amount)))
             }
             None => Ok(None),
         }
     }
 
-    pub fn get_balances(&self, account: &Pubkey) -> Result<TokenBalances> {
-        #[derive(Debug, Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Balances {
-            native_balance: u64,
-            tokens: Vec<BalancesToken>,
-        }
-
-        #[derive(Debug, Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct BalancesToken {
-            amount: u64,
-            mint: String,
-            #[serde(with = "serde_pubkey")]
-            token_account: Pubkey,
-        }
-
-        impl TryFrom<Balances> for TokenBalances {
-            type Error = Error;
-            fn try_from(value: Balances) -> Result<Self> {
-                let map: TokenBalances = value
-                    .tokens
-                    .iter()
-                    .filter_map(|entry| {
-                        Pubkey::from_str(&entry.mint).ok().and_then(|mint_key| {
-                            Token::from_mint(mint_key).map(|token| {
-                                (token, token.to_balance(entry.token_account, entry.amount))
-                            })
-                        })
-                    })
-                    .collect();
-                Ok(map)
-            }
-        }
-
-        let url = format!("{}/v0/addresses/{account}/balances", self.settings.url);
-        let response = Settings::mk_rest_client()?
-            .get(url)
-            .query(&[("session-key", &self.settings.session_key)])
-            .send()?;
-        let balances: Balances = response.json()?;
-        let native_balance = Token::Sol.to_balance(*account, balances.native_balance);
-        let mut map: TokenBalances = balances.try_into()?;
-        map.insert(Token::Sol, native_balance);
-        Ok(map)
+    pub fn get_balance_for_addresses(&self, pubkeys: &[Pubkey]) -> Result<Vec<TokenBalance>> {
+        pubkeys
+            .par_iter()
+            .filter_map(|pubkey| match self.get_balance_for_address(pubkey) {
+                Ok(Some(balance)) => Some(Ok(balance)),
+                Ok(None) => None,
+                Err(err) => Some(Err(err)),
+            })
+            .collect()
     }
 
     pub fn get_hotspots(&self, owner: &Pubkey) -> Result<Vec<Hotspot>> {
@@ -305,7 +279,6 @@ impl Client {
             let mut params = base_params.clone();
             params["page"] = page.into();
             let page_result: PagedResult = client.call("searchAssets", &[jsonrpc::arg(params)])?;
-            println!("PAGE {page}");
             if page_result.items.is_empty() {
                 break;
             }

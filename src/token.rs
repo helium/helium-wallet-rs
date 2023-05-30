@@ -57,9 +57,27 @@ impl Token {
         Some(token)
     }
 
+    pub fn all() -> Vec<Self> {
+        vec![Self::Hnt, Self::Iot, Self::Mobile, Self::Dc, Self::Sol]
+    }
+
     pub(crate) fn transferrable_value_parser() -> clap::builder::PossibleValuesParser {
         let transferrable = ["iot", "mobile", "hnt", "sol"];
         clap::builder::PossibleValuesParser::new(transferrable)
+    }
+
+    pub fn associated_token_adress(&self, address: &Pubkey) -> Pubkey {
+        match self {
+            Self::Sol => *address,
+            _ => spl_associated_token_account::get_associated_token_address(address, self.mint()),
+        }
+    }
+
+    pub fn associated_token_adresses(address: &Pubkey) -> Vec<Pubkey> {
+        Self::all()
+            .iter()
+            .map(|token| token.associated_token_adress(address))
+            .collect::<Vec<_>>()
     }
 }
 

@@ -89,7 +89,7 @@ impl Basic {
             .seed_phrase(seed_words)
             .create()?;
 
-        verify::print_result(&wallet, &wallet.decrypt(password.as_bytes()))
+        info::print_wallet(&wallet)
     }
 }
 
@@ -111,7 +111,7 @@ impl Sharded {
             .seed_phrase(seed_words)
             .create()?;
 
-        verify::print_result(&wallet, &wallet.decrypt(password.as_bytes()))
+        info::print_wallet(&wallet)
     }
 }
 

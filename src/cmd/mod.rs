@@ -29,8 +29,6 @@ pub mod transfer;
 // pub mod request;
 // pub mod sign;
 pub mod upgrade;
-// pub mod validators;
-pub mod verify;
 
 /// Common options for most wallet commands
 #[derive(Debug, clap::Args)]

@@ -25,7 +25,7 @@ impl Cmd {
     }
 }
 
-fn print_wallet(wallet: &Wallet) -> Result {
+pub(crate) fn print_wallet(wallet: &Wallet) -> Result {
     let json = json!({
         "sharded": wallet.is_sharded(),
         "pwhash": wallet.pwhash().to_string(),

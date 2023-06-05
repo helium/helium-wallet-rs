@@ -67,6 +67,12 @@ impl Keypair {
         self.0.pubkey()
     }
 
+    pub fn secret(&self) -> Vec<u8> {
+        let mut result = self.0.secret().to_bytes().to_vec();
+        result.extend_from_slice(self.public_key().as_ref());
+        result
+    }
+
     pub fn sign(&self, msg: &[u8]) -> Result<solana_sdk::signature::Signature> {
         Ok(self.try_sign_message(msg)?)
     }

@@ -82,7 +82,7 @@ impl Basic {
         let new_wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Basic(format))?;
         let mut writer = open_output_file(&self.output, !self.force)?;
         new_wallet.write(&mut writer)?;
-        verify::print_result(&wallet, &Ok(keypair))
+        info::print_wallet(&wallet)
     }
 }
 
@@ -108,6 +108,6 @@ impl Sharded {
             let mut writer = open_output_file(&filename, !self.force)?;
             shard.write(&mut writer)?;
         }
-        verify::print_result(&wallet, &Ok(keypair))
+        info::print_wallet(&wallet)
     }
 }

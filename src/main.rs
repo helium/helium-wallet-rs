@@ -1,6 +1,6 @@
 use clap::Parser;
 use helium_wallet::{
-    cmd::{balance, create, dc, hotspots, info, router, transfer, upgrade, verify, Opts},
+    cmd::{balance, create, dc, export, hotspots, info, router, transfer, upgrade, Opts},
     result::Result,
 };
 #[derive(Debug, Parser)]
@@ -18,13 +18,13 @@ pub struct Cli {
 pub enum Cmd {
     Info(info::Cmd),
     Balance(balance::Cmd),
-    Verify(verify::Cmd),
     Upgrade(upgrade::Cmd),
     Router(router::Cmd),
     Create(create::Cmd),
     Hotspots(Box<hotspots::Cmd>),
     Dc(dc::Cmd),
     Transfer(transfer::Cmd),
+    Export(export::Cmd),
     // Htlc(htlc::Cmd),
     // Oui(oui::Cmd),
     // Oracle(oracle::Cmd),
@@ -35,7 +35,6 @@ pub enum Cmd {
     // Validators(validators::Cmd),
     // Commit(commit::Cmd),
     // Sign(sign::Cmd),
-    // Export(export::Cmd),
 }
 
 fn main() -> Result {
@@ -47,13 +46,13 @@ fn run(cli: Cli) -> Result {
     match cli.cmd {
         Cmd::Info(cmd) => cmd.run(cli.opts),
         Cmd::Balance(cmd) => cmd.run(cli.opts),
-        Cmd::Verify(cmd) => cmd.run(cli.opts),
         Cmd::Upgrade(cmd) => cmd.run(cli.opts),
         Cmd::Router(cmd) => cmd.run(cli.opts),
         Cmd::Create(cmd) => cmd.run(cli.opts),
         Cmd::Hotspots(cmd) => cmd.run(cli.opts),
         Cmd::Dc(cmd) => cmd.run(cli.opts),
         Cmd::Transfer(cmd) => cmd.run(cli.opts),
+        Cmd::Export(cmd) => cmd.run(cli.opts),
         // Cmd::Htlc(cmd) => cmd.run(cli.opts),
         // Cmd::Oracle(cmd) => cmd.run(cli.opts),
         // Cmd::Burn(cmd) => cmd.run(cli.opts),
@@ -63,6 +62,5 @@ fn run(cli: Cli) -> Result {
         // Cmd::Validators(cmd) => cmd.run(cli.opts),
         // Cmd::Commit(cmd) => cmd.run(cli.opts),
         // Cmd::Sign(cmd) => cmd.run(cli.opts),
-        // Cmd::Export(cmd) => cmd.run(cli.opts),
     }
 }

@@ -11,15 +11,18 @@ const ARGON_MEM_LIMIT: pwhash::MemLimit = pwhash::MEMLIMIT_MODERATE;
 
 #[derive(Debug, Clone, clap::ValueEnum)]
 pub enum OutputFormat {
+    /// Export the raw secret key, compatible with the solana CLI wallet
+    Key,
+    /// Export the seed phrase
     Seed,
+    /// Export the encrypted seed via QR-encoded JSON.    
     Qr,
 }
 
 /// Exports encrypted wallet seed as QR-encoded JSON or raw seed via stdout.
 #[derive(Debug, clap::Args)]
 pub struct Cmd {
-    /// Output format to use. "--output seed" writes  the raw seed (Solana CLI compatible) to stdout.
-    /// "--output qr is the encrypted seed presented via QR-encoded JSON.
+    /// Output format to use
     #[arg(long, default_value = "seed")]
     output: OutputFormat,
 }
@@ -48,12 +51,13 @@ impl Cmd {
                 print_qr(json.to_string())?;
                 Ok(())
             }
+            OutputFormat::Key => {
+                println!("{}", &serde_json::to_string(&keypair.secret())?);
+                Ok(())
+            }
             OutputFormat::Seed => {
-                let json = json!({
-                    "phrase": keypair.phrase()?,
-                    "secret": serde_json::to_string(&keypair.secret())?,
-                });
-                print_json(&json)
+                println!("{}", &keypair.phrase()?);
+                Ok(())
             }
         }
     }

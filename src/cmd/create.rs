@@ -1,8 +1,10 @@
 use crate::{
     cmd::*,
+    keypair,
     result::Result,
     wallet::{ShardConfig, Wallet},
 };
+use clap::builder::TypedValueParser as _;
 use std::path::PathBuf;
 
 #[derive(Debug, clap::Args)]
@@ -18,10 +20,11 @@ impl Cmd {
 }
 
 #[derive(Debug, clap::Subcommand)]
-/// Create a new wallet
+/// Create a new wallet or keypair
 pub enum CreateCommand {
     Basic(Basic),
     Sharded(Sharded),
+    Keypair(Keypair),
 }
 
 #[derive(Debug, clap::Args)]
@@ -64,11 +67,23 @@ pub struct Sharded {
     seed: bool,
 }
 
+#[derive(Debug, clap::Args)]
+/// Create a new helium keypair of a given type
+pub struct Keypair {
+    #[arg(
+        default_value_t = helium_crypto::KeyType::Ed25519,
+        value_parser = clap::builder::PossibleValuesParser::new(["secp256k1", "ed25519", "ecc_compact"])
+            .map(|s| s.parse::<helium_crypto::KeyType>().unwrap()),
+    )]
+    r#type: helium_crypto::KeyType,
+}
+
 impl CreateCommand {
     pub fn run(&self, opts: Opts) -> Result {
         match self {
             Self::Basic(cmd) => cmd.run(opts),
             Self::Sharded(cmd) => cmd.run(opts),
+            Self::Keypair(cmd) => cmd.run(opts),
         }
     }
 }
@@ -112,6 +127,35 @@ impl Sharded {
             .create()?;
 
         info::print_wallet(&wallet)
+    }
+}
+
+impl Keypair {
+    pub fn run(&self, _opts: Opts) -> Result {
+        let key_tag = helium_crypto::KeyTag {
+            network: helium_crypto::Network::MainNet,
+            key_type: self.r#type,
+        };
+
+        let keypair = helium_crypto::Keypair::generate(key_tag, &mut rand::rngs::OsRng);
+        let secret = keypair.secret_to_vec();
+        let mut json = json!({
+            "type": keypair.key_tag().key_type.to_string(),
+            "secret": {
+                "bytes": serde_json::to_string(&secret)?,
+                "b58": bs58::encode(secret).into_string(),
+            }
+        });
+        let mut public_key = json!({
+            "helium": keypair.public_key().to_string(),
+        });
+
+        if key_tag.key_type == helium_crypto::KeyType::Ed25519 {
+            let solana_key = keypair::to_pubkey(keypair.public_key())?;
+            public_key["solana"] = solana_key.to_string().into();
+        }
+        json["public_key"] = public_key;
+        print_json(&json)
     }
 }
 

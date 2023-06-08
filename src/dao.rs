@@ -34,8 +34,11 @@ pub enum SubDao {
 
 impl std::fmt::Display for SubDao {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        f.write_str(&str)
+        let str = match self {
+            Self::Iot => "iot",
+            Self::Mobile => "mobile",
+        };
+        f.write_str(str)
     }
 }
 

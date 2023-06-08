@@ -16,18 +16,14 @@ use std::{
 use anchor_client::{solana_client, solana_sdk};
 
 pub mod balance;
-pub mod dc;
-// pub mod commit;
 pub mod create;
+pub mod dc;
 pub mod export;
 pub mod hotspots;
 pub mod info;
 // pub mod multisig;
-// pub mod oracle;
 pub mod router;
 pub mod transfer;
-// pub mod request;
-// pub mod sign;
 pub mod upgrade;
 
 /// Common options for most wallet commands

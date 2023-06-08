@@ -75,7 +75,7 @@ pub struct One {
 pub struct Multi {
     /// File to read multiple payments from.
     path: PathBuf,
-    /// Commit the payment to the API
+    /// Commit the payments
     #[command(flatten)]
     commit: CommitOpts,
 }

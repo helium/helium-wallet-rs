@@ -35,6 +35,16 @@ pub mod serde_pubkey {
     }
 }
 
+pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey> {
+    match key.key_type() {
+        helium_crypto::KeyType::Ed25519 => {
+            let bytes = key.to_vec();
+            Ok(Pubkey::new(&bytes[1..]))
+        }
+        _ => anyhow::bail!("unsupported key type"),
+    }
+}
+
 static START: std::sync::Once = std::sync::Once::new();
 
 fn init() {

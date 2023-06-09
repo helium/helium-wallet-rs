@@ -49,7 +49,7 @@ pub struct CommitOpts {
     #[arg(long)]
     commit: bool,
 
-    /// Skip preflight checks when committing transaction
+    /// Skip preflight checks when committing transaction. [default: false]
     #[arg(long)]
     skip_preflight: bool,
 }

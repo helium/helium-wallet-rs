@@ -1,198 +1,104 @@
 use crate::{
-    b64,
+    client::{HotspotAssertion, ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
     cmd::*,
-    staking,
-    traits::{TxnEnvelope, TxnFee, TxnModeStakingFee, TxnSign},
+    dao::SubDao,
+    result::{Error, Result},
 };
-use helium_api::{
-    hotspots,
-    models::{Dbi, HotspotStakingMode},
-};
+use h3o::CellIndex;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Clone, clap::Args)]
 /// Assert a hotspot location on the blockchain. The original transaction is
 /// created by the hotspot miner and supplied here for owner signing. Use an
 /// onboarding key to get the transaction signed by the DeWi staking server.
 pub struct Cmd {
-    /// Address of hotspot to assert
-    #[structopt(long)]
-    gateway: PublicKey,
+    /// The subdao to assert the hotspot on
+    subdao: SubDao,
 
-    /// Lattitude of hotspot location to assert. Defaults to the last asserted
-    /// value. For negative values use '=', for example: "--lat=-xx.xxxxxxx".
+    /// Helium address of hotspot to assert
+    gateway: helium_crypto::PublicKey,
+
+    /// Lattitude of hotspot location to assert.
     ///
-    #[structopt(long)]
+    /// Defaults to the last asserted value. For negative values use '=', for
+    /// example: "--lat=-xx.xxxxxxx".
+    #[arg(long)]
     lat: Option<f64>,
 
-    /// Longitude of hotspot location to assert. Defaults to the last asserted
-    /// value. For negative values use '=', for example: "--lon=-xx.xxxxxxx".
-    #[structopt(long)]
+    /// Longitude of hotspot location to assert.
+    ///
+    /// Defaults to the last asserted value. For negative values use '=', for
+    /// example: "--lon=-xx.xxxxxxx".
+    #[arg(long)]
     lon: Option<f64>,
 
     /// The antenna gain for the asserted hotspotin dBi, with one digit of
-    /// accuracy. Defaults to the last asserted value.
-    #[structopt(long)]
-    gain: Option<Dbi>,
+    /// accuracy.
+    ///
+    /// Defaults to the last asserted value. Note that the gain is truncated to
+    /// the nearest 0.1 dBi.
+    #[arg(long)]
+    gain: Option<f64>,
 
     /// The elevation for the asserted hotspot in meters above ground level.
-    /// Defaults to the last assserted value. For negative values use '=',
-    /// for example: "--elevation=-xx".
-    #[structopt(long)]
+    ///
+    /// Defaults to the last assserted value. For negative values use '=', for
+    /// example: "--elevation=-xx".
+    #[arg(long)]
     elevation: Option<i32>,
 
-    /// Use the DeWi "staking" server to pay for the assert location. Note that
-    /// no, or only a limited number of asserts may available for use by the
-    /// staking server.
-    #[structopt(long)]
-    onboarding: bool,
+    /// The onboarding server to use for asserting the hotspot
+    #[arg(long, default_value = "m")]
+    onboarding: String,
 
-    /// The staking mode for the assert location (full, light, dataonly).
-    /// Defaults to the stakng mode the hotspot was added with.
-    #[structopt(long)]
-    mode: Option<HotspotStakingMode>,
-
-    /// The speculative nonce to use for the transaction. Defaults to the
-    /// one more than the last observed nonce for the hotspot.
-    #[structopt(long)]
-    nonce: Option<u64>,
-
-    /// Commit the transaction to the blockchain
-    #[structopt(long)]
-    commit: bool,
+    /// Commit the assertion.
+    ///
+    /// Note that skip-preflight is always true on commit for this command.
+    #[command(flatten)]
+    commit: CommitOpts,
 }
 
 impl Cmd {
-    pub async fn run(self, opts: Opts) -> Result {
+    pub fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = load_wallet(opts.files)?;
+        let wallet = load_wallet(&opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let staking_client = staking::Client::default();
-        let base_url: String = api_url(wallet.public_key.network);
-        let client = new_client(base_url.clone());
-        let pending_url = base_url + "/pending_transactions/";
-        let hotspot = hotspots::get(&client, &self.gateway.to_string()).await?;
 
-        let gain: i32 = if let Some(gain) = self.gain.or(hotspot.gain) {
-            gain.into()
-        } else {
-            bail!("no gain specified or found on chain")
-        };
-        let elevation = if let Some(elevation) = self.elevation.or(hotspot.elevation) {
-            elevation
-        } else {
-            bail!("no elevation specified or found on chain")
+        let client = new_client(&opts.url)?;
+
+        let server = match self.onboarding.as_str() {
+            "m" | "mainnet-beta" => ONBOARDING_URL_MAINNET,
+            "d" | "devnet" => ONBOARDING_URL_DEVNET,
+            url => url,
         };
 
-        let wallet_key = keypair.public_key();
-        let hotspot = helium_api::hotspots::get(&client, &self.gateway.to_string()).await?;
-        // Get the next likely gateway nonce for the new transaction
-        let nonce = self.nonce.unwrap_or(hotspot.speculative_nonce + 1);
-        let mode = self.mode.unwrap_or(hotspot.mode);
-        let payer = if self.onboarding {
-            staking_client.address_for(&self.gateway).await?.into()
-        } else {
-            wallet.public_key.into()
-        };
+        let assertion = HotspotAssertion::try_from(self)?;
+        let tx = client.hotspot_assert(server, self.subdao, &self.gateway, assertion, keypair)?;
 
-        let lat = if let Some(lat) = self.lat.or(hotspot.lat) {
-            lat
-        } else {
-            bail!("no latitiude specified or found on chain")
-        };
-        let lon = if let Some(lon) = self.lon.or(hotspot.lng) {
-            lon
-        } else {
-            bail!("no longitude specified or found on chain")
-        };
-        let geo_point: geo_types::Point<f64> = (lon, lat).into();
-        let location = h3ron::H3Cell::from_point(geo_point, 12)?.to_string();
-        let mut txn = BlockchainTxnAssertLocationV2 {
-            payer,
-            owner: wallet_key.into(),
-            gateway: self.gateway.clone().into(),
-            location: location.clone(),
-            elevation,
-            gain,
-            nonce,
-            owner_signature: vec![],
-            payer_signature: vec![],
-            staking_fee: 0,
-            fee: 0,
-        };
+        // We force skip-preflight on commit for this command since we always
+        // appear to get Blockhash not found errors from the server during
+        // preflight
+        let mut commit = self.commit.clone();
+        commit.skip_preflight = true;
 
-        let fees = &get_txn_fees(&client).await?;
-        txn.fee = txn.txn_fee(fees)?;
-        txn.staking_fee = match hotspot.location {
-            Some(hotspot_location) if hotspot_location == location => 0,
-            _ => txn.txn_mode_staking_fee(&mode, fees)?,
-        };
-
-        txn.owner_signature = txn.sign(&keypair)?;
-
-        let envelope = if self.onboarding {
-            if self.commit {
-                staking_client
-                    .sign(&self.gateway.to_string(), &txn.in_envelope())
-                    .await
-            } else {
-                Ok(txn.in_envelope())
-            }
-        } else {
-            txn.payer_signature = txn.owner_signature.clone();
-            Ok(txn.in_envelope())
-        }?;
-
-        let status = maybe_submit_txn(self.commit, &client, &envelope).await?;
-        print_txn(&txn, &envelope, &status, &pending_url, opts.format)
+        commit.maybe_commit(&tx, &client)
     }
 }
 
-fn print_txn(
-    txn: &BlockchainTxnAssertLocationV2,
-    envelope: &BlockchainTxn,
-    status: &Option<PendingTxnStatus>,
-    pending_url: &str,
-    format: OutputFormat,
-) -> Result {
-    let address = PublicKey::from_bytes(&txn.gateway)?.to_string();
-    let payer = if txn.payer.is_empty() {
-        PublicKey::from_bytes(&txn.owner)?.to_string()
-    } else {
-        PublicKey::from_bytes(&txn.payer)?.to_string()
-    };
-    let status_endpoint = pending_url.to_owned() + status_str(status);
-    match format {
-        OutputFormat::Table => {
-            ptable!(
-                ["Key", "Value"],
-                ["Address", address],
-                ["Location", txn.location],
-                ["Payer", payer],
-                ["Nonce", txn.nonce],
-                ["Fee (DC)", txn.fee],
-                ["Staking Fee (DC)", txn.staking_fee],
-                ["Gain (dBi)", Dbi::from(txn.gain)],
-                ["Elevation", txn.elevation],
-                ["Hash", status_str(status)],
-                ["Status", status_endpoint]
-            );
-            print_footer(status)
-        }
-        OutputFormat::Json => {
-            let table = json!({
-                "address": address,
-                "location": txn.location,
-                "gain": txn.gain,
-                "elevation": txn.elevation,
-                "payer": payer,
-                "fee": txn.fee,
-                "nonce": txn.nonce,
-                "staking_fee": txn.staking_fee,
-                "hash": status_json(status),
-                "txn": b64::encode_message(envelope)?,
-                "status": status_endpoint
-            });
-            print_json(&table)
-        }
+impl TryFrom<&Cmd> for HotspotAssertion {
+    type Error = Error;
+    fn try_from(value: &Cmd) -> Result<Self> {
+        let location: Option<CellIndex> = match (value.lat, value.lon) {
+            (Some(lat), Some(lon)) => {
+                Some(h3o::LatLng::new(lat, lon)?.to_cell(h3o::Resolution::Twelve))
+            }
+            (None, None) => None,
+            _ => bail!("Both lat and lon must be specified"),
+        };
+
+        Ok(Self {
+            elevation: value.elevation,
+            location: location.map(u64::from),
+            gain: value.gain.map(|g| (g * 10.0).trunc() as i32),
+        })
     }
 }

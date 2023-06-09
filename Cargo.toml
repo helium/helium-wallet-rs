@@ -52,6 +52,7 @@ helium-entity-manager = { git = "https://github.com/helium/helium-program-librar
 helium-sub-daos = { git = "https://github.com/helium/helium-program-library", branch="master" }
 circuit-breaker = { git = "https://github.com/helium/helium-program-library", branch="master" }
 spl-associated-token-account = "*"
+bincode = "*"
 pyth-sdk-solana = "0"
 anchor-client = "0"
 anchor-spl = "0"

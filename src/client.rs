@@ -23,6 +23,9 @@ use std::{boxed::Box, collections::HashMap, rc::Rc, result::Result as StdResult,
 static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 static SESSION_KEY_URL: &str = "https://wallet-api-v2.helium.com/api/sessionKey";
 
+pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
+pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
+
 pub struct Client {
     settings: Settings,
 }
@@ -149,6 +152,11 @@ impl jsonrpc::Transport for JsonRpcTransport {
 }
 
 pub type TokenBalanceMap = HashMap<Token, TokenBalance>;
+pub struct HotspotAssertion {
+    pub location: Option<u64>,
+    pub gain: Option<i32>,
+    pub elevation: Option<i32>,
+}
 
 pub fn to_token_balance_map(balances: Vec<TokenBalance>) -> TokenBalanceMap {
     balances
@@ -504,13 +512,85 @@ impl Client {
         Ok(tx)
     }
 
+    pub fn hotspot_assert(
+        &self,
+        onboarding_server: &str,
+        subdao: SubDao,
+        hotspot: &helium_crypto::PublicKey,
+        assertion: HotspotAssertion,
+        keypair: Rc<Keypair>,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct OnboardingResponse {
+            code: u32,
+            success: bool,
+            error_message: Option<String>,
+            data: Option<OnboardingResponseData>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct OnboardingResponseData {
+            solana_transactions: Vec<OnboardingResponseSolanaTransaction>,
+        }
+        #[derive(Deserialize)]
+        struct OnboardingResponseSolanaTransaction {
+            data: Vec<u8>,
+        }
+
+        let client = Settings::mk_rest_client()?;
+        let url = format!(
+            "{}/transactions/{}/update-metadata",
+            onboarding_server,
+            subdao.to_string()
+        );
+        let mut params = json!({
+            "entityKey": hotspot.to_string(),
+            "wallet": keypair.public_key().to_string(),
+        });
+
+        if let Some(location) = assertion.location {
+            params["location"] = location.into();
+        }
+        if let Some(gain) = assertion.gain {
+            params["gain"] = gain.into();
+        }
+        if let Some(elevation) = assertion.elevation {
+            params["elevation"] = elevation.into();
+        }
+
+        let resp = client.post(url).json(&params).send()?.error_for_status()?;
+        let onboarding_resp = resp.json::<OnboardingResponse>()?;
+        if !onboarding_resp.success {
+            return Err(anyhow!(
+                "Onboard transaction request failed: {} {}",
+                onboarding_resp.code,
+                onboarding_resp
+                    .error_message
+                    .unwrap_or_else(|| "unknown".to_string())
+            ));
+        }
+
+        let mut tx = onboarding_resp
+            .data
+            .ok_or_else(|| anyhow!("No transaction data returned"))
+            .and_then(|resp_data| {
+                bincode::deserialize::<solana_sdk::transaction::Transaction>(
+                    &resp_data.solana_transactions[0].data,
+                )
+                .map_err(anyhow::Error::from)
+            })?;
+
+        tx.try_partial_sign(&[&*keypair], tx.message.recent_blockhash)?;
+        Ok(tx)
+    }
+
     pub fn simulate_transaction(
         &self,
         tx: &solana_sdk::transaction::Transaction,
     ) -> Result<solana_client::rpc_response::RpcSimulateTransactionResult> {
-        let client = self.settings.mk_anchor_client(Keypair::void())?;
-        let dc_program = client.program(data_credits::id());
-        Ok(dc_program.rpc().simulate_transaction(tx)?.value)
+        let client = self.settings.mk_solana_client()?;
+        Ok(client.simulate_transaction(tx)?.value)
     }
 
     pub fn send_and_confirm_transaction(
@@ -518,12 +598,11 @@ impl Client {
         tx: &solana_sdk::transaction::Transaction,
         skip_preflight: bool,
     ) -> Result<solana_sdk::signature::Signature> {
-        let client = self.settings.mk_anchor_client(Keypair::void())?;
-        let dc_program = client.program(data_credits::id());
+        let client = self.settings.mk_solana_client()?;
         let config = solana_client::rpc_config::RpcSendTransactionConfig {
             skip_preflight,
             ..Default::default()
         };
-        Ok(dc_program.rpc().send_transaction_with_config(tx, config)?)
+        Ok(client.send_transaction_with_config(tx, config)?)
     }
 }

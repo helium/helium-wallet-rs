@@ -2052,6 +2052,7 @@ dependencies = [
  "angry-purple-tiger",
  "anyhow",
  "base64 0.21.0",
+ "bincode",
  "bs58 0.4.0",
  "byteorder",
  "circuit-breaker",

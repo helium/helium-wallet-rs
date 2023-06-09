@@ -1,7 +1,7 @@
 use crate::{cmd::*, result::Result};
 
 // mod add;
-// mod assert;
+mod assert;
 mod info;
 mod list;
 // mod transfer;
@@ -22,7 +22,7 @@ impl Cmd {
 /// Commands on hotspots
 pub enum HotspotCommand {
     // Add(add::Cmd),
-    // Assert(Box<assert::Cmd>),
+    Assert(assert::Cmd),
     List(list::Cmd),
     Info(info::Cmd),
     // Transfer(Box<transfer::Cmd>),
@@ -32,7 +32,7 @@ impl HotspotCommand {
     pub fn run(&self, opts: Opts) -> Result {
         match self {
             // Self::Add(cmd) => cmd.run(opts).await,
-            // Self::Assert(cmd) => cmd.run(opts).await,
+            Self::Assert(cmd) => cmd.run(opts),
             Self::List(cmd) => cmd.run(opts),
             Self::Info(cmd) => cmd.run(opts),
             // Self::Transfer(cmd) => cmd.run(opts).await,

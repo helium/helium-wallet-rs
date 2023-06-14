@@ -317,7 +317,7 @@ impl Client {
         }
 
         let client = settings.mk_anchor_client(Keypair::void())?;
-        let hotspot_key = subdao.info_key(key)?;
+        let hotspot_key = subdao.info_key_for_helium_key(key)?;
         let program = client.program(helium_entity_manager::id());
         match subdao {
             SubDao::Iot => {

@@ -19,6 +19,28 @@ pub struct HotspotAssertion {
     pub elevation: Option<i32>,
 }
 
+impl TryFrom<(Option<f64>, Option<f64>, Option<i32>, Option<f64>)> for HotspotAssertion {
+    type Error = Error;
+    fn try_from(
+        value: (Option<f64>, Option<f64>, Option<i32>, Option<f64>),
+    ) -> StdResult<Self, Self::Error> {
+        let (lat, lon, elevation, gain) = value;
+        let location: Option<h3o::CellIndex> = match (lat, lon) {
+            (Some(lat), Some(lon)) => {
+                Some(h3o::LatLng::new(lat, lon)?.to_cell(h3o::Resolution::Twelve))
+            }
+            (None, None) => None,
+            _ => anyhow::bail!("Both lat and lon must be specified"),
+        };
+
+        Ok(Self {
+            elevation,
+            location: location.map(u64::from),
+            gain: gain.map(|g| (g * 10.0).trunc() as i32),
+        })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OnboardingResponse {
@@ -185,8 +207,7 @@ impl Client {
         let client = Settings::mk_rest_client()?;
         let url = format!(
             "{}/transactions/{}/update-metadata",
-            onboarding_server,
-            subdao.to_string()
+            onboarding_server, subdao
         );
         let mut params = json!({
             "entityKey": hotspot.to_string(),
@@ -229,9 +250,21 @@ impl Client {
         Ok(tx)
     }
 
-    pub fn hotspot_dataonly_add(
+    pub fn hotspot_key_to_asset(
         &self,
-        add_tx: BlockchainTxnAddGatewayV1,
+        entity_key: &[u8],
+    ) -> Result<helium_entity_manager::KeyToAssetV0> {
+        let client = self.settings.mk_anchor_client(Keypair::void())?;
+        let program = client.program(helium_entity_manager::id());
+        let asset_key = Dao::Hnt.key_to_asset(entity_key);
+        let asset_account = program.account::<helium_entity_manager::KeyToAssetV0>(asset_key)?;
+        Ok(asset_account)
+    }
+
+    pub fn hotspot_dataonly_onboard(
+        &self,
+        entity_key: &[u8],
+        assertion: HotspotAssertion,
         keypair: Rc<Keypair>,
     ) -> Result<solana_sdk::transaction::Transaction> {
         #[derive(Debug, Deserialize)]
@@ -272,7 +305,7 @@ impl Client {
                 self.proof
                     .iter()
                     .map(|s| {
-                        Pubkey::from_str(&s).map_err(Error::from).map(|pubkey| {
+                        Pubkey::from_str(s).map_err(Error::from).map(|pubkey| {
                             solana_program::instruction::AccountMeta {
                                 pubkey,
                                 is_signer: false,
@@ -286,10 +319,9 @@ impl Client {
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(helium_entity_manager::id());
-        let entity_key = &add_tx.gateway;
-        let asset_key = Dao::Hnt.key_to_asset(entity_key);
 
-        let asset_account = program.account::<helium_entity_manager::KeyToAssetV0>(asset_key)?;
+        let asset_account = self.hotspot_key_to_asset(entity_key)?;
+
         let jsonrpc = self.settings.mk_jsonrpc_client()?;
         let asset_responase: AssetResponse = jsonrpc
             .call(
@@ -318,9 +350,9 @@ impl Client {
                         creator_hash: asset_responase.compression.creator_hash()?,
                         index: asset_responase.compression.leaf_id.try_into()?,
                         root: asset_proof_response.root.to_bytes(),
-                        elevation: None,
-                        gain: None,
-                        location: None,
+                        elevation: assertion.elevation,
+                        gain: assertion.gain,
+                        location: assertion.location,
                     },
                 },
             )
@@ -341,7 +373,7 @@ impl Client {
     pub fn hotspot_dataonly_issue(
         &self,
         verifier: &str,
-        mut add_tx: BlockchainTxnAddGatewayV1,
+        add_tx: &mut BlockchainTxnAddGatewayV1,
         keypair: Rc<Keypair>,
     ) -> Result<solana_sdk::transaction::Transaction> {
         use helium_entity_manager::accounts::IssueDataOnlyEntityV0;

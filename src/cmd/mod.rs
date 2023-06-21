@@ -48,10 +48,6 @@ pub struct CommitOpts {
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
-
-    /// Skip preflight checks when committing transaction. [default: false]
-    #[arg(long)]
-    skip_preflight: bool,
 }
 
 impl CommitOpts {
@@ -61,7 +57,7 @@ impl CommitOpts {
         client: &Client,
     ) -> Result {
         if self.commit {
-            let signature = client.send_and_confirm_transaction(tx, self.skip_preflight)?;
+            let signature = client.send_and_confirm_transaction(tx, true)?;
             print_commit_result(signature)
         } else {
             let result = client.simulate_transaction(tx)?;

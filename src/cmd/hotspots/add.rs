@@ -317,7 +317,7 @@ fn construct_issue_entity_accounts(
 
     let (collection_metadata, _cm_bump) = Pubkey::find_program_address(
         &[
-            "metadata".as_bytes(),
+            b"metadata",
             token_metadata_pid.as_ref(),
             data_only_config_acc.collection.as_ref(),
         ],
@@ -326,10 +326,10 @@ fn construct_issue_entity_accounts(
 
     let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
         &[
-            "metadata".as_bytes(),
+            b"metadata",
             token_metadata_pid.as_ref(),
             data_only_config_acc.collection.as_ref(),
-            "edition".as_bytes(),
+            b"edition",
         ],
         &token_metadata_pid,
     );
@@ -341,12 +341,12 @@ fn construct_issue_entity_accounts(
         Pubkey::find_program_address(&[data_only_config_acc.merkle_tree.as_ref()], &BGUM_PID);
 
     let (data_only_escrow, _doe_bump) = Pubkey::find_program_address(
-        &["data_only_escrow".as_bytes(), data_only_config.as_ref()],
+        &[b"data_only_escrow", data_only_config.as_ref()],
         &helium_entity_manager::id(),
     );
 
     let (bubblegum_signer, _bs_bump) =
-        Pubkey::find_program_address(&["collection_cpi".as_bytes()], &BGUM_PID);
+        Pubkey::find_program_address(&[b"collection_cpi"], &BGUM_PID);
     Ok(IssueDataOnlyEntityV0 {
         payer: program.payer(),
         ecc_verifier: Pubkey::from_str(ECC_VERIFIER)?,

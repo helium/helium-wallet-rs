@@ -382,7 +382,7 @@ impl Client {
             entity_key: &[u8],
         ) -> Result<IssueDataOnlyEntityV0> {
             use anchor_client::anchor_lang::Id;
-            let token_metadata_pid = mpl_token_metadata::id();
+            let token_metadata_pid = Pubkey::from_str("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").unwrap();
             let noop_pid = spl_account_compression::Noop::id();
             let compression_pid = spl_account_compression::id();
             let dao = Dao::Hnt;

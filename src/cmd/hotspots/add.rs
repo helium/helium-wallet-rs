@@ -10,10 +10,11 @@ use helium_proto::BlockchainTxnAddGatewayV1;
 /// get the transaction signed by the DeWi staking server.
 pub struct Cmd {
     /// The subdao to assert the hotspot on. Only iot is currently supported.
+    #[arg(long)]
     subdao: SubDao,
 
     /// The mode of the hotspot to add. Only "dataonly" is currently supported.
-    #[arg(long, default_value_t = HotspotMode::DataOnly)]
+    #[arg(long)]
     mode: HotspotMode,
 
     /// Lattitude of hotspot location to assert.

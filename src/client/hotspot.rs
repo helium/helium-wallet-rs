@@ -277,14 +277,7 @@ impl Client {
             let dao = Dao::Hnt;
             let sub_dao = SubDao::Iot.key();
 
-            let (rewardable_entity_config, _rec_bump) = Pubkey::find_program_address(
-                &[
-                    "rewardable_entity_config".as_bytes(),
-                    sub_dao.as_ref(),
-                    "IOT".as_bytes(),
-                ],
-                &helium_entity_manager::id(),
-            );
+            let rewardable_entity_config = SubDao::Iot.rewardable_entity_config_key();
             let iot_info = SubDao::Iot
                 .info_key(entity_key)
                 .context("Couldn't get iot info key")?;

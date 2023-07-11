@@ -50,7 +50,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - name: Setup | Cancel Previous Runs
@@ -68,8 +68,6 @@ jobs:
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
               sudo apt-get install -y protobuf-compiler
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-              choco install protoc
           elif [ "$RUNNER_OS" == "macOS" ]; then
               brew install protobuf
           else
@@ -93,8 +91,6 @@ jobs:
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
               ARCH=x86-64-linux
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-              ARCH=x86-64-win
           elif [ "$RUNNER_OS" == "macOS" ]; then
               ARCH=x86-64-macos
           else
@@ -113,9 +109,6 @@ jobs:
           if [ "$RUNNER_OS" == "Linux" ]; then
               tar -zcvf $NAME.tar.gz $NAME/
               sha256sum -b --tag $NAME.tar.gz > $NAME.checksum
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-              7z a $NAME.zip $NAME/
-              certUtil -hashfile $NAME.zip SHA256 > $NAME.checksum
           elif [ "$RUNNER_OS" == "macOS" ]; then
               gtar -zcvf $NAME.tar.gz $NAME/
               shasum -a 256 -b --tag $NAME.tar.gz > $NAME.checksum

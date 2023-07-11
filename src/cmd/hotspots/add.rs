@@ -56,7 +56,7 @@ pub struct Cmd {
     /// Optional url for the ecc signature verifier.
     #[arg(long, default_value = "https://ecc-verifier.web.helium.io")]
     verifier_url: String,
- 
+
     /// Commit the hotspot add.
     #[command(flatten)]
     commit: CommitOpts,

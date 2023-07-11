@@ -287,8 +287,7 @@ impl Client {
             let data_only_config_acc = program
                 .account::<helium_entity_manager::DataOnlyConfigV0>(data_only_config)
                 .context(format!(
-                    "while getting data only config, {}",
-                    data_only_config.to_string(),
+                    "while getting data only config, {data_only_config}"
                 ))?;
             let key_to_asset = dao.key_to_asset(entity_key);
             let dc = SubDao::dc_key();
@@ -305,7 +304,7 @@ impl Client {
                 dao: dao.key(),
                 key_to_asset,
                 sub_dao,
-                dc_mint: Token::Dc.mint().clone(),
+                dc_mint: *Token::Dc.mint(),
                 dc,
                 compression_program: spl_account_compression::id(),
                 data_credits_program: data_credits::id(),
@@ -441,8 +440,7 @@ impl Client {
             let data_only_config_acc = program
                 .account::<helium_entity_manager::DataOnlyConfigV0>(data_only_config)
                 .context(format!(
-                    "while getting data only config, {}",
-                    data_only_config.to_string(),
+                    "while getting data only config, {data_only_config}"
                 ))?;
 
             let (collection_metadata, _cm_bump) = Pubkey::find_program_address(

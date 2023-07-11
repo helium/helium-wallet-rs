@@ -1,4 +1,5 @@
 use super::{Client, Settings};
+use crate::keypair::serde_pubkey;
 use crate::{
     dao::{Dao, SubDao},
     hotspot::{Hotspot, HotspotInfo},
@@ -343,7 +344,8 @@ impl Client {
         #[derive(Debug, Deserialize)]
         struct AsssetProofResponse {
             proof: Vec<String>,
-            root: String,
+            #[serde(with = "serde_pubkey")]
+            root: Pubkey,
         }
 
         impl AsssetProofResponse {
@@ -397,9 +399,7 @@ impl Client {
                         data_hash: asset_responase.compression.data_hash()?,
                         creator_hash: asset_responase.compression.creator_hash()?,
                         index: asset_responase.compression.leaf_id.try_into()?,
-                        root: Pubkey::from_str(asset_proof_response.root.as_str())
-                            .context("Couldn't parse asset proof root")?
-                            .to_bytes(),
+                        root: asset_proof_response.root.to_bytes(),
                         elevation: assertion.elevation,
                         gain: assertion.gain,
                         location: assertion.location,

@@ -48,10 +48,6 @@ pub struct CommitOpts {
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
-
-    /// Skip preflight checks when committing transaction. [default: false]
-    #[arg(long)]
-    skip_preflight: bool,
 }
 
 impl CommitOpts {
@@ -61,7 +57,7 @@ impl CommitOpts {
         client: &Client,
     ) -> Result {
         if self.commit {
-            let signature = client.send_and_confirm_transaction(tx, self.skip_preflight)?;
+            let signature = client.send_and_confirm_transaction(tx, true)?;
             print_commit_result(signature)
         } else {
             let result = client.simulate_transaction(tx)?;
@@ -126,16 +122,16 @@ fn new_client(url: &str) -> Result<Arc<Client>> {
     Ok(Arc::new(Client::new(url)?))
 }
 
-// fn read_txn(txn: &Option<Transaction>) -> Result<BlockchainTxn> {
-//     match txn {
-//         Some(txn) => Ok(txn.0.clone()),
-//         None => {
-//             let mut buffer = String::new();
-//             io::stdin().read_line(&mut buffer)?;
-//             Ok(buffer.trim().parse::<Transaction>()?.0)
-//         }
-//     }
-// }
+fn read_txn(txn: &Option<Transaction>) -> Result<BlockchainTxn> {
+    match txn {
+        Some(txn) => Ok(txn.0.clone()),
+        None => {
+            let mut buffer = String::new();
+            io::stdin().read_line(&mut buffer)?;
+            Ok(buffer.trim().parse::<Transaction>()?.0)
+        }
+    }
+}
 
 pub fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
     fs::OpenOptions::new()

@@ -2,9 +2,8 @@ use crate::{
     client::{HotspotAssertion, ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
     cmd::*,
     dao::SubDao,
-    result::{Error, Result},
+    result::Result,
 };
-use h3o::CellIndex;
 
 #[derive(Debug, Clone, clap::Args)]
 /// Assert a hotspot location on the blockchain. The original transaction is
@@ -51,8 +50,6 @@ pub struct Cmd {
     onboarding: String,
 
     /// Commit the assertion.
-    ///
-    /// Note that skip-preflight is always true on commit for this command.
     #[command(flatten)]
     commit: CommitOpts,
 }
@@ -71,34 +68,10 @@ impl Cmd {
             url => url,
         };
 
-        let assertion = HotspotAssertion::try_from(self)?;
+        let assertion =
+            HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
         let tx = client.hotspot_assert(server, self.subdao, &self.gateway, assertion, keypair)?;
 
-        // We force skip-preflight on commit for this command since we always
-        // appear to get Blockhash not found errors from the server during
-        // preflight
-        let mut commit = self.commit.clone();
-        commit.skip_preflight = true;
-
-        commit.maybe_commit(&tx, &client)
-    }
-}
-
-impl TryFrom<&Cmd> for HotspotAssertion {
-    type Error = Error;
-    fn try_from(value: &Cmd) -> Result<Self> {
-        let location: Option<CellIndex> = match (value.lat, value.lon) {
-            (Some(lat), Some(lon)) => {
-                Some(h3o::LatLng::new(lat, lon)?.to_cell(h3o::Resolution::Twelve))
-            }
-            (None, None) => None,
-            _ => bail!("Both lat and lon must be specified"),
-        };
-
-        Ok(Self {
-            elevation: value.elevation,
-            location: location.map(u64::from),
-            gain: value.gain.map(|g| (g * 10.0).trunc() as i32),
-        })
+        self.commit.maybe_commit(&tx, &client)
     }
 }

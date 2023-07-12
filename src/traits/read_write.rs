@@ -26,6 +26,7 @@ impl ReadWrite for helium_crypto::PublicKey {
             KeyType::EccCompact => ecc_compact::PUBLIC_KEY_LENGTH,
             KeyType::MultiSig => multisig::PUBLIC_KEY_LENGTH,
             KeyType::Secp256k1 => bail!("Secp256k1 key type unsupported for read."),
+            KeyType::Rsa => bail!("RSA key type unsupported for read."),
         };
         data.resize(key_size, 0);
         reader.read_exact(&mut data[1..])?;

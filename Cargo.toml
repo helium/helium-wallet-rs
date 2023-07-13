@@ -44,13 +44,13 @@ h3o = "0"
 rayon = "1"
 angry-purple-tiger = "0"
 clap = {version = "4", features = ["derive"]}
-helium-crypto = { version = "0.6.3", features = ["multisig", "solana"]}
+helium-crypto = { version = "0.7.3", features = ["multisig", "solana"]}
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
-data-credits = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], rev = "130f71b" }
-lazy-distributor = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], rev = "130f71b" }
-helium-entity-manager = { git = "https://github.com/helium/helium-program-library", rev = "130f71b", features = ["no-entrypoint"] }
-helium-sub-daos = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], rev = "130f71b" }
-circuit-breaker = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], rev = "130f71b" }
+data-credits = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
+lazy-distributor = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
+helium-entity-manager = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
+helium-sub-daos = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
+circuit-breaker = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
 mpl-bubblegum = { git = "https://github.com/metaplex-foundation/metaplex-program-library", branch = "master" }
 spl-associated-token-account = { version = "*", features = [ "no-entrypoint" ] }
 spl-account-compression = {version = "*", features = [ "no-entrypoint" ] }

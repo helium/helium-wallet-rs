@@ -306,7 +306,7 @@ impl Client {
                 sub_dao,
                 dc_mint: *Token::Dc.mint(),
                 dc,
-                compression_program: spl_account_compression::id(),
+                compression_program: account_compression_cpi::id(),
                 data_credits_program: data_credits::id(),
                 token_program: anchor_spl::token::ID,
                 associated_token_program: spl_associated_token_account::id(),
@@ -467,7 +467,7 @@ impl Client {
 
             let (tree_authority, _ta_bump) = Pubkey::find_program_address(
                 &[data_only_config_acc.merkle_tree.as_ref()],
-                &mpl_bubblegum::id(),
+                &bubblegum_cpi::id(),
             );
 
             let (data_only_escrow, _doe_bump) = Pubkey::find_program_address(
@@ -476,7 +476,7 @@ impl Client {
             );
 
             let (bubblegum_signer, _bs_bump) =
-                Pubkey::find_program_address(&[b"collection_cpi"], &mpl_bubblegum::id());
+                Pubkey::find_program_address(&[b"collection_cpi"], &bubblegum_cpi::id());
 
             Ok(IssueDataOnlyEntityV0 {
                 payer: program.payer(),
@@ -496,9 +496,9 @@ impl Client {
                 data_only_escrow,
                 bubblegum_signer,
                 token_metadata_program: token_metadata_pid,
-                log_wrapper: spl_account_compression::Noop::id(),
-                bubblegum_program: mpl_bubblegum::id(),
-                compression_program: spl_account_compression::id(),
+                log_wrapper: account_compression_cpi::Noop::id(),
+                bubblegum_program: bubblegum_cpi::id(),
+                compression_program: account_compression_cpi::id(),
                 system_program: system_program::id(),
             })
         }

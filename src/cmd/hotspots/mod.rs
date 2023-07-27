@@ -4,7 +4,6 @@ mod add;
 mod assert;
 mod info;
 mod list;
-// mod transfer;
 
 #[derive(Debug, clap::Args)]
 pub struct Cmd {

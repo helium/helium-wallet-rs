@@ -308,6 +308,7 @@ impl Client {
                 dc,
                 compression_program: account_compression_cpi::id(),
                 data_credits_program: data_credits::id(),
+                helium_sub_daos_program: helium_sub_daos::id(),
                 token_program: anchor_spl::token::ID,
                 associated_token_program: spl_associated_token_account::id(),
                 system_program: system_program::id(),

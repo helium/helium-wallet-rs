@@ -46,11 +46,11 @@ angry-purple-tiger = "0"
 clap = {version = "4", features = ["derive"]}
 helium-crypto = { version = "0.7.3", features = ["multisig", "solana"]}
 helium-proto = { git = "https://github.com/helium/proto", branch="master"}
-data-credits = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
-lazy-distributor = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
-helium-entity-manager = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
-helium-sub-daos = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
-circuit-breaker = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "master" }
+data-credits = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "develop" }
+lazy-distributor = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "develop" }
+helium-entity-manager = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "develop" }
+helium-sub-daos = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "develop" }
+circuit-breaker = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "develop" }
 bubblegum-cpi = {git = "https://github.com/helium/account-compression-anchor-gen.git", features = ["cpi"]}
 account-compression-cpi = {git = "https://github.com/helium/account-compression-anchor-gen.git", features = ["cpi"]}
 spl-associated-token-account = { version = "*", features = [ "no-entrypoint" ] }

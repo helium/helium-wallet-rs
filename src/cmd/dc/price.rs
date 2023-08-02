@@ -1,8 +1,8 @@
 use crate::{
     cmd::*,
     result::{anyhow, Result},
-    token::Token,
 };
+use hpl_utils::token::Token;
 use rust_decimal::prelude::*;
 use rust_decimal_macros::dec;
 use serde_json::json;

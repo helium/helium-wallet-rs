@@ -6,7 +6,6 @@ pub mod pwhash;
 pub mod result;
 // pub mod staking;
 pub mod client;
-pub mod dao;
 pub mod hotspot;
 pub mod token;
 pub mod traits;

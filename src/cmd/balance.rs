@@ -1,4 +1,5 @@
-use crate::{client::to_token_balance_map, cmd::*, keypair::Pubkey, result::Result, token::Token};
+use crate::{client::to_token_balance_map, cmd::*, keypair::Pubkey, result::Result};
+use hpl_utils::token::Token;
 
 #[derive(Debug, clap::Args)]
 /// Get the balance for a wallet or a given public key. The balance is given for

@@ -1,9 +1,9 @@
 use crate::{
     client::{HotspotAssertion, ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
     cmd::*,
-    dao::SubDao,
     result::Result,
 };
+use hpl_utils::dao::SubDao;
 
 #[derive(Debug, Clone, clap::Args)]
 /// Assert a hotspot location on the blockchain. The original transaction is

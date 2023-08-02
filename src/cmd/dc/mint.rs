@@ -2,8 +2,9 @@ use crate::{
     cmd::{get_wallet_password, load_wallet, new_client, CommitOpts, Opts},
     keypair::Pubkey,
     result::{anyhow, Result},
-    token::{Token, TokenAmount},
+    token::TokenAmount,
 };
+use hpl_utils::token::Token;
 
 #[derive(Debug, Clone, clap::Args)]
 /// Burn HNT to Data Credits (DC) from this wallet to given payees wallet.

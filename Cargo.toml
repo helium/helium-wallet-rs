@@ -54,8 +54,8 @@ helium-sub-daos = { git = "https://github.com/helium/helium-program-library", fe
 circuit-breaker = { git = "https://github.com/helium/helium-program-library", features = ["no-entrypoint"], branch = "develop" }
 bubblegum-cpi = {git = "https://github.com/helium/account-compression-anchor-gen.git", features = ["cpi"]}
 account-compression-cpi = {git = "https://github.com/helium/account-compression-anchor-gen.git", features = ["cpi"]}
-bulk-claim-rewards = { path = "https://github.com/helium/helium-program-library", branch = "develop" }
-hpl-utils = { path = "https://github.com/helium/helium-program-library", branch = "develop" }
+bulk-claim-rewards = { git = "https://github.com/helium/helium-program-library", branch = "develop" }
+hpl-utils = { git = "https://github.com/helium/helium-program-library", branch = "develop" }
 spl-associated-token-account = { version = "*", features = [ "no-entrypoint" ] }
 solana-program = "*"
 bincode = "1.3.3"

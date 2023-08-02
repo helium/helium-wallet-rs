@@ -23,7 +23,6 @@ impl Cmd {
         let wallet = load_wallet(&opts.files)?;
         let client = new_client(&opts.url)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-
         let rewards_mint = self.sub_dao.mint();
         let dao = Dao::Hnt.key();
 

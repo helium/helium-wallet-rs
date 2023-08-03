@@ -1,18 +1,49 @@
 use crate::{
-    mnemonic::entropy_to_mnemonic,
-    result::{bail, Result},
+    result::{anyhow, Result},
+    solana_sdk::{
+        self,
+        signature::{Signer, SignerError},
+    },
     traits::ReadWrite,
 };
-use byteorder::ReadBytesExt;
-use std::{convert::TryFrom, io};
-
-pub use helium_crypto::{
-    ecc_compact, ed25519, KeyTag, KeyType, Network, PublicKey, Sign, Verify, KEYTYPE_ED25519_STR,
-    NETTYPE_MAIN_STR,
-};
+use std::{io, rc::Rc};
 
 #[derive(PartialEq, Debug)]
-pub struct Keypair(helium_crypto::Keypair);
+pub struct Keypair(solana_sdk::signer::keypair::Keypair);
+pub struct VoidKeypair;
+
+pub use solana_sdk::pubkey::Pubkey;
+
+pub mod serde_pubkey {
+    use super::*;
+    use serde::de::{self, Deserialize};
+    use std::str::FromStr;
+
+    pub fn serialize<S>(value: &Pubkey, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deser: D) -> std::result::Result<Pubkey, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let str = String::deserialize(deser)?;
+        Pubkey::from_str(&str).map_err(|_| de::Error::custom("invalid public key"))
+    }
+}
+
+pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey> {
+    match key.key_type() {
+        helium_crypto::KeyType::Ed25519 => {
+            let bytes = key.to_vec();
+            Ok(Pubkey::new(&bytes[1..]))
+        }
+        _ => anyhow::bail!("unsupported key type"),
+    }
+}
 
 static START: std::sync::Once = std::sync::Once::new();
 
@@ -22,94 +53,123 @@ fn init() {
 
 impl Default for Keypair {
     fn default() -> Self {
-        Self::generate(KeyTag::default())
+        Self::generate()
     }
 }
 
 impl Keypair {
-    pub fn generate(key_tag: KeyTag) -> Self {
-        use rand::rngs::OsRng;
-        Keypair(helium_crypto::Keypair::generate(key_tag, &mut OsRng))
+    pub fn generate() -> Self {
+        Keypair(solana_sdk::signer::keypair::Keypair::new())
     }
 
-    pub fn generate_from_entropy(key_tag: KeyTag, entropy: &[u8]) -> Result<Self> {
-        Ok(Keypair(helium_crypto::Keypair::generate_from_entropy(
-            key_tag, entropy,
-        )?))
+    pub fn void() -> Rc<VoidKeypair> {
+        Rc::new(VoidKeypair)
     }
 
-    pub fn public_key(&self) -> &PublicKey {
-        self.0.public_key()
+    pub fn generate_from_entropy(entropy: &[u8]) -> Result<Self> {
+        Ok(Keypair(
+            solana_sdk::signer::keypair::keypair_from_seed(entropy)
+                .map_err(|e| anyhow!("Failed to generate keypair: {e}"))?,
+        ))
     }
 
-    pub fn sign(&self, msg: &[u8]) -> Result<Vec<u8>> {
-        Ok(self.0.sign(msg)?)
+    pub fn public_key(&self) -> solana_sdk::pubkey::Pubkey {
+        self.0.pubkey()
+    }
+
+    pub fn secret(&self) -> Vec<u8> {
+        let mut result = self.0.secret().to_bytes().to_vec();
+        result.extend_from_slice(self.public_key().as_ref());
+        result
+    }
+
+    pub fn sign(&self, msg: &[u8]) -> Result<solana_sdk::signature::Signature> {
+        Ok(self.try_sign_message(msg)?)
     }
 
     /// Return the mnemonic phrase that can be used to recreate this Keypair.
     /// This function is implemented here to avoid passing the secret between
     /// too many modules.
-    pub fn phrase(&self) -> Result<Vec<String>> {
-        let entropy = self.0.secret_to_vec();
-        entropy_to_mnemonic(&entropy)
+    pub fn phrase(&self) -> Result<String> {
+        use bip39::{Language, Mnemonic};
+        let mnemonic = Mnemonic::from_entropy(self.0.secret().as_bytes(), Language::English)?;
+        Ok(mnemonic.into_phrase())
     }
 
-    /// Extract the underlying seed. We only support this method for ED25519
-    /// since we provide this functionality for exporting seed to Solana CLI.
-    pub fn unencrypted_seed(&self) -> Result<Vec<u8>> {
-        match &self.0 {
-            helium_crypto::Keypair::Ed25519(key) => {
-                // Note we strip the leading helium type byte. What remains is a
-                // standard ed25519 private key (secret followed by public key)
-                Ok(key.to_vec()[1..].to_vec())
-            }
-            helium_crypto::Keypair::EccCompact(_) => {
-                bail!("EccCompact key type unsupported for unencrypted seed write.")
-            }
-            helium_crypto::Keypair::Secp256k1(_) => {
-                bail!("Secp256k1 key type unsupported for unencrypted seed write.")
-            }
+    pub fn from_phrase(phrase: &str) -> Result<Rc<Self>> {
+        use bip39::{Language, Mnemonic};
+        let mnemonic = Mnemonic::from_phrase(phrase, Language::English)?;
+        let mut entropy_bytes = [0u8; 32];
+        let mnemonic_entropy = mnemonic.entropy();
+        if mnemonic_entropy.len() == 16 {
+            entropy_bytes[..16].copy_from_slice(mnemonic_entropy);
+            entropy_bytes[16..].copy_from_slice(mnemonic_entropy);
+        } else {
+            entropy_bytes.copy_from_slice(mnemonic_entropy)
         }
+        let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
+            .map_err(|e| anyhow!("failed to create keypair: {e}"))?;
+        Ok(Self(keypair).into())
     }
 }
 
 impl ReadWrite for Keypair {
     fn write(&self, writer: &mut dyn io::Write) -> Result {
-        match &self.0 {
-            helium_crypto::Keypair::Ed25519(key) => {
-                writer.write_all(&key.to_vec())?;
-                writer.write_all(&key.public_key.to_vec())?;
-            }
-            helium_crypto::Keypair::EccCompact(key) => {
-                writer.write_all(&key.to_vec())?;
-                writer.write_all(&key.public_key.to_vec())?;
-            }
-            helium_crypto::Keypair::Secp256k1(_) => {
-                bail!("Secp256k1 key type unsupported for write.")
-            }
-        }
+        writer.write_all(&self.0.to_bytes())?;
         Ok(())
     }
 
     fn read(reader: &mut dyn io::Read) -> Result<Keypair> {
         init();
-        let tag = reader.read_u8()?;
-        match KeyType::try_from(tag)? {
-            KeyType::Ed25519 => {
-                let mut sk_buf = [0u8; ed25519::KEYPAIR_LENGTH];
-                sk_buf[0] = tag;
-                reader.read_exact(&mut sk_buf[1..])?;
-                Ok(Keypair(ed25519::Keypair::try_from(&sk_buf[..])?.into()))
-            }
-            KeyType::EccCompact => {
-                let mut sk_buf = [0u8; ecc_compact::KEYPAIR_LENGTH];
-                sk_buf[0] = tag;
-                reader.read_exact(&mut sk_buf[1..])?;
-                Ok(Keypair(ecc_compact::Keypair::try_from(&sk_buf[..])?.into()))
-            }
-            KeyType::MultiSig => Err(helium_crypto::Error::invalid_keytype(tag).into()),
-            KeyType::Secp256k1 => bail!("Secp256k1 key type unsupported for read."),
-        }
+        let mut sk_buf = [0u8; 64];
+        reader.read_exact(&mut sk_buf)?;
+        Ok(Self(solana_sdk::signer::keypair::Keypair::from_bytes(
+            &sk_buf,
+        )?))
+    }
+}
+
+impl Signer for Keypair {
+    fn try_pubkey(&self) -> std::result::Result<Pubkey, SignerError> {
+        self.0.try_pubkey()
+    }
+
+    fn try_sign_message(
+        &self,
+        message: &[u8],
+    ) -> std::result::Result<solana_sdk::signature::Signature, SignerError> {
+        self.0.try_sign_message(message)
+    }
+
+    fn is_interactive(&self) -> bool {
+        self.0.is_interactive()
+    }
+}
+
+impl VoidKeypair {
+    pub fn sign(&self, msg: &[u8]) -> Result<solana_sdk::signature::Signature> {
+        Ok(self.try_sign_message(msg)?)
+    }
+
+    fn void_signer_error() -> SignerError {
+        SignerError::Custom("Void Keypair".to_string())
+    }
+}
+
+impl Signer for VoidKeypair {
+    fn try_pubkey(&self) -> std::result::Result<Pubkey, SignerError> {
+        Err(Self::void_signer_error())
+    }
+
+    fn try_sign_message(
+        &self,
+        _message: &[u8],
+    ) -> std::result::Result<solana_sdk::signature::Signature, SignerError> {
+        Err(Self::void_signer_error())
+    }
+
+    fn is_interactive(&self) -> bool {
+        false
     }
 }
 
@@ -138,23 +198,22 @@ mod tests {
             .write(&mut buffer)
             .expect("Failed to encode public key");
 
-        let decoded =
-            PublicKey::read(&mut Cursor::new(buffer)).expect("Failed to decode public key");
-        assert_eq!(pk.public_key(), &decoded);
+        let decoded = Pubkey::read(&mut Cursor::new(buffer)).expect("Failed to decode public key");
+        assert_eq!(pk.public_key(), decoded);
     }
 
     #[test]
     fn roundtrip_b58_public_key() {
         let pk = Keypair::default();
         let decoded =
-            PublicKey::from_str(&pk.public_key().to_string()).expect("Failed to decode public key");
-        assert_eq!(pk.public_key(), &decoded);
+            Pubkey::from_str(&pk.public_key().to_string()).expect("Failed to decode public key");
+        assert_eq!(pk.public_key(), decoded);
     }
 
     #[test]
     fn test_seed_output() {
         let pk = Keypair::default();
-        let seed = pk.unencrypted_seed().expect("ed25519 keypair seed");
+        let seed = pk.0.to_bytes();
         assert_eq!(64, seed.len());
     }
 }

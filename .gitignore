@@ -5,3 +5,4 @@ perf.data*
 flamegraph.*
 *.png
 *.json
+.DS_Store

@@ -1,91 +1,29 @@
-use crate::{
-    cmd::*,
-    keypair::PublicKey,
-    result::{anyhow, Result},
-};
-use helium_api::{accounts, models::Account};
-use prettytable::{format, Table};
-use serde_json::json;
+use crate::{client::to_token_balance_map, cmd::*, keypair::Pubkey, result::Result, token::Token};
 
-#[derive(Debug, StructOpt)]
-/// Get the balance for a wallet. The balance is given in HNT and has
-/// a precision of 8 decimals.
+#[derive(Debug, clap::Args)]
+/// Get the balance for a wallet or a given public key. The balance is given for
+/// each of the Helium related holdings of a given Solana address
 pub struct Cmd {
-    /// Addresses to get balances for
-    #[structopt(short = "a", long = "address")]
-    addresses: Vec<PublicKey>,
+    address: Option<Pubkey>,
 }
 
 impl Cmd {
-    pub async fn run(&self, opts: Opts) -> Result {
-        let addresses = collect_addresses(opts.files, self.addresses.clone())?;
-        let api_url = api_url(
-            addresses
-                .first()
-                .map(|key| key.network)
-                .ok_or_else(|| anyhow!("at least one address expected"))?,
-        );
-        let client = new_client(api_url);
+    pub fn run(&self, opts: Opts) -> Result {
+        let address = if let Some(address) = self.address {
+            address
+        } else {
+            let wallet = load_wallet(&opts.files)?;
+            wallet.public_key
+        };
 
-        let mut results = Vec::with_capacity(self.addresses.len());
-        for address in addresses {
-            results.push((
-                address.to_string(),
-                accounts::get(&client, &address.to_string())
-                    .await
-                    .map_err(|e| e.into()),
-            ));
-        }
-        print_results(results, opts.format)
-    }
-}
+        let client = new_client(&opts.url)?;
 
-fn print_results(results: Vec<(String, Result<Account>)>, format: OutputFormat) -> Result {
-    match format {
-        OutputFormat::Table => {
-            let mut table = Table::new();
-            table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-            table.set_titles(row![
-                "Address",
-                "HNT Balance",
-                "Staked HNT Balance",
-                "Data Credits",
-                "Security Tokens",
-                "IOT Balance",
-                "MOBILE Balance"
-            ]);
-            for (address, result) in results {
-                match result {
-                    Ok(account) => table.add_row(row![
-                        address,
-                        account.balance,
-                        account.staked_balance,
-                        account.dc_balance,
-                        account.sec_balance,
-                        account.iot_balance,
-                        account.mobile_balance,
-                    ]),
-                    Err(err) => table.add_row(row![address, H3 -> err.to_string()]),
-                };
-            }
-            print_table(&table, None)
-        }
-        OutputFormat::Json => {
-            let mut rows = Vec::with_capacity(results.len());
-            for (address, result) in results {
-                if let Ok(account) = result {
-                    rows.push(json!({
-                        "address": address,
-                        "balance": account.balance.to_f64(),
-                        "staked_balance": account.staked_balance.to_f64(),
-                        "dc_balance": account.dc_balance,
-                        "sec_balance": account.sec_balance.to_f64(),
-                        "iot_balance": account.iot_balance.to_f64(),
-                        "mobile_balance": account.mobile_balance.to_f64()
-                    }));
-                };
-            }
-            print_json(&rows)
-        }
+        let balances =
+            client.get_balance_for_addresses(&Token::associated_token_adresses(&address))?;
+        let json = json!({
+            "address": address.to_string(),
+            "balance": to_token_balance_map(balances),
+        });
+        print_json(&json)
     }
 }

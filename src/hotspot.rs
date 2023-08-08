@@ -1,5 +1,6 @@
-use crate::{dao::SubDao, result::Result};
+use crate::result::Result;
 use angry_purple_tiger::AnimalName;
+use hpl_utils::dao::SubDao;
 use serde::Serialize;
 use std::collections::HashMap;
 

@@ -1,8 +1,9 @@
 use crate::{
-    client::HotspotAssertion, cmd::*, dao::SubDao, hotspot::HotspotMode, result::Result,
+    client::HotspotAssertion, cmd::*, hotspot::HotspotMode, result::Result,
     traits::txn_envelope::TxnEnvelope,
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
+use hpl_utils::dao::SubDao;
 
 #[derive(Clone, Debug, clap::Args)]
 /// Add a hotspot to the blockchain. The original transaction is created by the

@@ -1,8 +1,8 @@
 use crate::{
     cmd::{get_wallet_password, load_wallet, new_client, CommitOpts, Opts},
-    dao::SubDao,
     result::Result,
 };
+use hpl_utils::dao::SubDao;
 
 #[derive(Debug, Clone, clap::Args)]
 /// Delegate DC from this wallet to a given router

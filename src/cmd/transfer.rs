@@ -2,8 +2,9 @@ use crate::{
     cmd::*,
     keypair::{serde_pubkey, Pubkey},
     result::Result,
-    token::{Token, TokenAmount},
+    token::TokenAmount,
 };
+use hpl_utils::token::Token;
 use serde::Deserialize;
 
 #[derive(Debug, clap::Args)]

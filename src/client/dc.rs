@@ -1,12 +1,15 @@
 use super::Client;
 use crate::{
-    dao::{Dao, SubDao},
     keypair::{Keypair, Pubkey},
     result::{anyhow, Error, Result},
-    token::{Token, TokenAmount},
+    token::TokenAmount,
 };
 use anchor_client::solana_sdk::{self, signature::Signer};
 use anchor_spl::associated_token::get_associated_token_address;
+use hpl_utils::{
+    dao::{Dao, SubDao},
+    token::Token,
+};
 use std::{rc::Rc, result::Result as StdResult};
 
 impl Client {

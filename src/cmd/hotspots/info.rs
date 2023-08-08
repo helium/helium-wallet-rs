@@ -1,4 +1,5 @@
-use crate::{cmd::*, dao::SubDao, result::Result};
+use crate::{cmd::*, result::Result};
+use hpl_utils::dao::SubDao;
 
 #[derive(Clone, Debug, clap::Args)]
 /// Get details for a given hotspot

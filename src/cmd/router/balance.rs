@@ -1,5 +1,5 @@
-use crate::{cmd::*, dao::SubDao, result::Result};
-
+use crate::{cmd::*, result::Result};
+use hpl_utils::dao::SubDao;
 #[derive(Debug, clap::Args)]
 /// Get the Delegated DC balance for a given router key. The balance is in Data
 /// Credits (DC)

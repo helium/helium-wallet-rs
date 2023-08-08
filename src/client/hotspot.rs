@@ -1,15 +1,17 @@
 use super::{Client, Settings};
 use crate::keypair::serde_pubkey;
 use crate::{
-    dao::{Dao, SubDao},
     hotspot::{Hotspot, HotspotInfo},
     keypair::{Keypair, Pubkey},
     result::{anyhow, Error, Result},
-    token::Token,
 };
 use anchor_client::solana_sdk::{self, system_program};
 use anyhow::Context;
 use helium_proto::{BlockchainTxnAddGatewayV1, Message};
+use hpl_utils::{
+    dao::{Dao, SubDao},
+    token::Token,
+};
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde_json::json;
@@ -168,15 +170,16 @@ impl Client {
         }
 
         let client = settings.mk_anchor_client(Keypair::void())?;
-        let hotspot_key = subdao.info_key_for_helium_key(key)?;
+        let entity_key = bs58::decode(key.to_string()).into_vec()?;
+        let info_key = subdao.info_key(&entity_key)?;
         let program = client.program(helium_entity_manager::id());
         match subdao {
             SubDao::Iot => {
-                maybe_info(program.account::<helium_entity_manager::IotHotspotInfoV0>(hotspot_key))
+                maybe_info(program.account::<helium_entity_manager::IotHotspotInfoV0>(info_key))
             }
-            SubDao::Mobile => maybe_info(
-                program.account::<helium_entity_manager::MobileHotspotInfoV0>(hotspot_key),
-            ),
+            SubDao::Mobile => {
+                maybe_info(program.account::<helium_entity_manager::MobileHotspotInfoV0>(info_key))
+            }
         }
     }
 

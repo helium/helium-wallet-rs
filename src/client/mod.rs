@@ -1,7 +1,7 @@
 use crate::{
     keypair::Pubkey,
     result::{anyhow, Error, Result},
-    token::{Token, TokenBalance},
+    token::TokenBalance,
 };
 use anchor_client::{
     solana_client,
@@ -9,6 +9,7 @@ use anchor_client::{
     solana_sdk::{self, signer::Signer},
     Client as AnchorClient,
 };
+use hpl_utils::token::Token;
 use http::Uri;
 use jsonrpc::Client as JsonRpcClient;
 use rayon::prelude::*;
@@ -183,16 +184,20 @@ impl Client {
             .get_account_with_commitment(pubkey, client.commitment())?
             .value
         {
-            Some(account) if account.owner == solana_sdk::system_program::ID => {
-                Ok(Some(Token::Sol.to_balance(*pubkey, account.lamports)))
-            }
+            Some(account) if account.owner == solana_sdk::system_program::ID => Ok(Some(
+                TokenBalance::from_token(Token::Sol, *pubkey, account.lamports),
+            )),
             Some(account) => {
                 use anchor_client::anchor_lang::AccountDeserialize;
                 let token_account =
                     anchor_spl::token::TokenAccount::try_deserialize(&mut account.data.as_slice())?;
                 let token =
                     Token::from_mint(token_account.mint).ok_or_else(|| anyhow!("Invalid mint"))?;
-                Ok(Some(token.to_balance(*pubkey, token_account.amount)))
+                Ok(Some(TokenBalance::from_token(
+                    token,
+                    *pubkey,
+                    token_account.amount,
+                )))
             }
             None => Ok(None),
         }

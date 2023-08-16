@@ -1,6 +1,6 @@
 use crate::result::{anyhow, Result};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use hmac::Hmac;
+use pbkdf2::hmac::Hmac;
 use sha2::Sha256;
 use sodiumoxide::{crypto::pwhash::argon2id13, randombytes};
 use std::{convert::TryInto, fmt, io};
@@ -71,8 +71,8 @@ impl Pbkdf2 {
     }
 
     pub fn pwhash(&self, password: &[u8], hash: &mut [u8]) -> Result {
-        pbkdf2::pbkdf2::<Hmac<Sha256>>(password, &self.salt, self.iterations, hash);
-        Ok(())
+        pbkdf2::pbkdf2::<Hmac<Sha256>>(password, &self.salt, self.iterations, hash)
+            .map_err(|e| anyhow!("Failed to hash password: {e}"))
     }
 
     pub fn read(&mut self, reader: &mut dyn io::Read) -> Result {

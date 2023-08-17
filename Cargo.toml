@@ -1,6 +1,6 @@
 [package]
 name = "helium-wallet"
-version = "2.0.0-rc.2"
+version = "2.0.0-rc.3"
 authors = ["Helium <info@helium.com>"]
 edition = "2021"
 

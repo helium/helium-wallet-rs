@@ -21,7 +21,6 @@ pub mod dc;
 pub mod export;
 pub mod hotspots;
 pub mod info;
-// pub mod multisig;
 pub mod router;
 pub mod transfer;
 pub mod upgrade;

@@ -1,6 +1,6 @@
 use crate::{
     format::{self, Format},
-    keypair::{Keypair, Pubkey},
+    keypair::{to_helium_pubkey, Keypair, Pubkey},
     pwhash::PwHash,
     result::{anyhow, bail, Error, Result},
     solana_sdk,
@@ -121,6 +121,14 @@ impl Wallet {
 
     pub fn address(&self) -> Result<String> {
         Ok(self.public_key.to_string())
+    }
+
+    pub fn helium_address(&self) -> Result<String> {
+        self.helium_pubkey().map(|v| v.to_string())
+    }
+
+    pub fn helium_pubkey(&self) -> Result<helium_crypto::PublicKey> {
+        to_helium_pubkey(&self.public_key)
     }
 
     pub fn pwhash(&self) -> &PwHash {

@@ -26,10 +26,15 @@ impl Cmd {
 }
 
 pub(crate) fn print_wallet(wallet: &Wallet) -> Result {
+    let helium_address = wallet.helium_address()?;
+    let address = wallet.address()?;
     let json = json!({
         "sharded": wallet.is_sharded(),
         "pwhash": wallet.pwhash().to_string(),
-        "address": wallet.public_key.to_string(),
+        "address": {
+            "solana": address,
+            "helium": helium_address,
+        },
     });
     print_json(&json)
 }

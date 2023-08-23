@@ -22,6 +22,7 @@ pub mod export;
 pub mod hotspots;
 pub mod info;
 pub mod router;
+pub mod sign;
 pub mod transfer;
 pub mod upgrade;
 

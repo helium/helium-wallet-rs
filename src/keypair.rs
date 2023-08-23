@@ -45,6 +45,13 @@ pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey> {
     }
 }
 
+pub fn to_helium_pubkey(key: &Pubkey) -> Result<helium_crypto::PublicKey> {
+    use helium_crypto::ReadFrom;
+    let mut input = std::io::Cursor::new(key.as_ref());
+    let helium_key = helium_crypto::ed25519::PublicKey::read_from(&mut input)?;
+    Ok(helium_key.into())
+}
+
 static START: std::sync::Once = std::sync::Once::new();
 
 fn init() {

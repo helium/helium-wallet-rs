@@ -1,6 +1,6 @@
 use clap::Parser;
 use helium_wallet::{
-    cmd::{balance, create, dc, export, hotspots, info, router, transfer, upgrade, Opts},
+    cmd::{balance, create, dc, export, hotspots, info, router, sign, transfer, upgrade, Opts},
     result::Result,
 };
 #[derive(Debug, Parser)]
@@ -25,16 +25,10 @@ pub enum Cmd {
     Dc(dc::Cmd),
     Transfer(transfer::Cmd),
     Export(export::Cmd),
-    // Htlc(htlc::Cmd),
-    // Oui(oui::Cmd),
+    Sign(sign::Cmd),
     // Oracle(oracle::Cmd),
-    // Burn(burn::Cmd),
-    // Multisig(multisig::Cmd),
     // Request(request::Cmd),
-    // Vars(vars::Cmd),
-    // Validators(validators::Cmd),
     // Commit(commit::Cmd),
-    // Sign(sign::Cmd),
 }
 
 fn main() -> Result {
@@ -53,14 +47,9 @@ fn run(cli: Cli) -> Result {
         Cmd::Dc(cmd) => cmd.run(cli.opts),
         Cmd::Transfer(cmd) => cmd.run(cli.opts),
         Cmd::Export(cmd) => cmd.run(cli.opts),
-        // Cmd::Htlc(cmd) => cmd.run(cli.opts),
+        Cmd::Sign(cmd) => cmd.run(cli.opts),
         // Cmd::Oracle(cmd) => cmd.run(cli.opts),
-        // Cmd::Burn(cmd) => cmd.run(cli.opts),
-        // Cmd::Multisig(cmd) => cmd.run(cli.opts),
         // Cmd::Request(cmd) => cmd.run(cli.opts),
-        // Cmd::Vars(cmd) => cmd.run(cli.opts),
-        // Cmd::Validators(cmd) => cmd.run(cli.opts),
         // Cmd::Commit(cmd) => cmd.run(cli.opts),
-        // Cmd::Sign(cmd) => cmd.run(cli.opts),
     }
 }

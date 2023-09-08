@@ -1,6 +1,6 @@
 use crate::{
     cmd::*,
-    keypair,
+    keypair, mnemonic,
     result::Result,
     wallet::{ShardConfig, Wallet},
 };
@@ -159,22 +159,23 @@ impl Keypair {
     }
 }
 
-fn get_seed_words() -> Result<String> {
-    use bip39::{Language, Mnemonic};
+fn get_seed_words() -> Result<Vec<String>> {
+    let split_str = |s: &String| s.split_whitespace().map(|w| w.to_string()).collect();
     match env::var("HELIUM_WALLET_SEED_WORDS") {
-        Ok(phrase) => Ok(phrase),
+        Ok(word_string) => Ok(split_str(&word_string)),
         _ => {
             use dialoguer::Input;
-            let phrase = Input::<String>::new()
+            let word_string = Input::<String>::new()
                 .with_prompt("Space separated seed words")
-                .validate_with(|phrase: &String| {
-                    match Mnemonic::from_phrase(phrase, Language::English) {
+                .validate_with(|v: &String| {
+                    let word_list = split_str(v);
+                    match mnemonic::mnemonic_to_entropy(word_list) {
                         Ok(_) => Ok(()),
                         Err(err) => Err(err),
                     }
                 })
                 .interact()?;
-            Ok(phrase)
+            Ok(split_str(&word_string))
         }
     }
 }

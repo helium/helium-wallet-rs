@@ -1,4 +1,5 @@
 use crate::{
+    mnemonic,
     result::{anyhow, Result},
     solana_sdk::{
         self,
@@ -98,22 +99,12 @@ impl Keypair {
     /// This function is implemented here to avoid passing the secret between
     /// too many modules.
     pub fn phrase(&self) -> Result<String> {
-        use bip39::{Language, Mnemonic};
-        let mnemonic = Mnemonic::from_entropy(self.0.secret().as_bytes(), Language::English)?;
-        Ok(mnemonic.into_phrase())
+        let words = mnemonic::entropy_to_mnemonic(self.0.secret().as_bytes())?;
+        Ok(words.join(" "))
     }
 
-    pub fn from_phrase(phrase: &str) -> Result<Rc<Self>> {
-        use bip39::{Language, Mnemonic};
-        let mnemonic = Mnemonic::from_phrase(phrase, Language::English)?;
-        let mut entropy_bytes = [0u8; 32];
-        let mnemonic_entropy = mnemonic.entropy();
-        if mnemonic_entropy.len() == 16 {
-            entropy_bytes[..16].copy_from_slice(mnemonic_entropy);
-            entropy_bytes[16..].copy_from_slice(mnemonic_entropy);
-        } else {
-            entropy_bytes.copy_from_slice(mnemonic_entropy)
-        }
+    pub fn from_words(words: Vec<String>) -> Result<Rc<Self>> {
+        let entropy_bytes = mnemonic::mnemonic_to_entropy(words)?;
         let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
             .map_err(|e| anyhow!("failed to create keypair: {e}"))?;
         Ok(Self(keypair).into())

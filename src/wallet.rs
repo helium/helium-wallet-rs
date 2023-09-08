@@ -299,7 +299,7 @@ pub struct Builder {
     force: bool,
 
     /// The seed phrase used to create this wallet
-    seed_phrase: Option<String>,
+    seed_phrase: Option<Vec<String>>,
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
@@ -348,7 +348,7 @@ impl Builder {
 
     /// The seed words used to create this wallet
     /// Defaults to None
-    pub fn seed_phrase(mut self, seed_phrase: Option<String>) -> Builder {
+    pub fn seed_phrase(mut self, seed_phrase: Option<Vec<String>>) -> Builder {
         self.seed_phrase = seed_phrase;
         self
     }
@@ -409,11 +409,11 @@ impl Default for Builder {
     }
 }
 
-fn gen_keypair(seed_words: Option<String>) -> Result<Rc<Keypair>> {
+fn gen_keypair(seed_words: Option<Vec<String>>) -> Result<Rc<Keypair>> {
     // Callers of this function should either have Some of both or None of both.
     // Anything else is an error.
     match seed_words {
-        Some(words) => Keypair::from_phrase(&words),
+        Some(words) => Keypair::from_words(words),
         None => Ok(Keypair::generate().into()),
     }
 }

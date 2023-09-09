@@ -433,6 +433,7 @@ fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::phrase_to_words;
 
     #[test]
     fn rountrip_basic() {
@@ -455,15 +456,16 @@ mod tests {
         let _ = fs::remove_file(&path);
 
         let password = String::from("password");
-        let seed_phrase: String =
-            "drill toddler tongue laundry access silly few faint glove birth crumble add"
-                .to_string();
-        let from_keypair = gen_keypair(Some(seed_phrase.clone())).expect("to generate a keypair");
+        let seed_words = phrase_to_words(
+            "drill toddler tongue laundry access silly few faint glove birth crumble add",
+        );
+
+        let from_keypair = gen_keypair(Some(seed_words.clone())).expect("to generate a keypair");
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(&path)
-            .seed_phrase(Some(seed_phrase.clone()))
+            .seed_phrase(Some(seed_words.clone()))
             .create()
             .expect("wallet to be created");
 
@@ -488,15 +490,14 @@ mod tests {
             recovery_threshold: 2,
         };
 
-        let seed_phrase: String =
-            "moment case dirt ski tool dynamic sort ugly pluck drop kiwi knee jar easy verb canal nuclear survey before dwarf prosper cave pottery target"
-                .to_string();
-        let from_keypair = gen_keypair(Some(seed_phrase.clone())).expect("to generate a keypair");
+        let seed_words = phrase_to_words(
+            "moment case dirt ski tool dynamic sort ugly pluck drop kiwi knee jar easy verb canal nuclear survey before dwarf prosper cave pottery target");
+        let from_keypair = gen_keypair(Some(seed_words.clone())).expect("to generate a keypair");
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(&path)
-            .seed_phrase(Some(seed_phrase.clone()))
+            .seed_phrase(Some(seed_words.clone()))
             .shard(Some(shard_config))
             .create()
             .expect("wallet to be created");

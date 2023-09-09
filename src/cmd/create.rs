@@ -160,22 +160,21 @@ impl Keypair {
 }
 
 fn get_seed_words() -> Result<Vec<String>> {
-    let split_str = |s: &String| s.split_whitespace().map(|w| w.to_string()).collect();
     match env::var("HELIUM_WALLET_SEED_WORDS") {
-        Ok(word_string) => Ok(split_str(&word_string)),
+        Ok(word_string) => Ok(phrase_to_words(&word_string)),
         _ => {
             use dialoguer::Input;
             let word_string = Input::<String>::new()
                 .with_prompt("Space separated seed words")
                 .validate_with(|v: &String| {
-                    let word_list = split_str(v);
+                    let word_list = phrase_to_words(v);
                     match mnemonic::mnemonic_to_entropy(word_list) {
                         Ok(_) => Ok(()),
                         Err(err) => Err(err),
                     }
                 })
                 .interact()?;
-            Ok(split_str(&word_string))
+            Ok(phrase_to_words(&word_string))
         }
     }
 }

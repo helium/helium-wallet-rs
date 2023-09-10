@@ -133,7 +133,7 @@ pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bip39::{Language, Mnemonic};
+    use crate::mnemonic;
 
     const JSON_DATA: &str = r#"
         {
@@ -150,8 +150,9 @@ mod tests {
     const SEED_PWD: &str = "h3l1Um";
 
     fn create_test_keypair() -> Keypair {
-        let mnemonic = Mnemonic::from_phrase(MNEMONIC_PHRASE, Language::English).expect("mnemonic");
-        Keypair::generate_from_entropy(mnemonic.entropy()).unwrap()
+        let entropy =
+            mnemonic::mnemonic_to_entropy(phrase_to_words(MNEMONIC_PHRASE)).expect("mnemonic");
+        Keypair::generate_from_entropy(&entropy).expect("keypair")
     }
 
     #[test]

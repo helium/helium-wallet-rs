@@ -8,6 +8,7 @@ pub mod result;
 pub mod client;
 pub mod dao;
 pub mod hotspot;
+pub mod mnemonic;
 pub mod token;
 pub mod traits;
 pub mod wallet;

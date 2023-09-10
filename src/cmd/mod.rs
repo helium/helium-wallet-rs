@@ -176,3 +176,6 @@ pub fn print_simulation_response(
         "result": "ok",
     }))
 }
+pub fn phrase_to_words(phrase: &str) -> Vec<String> {
+    phrase.split_whitespace().map(|w| w.to_string()).collect()
+}

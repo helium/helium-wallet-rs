@@ -39,7 +39,8 @@ impl std::fmt::Display for Token {
 impl std::str::FromStr for Token {
     type Err = TokenError;
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
-        serde_json::from_str(s).map_err(|_| TokenError::InvalidToken(s.to_string()))
+        serde_json::from_str(&format!("\"{s}\""))
+            .map_err(|_| TokenError::InvalidToken(s.to_string()))
     }
 }
 
@@ -61,9 +62,13 @@ impl Token {
         vec![Self::Hnt, Self::Iot, Self::Mobile, Self::Dc, Self::Sol]
     }
 
-    pub(crate) fn transferrable_value_parser() -> clap::builder::PossibleValuesParser {
-        let transferrable = ["iot", "mobile", "hnt", "sol"];
-        clap::builder::PossibleValuesParser::new(transferrable)
+    pub(crate) fn transferrable_value_parser(s: &str) -> Result<Self, TokenError> {
+        let transferrable = [Self::Iot, Self::Mobile, Self::Hnt, Self::Sol];
+        let result = Self::from_str(s)?;
+        if !transferrable.contains(&result) {
+            return Err(TokenError::InvalidToken(s.to_string()));
+        }
+        Ok(result)
     }
 
     pub fn associated_token_adress(&self, address: &Pubkey) -> Pubkey {

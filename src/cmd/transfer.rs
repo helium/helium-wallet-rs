@@ -124,7 +124,7 @@ pub struct Payee {
     /// Amount of token to send
     amount: f64,
     /// Type of token to send
-    #[arg(value_parser = Token::transferrable_value_parser())]
+    #[arg(value_parser = Token::transferrable_value_parser)]
     token: Token,
 }
 

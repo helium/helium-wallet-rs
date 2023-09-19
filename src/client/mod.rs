@@ -280,6 +280,15 @@ impl Client {
             skip_preflight,
             ..Default::default()
         };
-        Ok(client.send_transaction_with_config(tx, config)?)
+        let sig = client.send_transaction_with_config(tx, config)?;
+        let success = client
+            .confirm_transaction_with_commitment(&sig, client.commitment())?
+            .value;
+
+        if success {
+            Ok(sig)
+        } else {
+            Err(anyhow!("Transaction failed {}", sig))
+        }
     }
 }

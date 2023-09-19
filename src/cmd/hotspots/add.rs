@@ -1,5 +1,9 @@
 use crate::{
-    client::HotspotAssertion, cmd::*, dao::SubDao, hotspot::HotspotMode, result::Result,
+    client::HotspotAssertion,
+    cmd::*,
+    dao::SubDao,
+    hotspot::{self, HotspotMode},
+    result::Result,
     traits::txn_envelope::TxnEnvelope,
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
@@ -76,15 +80,24 @@ impl Cmd {
         let wallet = load_wallet(&opts.files)?;
         let client = new_client(&opts.url)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
+        let hotspot_issued = client.hotspot_key_to_asset(&txn.gateway).is_ok();
 
-        if client.hotspot_key_to_asset(&txn.gateway).is_err() {
+        if !hotspot_issued {
             let tx =
                 client.hotspot_dataonly_issue(&self.verifier_url, &mut txn, keypair.clone())?;
             self.commit.maybe_commit(&tx, &client)?;
         }
-        let assertion =
-            HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
-        let tx = client.hotspot_dataonly_onboard(&txn.gateway, assertion, keypair)?;
-        self.commit.maybe_commit(&tx, &client)
+        // Only assert the hotspot if either (a) it has already been issued before this cli was run or (b) `commit` is enabled,
+        // which means the previous command should have created it.
+        // Without this, the command will always fail for brand new hotspots when --commit is not enabled, as it cannot find
+        // the key_to_asset account or asset account.
+        if hotspot_issued || self.commit.commit {
+            let assertion =
+                HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
+            let tx = client.hotspot_dataonly_onboard(&txn.gateway, assertion, keypair)?;
+            self.commit.maybe_commit(&tx, &client)
+        } else {
+            Ok(())
+        }
     }
 }

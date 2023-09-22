@@ -3,10 +3,11 @@ use angry_purple_tiger::AnimalName;
 use serde::Serialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Clone, Copy, clap::ValueEnum, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, Copy, clap::ValueEnum, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum HotspotMode {
     Full,
+    #[default]
     DataOnly,
 }
 

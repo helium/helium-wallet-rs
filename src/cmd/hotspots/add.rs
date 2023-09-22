@@ -13,7 +13,7 @@ pub struct Cmd {
     subdao: SubDao,
 
     /// The mode of the hotspot to add. Only "dataonly" is currently supported.
-    #[arg(long, default_value = "dataonly")]
+    #[arg(long, default_value_t = HotspotMode::DataOnly)]
     mode: HotspotMode,
 
     /// Lattitude of hotspot location to assert.

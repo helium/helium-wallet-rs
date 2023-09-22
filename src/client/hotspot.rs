@@ -506,9 +506,12 @@ impl Client {
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(helium_entity_manager::id());
-        let entity_key = &add_tx.gateway;
+        // Entity keys are (regrettably) encoded through the bytes of a the b58
+        // string form of the helium public key
+        let entity_key = bs58::encode(&add_tx.gateway).into_string();
+        let entity_key_bytes = entity_key.as_bytes();
 
-        let issue_entity_accounts = mk_dataonly_issue(&program, entity_key)?;
+        let issue_entity_accounts = mk_dataonly_issue(&program, entity_key_bytes)?;
         let compute_ix =
             solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500000);
 
@@ -516,7 +519,7 @@ impl Client {
             .request()
             .args(helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
                 args: helium_entity_manager::IssueDataOnlyEntityArgsV0 {
-                    entity_key: entity_key.clone(),
+                    entity_key: entity_key_bytes.into(),
                 },
             })
             .accounts(issue_entity_accounts)

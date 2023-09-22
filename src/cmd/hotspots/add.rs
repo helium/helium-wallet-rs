@@ -1,9 +1,5 @@
 use crate::{
-    client::HotspotAssertion,
-    cmd::*,
-    dao::SubDao,
-    hotspot::{self, HotspotMode},
-    result::Result,
+    client::HotspotAssertion, cmd::*, dao::SubDao, hotspot::HotspotMode, result::Result,
     traits::txn_envelope::TxnEnvelope,
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
@@ -13,12 +9,11 @@ use helium_proto::BlockchainTxnAddGatewayV1;
 /// hotspot miner and supplied here for owner signing. Use an onboarding key to
 /// get the transaction signed by the DeWi staking server.
 pub struct Cmd {
-    /// The subdao to assert the hotspot on. Only iot is currently supported.
-    #[arg(long)]
+    /// The subdao to assert the hotspot on. Only "iot" is currently supported.
     subdao: SubDao,
 
     /// The mode of the hotspot to add. Only "dataonly" is currently supported.
-    #[arg(long)]
+    #[arg(long, default_value = "dataonly")]
     mode: HotspotMode,
 
     /// Lattitude of hotspot location to assert.
@@ -59,7 +54,7 @@ pub struct Cmd {
 
     /// Optional url for the ecc signature verifier.
     #[arg(long, default_value = "https://ecc-verifier.web.helium.io")]
-    verifier_url: String,
+    verifier: String,
 
     /// Commit the hotspot add.
     #[command(flatten)]
@@ -83,8 +78,7 @@ impl Cmd {
         let hotspot_issued = client.hotspot_key_to_asset(&txn.gateway).is_ok();
 
         if !hotspot_issued {
-            let tx =
-                client.hotspot_dataonly_issue(&self.verifier_url, &mut txn, keypair.clone())?;
+            let tx = client.hotspot_dataonly_issue(&self.verifier, &mut txn, keypair.clone())?;
             self.commit.maybe_commit(&tx, &client)?;
         }
         // Only assert the hotspot if either (a) it has already been issued before this cli was run or (b) `commit` is enabled,

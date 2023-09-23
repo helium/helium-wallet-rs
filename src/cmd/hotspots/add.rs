@@ -13,7 +13,7 @@ pub struct Cmd {
     subdao: SubDao,
 
     /// The mode of the hotspot to add. Only "dataonly" is currently supported.
-    #[arg(long, default_value_t = HotspotMode::DataOnly)]
+    #[arg(long, default_value = "data-only")]
     mode: HotspotMode,
 
     /// Lattitude of hotspot location to assert.
@@ -79,7 +79,7 @@ impl Cmd {
 
         if !hotspot_issued {
             let tx = client.hotspot_dataonly_issue(&self.verifier, &mut txn, keypair.clone())?;
-            self.commit.maybe_commit(&tx, &client)?;
+            self.commit.maybe_commit_quiet(&tx, &client, true)?;
         }
         // Only assert the hotspot if either (a) it has already been issued before this cli was run or (b) `commit` is enabled,
         // which means the previous command should have created it.

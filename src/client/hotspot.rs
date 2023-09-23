@@ -253,7 +253,14 @@ impl Client {
         Ok(tx)
     }
 
-    pub fn hotspot_key_to_asset(
+    /// Entity keys are (regrettably) encoded through the bytes of a the b58
+    /// string form of the helium public key
+    pub fn hotspot_key_to_entity(&self, hotspot_key: &[u8]) -> Result<Vec<u8>> {
+        let entity_key_string = helium_crypto::PublicKey::from_bytes(hotspot_key)?.to_string();
+        Ok(bs58::decode(entity_key_string).into_vec()?)
+    }
+
+    pub fn entity_key_to_asset(
         &self,
         entity_key: &[u8],
     ) -> Result<helium_entity_manager::KeyToAssetV0> {
@@ -264,9 +271,17 @@ impl Client {
         Ok(asset_account)
     }
 
+    pub fn hotspot_key_to_asset(
+        &self,
+        hotspot_key: &[u8],
+    ) -> Result<helium_entity_manager::KeyToAssetV0> {
+        let entity_key = self.hotspot_key_to_entity(hotspot_key)?;
+        self.entity_key_to_asset(&entity_key)
+    }
+
     pub fn hotspot_dataonly_onboard<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         &self,
-        entity_key: &[u8],
+        hotspot_key: &[u8],
         assertion: HotspotAssertion,
         keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
@@ -368,7 +383,8 @@ impl Client {
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(helium_entity_manager::id())?;
 
-        let asset_account = self.hotspot_key_to_asset(entity_key)?;
+        let entity_key = self.hotspot_key_to_entity(hotspot_key)?;
+        let asset_account = self.entity_key_to_asset(&entity_key)?;
 
         let jsonrpc = self.settings.mk_jsonrpc_client()?;
         let asset_responase: AssetResponse = jsonrpc
@@ -389,7 +405,7 @@ impl Client {
             )
             .context("while getting asset proof")?;
 
-        let onboard_accounts = mk_dataonly_onboard(&program, entity_key)
+        let onboard_accounts = mk_dataonly_onboard(&program, &entity_key)
             .context("failed to construct onboarding accounts")?;
         let mut ixs = program
             .request()
@@ -506,21 +522,16 @@ impl Client {
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(helium_entity_manager::id())?;
-        // Entity keys are (regrettably) encoded through the bytes of a the b58
-        // string form of the helium public key
-        let entity_key = bs58::encode(&add_tx.gateway).into_string();
-        let entity_key_bytes = entity_key.as_bytes();
+        let entity_key = self.hotspot_key_to_entity(&add_tx.gateway)?;
 
-        let issue_entity_accounts = mk_dataonly_issue(&program, entity_key_bytes)?;
+        let issue_entity_accounts = mk_dataonly_issue(&program, &entity_key)?;
         let compute_ix =
             solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500000);
 
         let ix = program
             .request()
             .args(helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
-                args: helium_entity_manager::IssueDataOnlyEntityArgsV0 {
-                    entity_key: entity_key_bytes.into(),
-                },
+                args: helium_entity_manager::IssueDataOnlyEntityArgsV0 { entity_key },
             })
             .accounts(issue_entity_accounts)
             .instruction(compute_ix)

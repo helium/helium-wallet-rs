@@ -51,18 +51,32 @@ pub struct CommitOpts {
 }
 
 impl CommitOpts {
+    pub fn maybe_commit_quiet(
+        &self,
+        tx: &solana_sdk::transaction::Transaction,
+        client: &Client,
+        quiet: bool,
+    ) -> Result {
+        if self.commit {
+            let signature = client.send_and_confirm_transaction(tx)?;
+            if !quiet {
+                print_commit_result(signature)?;
+            }
+        } else {
+            let result = client.simulate_transaction(tx)?;
+            if !quiet {
+                print_simulation_response(&result)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn maybe_commit(
         &self,
         tx: &solana_sdk::transaction::Transaction,
         client: &Client,
     ) -> Result {
-        if self.commit {
-            let signature = client.send_and_confirm_transaction(tx)?;
-            print_commit_result(signature)
-        } else {
-            let result = client.simulate_transaction(tx)?;
-            print_simulation_response(&result)
-        }
+        self.maybe_commit_quiet(tx, client, false)
     }
 }
 

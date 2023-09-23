@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Clone, Copy, clap::ValueEnum, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum HotspotMode {
     Full,
     #[default]

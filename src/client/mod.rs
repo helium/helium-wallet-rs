@@ -9,6 +9,7 @@ use anchor_client::{
     solana_sdk::{self, signer::Signer},
     Client as AnchorClient,
 };
+use anyhow::Context;
 use http::Uri;
 use jsonrpc::Client as JsonRpcClient;
 use rayon::prelude::*;
@@ -261,7 +262,8 @@ impl Client {
                 signature: &hex::encode(signature),
             })
             .send()?
-            .json::<VerifyResponse>()?;
+            .json::<VerifyResponse>()
+            .context("While verifying add gateway txn signature")?;
         let signed_tx = bincode::deserialize(&hex::decode(response.transaction)?)?;
         Ok(signed_tx)
     }

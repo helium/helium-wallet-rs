@@ -1,5 +1,9 @@
 use crate::{
-    client::HotspotAssertion, cmd::*, dao::SubDao, hotspot::HotspotMode, result::Result,
+    client::{HotspotAssertion, VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
+    cmd::*,
+    dao::SubDao,
+    hotspot::HotspotMode,
+    result::Result,
     traits::txn_envelope::TxnEnvelope,
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
@@ -53,8 +57,11 @@ pub struct Cmd {
     txn: Option<Transaction>,
 
     /// Optional url for the ecc signature verifier.
-    #[arg(long, default_value = "https://ecc-verifier.web.helium.io")]
-    verifier: String,
+    ///
+    /// If the main API URL is one of the shortcuts (like "m" or "d") the
+    /// default verifier for that network will be used.
+    #[arg(long)]
+    verifier: Option<String>,
 
     /// Commit the hotspot add.
     #[command(flatten)]
@@ -77,8 +84,15 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
         let hotspot_issued = client.hotspot_key_to_asset(&txn.gateway).is_ok();
 
+        let verifier_key = self.verifier.as_ref().unwrap_or(&opts.url);
+        let verifier = match verifier_key.as_str() {
+            "m" | "mainnet-beta" => VERIFIER_URL_MAINNET,
+            "d" | "devnet" => VERIFIER_URL_DEVNET,
+            url => url,
+        };
+
         if !hotspot_issued {
-            let tx = client.hotspot_dataonly_issue(&self.verifier, &mut txn, keypair.clone())?;
+            let tx = client.hotspot_dataonly_issue(verifier, &mut txn, keypair.clone())?;
             self.commit.maybe_commit_quiet(&tx, &client, true)?;
         }
         // Only assert the hotspot if either (a) it has already been issued before this cli was run or (b) `commit` is enabled,

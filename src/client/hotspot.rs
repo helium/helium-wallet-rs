@@ -204,6 +204,11 @@ impl Client {
         Hotspot::for_address(key.clone(), Some(owner?), Some(HashMap::from_iter(infos?)))
     }
 
+    pub fn get_hotspot_owner(&self, hotspot_key: &helium_crypto::PublicKey) -> Result<Pubkey> {
+        let asset = self.get_hotspot_asset(hotspot_key)?;
+        Ok(asset.ownership.owner)
+    }
+
     pub fn hotspot_has_onboarding_record(
         &self,
         onboarding_server: &str,
@@ -215,18 +220,125 @@ impl Client {
         Ok(resp.status().is_success())
     }
 
-    pub fn get_hotspot_owner(&self, hotspot_key: &helium_crypto::PublicKey) -> Result<Pubkey> {
-        let asset = self.get_hotspot_asset(hotspot_key)?;
-        Ok(asset.ownership.owner)
-    }
-
-    pub fn hotspot_assert(
+    pub fn hotspot_assert<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         &self,
         onboarding_server: &str,
         subdao: SubDao,
         hotspot: &helium_crypto::PublicKey,
         assertion: HotspotAssertion,
-        keypair: Rc<Keypair>,
+        keypair: C,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        if self.hotspot_has_onboarding_record(onboarding_server, hotspot)? {
+            self.hotspot_onboard_assert(onboarding_server, subdao, hotspot, assertion, keypair)
+        } else {
+            self.hotspot_dataonly_assert(subdao, hotspot, assertion, keypair)
+        }
+    }
+
+    pub fn hotspot_dataonly_assert<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+        &self,
+        subdao: SubDao,
+        hotspot: &helium_crypto::PublicKey,
+        assertion: HotspotAssertion,
+        keypair: C,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        use helium_entity_manager::accounts::UpdateIotInfoV0;
+
+        fn mk_dataonly_assert<C: Clone + Deref<Target = impl Signer>>(
+            program: &anchor_client::Program<C>,
+            entity_key: &[u8],
+        ) -> Result<UpdateIotInfoV0> {
+            let dao = Dao::Hnt;
+            let sub_dao = SubDao::Iot.key();
+
+            let rewardable_entity_config = SubDao::Iot.rewardable_entity_config_key();
+            let iot_info = SubDao::Iot
+                .info_key(entity_key)
+                .context("Couldn't get iot info key")?;
+
+            let data_only_config = dao.data_only_config_key();
+            let data_only_config_acc = program
+                .account::<helium_entity_manager::DataOnlyConfigV0>(data_only_config)
+                .context(format!(
+                    "while getting data only config, {data_only_config}"
+                ))?;
+
+            let (tree_authority, _ta_bump) = Pubkey::find_program_address(
+                &[data_only_config_acc.merkle_tree.as_ref()],
+                &bubblegum_cpi::id(),
+            );
+
+            let dc = SubDao::dc_key();
+
+            Ok(UpdateIotInfoV0 {
+                payer: program.payer(),
+                dc_fee_payer: program.payer(),
+                iot_info,
+                hotspot_owner: program.payer(),
+                merkle_tree: data_only_config_acc.merkle_tree,
+                dc_burner: get_associated_token_address(&program.payer(), Token::Dc.mint()),
+                rewardable_entity_config,
+                dao: dao.key(),
+                sub_dao,
+                dc_mint: *Token::Dc.mint(),
+                dc,
+                compression_program: account_compression_cpi::id(),
+                data_credits_program: data_credits::id(),
+                token_program: anchor_spl::token::ID,
+                associated_token_program: spl_associated_token_account::id(),
+                system_program: system_program::id(),
+                bubblegum_program: bubblegum_cpi::id(),
+                tree_authority,
+            })
+        }
+
+        if subdao != SubDao::Iot {
+            return Err(anyhow!("Only IOT subdao supported for now"));
+        }
+
+        let client = self.settings.mk_anchor_client(keypair.clone())?;
+        let program = client.program(helium_entity_manager::id())?;
+        let entity_key = self.hotspot_key_to_entity(hotspot)?;
+        let asset = self.get_hotspot_asset(hotspot)?;
+        let asset_proof = self.get_hotspot_asset_proof(hotspot)?;
+
+        let update_accounts = mk_dataonly_assert(&program, &entity_key)
+            .context("failed to construct onboarding accounts")?;
+        let mut ixs = program
+            .request()
+            .args(helium_entity_manager::instruction::UpdateIotInfoV0 {
+                args: helium_entity_manager::UpdateIotInfoArgsV0 {
+                    data_hash: asset.compression.data_hash()?,
+                    creator_hash: asset.compression.creator_hash()?,
+                    index: asset.compression.leaf_id.try_into()?,
+                    root: asset_proof.root.to_bytes(),
+                    elevation: assertion.elevation,
+                    gain: assertion.gain,
+                    location: assertion.location,
+                },
+            })
+            .accounts(update_accounts)
+            .instructions()?;
+        ixs[0]
+            .accounts
+            .extend_from_slice(&asset_proof.proof()?[0..3]);
+
+        let mut tx =
+            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.public_key()));
+        let blockhash = program.rpc().get_latest_blockhash()?;
+
+        tx.try_sign(&[&*keypair], blockhash)?;
+
+        Ok(tx)
+    }
+
+    pub fn hotspot_onboard_assert<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+        &self,
+        onboarding_server: &str,
+        subdao: SubDao,
+        hotspot: &helium_crypto::PublicKey,
+        assertion: HotspotAssertion,
+        keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
         let client = Settings::mk_rest_client()?;
         let url = format!(

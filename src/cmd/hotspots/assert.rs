@@ -47,7 +47,7 @@ pub struct Cmd {
 
     /// The onboarding server to use for asserting the hotspot.
     ///
-    /// If the main API URL is specified with a shortcut like "m" or "d", the
+    /// If the API URL is specified with a shortcut like "m" or "d", the
     /// default onboarding server for that network will be used.
     #[arg(long)]
     onboarding: Option<String>,

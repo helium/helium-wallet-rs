@@ -1,6 +1,6 @@
 use crate::{
     format::{self, Format},
-    keypair::{to_helium_pubkey, Keypair, Pubkey},
+    keypair::{to_helium_pubkey, Keypair, Pubkey, PublicKey},
     pwhash::PwHash,
     result::{anyhow, bail, Error, Result},
     solana_sdk,

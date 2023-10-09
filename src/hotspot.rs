@@ -71,7 +71,34 @@ pub enum HotspotInfo {
         #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<String>,
         location_asserts: u16,
+        device_type: MobileDeviceType,
     },
+}
+
+#[derive(Debug, Serialize, Clone, Copy, clap::ValueEnum, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MobileDeviceType {
+    #[default]
+    Cbrs,
+    WifiIndoor,
+    WifiOutdoor,
+}
+
+impl std::fmt::Display for MobileDeviceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
+        f.write_str(&str)
+    }
+}
+
+impl From<helium_entity_manager::MobileDeviceTypeV0> for MobileDeviceType {
+    fn from(value: helium_entity_manager::MobileDeviceTypeV0) -> Self {
+        match value {
+            helium_entity_manager::MobileDeviceTypeV0::Cbrs => Self::Cbrs,
+            helium_entity_manager::MobileDeviceTypeV0::WifiIndoor => Self::WifiIndoor,
+            helium_entity_manager::MobileDeviceTypeV0::WifiOutdoor => Self::WifiOutdoor,
+        }
+    }
 }
 
 impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
@@ -100,6 +127,7 @@ impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
                 .location
                 .and_then(|index| h3o::CellIndex::try_from(index).ok().map(|v| v.to_string())),
             location_asserts: value.num_location_asserts,
+            device_type: value.device_type.into(),
         }
     }
 }

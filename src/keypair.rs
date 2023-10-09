@@ -40,7 +40,7 @@ pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey> {
     match key.key_type() {
         helium_crypto::KeyType::Ed25519 => {
             let bytes = key.to_vec();
-            Ok(Pubkey::new(&bytes[1..]))
+            Ok(Pubkey::try_from(&bytes[1..])?)
         }
         _ => anyhow::bail!("unsupported key type"),
     }
@@ -65,6 +65,22 @@ impl Default for Keypair {
     }
 }
 
+pub trait PublicKey {
+    fn public_key(&self) -> solana_sdk::pubkey::Pubkey;
+}
+
+impl PublicKey for Keypair {
+    fn public_key(&self) -> solana_sdk::pubkey::Pubkey {
+        self.0.pubkey()
+    }
+}
+
+impl PublicKey for Rc<Keypair> {
+    fn public_key(&self) -> solana_sdk::pubkey::Pubkey {
+        self.0.pubkey()
+    }
+}
+
 impl Keypair {
     pub fn generate() -> Self {
         Keypair(solana_sdk::signer::keypair::Keypair::new())
@@ -79,10 +95,6 @@ impl Keypair {
             solana_sdk::signer::keypair::keypair_from_seed(entropy)
                 .map_err(|e| anyhow!("Failed to generate keypair: {e}"))?,
         ))
-    }
-
-    pub fn public_key(&self) -> solana_sdk::pubkey::Pubkey {
-        self.0.pubkey()
     }
 
     pub fn secret(&self) -> Vec<u8> {

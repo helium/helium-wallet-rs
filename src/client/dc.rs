@@ -1,7 +1,7 @@
 use super::Client;
 use crate::{
     dao::{Dao, SubDao},
-    keypair::{Keypair, Pubkey},
+    keypair::{Keypair, Pubkey, PublicKey},
     result::{anyhow, Error, Result},
     token::{Token, TokenAmount},
 };
@@ -33,8 +33,11 @@ impl Client {
             }
         }
 
-        let client = self.settings.mk_anchor_client(keypair.clone())?;
-        let dc_program = client.program(data_credits::id());
+        // let client = self.settings.mk_anchor_client(keypair.clone())?;
+        let dc_program = self
+            .settings
+            .mk_anchor_client(keypair.clone())?
+            .program(data_credits::id())?;
         let data_credits = SubDao::dc_key();
         let hnt_price_oracle = dc_program
             .account::<data_credits::DataCreditsV0>(data_credits)?
@@ -84,7 +87,7 @@ impl Client {
         keypair: Rc<Keypair>,
     ) -> Result<solana_sdk::transaction::Transaction> {
         let client = self.settings.mk_anchor_client(keypair.clone())?;
-        let dc_program = client.program(data_credits::id());
+        let dc_program = client.program(data_credits::id())?;
 
         let delegated_data_credits = subdao.delegated_dc_key(router_key);
 

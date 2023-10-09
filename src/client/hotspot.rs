@@ -1,5 +1,5 @@
 use super::{Client, Settings};
-use crate::keypair::serde_pubkey;
+use crate::keypair::{serde_pubkey, PublicKey};
 use crate::{
     dao::{Dao, SubDao},
     hotspot::{Hotspot, HotspotInfo},
@@ -7,14 +7,14 @@ use crate::{
     result::{anyhow, Error, Result},
     token::Token,
 };
-use anchor_client::solana_sdk::{self, system_program};
+use anchor_client::solana_sdk::{self, signer::Signer, system_program};
 use anyhow::Context;
 use helium_proto::{BlockchainTxnAddGatewayV1, Message};
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde_json::json;
 use spl_associated_token_account::get_associated_token_address;
-use std::{collections::HashMap, rc::Rc, result::Result as StdResult, str::FromStr};
+use std::{collections::HashMap, ops::Deref, rc::Rc, result::Result as StdResult, str::FromStr};
 
 pub struct HotspotAssertion {
     pub location: Option<u64>,
@@ -169,7 +169,7 @@ impl Client {
 
         let client = settings.mk_anchor_client(Keypair::void())?;
         let hotspot_key = subdao.info_key_for_helium_key(key)?;
-        let program = client.program(helium_entity_manager::id());
+        let program = client.program(helium_entity_manager::id())?;
         match subdao {
             SubDao::Iot => {
                 maybe_info(program.account::<helium_entity_manager::IotHotspotInfoV0>(hotspot_key))
@@ -258,21 +258,21 @@ impl Client {
         entity_key: &[u8],
     ) -> Result<helium_entity_manager::KeyToAssetV0> {
         let client = self.settings.mk_anchor_client(Keypair::void())?;
-        let program = client.program(helium_entity_manager::id());
+        let program = client.program(helium_entity_manager::id())?;
         let asset_key = Dao::Hnt.key_to_asset(entity_key);
         let asset_account = program.account::<helium_entity_manager::KeyToAssetV0>(asset_key)?;
         Ok(asset_account)
     }
 
-    pub fn hotspot_dataonly_onboard(
+    pub fn hotspot_dataonly_onboard<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         &self,
         entity_key: &[u8],
         assertion: HotspotAssertion,
-        keypair: Rc<Keypair>,
+        keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
         use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
-        fn mk_dataonly_onboard(
-            program: &anchor_client::Program,
+        fn mk_dataonly_onboard<C: Clone + Deref<Target = impl Signer>>(
+            program: &anchor_client::Program<C>,
             entity_key: &[u8],
         ) -> Result<OnboardDataOnlyIotHotspotV0> {
             let dao = Dao::Hnt;
@@ -366,7 +366,7 @@ impl Client {
         }
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
-        let program = client.program(helium_entity_manager::id());
+        let program = client.program(helium_entity_manager::id())?;
 
         let asset_account = self.hotspot_key_to_asset(entity_key)?;
 
@@ -428,8 +428,8 @@ impl Client {
         keypair: Rc<Keypair>,
     ) -> Result<solana_sdk::transaction::Transaction> {
         use helium_entity_manager::accounts::IssueDataOnlyEntityV0;
-        fn mk_dataonly_issue(
-            program: &anchor_client::Program,
+        fn mk_dataonly_issue<C: Clone + Deref<Target = impl Signer>>(
+            program: &anchor_client::Program<C>,
             entity_key: &[u8],
         ) -> Result<IssueDataOnlyEntityV0> {
             use anchor_client::anchor_lang::Id;
@@ -505,7 +505,7 @@ impl Client {
         }
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
-        let program = client.program(helium_entity_manager::id());
+        let program = client.program(helium_entity_manager::id())?;
         // Entity keys are (regrettably) encoded through the bytes of a the b58
         // string form of the helium public key
         let entity_key = bs58::encode(&add_tx.gateway).into_string();

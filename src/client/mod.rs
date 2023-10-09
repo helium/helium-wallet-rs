@@ -14,7 +14,9 @@ use jsonrpc::Client as JsonRpcClient;
 use rayon::prelude::*;
 use reqwest::blocking::Client as RestClient;
 use serde::{Deserialize, Serialize};
-use std::{boxed::Box, collections::HashMap, rc::Rc, result::Result as StdResult, str::FromStr};
+use std::{
+    boxed::Box, collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr,
+};
 
 static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 static SESSION_KEY_URL: &str = "https://wallet-api-v2.helium.com/api/sessionKey";
@@ -27,7 +29,6 @@ mod hotspot;
 mod transfer;
 
 pub use hotspot::HotspotAssertion;
-
 pub struct Client {
     pub settings: Settings,
 }
@@ -58,11 +59,14 @@ impl ToString for Settings {
 }
 
 impl Settings {
-    pub fn mk_anchor_client(&self, payer: Rc<dyn Signer>) -> Result<AnchorClient> {
+    pub fn mk_anchor_client<C: Clone + Deref<Target = impl Signer>>(
+        &self,
+        payer: C,
+    ) -> Result<AnchorClient<C>> {
         let cluster = anchor_client::Cluster::from_str(&self.to_string())?;
         Ok(AnchorClient::new_with_options(
             cluster,
-            payer.clone(),
+            payer,
             solana_sdk::commitment_config::CommitmentConfig::confirmed(),
         ))
     }

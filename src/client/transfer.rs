@@ -1,21 +1,21 @@
 use super::Client;
 use crate::{
-    keypair::{Keypair, Pubkey},
+    keypair::{Pubkey, PublicKey},
     result::Result,
     token::TokenAmount,
 };
-use anchor_client::solana_sdk;
+use anchor_client::solana_sdk::{self, signer::Signer};
 use anchor_spl::associated_token::get_associated_token_address;
-use std::rc::Rc;
+use std::ops::Deref;
 
 impl Client {
-    pub fn transfer(
+    pub fn transfer<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         &self,
         transfers: &[(Pubkey, TokenAmount)],
-        keypair: Rc<Keypair>,
+        keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
         let client = self.settings.mk_anchor_client(keypair.clone())?;
-        let program = client.program(anchor_spl::token::spl_token::id());
+        let program = client.program(anchor_spl::token::spl_token::id())?;
 
         let wallet_public_key = keypair.public_key();
         let mut builder = program.request();

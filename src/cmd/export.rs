@@ -1,4 +1,10 @@
-use crate::{b64, cmd::*, keypair::Keypair, pwhash::*, result::Result};
+use crate::{
+    b64,
+    cmd::*,
+    keypair::{Keypair, PublicKey},
+    pwhash::*,
+    result::Result,
+};
 use qr2term::print_qr;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

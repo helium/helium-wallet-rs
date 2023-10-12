@@ -82,7 +82,8 @@ impl Cmd {
         let wallet = load_wallet(&opts.files)?;
         let client = new_client(&opts.url)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let hotspot_issued = client.hotspot_key_to_asset(&txn.gateway).is_ok();
+        let hotspot_key = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
+        let hotspot_issued = client.hotspot_key_to_asset(&hotspot_key).is_ok();
 
         let verifier_key = self.verifier.as_ref().unwrap_or(&opts.url);
         let verifier = match verifier_key.as_str() {
@@ -102,7 +103,7 @@ impl Cmd {
         if hotspot_issued || self.commit.commit {
             let assertion =
                 HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
-            let tx = client.hotspot_dataonly_onboard(&txn.gateway, assertion, keypair)?;
+            let tx = client.hotspot_dataonly_onboard(&hotspot_key, assertion, keypair)?;
             self.commit.maybe_commit(&tx, &client)
         } else {
             Ok(())

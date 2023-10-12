@@ -120,7 +120,7 @@ impl TryFrom<HotspotResult> for Hotspot {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("no ecc_compact key found"))
             .and_then(|str| helium_crypto::PublicKey::from_str(str).map_err(Error::from))?;
-        Self::for_address(ecc_key, None)
+        Self::for_address(ecc_key, None, None)
     }
 }
 
@@ -186,17 +186,38 @@ impl Client {
         key: &helium_crypto::PublicKey,
     ) -> Result<Hotspot> {
         let settings = self.settings.clone();
-        let infos = subdaos
-            .par_iter()
-            .filter_map(
-                |subdao| match Self::get_hotspot_info_in_dao(&settings, subdao, key) {
-                    Ok(Some(metadata)) => Some(Ok((*subdao, metadata))),
-                    Ok(None) => None,
-                    Err(err) => Some(Err(err)),
-                },
-            )
-            .collect::<Result<Vec<(SubDao, HotspotInfo)>>>()?;
-        Hotspot::for_address(key.clone(), Some(HashMap::from_iter(infos)))
+        let (owner, infos) = rayon::join(
+            || self.get_hotspot_owner(key),
+            || {
+                subdaos
+                    .par_iter()
+                    .filter_map(|subdao| {
+                        match Self::get_hotspot_info_in_dao(&settings, subdao, key) {
+                            Ok(Some(metadata)) => Some(Ok((*subdao, metadata))),
+                            Ok(None) => None,
+                            Err(err) => Some(Err(err)),
+                        }
+                    })
+                    .collect::<Result<Vec<(SubDao, HotspotInfo)>>>()
+            },
+        );
+        Hotspot::for_address(key.clone(), Some(owner?), Some(HashMap::from_iter(infos?)))
+    }
+
+    pub fn hotspot_has_onboarding_record(
+        &self,
+        onboarding_server: &str,
+        hotspot: &helium_crypto::PublicKey,
+    ) -> Result<bool> {
+        let client = Settings::mk_rest_client().unwrap();
+        let url = format!("{onboarding_server}/hotspots/{hotspot}");
+        let resp = client.get(url).send()?;
+        Ok(resp.status().is_success())
+    }
+
+    pub fn get_hotspot_owner(&self, hotspot_key: &helium_crypto::PublicKey) -> Result<Pubkey> {
+        let asset = self.get_hotspot_asset(hotspot_key)?;
+        Ok(asset.ownership.owner)
     }
 
     pub fn hotspot_assert(
@@ -255,9 +276,8 @@ impl Client {
 
     /// Entity keys are (regrettably) encoded through the bytes of a the b58
     /// string form of the helium public key
-    pub fn hotspot_key_to_entity(&self, hotspot_key: &[u8]) -> Result<Vec<u8>> {
-        let entity_key_string = helium_crypto::PublicKey::from_bytes(hotspot_key)?.to_string();
-        Ok(bs58::decode(entity_key_string).into_vec()?)
+    pub fn hotspot_key_to_entity(&self, hotspot_key: &helium_crypto::PublicKey) -> Result<Vec<u8>> {
+        Ok(bs58::decode(hotspot_key.to_string()).into_vec()?)
     }
 
     pub fn entity_key_to_asset(
@@ -273,15 +293,49 @@ impl Client {
 
     pub fn hotspot_key_to_asset(
         &self,
-        hotspot_key: &[u8],
+        hotspot_key: &helium_crypto::PublicKey,
     ) -> Result<helium_entity_manager::KeyToAssetV0> {
         let entity_key = self.hotspot_key_to_entity(hotspot_key)?;
         self.entity_key_to_asset(&entity_key)
     }
 
+    pub fn get_hotspot_asset(
+        &self,
+        hotspot_key: &helium_crypto::PublicKey,
+    ) -> Result<AssetResponse> {
+        let jsonrpc = self.settings.mk_jsonrpc_client()?;
+        let asset_account = self.hotspot_key_to_asset(hotspot_key)?;
+        let asset_responase: AssetResponse = jsonrpc
+            .call(
+                "getAsset",
+                &[jsonrpc::arg(json!({
+                    "id": asset_account.asset.to_string()
+                }))],
+            )
+            .context("while getting asset")?;
+        Ok(asset_responase)
+    }
+
+    pub fn get_hotspot_asset_proof(
+        &self,
+        hotspot_key: &helium_crypto::PublicKey,
+    ) -> Result<AsssetProofResponse> {
+        let jsonrpc = self.settings.mk_jsonrpc_client()?;
+        let asset_account = self.hotspot_key_to_asset(hotspot_key)?;
+        let asset_proof_response: AsssetProofResponse = jsonrpc
+            .call(
+                "getAssetProof",
+                &[jsonrpc::arg(json!({
+                    "id": asset_account.asset.to_string()
+                }))],
+            )
+            .context("while getting asset proof")?;
+        Ok(asset_proof_response)
+    }
+
     pub fn hotspot_dataonly_onboard<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         &self,
-        hotspot_key: &[u8],
+        hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotAssertion,
         keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
@@ -329,81 +383,13 @@ impl Client {
                 system_program: system_program::id(),
             })
         }
-        #[derive(Debug, Deserialize)]
-        struct AssetResponse {
-            compression: AssetResponseCompression,
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct AssetResponseCompression {
-            data_hash: String,
-            creator_hash: String,
-            leaf_id: u64,
-        }
-
-        impl AssetResponseCompression {
-            fn data_hash(&self) -> Result<[u8; 32]> {
-                Ok(bs58::decode(&self.data_hash)
-                    .into_vec()?
-                    .as_slice()
-                    .try_into()?)
-            }
-            fn creator_hash(&self) -> Result<[u8; 32]> {
-                Ok(bs58::decode(&self.creator_hash)
-                    .into_vec()?
-                    .as_slice()
-                    .try_into()?)
-            }
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct AsssetProofResponse {
-            proof: Vec<String>,
-            #[serde(with = "serde_pubkey")]
-            root: Pubkey,
-        }
-
-        impl AsssetProofResponse {
-            fn proof(&self) -> Result<Vec<solana_program::instruction::AccountMeta>> {
-                self.proof
-                    .iter()
-                    .map(|s| {
-                        Pubkey::from_str(s).map_err(Error::from).map(|pubkey| {
-                            solana_program::instruction::AccountMeta {
-                                pubkey,
-                                is_signer: false,
-                                is_writable: false,
-                            }
-                        })
-                    })
-                    .collect()
-            }
-        }
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(helium_entity_manager::id())?;
 
         let entity_key = self.hotspot_key_to_entity(hotspot_key)?;
-        let asset_account = self.entity_key_to_asset(&entity_key)?;
-
-        let jsonrpc = self.settings.mk_jsonrpc_client()?;
-        let asset_responase: AssetResponse = jsonrpc
-            .call(
-                "getAsset",
-                &[jsonrpc::arg(json!({
-                    "id": asset_account.asset.to_string()
-                }))],
-            )
-            .context("while getting asset")?;
-
-        let asset_proof_response: AsssetProofResponse = jsonrpc
-            .call(
-                "getAssetProof",
-                &[jsonrpc::arg(json!({
-                    "id": asset_account.asset.to_string()
-                }))],
-            )
-            .context("while getting asset proof")?;
+        let asset = self.get_hotspot_asset(hotspot_key)?;
+        let asset_proof = self.get_hotspot_asset_proof(hotspot_key)?;
 
         let onboard_accounts = mk_dataonly_onboard(&program, &entity_key)
             .context("failed to construct onboarding accounts")?;
@@ -412,10 +398,10 @@ impl Client {
             .args(
                 helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
                     args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
-                        data_hash: asset_responase.compression.data_hash()?,
-                        creator_hash: asset_responase.compression.creator_hash()?,
-                        index: asset_responase.compression.leaf_id.try_into()?,
-                        root: asset_proof_response.root.to_bytes(),
+                        data_hash: asset.compression.data_hash()?,
+                        creator_hash: asset.compression.creator_hash()?,
+                        index: asset.compression.leaf_id.try_into()?,
+                        root: asset_proof.root.to_bytes(),
                         elevation: assertion.elevation,
                         gain: assertion.gain,
                         location: assertion.location,
@@ -426,7 +412,7 @@ impl Client {
             .instructions()?;
         ixs[0]
             .accounts
-            .extend_from_slice(&asset_proof_response.proof()?[0..3]);
+            .extend_from_slice(&asset_proof.proof()?[0..3]);
 
         let mut tx =
             solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.public_key()));
@@ -522,7 +508,8 @@ impl Client {
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(helium_entity_manager::id())?;
-        let entity_key = self.hotspot_key_to_entity(&add_tx.gateway)?;
+        let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
+        let entity_key = self.hotspot_key_to_entity(&hotspot_key)?;
 
         let issue_entity_accounts = mk_dataonly_issue(&program, &entity_key)?;
         let compute_ix =
@@ -549,5 +536,63 @@ impl Client {
 
         let signed_tx = self.verify_helium_key(verifier, &msg, &sig, tx)?;
         Ok(signed_tx)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssetResponse {
+    pub compression: AssetResponseCompression,
+    pub ownership: AssetOwnership,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssetResponseCompression {
+    pub data_hash: String,
+    pub creator_hash: String,
+    pub leaf_id: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssetOwnership {
+    #[serde(with = "serde_pubkey")]
+    pub owner: Pubkey,
+}
+
+impl AssetResponseCompression {
+    pub fn data_hash(&self) -> Result<[u8; 32]> {
+        Ok(bs58::decode(&self.data_hash)
+            .into_vec()?
+            .as_slice()
+            .try_into()?)
+    }
+    pub fn creator_hash(&self) -> Result<[u8; 32]> {
+        Ok(bs58::decode(&self.creator_hash)
+            .into_vec()?
+            .as_slice()
+            .try_into()?)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AsssetProofResponse {
+    pub proof: Vec<String>,
+    #[serde(with = "serde_pubkey")]
+    pub root: Pubkey,
+}
+
+impl AsssetProofResponse {
+    pub fn proof(&self) -> Result<Vec<solana_program::instruction::AccountMeta>> {
+        self.proof
+            .iter()
+            .map(|s| {
+                Pubkey::from_str(s).map_err(Error::from).map(|pubkey| {
+                    solana_program::instruction::AccountMeta {
+                        pubkey,
+                        is_signer: false,
+                        is_writable: false,
+                    }
+                })
+            })
+            .collect()
     }
 }

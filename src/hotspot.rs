@@ -1,4 +1,8 @@
-use crate::{dao::SubDao, result::Result};
+use crate::{
+    dao::SubDao,
+    keypair::{serde_opt_pubkey, Pubkey},
+    result::Result,
+};
 use angry_purple_tiger::AnimalName;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -32,6 +36,8 @@ impl std::fmt::Display for HotspotMode {
 pub struct Hotspot {
     pub key: helium_crypto::PublicKey,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none", with = "serde_opt_pubkey")]
+    pub owner: Option<Pubkey>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
@@ -39,6 +45,7 @@ pub struct Hotspot {
 impl Hotspot {
     pub fn for_address(
         key: helium_crypto::PublicKey,
+        owner: Option<Pubkey>,
         info: Option<HashMap<SubDao, HotspotInfo>>,
     ) -> Result<Self> {
         let name = key
@@ -47,7 +54,12 @@ impl Hotspot {
             // can unwrap safely
             .unwrap()
             .to_string();
-        Ok(Self { key, name, info })
+        Ok(Self {
+            key,
+            name,
+            owner,
+            info,
+        })
     }
 }
 

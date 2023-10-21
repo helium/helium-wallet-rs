@@ -119,4 +119,35 @@ impl Client {
             .signed_transaction()?;
         Ok(tx)
     }
+
+    pub fn burn_dc(
+        &self,
+        amount: u64,
+        keypair: Rc<Keypair>,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        let client = self.settings.mk_anchor_client(keypair.clone())?;
+        let dc_program = client.program(data_credits::id())?;
+
+        let accounts = data_credits::accounts::BurnWithoutTrackingV0 {
+            burn_accounts: data_credits::accounts::BurnCommonV0 {
+                burner: get_associated_token_address(&keypair.pubkey(), Token::Dc.mint()),
+                dc_mint: *Token::Dc.mint(),
+                data_credits: SubDao::dc_key(),
+                token_program: anchor_spl::token::ID,
+                system_program: solana_sdk::system_program::ID,
+                associated_token_program: anchor_spl::associated_token::ID,
+                owner: keypair.public_key(),
+            },
+        };
+
+        let args = data_credits::instruction::BurnWithoutTrackingV0 {
+            args: data_credits::BurnWithoutTrackingArgsV0 { amount },
+        };
+        let tx = dc_program
+            .request()
+            .accounts(accounts)
+            .args(args)
+            .signed_transaction()?;
+        Ok(tx)
+    }
 }

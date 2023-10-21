@@ -277,22 +277,8 @@ impl Client {
     pub fn send_and_confirm_transaction(
         &self,
         tx: &solana_sdk::transaction::Transaction,
-        skip_preflight: bool,
     ) -> Result<solana_sdk::signature::Signature> {
         let client = self.settings.mk_solana_client()?;
-        let config = solana_client::rpc_config::RpcSendTransactionConfig {
-            skip_preflight,
-            ..Default::default()
-        };
-        let sig = client.send_transaction_with_config(tx, config)?;
-        let success = client
-            .confirm_transaction_with_commitment(&sig, client.commitment())?
-            .value;
-
-        if success {
-            Ok(sig)
-        } else {
-            Err(anyhow!("Transaction failed {}", sig))
-        }
+        Ok(client.send_and_confirm_transaction(tx)?)
     }
 }

@@ -57,7 +57,7 @@ impl CommitOpts {
         client: &Client,
     ) -> Result {
         if self.commit {
-            let signature = client.send_and_confirm_transaction(tx, true)?;
+            let signature = client.send_and_confirm_transaction(tx)?;
             print_commit_result(signature)
         } else {
             let result = client.simulate_transaction(tx)?;

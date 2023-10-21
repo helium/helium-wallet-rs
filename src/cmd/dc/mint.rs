@@ -6,7 +6,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, clap::Args)]
-/// Burn HNT to Data Credits (DC) from this wallet to given payees wallet.
+/// Mint HNT to Data Credits (DC) from this wallet to given payees wallet.
 ///
 /// One of the amount of HNT to burn or the amount of DC expected after the burn
 /// can be specified.

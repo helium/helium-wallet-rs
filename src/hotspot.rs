@@ -1,11 +1,36 @@
 use crate::{
-    dao::SubDao,
+    dao::{Dao, SubDao},
     keypair::{serde_opt_pubkey, Pubkey},
     result::Result,
 };
+use anchor_client::{self, solana_sdk::signer::Signer};
 use angry_purple_tiger::AnimalName;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Deref};
+
+/// Entity keys are (regrettably) encoded through the bytes of a the b58
+/// string form of the helium public key
+pub fn hotspot_key_to_entity(hotspot_key: &helium_crypto::PublicKey) -> Result<Vec<u8>> {
+    Ok(bs58::decode(hotspot_key.to_string()).into_vec()?)
+}
+
+pub fn entity_key_to_asset<C: Clone + Deref<Target = impl Signer>>(
+    client: &anchor_client::Client<C>,
+    entity_key: &[u8],
+) -> Result<helium_entity_manager::KeyToAssetV0> {
+    let program = client.program(helium_entity_manager::id())?;
+    let asset_key = Dao::Hnt.key_to_asset(entity_key);
+    let asset_account = program.account::<helium_entity_manager::KeyToAssetV0>(asset_key)?;
+    Ok(asset_account)
+}
+
+pub fn hotspot_key_to_asset<C: Clone + Deref<Target = impl Signer>>(
+    client: &anchor_client::Client<C>,
+    hotspot_key: &helium_crypto::PublicKey,
+) -> Result<helium_entity_manager::KeyToAssetV0> {
+    let entity_key = hotspot_key_to_entity(hotspot_key)?;
+    entity_key_to_asset(client, &entity_key)
+}
 
 #[derive(Debug, Serialize, Clone, Copy, clap::ValueEnum, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]

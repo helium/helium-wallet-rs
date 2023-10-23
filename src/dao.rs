@@ -1,4 +1,4 @@
-use crate::{keypair::Pubkey, result::Result, token::Token};
+use crate::{hotspot, keypair::Pubkey, result::Result, token::Token};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, clap::ValueEnum, serde::Serialize)]
@@ -24,12 +24,57 @@ impl Dao {
         dao_key
     }
 
-    pub fn data_only_config_key(&self) -> Pubkey {
+    pub fn dataonly_config_key(&self) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"data_only_config", self.key().as_ref()],
             &helium_entity_manager::id(),
         );
         key
+    }
+
+    pub fn dataonly_escrow_key(&self) -> Pubkey {
+        let (data_only_escrow, _doe_bump) = Pubkey::find_program_address(
+            &[b"data_only_escrow", self.dataonly_config_key().as_ref()],
+            &helium_entity_manager::id(),
+        );
+        data_only_escrow
+    }
+
+    pub fn collection_metadata_key(&self, collection_key: &Pubkey) -> Pubkey {
+        let (collection_metadata, _bump) = Pubkey::find_program_address(
+            &[
+                b"metadata",
+                lazy_distributor::token_metadata::ID.as_ref(),
+                collection_key.as_ref(),
+            ],
+            &lazy_distributor::token_metadata::ID,
+        );
+        collection_metadata
+    }
+
+    pub fn collection_master_edition_key(&self, collection_key: &Pubkey) -> Pubkey {
+        let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
+            &[
+                b"metadata",
+                lazy_distributor::token_metadata::ID.as_ref(),
+                collection_key.as_ref(),
+                b"edition",
+            ],
+            &lazy_distributor::token_metadata::ID,
+        );
+        collection_master_edition
+    }
+
+    pub fn merkle_tree_authority(&self, merkle_tree: &Pubkey) -> Pubkey {
+        let (tree_authority, _ta_bump) =
+            Pubkey::find_program_address(&[merkle_tree.as_ref()], &bubblegum_cpi::id());
+        tree_authority
+    }
+
+    pub fn bubblegum_signer(&self) -> Pubkey {
+        let (bubblegum_signer, _bs_bump) =
+            Pubkey::find_program_address(&[b"collection_cpi"], &bubblegum_cpi::id());
+        bubblegum_signer
     }
 
     pub fn entity_creator_key(&self) -> Pubkey {
@@ -121,7 +166,7 @@ impl SubDao {
         key
     }
 
-    pub fn info_key(&self, entity_key: &[u8]) -> Result<Pubkey> {
+    pub fn info_key(&self, entity_key: &[u8]) -> Pubkey {
         let hash = Sha256::digest(entity_key);
         let config_key = self.rewardable_entity_config_key();
         let prefix = match self {
@@ -132,12 +177,12 @@ impl SubDao {
             &[prefix.as_bytes(), config_key.as_ref(), &hash],
             &helium_entity_manager::id(),
         );
-        Ok(key)
+        key
     }
 
     pub fn info_key_for_helium_key(&self, public_key: &helium_crypto::PublicKey) -> Result<Pubkey> {
-        let entity_key = bs58::decode(public_key.to_string()).into_vec()?;
-        self.info_key(&entity_key)
+        let entity_key = hotspot::hotspot_key_to_entity(public_key)?;
+        Ok(self.info_key(&entity_key))
     }
 
     pub fn lazy_distributor_key(&self) -> Pubkey {

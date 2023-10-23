@@ -83,7 +83,7 @@ impl Cmd {
         let client = new_client(&opts.url)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
-        let hotspot_issued = client.hotspot_key_to_asset(&hotspot_key).is_ok();
+        let hotspot_issued = client.get_hotspot_asset(&hotspot_key).is_ok();
 
         let verifier_key = self.verifier.as_ref().unwrap_or(&opts.url);
         let verifier = match verifier_key.as_str() {

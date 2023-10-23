@@ -45,9 +45,12 @@ pub struct Cmd {
     #[arg(long)]
     elevation: Option<i32>,
 
-    /// The onboarding server to use for asserting the hotspot
-    #[arg(long, default_value = "m")]
-    onboarding: String,
+    /// The onboarding server to use for asserting the hotspot.
+    ///
+    /// If the API URL is specified with a shortcut like "m" or "d", the
+    /// default onboarding server for that network will be used.
+    #[arg(long)]
+    onboarding: Option<String>,
 
     /// Commit the assertion.
     #[command(flatten)]
@@ -62,7 +65,8 @@ impl Cmd {
 
         let client = new_client(&opts.url)?;
 
-        let server = match self.onboarding.as_str() {
+        let server_key = self.onboarding.as_ref().unwrap_or(&opts.url);
+        let server = match server_key.as_str() {
             "m" | "mainnet-beta" => ONBOARDING_URL_MAINNET,
             "d" | "devnet" => ONBOARDING_URL_DEVNET,
             url => url,

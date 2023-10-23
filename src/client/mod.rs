@@ -9,6 +9,7 @@ use anchor_client::{
     solana_sdk::{self, signer::Signer},
     Client as AnchorClient,
 };
+use anyhow::Context;
 use http::Uri;
 use jsonrpc::Client as JsonRpcClient;
 use rayon::prelude::*;
@@ -23,6 +24,9 @@ static SESSION_KEY_URL: &str = "https://wallet-api-v2.helium.com/api/sessionKey"
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
+
+pub static VERIFIER_URL_MAINNET: &str = "https://ecc-verifier.web.helium.io";
+pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com";
 
 mod dc;
 mod hotspot;
@@ -261,7 +265,8 @@ impl Client {
                 signature: &hex::encode(signature),
             })
             .send()?
-            .json::<VerifyResponse>()?;
+            .json::<VerifyResponse>()
+            .context("While verifying add gateway txn signature")?;
         let signed_tx = bincode::deserialize(&hex::decode(response.transaction)?)?;
         Ok(signed_tx)
     }

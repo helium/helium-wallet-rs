@@ -36,6 +36,33 @@ pub mod serde_pubkey {
     }
 }
 
+pub mod serde_opt_pubkey {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    pub fn serialize<S>(
+        value: &Option<Pubkey>,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct Helper<'a>(#[serde(with = "serde_pubkey")] &'a Pubkey);
+        value.as_ref().map(Helper).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> std::result::Result<Option<Pubkey>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper(#[serde(with = "serde_pubkey")] Pubkey);
+        let helper = Option::deserialize(deserializer)?;
+        Ok(helper.map(|Helper(external)| external))
+    }
+}
+
 pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey> {
     match key.key_type() {
         helium_crypto::KeyType::Ed25519 => {

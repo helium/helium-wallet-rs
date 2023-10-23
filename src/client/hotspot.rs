@@ -2,7 +2,7 @@ use super::{Client, Settings};
 use crate::keypair::{serde_pubkey, PublicKey};
 use crate::{
     dao::{Dao, SubDao},
-    hotspot::{Hotspot, HotspotInfo},
+    hotspot::{self, Hotspot, HotspotInfo},
     keypair::{Keypair, Pubkey},
     result::{anyhow, Error, Result},
     token::Token,
@@ -17,7 +17,7 @@ use spl_associated_token_account::get_associated_token_address;
 use std::{collections::HashMap, ops::Deref, rc::Rc, result::Result as StdResult, str::FromStr};
 
 pub struct HotspotAssertion {
-    pub location: Option<u64>,
+    pub location: Option<h3o::CellIndex>,
     pub gain: Option<i32>,
     pub elevation: Option<i32>,
 }
@@ -38,7 +38,7 @@ impl TryFrom<(Option<f64>, Option<f64>, Option<i32>, Option<f64>)> for HotspotAs
 
         Ok(Self {
             elevation,
-            location: location.map(u64::from),
+            location,
             gain: gain.map(|g| (g * 10.0).trunc() as i32),
         })
     }
@@ -120,7 +120,7 @@ impl TryFrom<HotspotResult> for Hotspot {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("no ecc_compact key found"))
             .and_then(|str| helium_crypto::PublicKey::from_str(str).map_err(Error::from))?;
-        Self::for_address(ecc_key, None)
+        Self::for_address(ecc_key, None, None)
     }
 }
 
@@ -186,26 +186,36 @@ impl Client {
         key: &helium_crypto::PublicKey,
     ) -> Result<Hotspot> {
         let settings = self.settings.clone();
-        let infos = subdaos
-            .par_iter()
-            .filter_map(
-                |subdao| match Self::get_hotspot_info_in_dao(&settings, subdao, key) {
-                    Ok(Some(metadata)) => Some(Ok((*subdao, metadata))),
-                    Ok(None) => None,
-                    Err(err) => Some(Err(err)),
-                },
-            )
-            .collect::<Result<Vec<(SubDao, HotspotInfo)>>>()?;
-        Hotspot::for_address(key.clone(), Some(HashMap::from_iter(infos)))
+        let (owner, infos) = rayon::join(
+            || self.get_hotspot_owner(key),
+            || {
+                subdaos
+                    .par_iter()
+                    .filter_map(|subdao| {
+                        match Self::get_hotspot_info_in_dao(&settings, subdao, key) {
+                            Ok(Some(metadata)) => Some(Ok((*subdao, metadata))),
+                            Ok(None) => None,
+                            Err(err) => Some(Err(err)),
+                        }
+                    })
+                    .collect::<Result<Vec<(SubDao, HotspotInfo)>>>()
+            },
+        );
+        Hotspot::for_address(key.clone(), Some(owner?), Some(HashMap::from_iter(infos?)))
     }
 
-    pub fn hotspot_assert(
+    pub fn get_hotspot_owner(&self, hotspot_key: &helium_crypto::PublicKey) -> Result<Pubkey> {
+        let asset = self.get_hotspot_asset(hotspot_key)?;
+        Ok(asset.ownership.owner)
+    }
+
+    pub fn hotspot_assert<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         &self,
         onboarding_server: &str,
         subdao: SubDao,
         hotspot: &helium_crypto::PublicKey,
         assertion: HotspotAssertion,
-        keypair: Rc<Keypair>,
+        keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
         let client = Settings::mk_rest_client()?;
         let url = format!(
@@ -217,15 +227,12 @@ impl Client {
             "wallet": keypair.public_key().to_string(),
         });
 
-        if let Some(location) = assertion.location {
-            params["location"] = location.into();
-        }
-        if let Some(gain) = assertion.gain {
-            params["gain"] = gain.into();
-        }
-        if let Some(elevation) = assertion.elevation {
-            params["elevation"] = elevation.into();
-        }
+        params["location"] = assertion
+            .location
+            .map(|location| u64::from(location).to_string())
+            .into();
+        params["gain"] = assertion.gain.into();
+        params["elevation"] = assertion.elevation.into();
 
         let resp = client.post(url).json(&params).send()?.error_for_status()?;
         let onboarding_resp = resp.json::<OnboardingResponse>()?;
@@ -253,124 +260,13 @@ impl Client {
         Ok(tx)
     }
 
-    pub fn hotspot_key_to_asset(
+    pub fn get_hotspot_asset(
         &self,
-        entity_key: &[u8],
-    ) -> Result<helium_entity_manager::KeyToAssetV0> {
-        let client = self.settings.mk_anchor_client(Keypair::void())?;
-        let program = client.program(helium_entity_manager::id())?;
-        let asset_key = Dao::Hnt.key_to_asset(entity_key);
-        let asset_account = program.account::<helium_entity_manager::KeyToAssetV0>(asset_key)?;
-        Ok(asset_account)
-    }
-
-    pub fn hotspot_dataonly_onboard<C: Clone + Deref<Target = impl Signer> + PublicKey>(
-        &self,
-        entity_key: &[u8],
-        assertion: HotspotAssertion,
-        keypair: C,
-    ) -> Result<solana_sdk::transaction::Transaction> {
-        use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
-        fn mk_dataonly_onboard<C: Clone + Deref<Target = impl Signer>>(
-            program: &anchor_client::Program<C>,
-            entity_key: &[u8],
-        ) -> Result<OnboardDataOnlyIotHotspotV0> {
-            let dao = Dao::Hnt;
-            let sub_dao = SubDao::Iot.key();
-
-            let rewardable_entity_config = SubDao::Iot.rewardable_entity_config_key();
-            let iot_info = SubDao::Iot
-                .info_key(entity_key)
-                .context("Couldn't get iot info key")?;
-
-            let data_only_config = dao.data_only_config_key();
-            let data_only_config_acc = program
-                .account::<helium_entity_manager::DataOnlyConfigV0>(data_only_config)
-                .context(format!(
-                    "while getting data only config, {data_only_config}"
-                ))?;
-            let key_to_asset = dao.key_to_asset(entity_key);
-            let dc = SubDao::dc_key();
-
-            Ok(OnboardDataOnlyIotHotspotV0 {
-                payer: program.payer(),
-                dc_fee_payer: program.payer(),
-                iot_info,
-                hotspot_owner: program.payer(),
-                merkle_tree: data_only_config_acc.merkle_tree,
-                dc_burner: get_associated_token_address(&program.payer(), Token::Dc.mint()),
-                rewardable_entity_config,
-                data_only_config,
-                dao: dao.key(),
-                key_to_asset,
-                sub_dao,
-                dc_mint: *Token::Dc.mint(),
-                dc,
-                compression_program: account_compression_cpi::id(),
-                data_credits_program: data_credits::id(),
-                helium_sub_daos_program: helium_sub_daos::id(),
-                token_program: anchor_spl::token::ID,
-                associated_token_program: spl_associated_token_account::id(),
-                system_program: system_program::id(),
-            })
-        }
-        #[derive(Debug, Deserialize)]
-        struct AssetResponse {
-            compression: AssetResponseCompression,
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct AssetResponseCompression {
-            data_hash: String,
-            creator_hash: String,
-            leaf_id: u64,
-        }
-
-        impl AssetResponseCompression {
-            fn data_hash(&self) -> Result<[u8; 32]> {
-                Ok(bs58::decode(&self.data_hash)
-                    .into_vec()?
-                    .as_slice()
-                    .try_into()?)
-            }
-            fn creator_hash(&self) -> Result<[u8; 32]> {
-                Ok(bs58::decode(&self.creator_hash)
-                    .into_vec()?
-                    .as_slice()
-                    .try_into()?)
-            }
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct AsssetProofResponse {
-            proof: Vec<String>,
-            #[serde(with = "serde_pubkey")]
-            root: Pubkey,
-        }
-
-        impl AsssetProofResponse {
-            fn proof(&self) -> Result<Vec<solana_program::instruction::AccountMeta>> {
-                self.proof
-                    .iter()
-                    .map(|s| {
-                        Pubkey::from_str(s).map_err(Error::from).map(|pubkey| {
-                            solana_program::instruction::AccountMeta {
-                                pubkey,
-                                is_signer: false,
-                                is_writable: false,
-                            }
-                        })
-                    })
-                    .collect()
-            }
-        }
-
-        let client = self.settings.mk_anchor_client(keypair.clone())?;
-        let program = client.program(helium_entity_manager::id())?;
-
-        let asset_account = self.hotspot_key_to_asset(entity_key)?;
-
+        hotspot_key: &helium_crypto::PublicKey,
+    ) -> Result<AssetResponse> {
         let jsonrpc = self.settings.mk_jsonrpc_client()?;
+        let client = self.settings.mk_anchor_client(Keypair::void())?;
+        let asset_account = hotspot::hotspot_key_to_asset(&client, hotspot_key)?;
         let asset_responase: AssetResponse = jsonrpc
             .call(
                 "getAsset",
@@ -379,7 +275,16 @@ impl Client {
                 }))],
             )
             .context("while getting asset")?;
+        Ok(asset_responase)
+    }
 
+    pub fn get_hotspot_asset_proof(
+        &self,
+        hotspot_key: &helium_crypto::PublicKey,
+    ) -> Result<AsssetProofResponse> {
+        let jsonrpc = self.settings.mk_jsonrpc_client()?;
+        let client = self.settings.mk_anchor_client(Keypair::void())?;
+        let asset_account = hotspot::hotspot_key_to_asset(&client, hotspot_key)?;
         let asset_proof_response: AsssetProofResponse = jsonrpc
             .call(
                 "getAssetProof",
@@ -388,21 +293,73 @@ impl Client {
                 }))],
             )
             .context("while getting asset proof")?;
+        Ok(asset_proof_response)
+    }
 
-        let onboard_accounts = mk_dataonly_onboard(&program, entity_key)
-            .context("failed to construct onboarding accounts")?;
+    pub fn hotspot_dataonly_onboard<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+        &self,
+        hotspot_key: &helium_crypto::PublicKey,
+        assertion: HotspotAssertion,
+        keypair: C,
+    ) -> Result<solana_sdk::transaction::Transaction> {
+        use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
+        fn mk_dataonly_onboard<C: Clone + Deref<Target = impl Signer>>(
+            program: &anchor_client::Program<C>,
+            hotspot_key: &helium_crypto::PublicKey,
+        ) -> Result<OnboardDataOnlyIotHotspotV0> {
+            let dao = Dao::Hnt;
+
+            let entity_key = hotspot::hotspot_key_to_entity(hotspot_key)?;
+            let data_only_config_key = dao.dataonly_config_key();
+            let data_only_config_acc = program
+                .account::<helium_entity_manager::DataOnlyConfigV0>(data_only_config_key)
+                .context(format!(
+                    "while getting data only config, {data_only_config_key}"
+                ))?;
+
+            Ok(OnboardDataOnlyIotHotspotV0 {
+                payer: program.payer(),
+                dc_fee_payer: program.payer(),
+                iot_info: SubDao::Iot.info_key(&entity_key),
+                hotspot_owner: program.payer(),
+                merkle_tree: data_only_config_acc.merkle_tree,
+                dc_burner: get_associated_token_address(&program.payer(), Token::Dc.mint()),
+                rewardable_entity_config: SubDao::Iot.rewardable_entity_config_key(),
+                data_only_config: data_only_config_key,
+                dao: dao.key(),
+                key_to_asset: dao.key_to_asset(&entity_key),
+                sub_dao: SubDao::Iot.key(),
+                dc_mint: *Token::Dc.mint(),
+                dc: SubDao::dc_key(),
+                compression_program: account_compression_cpi::id(),
+                data_credits_program: data_credits::id(),
+                helium_sub_daos_program: helium_sub_daos::id(),
+                token_program: anchor_spl::token::ID,
+                associated_token_program: spl_associated_token_account::id(),
+                system_program: system_program::id(),
+            })
+        }
+
+        let client = self.settings.mk_anchor_client(keypair.clone())?;
+        let program = client.program(helium_entity_manager::id())?;
+
+        let asset = self.get_hotspot_asset(hotspot_key)?;
+        let asset_proof = self.get_hotspot_asset_proof(hotspot_key)?;
+
+        let onboard_accounts = mk_dataonly_onboard(&program, hotspot_key)
+            .context("constructing nboarding accounts")?;
         let mut ixs = program
             .request()
             .args(
                 helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
                     args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
-                        data_hash: asset_responase.compression.data_hash()?,
-                        creator_hash: asset_responase.compression.creator_hash()?,
-                        index: asset_responase.compression.leaf_id.try_into()?,
-                        root: asset_proof_response.root.to_bytes(),
+                        data_hash: asset.compression.data_hash()?,
+                        creator_hash: asset.compression.creator_hash()?,
+                        index: asset.compression.leaf_id.try_into()?,
+                        root: asset_proof.root.to_bytes(),
                         elevation: assertion.elevation,
                         gain: assertion.gain,
-                        location: assertion.location,
+                        location: assertion.location.map(Into::into),
                     },
                 },
             )
@@ -410,7 +367,7 @@ impl Client {
             .instructions()?;
         ixs[0]
             .accounts
-            .extend_from_slice(&asset_proof_response.proof()?[0..3]);
+            .extend_from_slice(&asset_proof.proof()?[0..3]);
 
         let mut tx =
             solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.public_key()));
@@ -433,70 +390,33 @@ impl Client {
             entity_key: &[u8],
         ) -> Result<IssueDataOnlyEntityV0> {
             use anchor_client::anchor_lang::Id;
-            let token_metadata_pid =
-                Pubkey::from_str("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").unwrap();
-
             let dao = Dao::Hnt;
-            let data_only_config = dao.data_only_config_key();
-            let data_only_config_acc = program
-                .account::<helium_entity_manager::DataOnlyConfigV0>(data_only_config)
+            let dataonly_config_key = dao.dataonly_config_key();
+            let dataonly_config_acc = program
+                .account::<helium_entity_manager::DataOnlyConfigV0>(dataonly_config_key)
                 .context(format!(
-                    "while getting data only config, {data_only_config}"
+                    "while getting data only config, {dataonly_config_key}"
                 ))?;
-
-            let (collection_metadata, _cm_bump) = Pubkey::find_program_address(
-                &[
-                    b"metadata",
-                    token_metadata_pid.as_ref(),
-                    data_only_config_acc.collection.as_ref(),
-                ],
-                &token_metadata_pid,
-            );
-
-            let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
-                &[
-                    b"metadata",
-                    token_metadata_pid.as_ref(),
-                    data_only_config_acc.collection.as_ref(),
-                    b"edition",
-                ],
-                &token_metadata_pid,
-            );
-
-            let entity_creator = dao.entity_creator_key();
-            let key_to_asset = dao.key_to_asset(entity_key);
-
-            let (tree_authority, _ta_bump) = Pubkey::find_program_address(
-                &[data_only_config_acc.merkle_tree.as_ref()],
-                &bubblegum_cpi::id(),
-            );
-
-            let (data_only_escrow, _doe_bump) = Pubkey::find_program_address(
-                &[b"data_only_escrow", data_only_config.as_ref()],
-                &helium_entity_manager::id(),
-            );
-
-            let (bubblegum_signer, _bs_bump) =
-                Pubkey::find_program_address(&[b"collection_cpi"], &bubblegum_cpi::id());
 
             Ok(IssueDataOnlyEntityV0 {
                 payer: program.payer(),
                 ecc_verifier: Pubkey::from_str(
                     helium_entity_manager::instructions::issue_entity_v0::ECC_VERIFIER,
                 )?,
-                collection: data_only_config_acc.collection,
-                collection_metadata,
-                collection_master_edition,
-                data_only_config,
-                entity_creator,
+                collection: dataonly_config_acc.collection,
+                collection_metadata: dao.collection_metadata_key(&dataonly_config_acc.collection),
+                collection_master_edition: dao
+                    .collection_master_edition_key(&dataonly_config_acc.collection),
+                data_only_config: dataonly_config_key,
+                entity_creator: dao.entity_creator_key(),
                 dao: dao.key(),
-                key_to_asset,
-                tree_authority,
+                key_to_asset: dao.key_to_asset(entity_key),
+                tree_authority: dao.merkle_tree_authority(&dataonly_config_acc.merkle_tree),
                 recipient: program.payer(),
-                merkle_tree: data_only_config_acc.merkle_tree,
-                data_only_escrow,
-                bubblegum_signer,
-                token_metadata_program: token_metadata_pid,
+                merkle_tree: dataonly_config_acc.merkle_tree,
+                data_only_escrow: dao.dataonly_escrow_key(),
+                bubblegum_signer: dao.bubblegum_signer(),
+                token_metadata_program: lazy_distributor::token_metadata::ID,
                 log_wrapper: account_compression_cpi::Noop::id(),
                 bubblegum_program: bubblegum_cpi::id(),
                 compression_program: account_compression_cpi::id(),
@@ -506,21 +426,17 @@ impl Client {
 
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(helium_entity_manager::id())?;
-        // Entity keys are (regrettably) encoded through the bytes of a the b58
-        // string form of the helium public key
-        let entity_key = bs58::encode(&add_tx.gateway).into_string();
-        let entity_key_bytes = entity_key.as_bytes();
+        let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
+        let entity_key = hotspot::hotspot_key_to_entity(&hotspot_key)?;
 
-        let issue_entity_accounts = mk_dataonly_issue(&program, entity_key_bytes)?;
+        let issue_entity_accounts = mk_dataonly_issue(&program, &entity_key)?;
         let compute_ix =
             solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500000);
 
         let ix = program
             .request()
             .args(helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
-                args: helium_entity_manager::IssueDataOnlyEntityArgsV0 {
-                    entity_key: entity_key_bytes.into(),
-                },
+                args: helium_entity_manager::IssueDataOnlyEntityArgsV0 { entity_key },
             })
             .accounts(issue_entity_accounts)
             .instruction(compute_ix)
@@ -538,5 +454,63 @@ impl Client {
 
         let signed_tx = self.verify_helium_key(verifier, &msg, &sig, tx)?;
         Ok(signed_tx)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssetResponse {
+    pub compression: AssetResponseCompression,
+    pub ownership: AssetOwnership,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssetResponseCompression {
+    pub data_hash: String,
+    pub creator_hash: String,
+    pub leaf_id: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssetOwnership {
+    #[serde(with = "serde_pubkey")]
+    pub owner: Pubkey,
+}
+
+impl AssetResponseCompression {
+    pub fn data_hash(&self) -> Result<[u8; 32]> {
+        Ok(bs58::decode(&self.data_hash)
+            .into_vec()?
+            .as_slice()
+            .try_into()?)
+    }
+    pub fn creator_hash(&self) -> Result<[u8; 32]> {
+        Ok(bs58::decode(&self.creator_hash)
+            .into_vec()?
+            .as_slice()
+            .try_into()?)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AsssetProofResponse {
+    pub proof: Vec<String>,
+    #[serde(with = "serde_pubkey")]
+    pub root: Pubkey,
+}
+
+impl AsssetProofResponse {
+    pub fn proof(&self) -> Result<Vec<solana_program::instruction::AccountMeta>> {
+        self.proof
+            .iter()
+            .map(|s| {
+                Pubkey::from_str(s).map_err(Error::from).map(|pubkey| {
+                    solana_program::instruction::AccountMeta {
+                        pubkey,
+                        is_signer: false,
+                        is_writable: false,
+                    }
+                })
+            })
+            .collect()
     }
 }

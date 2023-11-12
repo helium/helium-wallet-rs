@@ -10,7 +10,7 @@ pub struct Cmd {
     /// Subdao to delegate DC to
     subdao: SubDao,
 
-    /// Payer helium public key to delegate to
+    /// Public Helium payer key to delegate to
     payer: String,
 
     /// Amount of DC to delgate

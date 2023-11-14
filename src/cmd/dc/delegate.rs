@@ -10,8 +10,8 @@ pub struct Cmd {
     /// Subdao to delegate DC to
     subdao: SubDao,
 
-    /// Router helium public key to delegate to
-    router: String,
+    /// Public Helium payer key to delegate to
+    payer: String,
 
     /// Amount of DC to delgate
     dc: u64,
@@ -28,7 +28,7 @@ impl Cmd {
         let client = new_client(&opts.url)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let tx = client.delegate_dc(self.subdao, &self.router, self.dc, keypair)?;
+        let tx = client.delegate_dc(self.subdao, &self.payer, self.dc, keypair)?;
         self.commit.maybe_commit(&tx, &client)
     }
 }

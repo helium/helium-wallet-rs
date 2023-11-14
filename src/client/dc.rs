@@ -82,14 +82,14 @@ impl Client {
     pub fn delegate_dc(
         &self,
         subdao: SubDao,
-        router_key: &str,
+        payer_key: &str,
         amount: u64,
         keypair: Rc<Keypair>,
     ) -> Result<solana_sdk::transaction::Transaction> {
         let client = self.settings.mk_anchor_client(keypair.clone())?;
         let dc_program = client.program(data_credits::id())?;
 
-        let delegated_data_credits = subdao.delegated_dc_key(router_key);
+        let delegated_data_credits = subdao.delegated_dc_key(payer_key);
 
         let accounts = data_credits::accounts::DelegateDataCreditsV0 {
             delegated_data_credits,
@@ -109,7 +109,7 @@ impl Client {
         let args = data_credits::instruction::DelegateDataCreditsV0 {
             args: data_credits::DelegateDataCreditsArgsV0 {
                 amount,
-                router_key: router_key.to_string(),
+                router_key: payer_key.to_string(),
             },
         };
         let tx = dc_program

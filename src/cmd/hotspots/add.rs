@@ -1,9 +1,10 @@
 use crate::{
-    client::{HotspotAssertion, VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
     cmd::*,
     dao::SubDao,
+    hotspot,
     hotspot::HotspotMode,
     result::Result,
+    settings::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
     traits::txn_envelope::TxnEnvelope,
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
@@ -80,12 +81,11 @@ impl Cmd {
         let mut txn = BlockchainTxnAddGatewayV1::from_envelope(&read_txn(&self.txn)?)?;
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(&opts.files)?;
-        let client = new_client(&opts.url)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
-        let hotspot_issued = client.get_hotspot_asset(&hotspot_key).is_ok();
-
         let verifier_key = self.verifier.as_ref().unwrap_or(&opts.url);
+        let settings = opts.clone().try_into()?;
+        let hotspot_issued = hotspot::get_asset(&settings, &hotspot_key).is_ok();
         let verifier = match verifier_key.as_str() {
             "m" | "mainnet-beta" => VERIFIER_URL_MAINNET,
             "d" | "devnet" => VERIFIER_URL_DEVNET,
@@ -93,18 +93,22 @@ impl Cmd {
         };
 
         if !hotspot_issued {
-            let tx = client.hotspot_dataonly_issue(verifier, &mut txn, keypair.clone())?;
-            self.commit.maybe_commit_quiet(&tx, &client, true)?;
+            let tx = hotspot::dataonly::issue(&settings, verifier, &mut txn, keypair.clone())?;
+            self.commit.maybe_commit_quiet(&tx, &settings, true)?;
         }
         // Only assert the hotspot if either (a) it has already been issued before this cli was run or (b) `commit` is enabled,
         // which means the previous command should have created it.
         // Without this, the command will always fail for brand new hotspots when --commit is not enabled, as it cannot find
         // the key_to_asset account or asset account.
         if hotspot_issued || self.commit.commit {
-            let assertion =
-                HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
-            let tx = client.hotspot_dataonly_onboard(&hotspot_key, assertion, keypair)?;
-            self.commit.maybe_commit(&tx, &client)
+            let assertion = hotspot::HotspotAssertion::try_from((
+                self.lat,
+                self.lon,
+                self.elevation,
+                self.gain,
+            ))?;
+            let tx = hotspot::dataonly::onboard(&settings, &hotspot_key, assertion, keypair)?;
+            self.commit.maybe_commit(&tx, &settings)
         } else {
             Ok(())
         }

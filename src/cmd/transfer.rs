@@ -2,7 +2,7 @@ use crate::{
     cmd::*,
     keypair::{serde_pubkey, Pubkey},
     result::Result,
-    token::{Token, TokenAmount},
+    token::{self, Token, TokenAmount},
 };
 use serde::Deserialize;
 
@@ -86,11 +86,11 @@ impl PayCmd {
         let wallet = load_wallet(&opts.files)?;
         let password = get_wallet_password(false)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
+        let settings = opts.try_into()?;
 
-        let client = new_client(&opts.url)?;
-        let tx = client.transfer(&payments, keypair)?;
+        let tx = token::transfer(&settings, &payments, keypair)?;
 
-        self.commit().maybe_commit(&tx, &client)
+        self.commit().maybe_commit(&tx, &settings)
     }
 
     fn collect_payments(&self) -> Result<Vec<(Pubkey, TokenAmount)>> {

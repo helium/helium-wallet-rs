@@ -1,19 +1,15 @@
 use crate::{
     b64,
-    client::Client,
     result::{bail, Error, Result},
+    settings::Settings,
     wallet::Wallet,
 };
-pub use helium_proto::*;
-pub use serde_json::json;
-
+use anchor_client::{solana_client, solana_sdk};
+use serde_json::json;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
-    sync::Arc,
 };
-
-use anchor_client::{solana_client, solana_sdk};
 
 pub mod balance;
 pub mod create;
@@ -27,7 +23,7 @@ pub mod transfer;
 pub mod upgrade;
 
 /// Common options for most wallet commands
-#[derive(Debug, clap::Args)]
+#[derive(Debug, clap::Args, Clone)]
 pub struct Opts {
     /// File(s) to use
     #[arg(
@@ -43,6 +39,13 @@ pub struct Opts {
     url: String,
 }
 
+impl TryFrom<Opts> for Settings {
+    type Error = Error;
+    fn try_from(value: Opts) -> Result<Self> {
+        Settings::try_from(value.url.as_str())
+    }
+}
+
 #[derive(Debug, Clone, clap::Args)]
 pub struct CommitOpts {
     /// Commit the transaction
@@ -54,16 +57,17 @@ impl CommitOpts {
     pub fn maybe_commit_quiet(
         &self,
         tx: &solana_sdk::transaction::Transaction,
-        client: &Client,
+        settings: &Settings,
         quiet: bool,
     ) -> Result {
+        let client = settings.mk_solana_client()?;
         if self.commit {
             let signature = client.send_and_confirm_transaction(tx)?;
             if !quiet {
                 print_commit_result(signature)?;
             }
         } else {
-            let result = client.simulate_transaction(tx)?;
+            let result = client.simulate_transaction(tx)?.value;
             if !quiet {
                 print_simulation_response(&result)?;
             }
@@ -74,14 +78,14 @@ impl CommitOpts {
     pub fn maybe_commit(
         &self,
         tx: &solana_sdk::transaction::Transaction,
-        client: &Client,
+        settings: &Settings,
     ) -> Result {
-        self.maybe_commit_quiet(tx, client, false)
+        self.maybe_commit_quiet(tx, settings, false)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Transaction(BlockchainTxn);
+pub struct Transaction(helium_proto::BlockchainTxn);
 
 impl std::str::FromStr for Transaction {
     type Err = Error;
@@ -127,16 +131,7 @@ fn get_password(prompt: &str, confirm: bool) -> std::io::Result<String> {
     builder.interact()
 }
 
-fn new_client(url: &str) -> Result<Arc<Client>> {
-    let url = match url {
-        "m" | "mainnet-beta" => "https://solana-rpc.web.helium.io:443",
-        "d" | "devnet" => "https://solana-rpc.web.test-helium.com",
-        url => url,
-    };
-    Ok(Arc::new(Client::new(url)?))
-}
-
-fn read_txn(txn: &Option<Transaction>) -> Result<BlockchainTxn> {
+fn read_txn(txn: &Option<Transaction>) -> Result<helium_proto::BlockchainTxn> {
     match txn {
         Some(txn) => Ok(txn.0.clone()),
         None => {

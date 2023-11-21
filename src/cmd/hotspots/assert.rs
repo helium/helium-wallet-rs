@@ -1,8 +1,9 @@
 use crate::{
-    client::{HotspotAssertion, ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
     cmd::*,
     dao::SubDao,
+    hotspot,
     result::Result,
+    settings::{ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
 };
 
 #[derive(Debug, Clone, clap::Args)]
@@ -63,8 +64,7 @@ impl Cmd {
         let wallet = load_wallet(&opts.files)?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let client = new_client(&opts.url)?;
-
+        let settings = opts.clone().try_into()?;
         let server_key = self.onboarding.as_ref().unwrap_or(&opts.url);
         let server = match server_key.as_str() {
             "m" | "mainnet-beta" => ONBOARDING_URL_MAINNET,
@@ -73,9 +73,9 @@ impl Cmd {
         };
 
         let assertion =
-            HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
-        let tx = client.hotspot_assert(server, self.subdao, &self.gateway, assertion, keypair)?;
+            hotspot::HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
+        let tx = hotspot::assert(server, self.subdao, &self.gateway, assertion, keypair)?;
 
-        self.commit.maybe_commit(&tx, &client)
+        self.commit.maybe_commit(&tx, &settings)
     }
 }

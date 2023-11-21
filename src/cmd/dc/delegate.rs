@@ -1,6 +1,7 @@
 use crate::{
-    cmd::{get_wallet_password, load_wallet, new_client, CommitOpts, Opts},
+    cmd::{get_wallet_password, load_wallet, CommitOpts, Opts},
     dao::SubDao,
+    dc,
     result::Result,
 };
 
@@ -25,10 +26,10 @@ impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(&opts.files)?;
-        let client = new_client(&opts.url)?;
+        let settings = opts.try_into()?;
         let keypair = wallet.decrypt(password.as_bytes())?;
 
-        let tx = client.delegate_dc(self.subdao, &self.payer, self.dc, keypair)?;
-        self.commit.maybe_commit(&tx, &client)
+        let tx = dc::delegate(&settings, self.subdao, &self.payer, self.dc, keypair)?;
+        self.commit.maybe_commit(&tx, &settings)
     }
 }

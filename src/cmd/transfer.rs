@@ -83,9 +83,8 @@ pub struct Multi {
 impl PayCmd {
     pub fn run(&self, opts: Opts) -> Result {
         let payments = self.collect_payments()?;
-        let wallet = load_wallet(&opts.files)?;
         let password = get_wallet_password(false)?;
-        let keypair = wallet.decrypt(password.as_bytes())?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
         let settings = opts.try_into()?;
 
         let tx = token::transfer(&settings, &payments, keypair)?;

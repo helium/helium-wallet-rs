@@ -217,7 +217,7 @@ impl From<Vec<TokenBalance>> for TokenBalanceMap {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TokenAmount {
     pub token: Token,
     pub amount: u64,

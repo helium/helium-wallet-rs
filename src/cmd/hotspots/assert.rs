@@ -61,8 +61,7 @@ pub struct Cmd {
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = load_wallet(&opts.files)?;
-        let keypair = wallet.decrypt(password.as_bytes())?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
 
         let settings = opts.clone().try_into()?;
         let server_key = self.onboarding.as_ref().unwrap_or(&opts.url);

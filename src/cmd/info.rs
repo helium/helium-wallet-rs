@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{load_wallet, print_json, Opts},
+    cmd::{print_json, Opts},
     result::{Error, Result},
     wallet::Wallet,
 };
@@ -16,7 +16,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
-        let wallet = load_wallet(&opts.files)?;
+        let wallet = opts.load_wallet()?;
         if self.qr {
             print_qr(wallet.public_key.to_string()).map_err(Error::from)
         } else {

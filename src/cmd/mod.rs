@@ -1,5 +1,6 @@
 use crate::{
     b64,
+    keypair::Keypair,
     result::{bail, Error, Result},
     settings::Settings,
     wallet::Wallet,
@@ -9,6 +10,7 @@ use serde_json::json;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 pub mod balance;
@@ -37,6 +39,32 @@ pub struct Opts {
     /// Solana RPC URL to use.
     #[arg(long, default_value = "m")]
     url: String,
+}
+
+impl Opts {
+    pub fn load_wallet(&self) -> Result<Wallet> {
+        let mut files_iter = self.files.iter();
+        let mut first_wallet = match files_iter.next() {
+            Some(path) => {
+                let mut reader = fs::File::open(path)?;
+                Wallet::read(&mut reader)?
+            }
+            None => bail!("At least one wallet file expected"),
+        };
+
+        for path in files_iter {
+            let mut reader = fs::File::open(path)?;
+            let w = Wallet::read(&mut reader)?;
+            first_wallet.absorb_shard(&w)?;
+        }
+
+        Ok(first_wallet)
+    }
+
+    pub fn load_keypair(&self, password: &[u8]) -> Result<Rc<Keypair>> {
+        let wallet = self.load_wallet()?;
+        wallet.decrypt(password)
+    }
 }
 
 impl TryFrom<Opts> for Settings {
@@ -93,25 +121,6 @@ impl std::str::FromStr for Transaction {
     fn from_str(s: &str) -> Result<Self> {
         Ok(Self(b64::decode_message(s)?))
     }
-}
-
-fn load_wallet(files: &[PathBuf]) -> Result<Wallet> {
-    let mut files_iter = files.iter();
-    let mut first_wallet = match files_iter.next() {
-        Some(path) => {
-            let mut reader = fs::File::open(path)?;
-            Wallet::read(&mut reader)?
-        }
-        None => bail!("At least one wallet file expected"),
-    };
-
-    for path in files_iter {
-        let mut reader = fs::File::open(path)?;
-        let w = Wallet::read(&mut reader)?;
-        first_wallet.absorb_shard(&w)?;
-    }
-
-    Ok(first_wallet)
 }
 
 fn get_wallet_password(confirm: bool) -> std::io::Result<String> {

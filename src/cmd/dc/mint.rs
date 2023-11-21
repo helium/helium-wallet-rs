@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{get_wallet_password, load_wallet, CommitOpts, Opts},
+    cmd::{get_wallet_password, CommitOpts, Opts},
     dc,
     keypair::Pubkey,
     result::{anyhow, Result},
@@ -33,7 +33,7 @@ pub struct Cmd {
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = load_wallet(&opts.files)?;
+        let wallet = opts.load_wallet()?;
         let settings = opts.try_into()?;
 
         let payee = self.payee.as_ref().unwrap_or(&wallet.public_key);

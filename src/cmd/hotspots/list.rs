@@ -12,7 +12,7 @@ impl Cmd {
         let owner = if let Some(walet) = self.wallet {
             walet
         } else {
-            let wallet = load_wallet(&opts.files)?;
+            let wallet = opts.load_wallet()?;
             wallet.public_key
         };
         let settings = opts.try_into()?;

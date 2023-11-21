@@ -80,8 +80,7 @@ impl Cmd {
 
         let mut txn = BlockchainTxnAddGatewayV1::from_envelope(&read_txn(&self.txn)?)?;
         let password = get_wallet_password(false)?;
-        let wallet = load_wallet(&opts.files)?;
-        let keypair = wallet.decrypt(password.as_bytes())?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
         let verifier_key = self.verifier.as_ref().unwrap_or(&opts.url);
         let settings = opts.clone().try_into()?;

@@ -43,7 +43,7 @@ impl File {
     pub fn run(&self, opts: Opts) -> Result {
         use std::io::Read;
         let password = get_wallet_password(false)?;
-        let wallet = load_wallet(&opts.files)?;
+        let wallet = opts.load_wallet()?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let mut data = Vec::new();
         fs::File::open(&self.input)?.read_to_end(&mut data)?;
@@ -63,7 +63,7 @@ pub struct Msg {
 impl Msg {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = load_wallet(&opts.files)?;
+        let wallet = opts.load_wallet()?;
         let keypair = wallet.decrypt(password.as_bytes())?;
         let signature = keypair.sign(self.msg.as_bytes())?;
         print_signature(&wallet, signature.as_ref())
@@ -113,7 +113,7 @@ impl VerifyFile {
     pub fn run(&self, opts: Opts) -> Result {
         use helium_crypto::Verify;
         use std::io::Read;
-        let wallet = load_wallet(&opts.files)?;
+        let wallet = opts.load_wallet()?;
         let mut data = Vec::new();
         fs::File::open(&self.input)?.read_to_end(&mut data)?;
         let signature = b64::decode(&self.signature)?;
@@ -136,7 +136,7 @@ pub struct VerifyMsg {
 impl VerifyMsg {
     pub fn run(&self, opts: Opts) -> Result {
         use helium_crypto::Verify;
-        let wallet = load_wallet(&opts.files)?;
+        let wallet = opts.load_wallet()?;
         let signature = b64::decode(&self.signature)?;
         let verified = wallet
             .helium_pubkey()?

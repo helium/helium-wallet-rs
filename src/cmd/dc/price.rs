@@ -1,7 +1,7 @@
 use crate::{
     cmd::*,
     result::{anyhow, Result},
-    token::Token,
+    token::{self, Token},
 };
 use rust_decimal::prelude::*;
 use rust_decimal_macros::dec;
@@ -17,8 +17,8 @@ pub struct Cmd {
 
 impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
-        let client = new_client(&opts.url)?;
-        let price = client.get_pyth_price(Token::Hnt)?;
+        let settings = opts.try_into()?;
+        let price = token::get_pyth_price(&settings, Token::Hnt)?;
         let decimals = price.expo.unsigned_abs();
 
         // Remove the confidence from the price to use the most conservative price

@@ -1,4 +1,9 @@
-use crate::{client::to_token_balance_map, cmd::*, keypair::Pubkey, result::Result, token::Token};
+use crate::{
+    cmd::*,
+    keypair::Pubkey,
+    result::Result,
+    token::{self, Token},
+};
 
 #[derive(Debug, clap::Args)]
 /// Get the balance for a wallet or a given public key. The balance is given for
@@ -15,14 +20,15 @@ impl Cmd {
             let wallet = load_wallet(&opts.files)?;
             wallet.public_key
         };
+        let settings = opts.try_into()?;
 
-        let client = new_client(&opts.url)?;
-
-        let balances =
-            client.get_balance_for_addresses(&Token::associated_token_adresses(&address))?;
+        let balances = token::get_balance_for_addresses(
+            &settings,
+            &Token::associated_token_adresses(&address),
+        )?;
         let json = json!({
             "address": address.to_string(),
-            "balance": to_token_balance_map(balances),
+            "balance": token::TokenBalanceMap::from(balances),
         });
         print_json(&json)
     }

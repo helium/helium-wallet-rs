@@ -1,4 +1,4 @@
-use crate::{cmd::*, keypair::Pubkey, result::Result};
+use crate::{cmd::*, hotspot, keypair::Pubkey, result::Result};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Get the list of hotspots for the active or a given wallet
@@ -15,8 +15,8 @@ impl Cmd {
             let wallet = load_wallet(&opts.files)?;
             wallet.public_key
         };
-        let client = new_client(&opts.url)?;
-        let hotspots = client.get_hotspots(&owner)?;
+        let settings = opts.try_into()?;
+        let hotspots = hotspot::get_for_owner(&settings, &owner)?;
         let json = json!( {
             "address": owner.to_string(),
             "hotspots": hotspots,

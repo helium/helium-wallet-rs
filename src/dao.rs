@@ -181,7 +181,7 @@ impl SubDao {
     }
 
     pub fn info_key_for_helium_key(&self, public_key: &helium_crypto::PublicKey) -> Result<Pubkey> {
-        let entity_key = hotspot::hotspot_key_to_entity(public_key)?;
+        let entity_key = hotspot::key_to_entity(public_key)?;
         Ok(self.info_key(&entity_key))
     }
 

@@ -2,6 +2,7 @@ use crate::{cmd::*, result::Result};
 
 mod add;
 mod assert;
+mod claim;
 mod info;
 mod list;
 
@@ -24,6 +25,7 @@ pub enum HotspotCommand {
     Add(add::Cmd),
     List(list::Cmd),
     Info(info::Cmd),
+    Claim(claim::Cmd),
     // Transfer(Box<transfer::Cmd>),
 }
 
@@ -34,6 +36,7 @@ impl HotspotCommand {
             Self::Add(cmd) => cmd.run(opts),
             Self::List(cmd) => cmd.run(opts),
             Self::Info(cmd) => cmd.run(opts),
+            Self::Claim(cmd) => cmd.run(opts),
             // Self::Transfer(cmd) => cmd.run(opts).await,
         }
     }

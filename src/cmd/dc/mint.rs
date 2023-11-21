@@ -1,5 +1,6 @@
 use crate::{
-    cmd::{get_wallet_password, load_wallet, new_client, CommitOpts, Opts},
+    cmd::{get_wallet_password, load_wallet, CommitOpts, Opts},
+    dc,
     keypair::Pubkey,
     result::{anyhow, Result},
     token::{Token, TokenAmount},
@@ -33,7 +34,7 @@ impl Cmd {
     pub fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
         let wallet = load_wallet(&opts.files)?;
-        let client = new_client(&opts.url)?;
+        let settings = opts.try_into()?;
 
         let payee = self.payee.as_ref().unwrap_or(&wallet.public_key);
         let amount = match (self.hnt, self.dc) {
@@ -43,7 +44,7 @@ impl Cmd {
         };
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let tx = client.mint_dc(amount, payee, keypair)?;
-        self.commit.maybe_commit(&tx, &client)
+        let tx = dc::mint(&settings, amount, payee, keypair)?;
+        self.commit.maybe_commit(&tx, &settings)
     }
 }

@@ -1,5 +1,11 @@
-use crate::keypair::{serde_pubkey, Pubkey};
-use std::{result::Result as StdResult, str::FromStr};
+use crate::{
+    keypair::{serde_pubkey, Pubkey, PublicKey},
+    result::{anyhow, Result},
+    settings::Settings,
+    solana_sdk::{self, signer::Signer},
+};
+use rayon::prelude::*;
+use std::{ops::Deref, result::Result as StdResult, str::FromStr};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
@@ -15,6 +21,102 @@ lazy_static::lazy_static! {
     static ref IOT_MINT: Pubkey = Pubkey::from_str("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns").unwrap();
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
     static ref SOL_MINT: Pubkey = anchor_spl::token::ID;
+}
+
+pub fn transfer<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+    settings: &Settings,
+    transfers: &[(Pubkey, TokenAmount)],
+    keypair: C,
+) -> Result<solana_sdk::transaction::Transaction> {
+    let client = settings.mk_anchor_client(keypair.clone())?;
+    let program = client.program(anchor_spl::token::spl_token::id())?;
+
+    let wallet_public_key = keypair.public_key();
+    let mut builder = program.request();
+
+    for (payee, token_amount) in transfers {
+        let source_pubkey = token_amount
+            .token
+            .associated_token_adress(&wallet_public_key);
+        let destination_pubkey = token_amount.token.associated_token_adress(payee);
+        let ix =
+            spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                &wallet_public_key,
+                payee,
+                token_amount.token.mint(),
+                &anchor_spl::token::spl_token::id(),
+            );
+        builder = builder.instruction(ix);
+
+        let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
+            &anchor_spl::token::spl_token::id(),
+            &source_pubkey,
+            token_amount.token.mint(),
+            &destination_pubkey,
+            &wallet_public_key,
+            &[],
+            token_amount.amount,
+            token_amount.token.decimals(),
+        )?;
+        builder = builder.instruction(ix);
+    }
+
+    let tx = builder.signed_transaction()?;
+    Ok(tx)
+}
+
+pub fn get_balance_for_address(
+    settings: &Settings,
+    pubkey: &Pubkey,
+) -> Result<Option<TokenBalance>> {
+    let client = settings.mk_solana_client()?;
+
+    match client
+        .get_account_with_commitment(pubkey, client.commitment())?
+        .value
+    {
+        Some(account) if account.owner == solana_sdk::system_program::ID => {
+            Ok(Some(Token::Sol.to_balance(*pubkey, account.lamports)))
+        }
+        Some(account) => {
+            use anchor_client::anchor_lang::AccountDeserialize;
+            let token_account =
+                anchor_spl::token::TokenAccount::try_deserialize(&mut account.data.as_slice())?;
+            let token =
+                Token::from_mint(token_account.mint).ok_or_else(|| anyhow!("Invalid mint"))?;
+            Ok(Some(token.to_balance(*pubkey, token_account.amount)))
+        }
+        None => Ok(None),
+    }
+}
+
+pub fn get_balance_for_addresses(
+    settings: &Settings,
+    pubkeys: &[Pubkey],
+) -> Result<Vec<TokenBalance>> {
+    pubkeys
+        .par_iter()
+        .filter_map(|pubkey| match get_balance_for_address(settings, pubkey) {
+            Ok(Some(balance)) => Some(Ok(balance)),
+            Ok(None) => None,
+            Err(err) => Some(Err(err)),
+        })
+        .collect()
+}
+
+pub fn get_pyth_price(settings: &Settings, token: Token) -> Result<pyth_sdk_solana::Price> {
+    let price_key = token
+        .price_key()
+        .ok_or_else(|| anyhow!("No pyth price key for {token}"))?;
+    let client = settings.mk_solana_client()?;
+    let mut price_account = client.get_account(price_key)?;
+    let price_feed = pyth_sdk_solana::load_price_feed_from_account(price_key, &mut price_account)?;
+
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    price_feed
+        .get_ema_price_no_older_than(current_time.as_secs().try_into()?, 10 * 60)
+        .ok_or_else(|| anyhow!("No token price found"))
 }
 
 #[derive(
@@ -62,7 +164,7 @@ impl Token {
         vec![Self::Hnt, Self::Iot, Self::Mobile, Self::Dc, Self::Sol]
     }
 
-    pub(crate) fn transferrable_value_parser(s: &str) -> Result<Self, TokenError> {
+    pub(crate) fn transferrable_value_parser(s: &str) -> StdResult<Self, TokenError> {
         let transferrable = [Self::Iot, Self::Mobile, Self::Hnt, Self::Sol];
         let result = Self::from_str(s)?;
         if !transferrable.contains(&result) {
@@ -84,6 +186,14 @@ impl Token {
             .map(|token| token.associated_token_adress(address))
             .collect::<Vec<_>>()
     }
+
+    pub fn mint_circuit_breaker_address(&self) -> Pubkey {
+        let (circuit_breaker, _) = Pubkey::find_program_address(
+            &[b"mint_windowed_breaker", self.mint().as_ref()],
+            &circuit_breaker::id(),
+        );
+        circuit_breaker
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -93,7 +203,21 @@ pub struct TokenBalance {
     pub amount: TokenAmount,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, serde::Serialize)]
+pub struct TokenBalanceMap(std::collections::HashMap<Token, TokenBalance>);
+
+impl From<Vec<TokenBalance>> for TokenBalanceMap {
+    fn from(value: Vec<TokenBalance>) -> Self {
+        Self(
+            value
+                .into_iter()
+                .map(|balance| (balance.amount.token, balance))
+                .collect(),
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct TokenAmount {
     pub token: Token,
     pub amount: u64,

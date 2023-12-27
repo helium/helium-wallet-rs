@@ -26,7 +26,7 @@ impl Cmd {
 pub enum PayCmd {
     /// Pay a single payee.
     ///
-    /// Note that HNT and HST go to 8 decimals of precision, while MOBILE and
+    /// Note that HNT goes to 8 decimals of precision, while MOBILE and
     /// IOT go to 6 decimals of precision
     One(One),
     /// Pay multiple payees

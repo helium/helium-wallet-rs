@@ -30,7 +30,7 @@ pub struct SessionKey {
     session_key: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
     url: url::Url,
     session_key: String,

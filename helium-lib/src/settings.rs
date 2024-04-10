@@ -13,7 +13,7 @@ use std::{ops::Deref, str::FromStr};
 use tracing::instrument;
 
 static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
-static SESSION_KEY_URL: &str = "https://wallet-api-v2.helium.com/api/sessionKey";
+static _SESSION_KEY_URL: &str = "https://wallet-api-v2.helium.com/api/sessionKey";
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
@@ -21,19 +21,12 @@ pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com
 pub static VERIFIER_URL_MAINNET: &str = "https://ecc-verifier.web.helium.io";
 pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com";
 
-pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443";
+pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443?session-key=Pluto";
 pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com";
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionKey {
-    session_key: String,
-}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
     url: url::Url,
-    session_key: String,
 }
 
 impl TryFrom<&Settings> for url::Url {
@@ -46,24 +39,23 @@ impl TryFrom<&Settings> for url::Url {
     }
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            url: SOLANA_URL_MAINNET.parse().unwrap(),
+        }
+    }
+}
+
 impl std::fmt::Display for Settings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{}?session-key={}",
-            self.url, self.session_key
-        ))
+        self.url.fmt(f)
     }
 }
 
 impl TryFrom<&str> for Settings {
     type Error = Error;
     fn try_from(value: &str) -> CrateResult<Self> {
-        let session_key = Settings::mk_rest_client()?
-            .get(SESSION_KEY_URL)
-            .send()?
-            .json::<SessionKey>()?
-            .session_key;
-
         let url = match value {
             "m" | "mainnet-beta" => SOLANA_URL_MAINNET,
             "d" | "devnet" => SOLANA_URL_DEVNET,
@@ -71,7 +63,7 @@ impl TryFrom<&str> for Settings {
         };
 
         let url: url::Url = url.parse().map_err(DecodeError::from)?;
-        Ok(Self { url, session_key })
+        Ok(Self { url })
     }
 }
 
@@ -126,18 +118,15 @@ pub trait DAS {}
 pub struct DasClient {
     inner: reqwest::Client,
     base_url: reqwest::Url,
-    session_key: String,
 }
 
 impl DasClient {
     pub fn from_settings(settings: &Settings) -> CrateResult<Self> {
         let client = reqwest::Client::new();
         let base_url = settings.to_string().parse().map_err(DecodeError::from)?;
-        let session_key = settings.session_key.clone();
         Ok(Self {
             inner: client,
             base_url,
-            session_key,
         })
     }
 
@@ -213,15 +202,14 @@ impl jsonrpc_client::SendRequest for DasClient {
     where
         P: serde::de::DeserializeOwned,
     {
-        let mut builder = self
-            .inner
+        self.inner
             .post(endpoint)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .header(reqwest::header::USER_AGENT, USER_AGENT)
-            .body(body);
-        if !self.session_key.is_empty() {
-            builder = builder.query(&[("session_key", &self.session_key)]);
-        }
-        Ok(builder.send().await?.json().await?)
+            .body(body)
+            .send()
+            .await?
+            .json()
+            .await
     }
 }

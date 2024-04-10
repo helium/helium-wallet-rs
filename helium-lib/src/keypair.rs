@@ -156,23 +156,6 @@ impl Keypair {
     }
 }
 
-impl Signer for Keypair {
-    fn try_pubkey(&self) -> std::result::Result<Pubkey, SignerError> {
-        self.0.try_pubkey()
-    }
-
-    fn try_sign_message(
-        &self,
-        message: &[u8],
-    ) -> std::result::Result<solana_sdk::signature::Signature, SignerError> {
-        self.0.try_sign_message(message)
-    }
-
-    fn is_interactive(&self) -> bool {
-        self.0.is_interactive()
-    }
-}
-
 impl VoidKeypair {
     pub fn sign(&self, msg: &[u8]) -> Result<solana_sdk::signature::Signature> {
         Ok(self.try_sign_message(msg)?)

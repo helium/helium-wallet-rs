@@ -18,6 +18,6 @@ base64 = ">=0.21"
 serde = "1"
 serde_json = "1"
 rust_decimal = { version = "1", features = ["serde-float"] }
-helium-crypto = { version = "0.8.0", features = ["multisig", "solana"] }
+helium-crypto = { version = "0.8.4", features = ["multisig", "solana"] }
 helium-proto = { git = "https://github.com/helium/proto", branch = "master" }
 clap = { version = "4", features = ["derive"] }

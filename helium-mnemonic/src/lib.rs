@@ -16,8 +16,7 @@ pub enum MnmemonicError {
 }
 
 lazy_static! {
-    static ref WORDS_ENGLISH: Vec<&'static str> =
-        include_str!("wordlists/english.txt").lines().collect();
+    static ref WORDS_ENGLISH: Vec<&'static str> = include_str!("english.txt").lines().collect();
 }
 
 pub enum Language {
@@ -176,7 +175,6 @@ fn calc_checksum_256(bytes: [u8; 32]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_sdk::bs58;
 
     #[test]
     fn decode_mobile_12_words() {

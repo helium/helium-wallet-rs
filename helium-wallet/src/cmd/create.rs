@@ -1,6 +1,6 @@
 use crate::{cmd::*, wallet::ShardConfig};
 use clap::builder::TypedValueParser as _;
-use helium_lib::{bs58, keypair, mnemonic};
+use helium_lib::{bs58, keypair};
 
 #[derive(Debug, clap::Args)]
 pub struct Cmd {
@@ -163,7 +163,7 @@ fn get_seed_words() -> Result<Vec<String>> {
                 .with_prompt("Space separated seed words")
                 .validate_with(|v: &String| {
                     let word_list = phrase_to_words(v);
-                    match mnemonic::mnemonic_to_entropy(word_list) {
+                    match helium_mnemonic::mnemonic_to_entropy(word_list) {
                         Ok(_) => Ok(()),
                         Err(err) => Err(err),
                     }

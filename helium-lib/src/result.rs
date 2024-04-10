@@ -1,14 +1,15 @@
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
-use crate::{hotspot, mnemonic, settings};
+use crate::{hotspot, settings};
 
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[cfg(feature = "mnemonic")]
     #[error("mnemonic: {0}")]
-    Mnemonic(#[from] mnemonic::MnmemonicError),
+    Mnemonic(#[from] helium_mnemonic::MnmemonicError),
     #[error("onboarding: {0}")]
     Onboarding(#[from] hotspot::OnboardingError),
     #[error("anchor client: {0}")]

@@ -15,20 +15,19 @@ pub async fn mint<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     payee: &Pubkey,
     keypair: C,
 ) -> Result<solana_sdk::transaction::Transaction> {
-    impl TryFrom<TokenAmount> for data_credits::MintDataCreditsArgsV0 {
-        type Error = DecodeError;
-        fn try_from(value: TokenAmount) -> StdResult<Self, Self::Error> {
-            match value.token {
-                Token::Hnt => Ok(Self {
-                    hnt_amount: Some(value.amount),
-                    dc_amount: None,
-                }),
-                Token::Dc => Ok(Self {
-                    hnt_amount: None,
-                    dc_amount: Some(value.amount),
-                }),
-                other => Err(DecodeError::other(format!("Invalid token type: {other}"))),
-            }
+    fn token_amount_to_mint_args(
+        amount: TokenAmount,
+    ) -> StdResult<data_credits::MintDataCreditsArgsV0, DecodeError> {
+        match amount.token {
+            Token::Hnt => Ok(data_credits::MintDataCreditsArgsV0 {
+                hnt_amount: Some(amount.amount),
+                dc_amount: None,
+            }),
+            Token::Dc => Ok(data_credits::MintDataCreditsArgsV0 {
+                hnt_amount: None,
+                dc_amount: Some(amount.amount),
+            }),
+            other => Err(DecodeError::other(format!("Invalid token type: {other}"))),
         }
     }
 
@@ -61,7 +60,7 @@ pub async fn mint<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     };
 
     let args = data_credits::instruction::MintDataCreditsV0 {
-        _args: amount.try_into()?,
+        _args: token_amount_to_mint_args(amount)?,
     };
     let tx = dc_program
         .request()

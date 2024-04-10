@@ -134,7 +134,6 @@ pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helium_lib::mnemonic;
 
     const JSON_DATA: &str = r#"
         {
@@ -151,8 +150,8 @@ mod tests {
     const SEED_PWD: &str = "h3l1Um";
 
     fn create_test_keypair() -> Keypair {
-        let entropy =
-            mnemonic::mnemonic_to_entropy(phrase_to_words(MNEMONIC_PHRASE)).expect("mnemonic");
+        let entropy = helium_mnemonic::mnemonic_to_entropy(phrase_to_words(MNEMONIC_PHRASE))
+            .expect("mnemonic");
         Keypair::generate_from_entropy(&entropy).expect("keypair")
     }
 

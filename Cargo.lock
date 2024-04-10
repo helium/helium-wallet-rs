@@ -2390,12 +2390,12 @@ dependencies = [
  "async-trait",
  "base64 0.21.7",
  "bincode",
- "bitvec",
  "clap 4.5.4",
  "futures",
  "h3o",
  "helium-anchor-gen",
  "helium-crypto",
+ "helium-mnemonic",
  "helium-proto",
  "hex",
  "jsonrpc_client",
@@ -2412,6 +2412,17 @@ dependencies = [
  "thiserror",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "helium-mnemonic"
+version = "0.0.0"
+dependencies = [
+ "bitvec",
+ "bs58 0.3.1",
+ "lazy_static",
+ "sha2 0.10.8",
+ "thiserror",
 ]
 
 [[package]]
@@ -2446,6 +2457,7 @@ dependencies = [
  "dialoguer 0.8.0",
  "helium-crypto",
  "helium-lib",
+ "helium-mnemonic",
  "helium-proto",
  "pbkdf2 0.12.2",
  "qr2term",

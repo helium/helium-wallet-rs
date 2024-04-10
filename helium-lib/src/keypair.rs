@@ -1,7 +1,4 @@
-use crate::{
-    mnemonic,
-    result::{DecodeError, Result},
-};
+use crate::result::{DecodeError, Result};
 use solana_sdk::signature::{Signer, SignerError};
 use std::sync::Arc;
 
@@ -144,13 +141,15 @@ impl Keypair {
     /// Return the mnemonic phrase that can be used to recreate this Keypair.
     /// This function is implemented here to avoid passing the secret between
     /// too many modules.
+    #[cfg(feature = "mnemonic")]
     pub fn phrase(&self) -> Result<String> {
-        let words = mnemonic::entropy_to_mnemonic(self.0.secret().as_bytes())?;
+        let words = helium_mnemonic::entropy_to_mnemonic(self.0.secret().as_bytes())?;
         Ok(words.join(" "))
     }
 
+    #[cfg(feature = "mnemonic")]
     pub fn from_words(words: Vec<String>) -> Result<Arc<Self>> {
-        let entropy_bytes = mnemonic::mnemonic_to_entropy(words)?;
+        let entropy_bytes = helium_mnemonic::mnemonic_to_entropy(words)?;
         let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
             .map_err(|_| DecodeError::other("invalid words"))?;
         Ok(Self(keypair).into())

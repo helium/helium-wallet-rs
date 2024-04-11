@@ -3,7 +3,7 @@ use crate::{
     dao::{Dao, SubDao},
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey, PublicKey},
     result::{DecodeError, EncodeError, Error, Result},
-    settings::Settings,
+    settings::{DasClient, DasSearchAssetsParams, Settings},
 };
 use anchor_client::{self, solana_sdk::signer::Signer};
 use angry_purple_tiger::AnimalName;
@@ -25,6 +25,11 @@ pub async fn for_owner(settings: &Settings, owner: &Pubkey) -> Result<Vec<Hotspo
         .into_iter()
         .map(Hotspot::try_from)
         .collect::<Result<Vec<Hotspot>>>()
+}
+
+pub async fn search(client: &DasClient, params: &DasSearchAssetsParams) -> Result<HotspotPage> {
+    let asset_page = asset::search(client, params).await?;
+    HotspotPage::try_from(asset_page)
 }
 
 pub async fn get(settings: &Settings, hotspot_key: &helium_crypto::PublicKey) -> Result<Hotspot> {
@@ -398,6 +403,30 @@ impl std::fmt::Display for HotspotMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
         f.write_str(&str)
+    }
+}
+
+#[derive(Serialize)]
+pub struct HotspotPage {
+    pub total: u32,
+    pub limit: u32,
+    pub page: u32,
+    pub items: Vec<Hotspot>,
+}
+
+impl TryFrom<asset::AssetPage> for HotspotPage {
+    type Error = Error;
+    fn try_from(value: asset::AssetPage) -> StdResult<Self, Self::Error> {
+        Ok(Self {
+            total: value.total,
+            limit: value.limit,
+            page: value.page,
+            items: value
+                .items
+                .into_iter()
+                .map(Hotspot::try_from)
+                .collect::<Result<Vec<Hotspot>>>()?,
+        })
     }
 }
 

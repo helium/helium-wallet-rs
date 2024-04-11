@@ -3,7 +3,7 @@ use crate::{
     entity_key::AsEntityKey,
     keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
     result::{DecodeError, Error, Result},
-    settings::{DasSearchAssetsParams, Settings},
+    settings::{DasClient, DasSearchAssetsParams, Settings},
 };
 use helium_anchor_gen::helium_entity_manager;
 use serde::{Deserialize, Serialize};
@@ -67,35 +67,35 @@ pub mod proof {
     }
 }
 
+pub async fn search(client: &DasClient, params: &DasSearchAssetsParams) -> Result<AssetPage> {
+    Ok(client.search_assets(params).await?)
+}
+
 pub async fn for_owner(
     settings: &Settings,
     creator: &Pubkey,
     owner: &Pubkey,
 ) -> Result<Vec<Asset>> {
-    let mut params = DasSearchAssetsParams {
-        creator_verified: true,
-        creator_address: *creator,
-        owner_address: *owner,
-        page: 1,
-    };
-    let mut page = 1;
+    let mut params = DasSearchAssetsParams::for_owner(*owner, *creator);
     let mut results = vec![];
     let client = settings.mk_jsonrpc_client()?;
     loop {
-        params.page = page;
-        let page_items = client.search_assets(&params).await?;
-        if page_items.is_empty() {
+        let page = search(&client, &params).await.map_err(Error::from)?;
+        if page.items.is_empty() {
             break;
         }
-        results.extend(page_items);
-        page += 1;
+        results.extend(page.items);
+        params.page += 1;
     }
 
     Ok(results)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct AssetPage {
+    pub total: u32,
+    pub limit: u32,
+    pub page: u32,
     pub items: Vec<Asset>,
 }
 

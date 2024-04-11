@@ -8,7 +8,7 @@ use crate::{
 use helium_anchor_gen::{data_credits, helium_entity_manager, helium_sub_daos, lazy_distributor};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum Dao {
@@ -103,7 +103,7 @@ impl Dao {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum SubDao {

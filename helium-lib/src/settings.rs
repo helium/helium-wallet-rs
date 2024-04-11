@@ -113,14 +113,10 @@ pub struct DasSearchAssetsParams {
         skip_serializing_if = "Option::is_none"
     )]
     pub owner_address: Option<keypair::Pubkey>,
-    #[serde(default = "_default_one")]
+    #[serde(skip_serializing_if = "_is_zero")]
     pub page: u32,
-    #[serde(default, skip_serializing_if = "_is_zero")]
+    #[serde(skip_serializing_if = "_is_zero")]
     pub limit: u32,
-}
-
-const fn _default_one() -> u32 {
-    1
 }
 
 fn _is_zero(v: &u32) -> bool {
@@ -133,6 +129,7 @@ impl DasSearchAssetsParams {
             owner_address: Some(owner_address),
             creator_address: Some(creator_address),
             creator_verified: true,
+            page: 1,
             ..Default::default()
         }
     }

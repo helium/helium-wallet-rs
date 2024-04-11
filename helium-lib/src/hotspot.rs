@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
 
-const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
-const ECC_VERIFIER: Pubkey = pubkey!("eccCd1PHAPSTNLUtDzihhPmFPTqGPQn7kgLyjf6dYTS");
+pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
+pub const ECC_VERIFIER: Pubkey = pubkey!("eccCd1PHAPSTNLUtDzihhPmFPTqGPQn7kgLyjf6dYTS");
 
 pub async fn for_owner(settings: &Settings, owner: &Pubkey) -> Result<Vec<Hotspot>> {
     let assets = asset::for_owner(settings, &HOTSPOT_CREATOR, owner).await?;
@@ -59,7 +59,7 @@ pub mod info {
 
     pub async fn for_subdao(
         settings: &Settings,
-        subdao: &SubDao,
+        subdao: SubDao,
         key: &helium_crypto::PublicKey,
     ) -> Result<Option<HotspotInfo>> {
         fn maybe_info<T>(
@@ -97,10 +97,10 @@ pub mod info {
         subdaos: &[SubDao],
         key: &helium_crypto::PublicKey,
     ) -> Result<HashMap<SubDao, HotspotInfo>> {
-        stream::iter(subdaos)
+        stream::iter(subdaos.to_vec())
             .map(|subdao| {
                 for_subdao(settings, subdao, key)
-                    .map_ok(|maybe_metadata| maybe_metadata.map(|metadata| (*subdao, metadata)))
+                    .map_ok(move |maybe_metadata| maybe_metadata.map(|metadata| (subdao, metadata)))
             })
             .buffer_unordered(10)
             .filter_map(|result| async move { result.transpose() })

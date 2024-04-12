@@ -461,7 +461,8 @@ impl Hotspot {
 #[serde(rename_all = "lowercase", untagged)]
 pub enum HotspotInfo {
     Iot {
-        asset: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        asset: Option<String>,
         mode: HotspotMode,
         #[serde(skip_serializing_if = "Option::is_none")]
         gain: Option<rust_decimal::Decimal>,
@@ -472,7 +473,8 @@ pub enum HotspotInfo {
         location_asserts: u16,
     },
     Mobile {
-        asset: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        asset: Option<String>,
         mode: HotspotMode,
         #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<String>,
@@ -511,7 +513,7 @@ impl From<helium_entity_manager::MobileDeviceTypeV0> for MobileDeviceType {
 impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
     fn from(value: helium_entity_manager::IotHotspotInfoV0) -> Self {
         Self::Iot {
-            asset: value.asset.to_string(),
+            asset: Some(value.asset.to_string()),
             mode: value.is_full_hotspot.into(),
             gain: value
                 .gain
@@ -528,7 +530,7 @@ impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
 impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
     fn from(value: helium_entity_manager::MobileHotspotInfoV0) -> Self {
         Self::Mobile {
-            asset: value.asset.to_string(),
+            asset: Some(value.asset.to_string()),
             mode: value.is_full_hotspot.into(),
             location: value
                 .location

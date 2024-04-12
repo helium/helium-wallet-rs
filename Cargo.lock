@@ -704,9 +704,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.79"
+version = "0.1.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a507401cad91ec6a857ed5513a2073c82a9b9048762b885bb98655b306964681"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1198,7 +1198,7 @@ dependencies = [
 [[package]]
 name = "circuit-breaker"
 version = "0.1.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -1679,7 +1679,7 @@ dependencies = [
 [[package]]
 name = "data-credits"
 version = "0.2.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -1995,7 +1995,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 [[package]]
 name = "fanout"
 version = "0.1.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -2344,7 +2344,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "helium-anchor-gen"
 version = "0.1.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -2390,7 +2390,7 @@ dependencies = [
 [[package]]
 name = "helium-entity-manager"
 version = "0.3.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -2455,8 +2455,8 @@ dependencies = [
 
 [[package]]
 name = "helium-sub-daos"
-version = "0.1.4"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+version = "0.1.5"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -2515,7 +2515,7 @@ dependencies = [
 [[package]]
 name = "hexboosting"
 version = "0.0.5"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -2783,9 +2783,9 @@ checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
 
 [[package]]
 name = "jobserver"
-version = "0.1.28"
+version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab46a6e9526ddef3ae7f787c06f0f2600639ba80ea3eade3d8e670a2230f51d6"
+checksum = "f08474e32172238f2827bd160c67871cdb2801430f65c3979184dc362e3ca118"
 dependencies = [
  "libc",
 ]
@@ -2863,7 +2863,7 @@ dependencies = [
 [[package]]
 name = "lazy-distributor"
 version = "0.1.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -2872,7 +2872,7 @@ dependencies = [
 [[package]]
 name = "lazy-transactions"
 version = "0.2.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -3080,7 +3080,7 @@ dependencies = [
 [[package]]
 name = "mobile-entity-manager"
 version = "0.1.2"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -3593,7 +3593,7 @@ dependencies = [
 [[package]]
 name = "price-oracle"
 version = "0.2.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -4084,7 +4084,7 @@ dependencies = [
 [[package]]
 name = "rewards-oracle"
 version = "0.2.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -4741,9 +4741,9 @@ dependencies = [
 
 [[package]]
 name = "solana-account-decoder"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb0acf51e7100ff312eb16c3e0f30eb82bc23de071db542c530dcb240c50239f"
+checksum = "ff098f24024f1046d9ba778c48b9a68c590c15cf5c42af67e2578a240fb141a4"
 dependencies = [
  "Inflector",
  "base64 0.21.7",
@@ -4766,9 +4766,9 @@ dependencies = [
 
 [[package]]
 name = "solana-clap-utils"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe1de38b51034aa407fdf5579935c8e7a5e43d18d294cc76230080dbcfa2bbee"
+checksum = "751789b7c7a3d78afe7f1ddbf48942463253167e67e85034a9695e0a05fba63e"
 dependencies = [
  "chrono",
  "clap 2.34.0",
@@ -4783,9 +4783,9 @@ dependencies = [
 
 [[package]]
 name = "solana-client"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "790ce6ac8ad0f7e3531327a7ea486433ea2d9513bbaa9e51f9ce9c687aa5c687"
+checksum = "ae5a780ff360acc9794d6e7fae8cd449c0b01bb5f0cec9c4bd8b0e6c6d111487"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4816,9 +4816,9 @@ dependencies = [
 
 [[package]]
 name = "solana-config-program"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56db52d5c4faa7dba6dd0d82deb89d1b442524ea241b8d88940efae656236009"
+checksum = "3fd4f18daab90c2f703da8dc094b1dc80721178977302d66d21df43e61b4a97b"
 dependencies = [
  "bincode",
  "chrono",
@@ -4830,9 +4830,9 @@ dependencies = [
 
 [[package]]
 name = "solana-connection-cache"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc24ca8cdf265fe38e4f43ba8d3a97368a8269a59b6e7b9be097b54a19565359"
+checksum = "9a7b949fb3d3abc092b0c1dfb437a63d3cb7968f92d74820ef46732093517083"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4852,9 +4852,9 @@ dependencies = [
 
 [[package]]
 name = "solana-frozen-abi"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5fa9c8e908d743fc4b446c675d15f8290b1a400d84640f7fae6256aeea4815d"
+checksum = "3b8177685ab2bc8cc8b3bf63aa1eaa0580d5af850ecefac323ca1c2473085d77"
 dependencies = [
  "block-buffer 0.10.4",
  "bs58 0.4.0",
@@ -4877,9 +4877,9 @@ dependencies = [
 
 [[package]]
 name = "solana-frozen-abi-macro"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "207d87baccbc41473f151443b8d2b8f8ba85ace1b05bef368a2cbe0858ae6a77"
+checksum = "4a68241cad17b74c6034a68ba4890632d409a2c886e7bead9c1e1432befdb7c9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4889,9 +4889,9 @@ dependencies = [
 
 [[package]]
 name = "solana-logger"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5540574de96cac634cb9c82ba7635aab00cbc37a277d36fa1d491a43f3d6e5f8"
+checksum = "fea560989ef67ba4a1a0fd62a248721f1aa5bac8fa5ede9ccf4fe9ee484ccadf"
 dependencies = [
  "env_logger",
  "lazy_static",
@@ -4900,9 +4900,9 @@ dependencies = [
 
 [[package]]
 name = "solana-measure"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9c106b7bb39e23d9fddafababe5b7e489cad207a5bd6e06d46e66f9c88647fe"
+checksum = "2abdc65120ba03eac69a668c0085166e969ea6717aee1f5b0a2ffbdd07afe7a6"
 dependencies = [
  "log",
  "solana-sdk",
@@ -4910,9 +4910,9 @@ dependencies = [
 
 [[package]]
 name = "solana-metrics"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4899f40673b3a7fa556839338814a462889a283d45ad7a84922ed0ed84dba72f"
+checksum = "6e4874fea432f89b6ef0902fdada2cbca715b094419897dcfc7ef82d88b0a308"
 dependencies = [
  "crossbeam-channel",
  "gethostname",
@@ -4925,9 +4925,9 @@ dependencies = [
 
 [[package]]
 name = "solana-net-utils"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb6c23a2a7af5d49c843b005c02721478d2befb0844e4337239919efa1b8618f"
+checksum = "05afd6080d20db4dc862603178535c7d648cba7462ca23241ff5670fb0026d38"
 dependencies = [
  "bincode",
  "clap 3.2.25",
@@ -4947,9 +4947,9 @@ dependencies = [
 
 [[package]]
 name = "solana-perf"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9ec5d17735265dadcdf7eae04276370cc8570945cc47a04a7972b0752897546"
+checksum = "cff0f2ea9735a5452a3fe837c61f30231c8f5b455a2b12665d3bb6e0c56e49c8"
 dependencies = [
  "ahash 0.8.11",
  "bincode",
@@ -4976,9 +4976,9 @@ dependencies = [
 
 [[package]]
 name = "solana-program"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d0175aa736ef2bac329de17727b783fbc7c83dee182a0fbb5c8b45316c22cae"
+checksum = "8bddf573103c890b4ab8f9a6641d4f969d4148bce9a451c263f4a62afa949fae"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -5031,9 +5031,9 @@ dependencies = [
 
 [[package]]
 name = "solana-program-runtime"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "983f4b793c1cb5186d2a2ed1ea460733972d294d972982a1943ab2bf6c6a218a"
+checksum = "e22d035b370d65bff46c7d7582a1619c4edac8e8059e2dec0e151df09882c7b3"
 dependencies = [
  "base64 0.21.7",
  "bincode",
@@ -5059,9 +5059,9 @@ dependencies = [
 
 [[package]]
 name = "solana-pubsub-client"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea8dee0de77fe38ecc41384ba8fe058c04c213d0ae6feaec94e08d4b286f43da"
+checksum = "f1b3aaa906f6b222be23423a0dd5deed254f092d27ad3bc05371acd9685d2db0"
 dependencies = [
  "crossbeam-channel",
  "futures-util",
@@ -5084,9 +5084,9 @@ dependencies = [
 
 [[package]]
 name = "solana-quic-client"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a27f714d0c54b430ba97381053f3b2da7b5ada642dbe799dabe8546772573f85"
+checksum = "82e75ba7e460865a7f556d7b7bc59e70c049eab4448bf2528bed1c5e5a1b672d"
 dependencies = [
  "async-mutex",
  "async-trait",
@@ -5111,9 +5111,9 @@ dependencies = [
 
 [[package]]
 name = "solana-rayon-threadlimit"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a40d1d7ad73ff88642e978b35ec404fb932e6499e6c5061cb53e33423bc157ac"
+checksum = "5a6ccb1910cc9efd4bae450d18a57c387e51ebebade1bd9bdf006ae539dd012f"
 dependencies = [
  "lazy_static",
  "num_cpus",
@@ -5121,9 +5121,9 @@ dependencies = [
 
 [[package]]
 name = "solana-remote-wallet"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9be0a98dbe7fbb6ce2b3343f2aceb5fdd8f94ce7672d01201f50bef83b8af009"
+checksum = "24cda66f8ed8860870cd4bf26235fb7fd08d8e5a75a4fce26b279c8d5c9db81f"
 dependencies = [
  "console 0.15.8",
  "dialoguer 0.10.4",
@@ -5140,9 +5140,9 @@ dependencies = [
 
 [[package]]
 name = "solana-rpc-client"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5240a1e261c4cf8261206b76d9710f1e7b26c7b2af1e4ee7b84592c298ad9f1"
+checksum = "efae5c8740d8eb49e504e728de10aed0a5ddc53af3004b32ecdea2f7ca12c97b"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
@@ -5166,9 +5166,9 @@ dependencies = [
 
 [[package]]
 name = "solana-rpc-client-api"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "023317ad467034ac4bd4ea01a95c206018a123af97814c40a5035bf9e0c4f082"
+checksum = "cdd1597ebe177b6fd68a9b33b682a5f0c9445c02be3783e7f51e570cbbbb3aa4"
 dependencies = [
  "base64 0.21.7",
  "bs58 0.4.0",
@@ -5188,9 +5188,9 @@ dependencies = [
 
 [[package]]
 name = "solana-rpc-client-nonce-utils"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed8e4e5066a27c1f9b095cfc4b034860717ba0af079e975848daf58d304b81c2"
+checksum = "1ae385b37c59a8507b9871d5162ea7709206360a55cf2859adb4274be4a870e1"
 dependencies = [
  "clap 2.34.0",
  "solana-clap-utils",
@@ -5201,9 +5201,9 @@ dependencies = [
 
 [[package]]
 name = "solana-sdk"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0cf4419ab0807e6d7d27b7e45c0b3996caf5c2f40d6b920ce797593f96041be"
+checksum = "08b24b06fa176209ddb2a2f8172a00b07e8a3b18229fbfc49f1eb3ce6ad11ff1"
 dependencies = [
  "assert_matches",
  "base64 0.21.7",
@@ -5256,9 +5256,9 @@ dependencies = [
 
 [[package]]
 name = "solana-sdk-macro"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a19fb7874415de034a3067a71447a376be204be8f0a84a2861a65bbdb2286dd"
+checksum = "869483c05f18d37d4d95a08d9e05e00a4f76a8c8349aeedeee9ba2d013cbacde"
 dependencies = [
  "bs58 0.4.0",
  "proc-macro2",
@@ -5275,9 +5275,9 @@ checksum = "468aa43b7edb1f9b7b7b686d5c3aeb6630dc1708e86e31343499dd5c4d775183"
 
 [[package]]
 name = "solana-streamer"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d18342730db0c08836134b226c938e380039feb219e0502a55fd5c1df793a178"
+checksum = "b76711141dd5b052e29e4825b33cf09ca9cf3987b8ac0c703d36e3d80ad5dc91"
 dependencies = [
  "async-channel",
  "bytes",
@@ -5297,6 +5297,7 @@ dependencies = [
  "rand 0.8.5",
  "rcgen",
  "rustls",
+ "smallvec",
  "solana-metrics",
  "solana-perf",
  "solana-sdk",
@@ -5307,9 +5308,9 @@ dependencies = [
 
 [[package]]
 name = "solana-thin-client"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a380d99338995b308f4ecb06086a460f9b99a26ed801bb1b2f1a426764c1ed40"
+checksum = "21b6b476b4572453f93a9827fa9312537b8a8ed253006919ab17d921b271b125"
 dependencies = [
  "bincode",
  "log",
@@ -5322,9 +5323,9 @@ dependencies = [
 
 [[package]]
 name = "solana-tpu-client"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14dd5d6a503da75fad16547c57bd7e919b2aa6ad6d73986cb8a3e76edf97acdc"
+checksum = "9cfa13af3f54db31bde6f2d5462588f03be95f7cf66610d5942e7b52e556d1d9"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5346,9 +5347,9 @@ dependencies = [
 
 [[package]]
 name = "solana-transaction-status"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "892ec130ff5761ef96a271a9367cb1f3cdf64f70ec133331c491253e91d236aa"
+checksum = "5b5614e42e4d5a8b15e4553b68008788fae3a0dbc1a3672b62e9574252579536"
 dependencies = [
  "Inflector",
  "base64 0.21.7",
@@ -5371,9 +5372,9 @@ dependencies = [
 
 [[package]]
 name = "solana-udp-client"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64f6a9d9e77cfd897dda8a26c2faaf75850ecc8204b871a62eeb61819aa3d882"
+checksum = "22a37626fc851db74838725fc1034a71f2b2445149d93e45884ae366c6d85d61"
 dependencies = [
  "async-trait",
  "solana-connection-cache",
@@ -5386,9 +5387,9 @@ dependencies = [
 
 [[package]]
 name = "solana-version"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0785c3b70924eda59d5369ada65c1676d7bb15bdfe0d60c56a343b640fd388a"
+checksum = "7c23651369dd7278308c988078adeb593a37560abd0f728f70e768e12fa4b507"
 dependencies = [
  "log",
  "rustc_version",
@@ -5402,9 +5403,9 @@ dependencies = [
 
 [[package]]
 name = "solana-vote-program"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5efdfa03b77da6b38a2039758af252c6a32154a3b564d1dc5de85e36742c462"
+checksum = "6f0bab220b03482b90aa1781f7c4d4f073c7c9e7eafe6759d07a1b3efee6e315"
 dependencies = [
  "bincode",
  "log",
@@ -5424,9 +5425,9 @@ dependencies = [
 
 [[package]]
 name = "solana-zk-token-sdk"
-version = "1.18.10"
+version = "1.18.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b24acce0cfccafd57d558884d46a153400d3125e00ca802c02071a21cafcbb61"
+checksum = "459c27f7b954798677d8243aa53b8080cfb314ecfecbf8889a5a65c91ad11fee"
 dependencies = [
  "aes-gcm-siv",
  "base64 0.21.7",
@@ -6105,9 +6106,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.35"
+version = "0.3.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef89ece63debf11bc32d1ed8d078ac870cbeb44da02afb02a9ff135ae7ca0582"
+checksum = "5dfd88e563464686c916c7e46e623e520ddc6d79fa6641390f2e3fa86e83e885"
 dependencies = [
  "deranged",
  "itoa",
@@ -6324,7 +6325,7 @@ dependencies = [
 [[package]]
 name = "treasury-management"
 version = "0.2.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",
@@ -6510,7 +6511,7 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 [[package]]
 name = "voter-stake-registry"
 version = "0.3.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#a10352d0341c99b08931ad58309112e51f09c874"
+source = "git+https://github.com/helium/helium-anchor-gen.git#9352356832c68a737897aae075211692d32e8bf7"
 dependencies = [
  "anchor-gen",
  "anchor-lang",

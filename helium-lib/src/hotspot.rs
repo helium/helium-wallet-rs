@@ -1,6 +1,7 @@
 use crate::{
     asset,
     dao::{Dao, SubDao},
+    is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey, PublicKey},
     result::{DecodeError, EncodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
@@ -470,6 +471,7 @@ pub enum HotspotInfo {
         elevation: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<String>,
+        #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,
     },
     Mobile {
@@ -478,6 +480,7 @@ pub enum HotspotInfo {
         mode: HotspotMode,
         #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<String>,
+        #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,
         device_type: MobileDeviceType,
     },

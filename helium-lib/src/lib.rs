@@ -14,3 +14,21 @@ pub mod token;
 pub use anchor_client::{self, solana_client};
 pub use solana_sdk;
 pub use solana_sdk::bs58;
+
+pub(crate) trait Zero {
+    const ZERO: Self;
+}
+
+impl Zero for u32 {
+    const ZERO: Self = 0;
+}
+impl Zero for u16 {
+    const ZERO: Self = 0;
+}
+
+pub(crate) fn is_zero<T>(value: &T) -> bool
+where
+    T: PartialEq + Zero,
+{
+    value == &T::ZERO
+}

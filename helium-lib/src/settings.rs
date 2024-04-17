@@ -1,5 +1,5 @@
 use crate::{
-    asset, keypair,
+    asset, is_zero, keypair,
     result::{DecodeError, Error, Result as CrateResult},
 };
 use anchor_client::{
@@ -113,14 +113,10 @@ pub struct DasSearchAssetsParams {
         skip_serializing_if = "Option::is_none"
     )]
     pub owner_address: Option<keypair::Pubkey>,
-    #[serde(skip_serializing_if = "_is_zero")]
+    #[serde(skip_serializing_if = "is_zero")]
     pub page: u32,
-    #[serde(skip_serializing_if = "_is_zero")]
+    #[serde(skip_serializing_if = "is_zero")]
     pub limit: u32,
-}
-
-fn _is_zero(v: &u32) -> bool {
-    *v == 0
 }
 
 impl DasSearchAssetsParams {

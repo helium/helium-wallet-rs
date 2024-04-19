@@ -91,7 +91,7 @@ pub async fn for_owner(
     Ok(results)
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct AssetPage {
     pub total: u32,
     pub limit: u32,
@@ -99,7 +99,7 @@ pub struct AssetPage {
     pub items: Vec<Asset>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Asset {
     #[serde(with = "serde_pubkey")]
     pub id: Pubkey,
@@ -110,7 +110,7 @@ pub struct Asset {
 
 pub type Hash = [u8; 32];
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetCompression {
     #[serde(with = "serde_hash")]
     pub data_hash: Hash,
@@ -121,7 +121,7 @@ pub struct AssetCompression {
     pub tree: Pubkey,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetOwnership {
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
@@ -129,7 +129,7 @@ pub struct AssetOwnership {
     pub delegate: Option<Pubkey>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AssetProof {
     pub proof: Vec<String>,
     #[serde(with = "serde_pubkey")]
@@ -154,13 +154,13 @@ impl AssetProof {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetContent {
     pub metadata: AssetMetadata,
     pub json_uri: url::Url,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetMetadata {
     #[serde(default)]
     pub attributes: Vec<AssetMetadataAttribute>,
@@ -178,7 +178,7 @@ impl AssetMetadata {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetMetadataAttribute {
     #[serde(default)]
     pub value: serde_json::Value,

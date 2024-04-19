@@ -98,7 +98,7 @@ impl Settings {
     }
 }
 
-#[derive(serde::Serialize, Default)]
+#[derive(serde::Serialize, Default, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DasSearchAssetsParams {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -137,6 +137,7 @@ pub type DasClientError = jsonrpc_client::Error<reqwest::Error>;
 pub trait DAS {}
 
 #[jsonrpc_client::implement(DAS)]
+#[derive(Debug, Clone)]
 pub struct DasClient {
     inner: reqwest::Client,
     base_url: reqwest::Url,

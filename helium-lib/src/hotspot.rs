@@ -407,7 +407,7 @@ impl std::fmt::Display for HotspotMode {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct HotspotPage {
     pub total: u32,
     pub limit: u32,
@@ -431,7 +431,7 @@ impl TryFrom<asset::AssetPage> for HotspotPage {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Hotspot {
     pub key: helium_crypto::PublicKey,
     pub name: String,
@@ -458,7 +458,7 @@ impl Hotspot {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum HotspotInfo {
     Iot {

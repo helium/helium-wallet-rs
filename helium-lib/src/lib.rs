@@ -12,6 +12,7 @@ pub mod settings;
 pub mod token;
 
 pub use anchor_client::{self, solana_client};
+pub use helium_anchor_gen;
 pub use solana_sdk;
 pub use solana_sdk::bs58;
 

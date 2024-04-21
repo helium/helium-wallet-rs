@@ -98,7 +98,9 @@ impl Settings {
     }
 }
 
-#[derive(serde::Serialize, Default, Debug, Clone)]
+#[derive(
+    serde::Serialize, Default, Debug, Clone, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct DasSearchAssetsParams {
     #[serde(skip_serializing_if = "std::ops::Not::not")]

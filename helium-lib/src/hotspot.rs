@@ -24,20 +24,20 @@ pub async fn for_owner(settings: &Settings, owner: &Pubkey) -> Result<Vec<Hotspo
     let assets = asset::for_owner(settings, &HOTSPOT_CREATOR, owner).await?;
     assets
         .into_iter()
-        .map(Hotspot::try_from)
+        .map(|asset| Hotspot::try_from(asset).map_err(Error::from))
         .collect::<Result<Vec<Hotspot>>>()
 }
 
 pub async fn search(client: &DasClient, params: &DasSearchAssetsParams) -> Result<HotspotPage> {
     let asset_page = asset::search(client, params).await?;
-    HotspotPage::try_from(asset_page)
+    Ok(HotspotPage::try_from(asset_page)?)
 }
 
 pub async fn get(settings: &Settings, hotspot_key: &helium_crypto::PublicKey) -> Result<Hotspot> {
     let client = settings.mk_anchor_client(Keypair::void())?;
     let asset_account = asset::account_for_entity_key(&client, hotspot_key).await?;
     let asset = asset::get(settings, &asset_account).await?;
-    asset.try_into()
+    Ok(asset.try_into()?)
 }
 
 pub async fn get_with_info(
@@ -416,7 +416,7 @@ pub struct HotspotPage {
 }
 
 impl TryFrom<asset::AssetPage> for HotspotPage {
-    type Error = Error;
+    type Error = DecodeError;
     fn try_from(value: asset::AssetPage) -> StdResult<Self, Self::Error> {
         Ok(Self {
             total: value.total,
@@ -426,7 +426,7 @@ impl TryFrom<asset::AssetPage> for HotspotPage {
                 .items
                 .into_iter()
                 .map(Hotspot::try_from)
-                .collect::<Result<Vec<Hotspot>>>()?,
+                .collect::<StdResult<Vec<Hotspot>, DecodeError>>()?,
         })
     }
 }
@@ -545,8 +545,8 @@ impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
 }
 
 impl TryFrom<asset::Asset> for Hotspot {
-    type Error = Error;
-    fn try_from(value: asset::Asset) -> Result<Self> {
+    type Error = DecodeError;
+    fn try_from(value: asset::Asset) -> StdResult<Self, Self::Error> {
         value
             .content
             .metadata
@@ -555,7 +555,6 @@ impl TryFrom<asset::Asset> for Hotspot {
             .ok_or_else(|| DecodeError::other("no entity key found"))
             .and_then(|str| helium_crypto::PublicKey::from_str(str).map_err(DecodeError::from))
             .map(|hotspot_key| Self::with_hotspot_key(hotspot_key, value.ownership.owner))
-            .map_err(Error::from)
     }
 }
 

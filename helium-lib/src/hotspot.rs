@@ -28,7 +28,7 @@ pub async fn for_owner(settings: &Settings, owner: &Pubkey) -> Result<Vec<Hotspo
         .collect::<Result<Vec<Hotspot>>>()
 }
 
-pub async fn search(client: &DasClient, params: &DasSearchAssetsParams) -> Result<HotspotPage> {
+pub async fn search(client: &DasClient, params: DasSearchAssetsParams) -> Result<HotspotPage> {
     let asset_page = asset::search(client, params).await?;
     Ok(HotspotPage::try_from(asset_page)?)
 }

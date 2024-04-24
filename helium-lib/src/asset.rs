@@ -67,7 +67,7 @@ pub mod proof {
     }
 }
 
-pub async fn search(client: &DasClient, params: &DasSearchAssetsParams) -> Result<AssetPage> {
+pub async fn search(client: &DasClient, params: DasSearchAssetsParams) -> Result<AssetPage> {
     Ok(client.search_assets(params).await?)
 }
 
@@ -80,7 +80,7 @@ pub async fn for_owner(
     let mut results = vec![];
     let client = settings.mk_jsonrpc_client()?;
     loop {
-        let page = search(&client, &params).await.map_err(Error::from)?;
+        let page = search(&client, params.clone()).await.map_err(Error::from)?;
         if page.items.is_empty() {
             break;
         }

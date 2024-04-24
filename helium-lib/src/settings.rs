@@ -194,7 +194,7 @@ impl DasClient {
     #[instrument(skip(self, params), level = "trace")]
     pub async fn search_assets(
         &self,
-        params: &DasSearchAssetsParams,
+        params: DasSearchAssetsParams,
     ) -> Result<asset::AssetPage, jsonrpc_client::Error<reqwest::Error>> {
         let mut body = jsonrpc_client::Request::new_v2("searchAssets")
             .with_argument("creatorVerified".to_string(), params.creator_verified)?;

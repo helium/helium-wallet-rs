@@ -2,7 +2,14 @@ use crate::{
     result::{anyhow, bail, Error, Result},
     wallet::Wallet,
 };
-use helium_lib::{b64, keypair::Keypair, settings::Settings, solana_client};
+use helium_lib::{
+    b64,
+    keypair::Keypair,
+    settings::Settings,
+    solana_client::{
+        self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
+    },
+};
 use serde_json::json;
 use std::{
     env, fs, io,
@@ -85,45 +92,45 @@ impl CommitOpts {
         tx: &helium_lib::solana_sdk::transaction::Transaction,
         settings: &Settings,
     ) -> Result<CommitResponse> {
+        fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
+            let mut captured_logs: Option<Vec<String>> = None;
+            if let solana_client::client_error::ClientErrorKind::RpcError(
+                solana_client::rpc_request::RpcError::RpcResponseError {
+                    data:
+                        RpcResponseErrorData::SendTransactionPreflightFailure(
+                            RpcSimulateTransactionResult { logs, .. },
+                        ),
+                    ..
+                },
+            ) = &client_err.kind
+            {
+                captured_logs = logs.clone();
+            }
+            let mut mapped = Error::from(client_err);
+            if let Some(logs) = captured_logs.as_ref() {
+                if let Ok(serialized_logs) = serde_json::to_string(logs) {
+                    mapped = mapped.context(serialized_logs);
+                }
+            }
+            mapped
+        }
+
         let client = settings.mk_solana_client()?;
         if self.commit {
-            let signature = client.send_and_confirm_transaction(tx).await?;
-            Ok(signature.into())
+            client
+                .send_transaction(tx)
+                .await
+                .map(Into::into)
+                .map_err(context_err)
         } else {
-            client.simulate_transaction(tx).await?.value.try_into()
+            client
+                .simulate_transaction(tx)
+                .await
+                .map_err(context_err)?
+                .value
+                .try_into()
         }
     }
-
-    // pub fn maybe_commit_tpu_quiet<C: Deref<Target = impl Signer> + Clone>(
-    //     &self,
-    //     program: Program<C>,
-    //     tx: &[solana_sdk::transaction::Transaction],
-    //     settings: &Settings,
-    //     quiet: bool,
-    // ) -> Result {
-    //     let client = settings.mk_solana_tpu_client(program)?;
-    //     let ok_result = json!({ "result": "ok"});
-    //     if self.commit {
-    //         client.try_send_transaction_batch(tx)?;
-    //         if !quiet {
-    //             print_json(&ok_result)?;
-    //         }
-    //     } else {
-    //         if !quiet {
-    //             print_json(&ok_result)?;
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-    // pub fn maybe_commit_tpu<C: Deref<Target = impl Signer> + Clone>(
-    //     &self,
-    //     program: Program<C>,
-    //     tx: &[solana_sdk::transaction::Transaction],
-    //     settings: &Settings,
-    // ) -> Result {
-    //     self.maybe_commit_tpu_quiet(program, tx, settings, false)
-    // }
 }
 
 #[derive(Debug, Clone)]

@@ -1,7 +1,7 @@
 use crate::cmd::*;
 use helium_lib::{
     dao::SubDao,
-    hotspot,
+    hotspot::{self, HotspotInfoUpdate},
     settings::{ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
 };
 
@@ -65,17 +65,22 @@ impl Cmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
 
         let settings = opts.clone().try_into()?;
-        let server_key = self.onboarding.as_ref().unwrap_or(&opts.url);
-        let server = match server_key.as_str() {
-            "m" | "mainnet-beta" => ONBOARDING_URL_MAINNET,
-            "d" | "devnet" => ONBOARDING_URL_DEVNET,
-            url => url,
-        };
+        let server = self.onboarding.as_ref().map(|value| {
+            match value.as_str() {
+                "m" | "mainnet-beta" => ONBOARDING_URL_MAINNET,
+                "d" | "devnet" => ONBOARDING_URL_DEVNET,
+                url => url,
+            }
+            .to_string()
+        });
 
-        let assertion =
-            hotspot::HotspotAssertion::try_from((self.lat, self.lon, self.elevation, self.gain))?;
-        let tx = hotspot::assert(server, self.subdao, &self.gateway, assertion, keypair).await?;
+        let update = HotspotInfoUpdate::for_subdao(self.subdao)
+            .set_gain(self.gain)
+            .set_elevation(self.elevation)
+            .set_geo(self.lat, self.lon)?;
 
-        print_json(&self.commit.maybe_commit(&tx, &settings).await?.to_json())
+        let tx = hotspot::update(&settings, server, &self.gateway, update, keypair).await?;
+
+        print_json(&self.commit.maybe_commit(&tx, &settings).await.to_json())
     }
 }

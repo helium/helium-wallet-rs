@@ -2,8 +2,7 @@ use crate::{cmd::*, txn_envelope::TxnEnvelope};
 use helium_lib::{
     asset,
     dao::SubDao,
-    hotspot,
-    hotspot::HotspotMode,
+    hotspot::{self, HotspotInfoUpdate, HotspotMode},
     settings::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
@@ -102,14 +101,11 @@ impl Cmd {
         // Without this, the command will always fail for brand new hotspots when --commit is not enabled, as it cannot find
         // the key_to_asset account or asset account.
         if hotspot_issued || self.commit.commit {
-            let assertion = hotspot::HotspotAssertion::try_from((
-                self.lat,
-                self.lon,
-                self.elevation,
-                self.gain,
-            ))?;
-            let tx =
-                hotspot::dataonly::onboard(&settings, &hotspot_key, assertion, keypair).await?;
+            let update = HotspotInfoUpdate::for_subdao(self.subdao)
+                .set_gain(self.gain)
+                .set_elevation(self.elevation)
+                .set_geo(self.lat, self.lon)?;
+            let tx = hotspot::dataonly::onboard(&settings, &hotspot_key, update, keypair).await?;
             print_json(&self.commit.maybe_commit(&tx, &settings).await?.to_json())
         } else {
             Ok(())

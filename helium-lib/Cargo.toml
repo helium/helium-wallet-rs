@@ -10,13 +10,14 @@ mnemonic = ["helium-mnemonic"]
 
 [dependencies]
 hex = "0.4"
+chrono = {version = "0", features = ["serde"]}
 thiserror = "1"
 pyth-sdk-solana = "0"
 async-trait = "0"
 anchor-client = {version = "0.29.0", features = ["async"] }
 anchor-spl = { version = "0.29.0", features = ["mint", "token"] }
 url = {version = "2", features = ["serde"]}
-h3o = "0"
+h3o = {version = "0", features = ["std", "serde"]}
 helium-crypto = {workspace = true}
 jsonrpc_client = {version = "0.7", features = ["reqwest"]}
 futures = "*"
@@ -30,8 +31,10 @@ reqwest = { version = "0", default-features = false, features = [
 helium-anchor-gen = {git = "https://github.com/helium/helium-anchor-gen.git"}
 spl-associated-token-account = { version = "*", features = ["no-entrypoint"] }
 solana-program = "*"
+solana-transaction-status = "*"
 serde = {workspace = true}
 serde_json = {workspace = true}
+serde_with = "2"
 lazy_static = "1"
 rust_decimal = {workspace = true}
 helium-proto = {workspace= true}

@@ -175,21 +175,32 @@ pub async fn current<E: AsEntityKey>(
 ) -> Result<Vec<OracleReward>> {
     let ld_account = lazy_distributor(settings, subdao).await?;
     let asset = asset::for_entity_key(settings, entity_key).await?;
-    ld_account
-        .oracles
-        .into_iter()
-        .enumerate()
-        .map(|(index, oracle)| {
-            current_from_oracle(subdao, &oracle.url, &asset.id).map(|reward| OracleReward {
+    stream::iter(
+        ld_account
+            .oracles
+            .into_iter()
+            .enumerate()
+            .collect::<Vec<(usize, OracleConfigV0)>>(),
+    )
+    .map(|(index, oracle): (usize, OracleConfigV0)| async move {
+        current_from_oracle(subdao, &oracle.url, &asset.id)
+            .map_ok(|reward| OracleReward {
                 reward,
                 oracle: oracle.oracle,
                 index: index as u16,
             })
-        })
-        .collect()
+            .await
+    })
+    .buffered(2)
+    .try_collect()
+    .await
 }
 
-fn current_from_oracle(subdao: &SubDao, oracle: &str, asset_id: &Pubkey) -> Result<TokenAmount> {
+async fn current_from_oracle(
+    subdao: &SubDao,
+    oracle: &str,
+    asset_id: &Pubkey,
+) -> Result<TokenAmount> {
     #[derive(Debug, Deserialize)]
     struct OracleRewardsResponse {
         #[serde(rename = "currentRewards")]
@@ -198,8 +209,10 @@ fn current_from_oracle(subdao: &SubDao, oracle: &str, asset_id: &Pubkey) -> Resu
     let client = Settings::mk_rest_client()?;
     let response = client
         .get(format!("{oracle}?assetId={asset_id}"))
-        .send()?
-        .json::<OracleRewardsResponse>()?;
+        .send()
+        .await?
+        .json::<OracleRewardsResponse>()
+        .await?;
     value_to_token_amount(subdao, response.current_rewards)
 }
 
@@ -305,8 +318,10 @@ async fn bulk_from_oracle(
         .json(&OracleBulkRewardRequest {
             entity_keys: entity_keys.into(),
         })
-        .send()?
-        .json::<OracleBulkRewardResponse>()?;
+        .send()
+        .await?
+        .json::<OracleBulkRewardResponse>()
+        .await?;
     oracle_rewards_response
         .current_rewards
         .into_iter()

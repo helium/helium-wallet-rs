@@ -6,7 +6,7 @@ use anchor_client::{
     solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient, Client as AnchorClient,
 };
 use jsonrpc_client::SendRequest;
-use reqwest::blocking::Client as RestClient;
+use reqwest::Client as RestClient;
 use serde::Deserialize;
 use solana_sdk::signer::Signer;
 use std::{ops::Deref, str::FromStr};

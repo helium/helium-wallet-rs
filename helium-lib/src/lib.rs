@@ -5,6 +5,7 @@ pub mod dc;
 pub mod entity_key;
 pub mod hotspot;
 pub mod keypair;
+pub mod onboarding;
 pub mod programs;
 pub mod result;
 pub mod reward;

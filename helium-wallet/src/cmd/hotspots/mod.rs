@@ -4,6 +4,7 @@ mod add;
 mod assert;
 mod info;
 mod list;
+mod updates;
 // mod rewards;
 
 #[derive(Debug, clap::Args)]
@@ -25,6 +26,7 @@ pub enum HotspotCommand {
     Add(add::Cmd),
     List(list::Cmd),
     Info(info::Cmd),
+    Updates(updates::Cmd),
     // Rewards(rewards::Cmd),
     // Transfer(Box<transfer::Cmd>),
 }
@@ -36,6 +38,7 @@ impl HotspotCommand {
             Self::Add(cmd) => cmd.run(opts).await,
             Self::List(cmd) => cmd.run(opts).await,
             Self::Info(cmd) => cmd.run(opts).await,
+            Self::Updates(cmd) => cmd.run(opts).await,
             // Self::Rewards(cmd) => cmd.run(opts).await,
             // Self::Transfer(cmd) => cmd.run(opts).await,
         }

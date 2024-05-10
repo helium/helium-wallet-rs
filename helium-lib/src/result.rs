@@ -1,7 +1,7 @@
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
-use crate::{hotspot, settings};
+use crate::{onboarding, settings};
 
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
@@ -11,7 +11,7 @@ pub enum Error {
     #[error("mnemonic: {0}")]
     Mnemonic(#[from] helium_mnemonic::MnmemonicError),
     #[error("onboarding: {0}")]
-    Onboarding(#[from] hotspot::OnboardingError),
+    Onboarding(#[from] onboarding::OnboardingError),
     #[error("anchor client: {0}")]
     Anchor(#[from] anchor_client::ClientError),
     #[error("anchor lang: {0}")]
@@ -58,6 +58,8 @@ impl EncodeError {
 
 #[derive(Debug, Error)]
 pub enum DecodeError {
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
     #[error("integer: {0}")]
     Int(#[from] TryFromIntError),
     #[error("url: {0}")]
@@ -70,6 +72,8 @@ pub enum DecodeError {
     Proto(#[from] helium_proto::DecodeError), // decode
     #[error("base58: {0}")]
     Bs58(#[from] solana_sdk::bs58::decode::Error), // decode
+    #[error("signature: {0}")]
+    Signature(#[from] solana_sdk::signature::ParseSignatureError),
     #[error("bincode: {0}")]
     Bincode(#[from] bincode::Error),
     #[error("pubkey: {0}")]

@@ -228,4 +228,16 @@ impl SubDao {
         );
         key
     }
+
+    pub fn config_key(&self) -> Pubkey {
+        let prefix = match self {
+            Self::Iot => "iot_config",
+            Self::Mobile => "mobile_config",
+        };
+        let (key, _) = Pubkey::find_program_address(
+            &[prefix.as_bytes(), self.key().as_ref()],
+            &helium_entity_manager::id(),
+        );
+        key
+    }
 }

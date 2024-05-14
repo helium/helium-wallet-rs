@@ -655,6 +655,57 @@ impl Hotspot {
     }
 }
 
+#[derive(Serialize, Debug, Clone, Copy)]
+pub struct HotspotGeo {
+    lat: f64,
+    lng: f64,
+}
+
+impl From<h3o::CellIndex> for HotspotGeo {
+    fn from(value: h3o::CellIndex) -> Self {
+        let lat_lng = h3o::LatLng::from(value);
+        Self {
+            lat: lat_lng.lat(),
+            lng: lat_lng.lng(),
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, Copy)]
+pub struct HotspotLocation {
+    #[serde(with = "CellIndexHex")]
+    location: h3o::CellIndex,
+    geo: HotspotGeo,
+}
+
+impl From<h3o::CellIndex> for HotspotLocation {
+    fn from(value: h3o::CellIndex) -> Self {
+        Self {
+            location: value,
+            geo: HotspotGeo::from(value),
+        }
+    }
+}
+
+impl From<HotspotLocation> for u64 {
+    fn from(value: HotspotLocation) -> Self {
+        value.location.into()
+    }
+}
+
+impl TryFrom<u64> for HotspotLocation {
+    type Error = h3o::error::InvalidCellIndex;
+    fn try_from(value: u64) -> StdResult<Self, Self::Error> {
+        h3o::CellIndex::try_from(value).map(Into::into)
+    }
+}
+
+impl HotspotLocation {
+    pub fn from_maybe<T: TryInto<HotspotLocation>>(value: Option<T>) -> Option<Self> {
+        value.and_then(|v| TryInto::try_into(v).ok())
+    }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase", untagged)]
 #[skip_serializing_none]
@@ -664,16 +715,16 @@ pub enum HotspotInfo {
         mode: HotspotMode,
         gain: Option<Decimal>,
         elevation: Option<i32>,
-        #[serde(with = "MaybeCellIndexHex")]
-        location: Option<h3o::CellIndex>,
+        #[serde(flatten)]
+        location: Option<HotspotLocation>,
         #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,
     },
     Mobile {
         asset: Option<String>,
         mode: HotspotMode,
-        #[serde(with = "MaybeCellIndexHex")]
-        location: Option<h3o::CellIndex>,
+        #[serde(flatten)]
+        location: Option<HotspotLocation>,
         #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,
         device_type: MobileDeviceType,
@@ -695,20 +746,20 @@ pub enum HotspotInfoUpdate {
     Iot {
         gain: Option<Decimal>,
         elevation: Option<i32>,
-        #[serde(with = "MaybeCellIndexHex")]
-        location: Option<h3o::CellIndex>,
+        #[serde(flatten)]
+        location: Option<HotspotLocation>,
     },
     Mobile {
-        #[serde(with = "MaybeCellIndexHex")]
-        location: Option<h3o::CellIndex>,
+        #[serde(flatten)]
+        location: Option<HotspotLocation>,
     },
 }
 
 serde_with::serde_conv!(
-    MaybeCellIndexHex,
-    Option<h3o::CellIndex>,
-    |index: &Option<h3o::CellIndex>| { index.map(|v| v.to_string()) },
-    |value: &str| -> StdResult<_, h3o::error::InvalidCellIndex> { value.parse().map(Some) }
+    CellIndexHex,
+    h3o::CellIndex,
+    |index: &h3o::CellIndex| { index.to_string() },
+    |value: &str| -> StdResult<_, h3o::error::InvalidCellIndex> { value.parse() }
 );
 
 impl HotspotInfoUpdate {
@@ -730,7 +781,7 @@ impl HotspotInfoUpdate {
         }
     }
 
-    pub fn location(&self) -> &Option<h3o::CellIndex> {
+    pub fn location(&self) -> &Option<HotspotLocation> {
         match self {
             Self::Iot { location, .. } => location,
             Self::Mobile { location, .. } => location,
@@ -738,13 +789,14 @@ impl HotspotInfoUpdate {
     }
 
     pub fn set_location(mut self, new_location: Option<h3o::CellIndex>) -> Self {
+        let hotspot_location = new_location.map(HotspotLocation::from);
         match self {
             Self::Iot {
                 ref mut location, ..
-            } => *location = new_location,
+            } => *location = hotspot_location,
             Self::Mobile {
                 ref mut location, ..
-            } => *location = new_location,
+            } => *location = hotspot_location,
         }
         self
     }
@@ -844,9 +896,7 @@ impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
             mode: value.is_full_hotspot.into(),
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
-            location: value
-                .location
-                .and_then(|index| h3o::CellIndex::try_from(index).ok()),
+            location: HotspotLocation::from_maybe(value.location),
             location_asserts: value.num_location_asserts,
         }
     }
@@ -857,9 +907,7 @@ impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
         Self::Mobile {
             asset: Some(value.asset.to_string()),
             mode: value.is_full_hotspot.into(),
-            location: value
-                .location
-                .and_then(|index| h3o::CellIndex::try_from(index).ok()),
+            location: HotspotLocation::from_maybe(value.location),
             location_asserts: value.num_location_asserts,
             device_type: value.device_type.into(),
         }
@@ -871,9 +919,7 @@ impl From<helium_entity_manager::UpdateIotInfoArgsV0> for HotspotInfoUpdate {
         Self::Iot {
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
-            location: value
-                .location
-                .and_then(|index| h3o::CellIndex::try_from(index).ok()),
+            location: HotspotLocation::from_maybe(value.location),
         }
     }
 }
@@ -883,9 +929,7 @@ impl From<helium_entity_manager::OnboardIotHotspotArgsV0> for HotspotInfoUpdate 
         Self::Iot {
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
-            location: value
-                .location
-                .and_then(|index| h3o::CellIndex::try_from(index).ok()),
+            location: HotspotLocation::from_maybe(value.location),
         }
     }
 }
@@ -895,9 +939,7 @@ impl From<helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0> for HotspotInf
         Self::Iot {
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
-            location: value
-                .location
-                .and_then(|index| h3o::CellIndex::try_from(index).ok()),
+            location: HotspotLocation::from_maybe(value.location),
         }
     }
 }
@@ -905,9 +947,7 @@ impl From<helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0> for HotspotInf
 impl From<helium_entity_manager::UpdateMobileInfoArgsV0> for HotspotInfoUpdate {
     fn from(value: helium_entity_manager::UpdateMobileInfoArgsV0) -> Self {
         Self::Mobile {
-            location: value
-                .location
-                .and_then(|index| h3o::CellIndex::try_from(index).ok()),
+            location: HotspotLocation::from_maybe(value.location),
         }
     }
 }
@@ -915,9 +955,7 @@ impl From<helium_entity_manager::UpdateMobileInfoArgsV0> for HotspotInfoUpdate {
 impl From<helium_entity_manager::OnboardMobileHotspotArgsV0> for HotspotInfoUpdate {
     fn from(value: helium_entity_manager::OnboardMobileHotspotArgsV0) -> Self {
         Self::Mobile {
-            location: value
-                .location
-                .and_then(|index| h3o::CellIndex::try_from(index).ok()),
+            location: HotspotLocation::from_maybe(value.location),
         }
     }
 }

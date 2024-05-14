@@ -74,7 +74,7 @@ impl Client {
         let params = UpdateParams {
             entity_key: hotspot.clone(),
             wallet: *signer,
-            location: update.location().map(u64::from),
+            location: update.location().map(Into::into),
             gain: update.gain().and_then(|gain| gain.to_f64()),
             elevation: update.elevation().to_owned(),
         };

@@ -403,25 +403,22 @@ pub mod dataonly {
         keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
         use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
-        async fn mk_dataonly_onboard<C: Clone + Deref<Target = impl Signer>>(
-            program: &anchor_client::Program<C>,
+        fn mk_onboard_accounts(
+            config_account: helium_entity_manager::DataOnlyConfigV0,
+            owner: Pubkey,
             hotspot_key: &helium_crypto::PublicKey,
-        ) -> Result<OnboardDataOnlyIotHotspotV0> {
+        ) -> OnboardDataOnlyIotHotspotV0 {
             let dao = Dao::Hnt;
-
             let entity_key = hotspot_key.as_entity_key();
             let data_only_config_key = dao.dataonly_config_key();
-            let data_only_config_acc = program
-                .account::<helium_entity_manager::DataOnlyConfigV0>(data_only_config_key)
-                .await?;
 
-            Ok(OnboardDataOnlyIotHotspotV0 {
-                payer: program.payer(),
-                dc_fee_payer: program.payer(),
+            OnboardDataOnlyIotHotspotV0 {
+                payer: owner,
+                dc_fee_payer: owner,
                 iot_info: SubDao::Iot.info_key(&entity_key),
-                hotspot_owner: program.payer(),
-                merkle_tree: data_only_config_acc.merkle_tree,
-                dc_burner: Token::Dc.associated_token_adress(&program.payer()),
+                hotspot_owner: owner,
+                merkle_tree: config_account.merkle_tree,
+                dc_burner: Token::Dc.associated_token_adress(&owner),
                 rewardable_entity_config: SubDao::Iot.rewardable_entity_config_key(),
                 data_only_config: data_only_config_key,
                 dao: dao.key(),
@@ -435,17 +432,33 @@ pub mod dataonly {
                 token_program: anchor_spl::token::ID,
                 associated_token_program: spl_associated_token_account::id(),
                 system_program: solana_sdk::system_program::id(),
-            })
+            }
         }
 
-        let client = settings.mk_anchor_client(keypair.clone())?;
-        let program = client.program(helium_entity_manager::id())?;
+        let anchor_client = settings.mk_anchor_client(keypair.clone())?;
+        let solana_client = settings.mk_solana_client()?;
+        let program = anchor_client.program(helium_entity_manager::id())?;
+        let config_account = program
+            .account::<helium_entity_manager::DataOnlyConfigV0>(Dao::Hnt.dataonly_config_key())
+            .await?;
 
-        let asset_account = asset::account_for_entity_key(&client, hotspot_key).await?;
+        let asset_account = asset::account_for_entity_key(&anchor_client, hotspot_key).await?;
         let asset = asset::get(settings, &asset_account).await?;
         let asset_proof = asset::proof::get(settings, &asset_account).await?;
 
-        let onboard_accounts = mk_dataonly_onboard(&program, hotspot_key).await?;
+        let onboard_accounts = mk_onboard_accounts(config_account, program.payer(), hotspot_key);
+        let compute_ix =
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(300_000);
+        let priority_fee = priority_fee::get_estimate(
+            &solana_client,
+            &onboard_accounts,
+            priority_fee::MIN_PRIORITY_FEE,
+        )
+        .await?;
+        let compute_price_ix =
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                priority_fee,
+            );
         let mut ixs = program
             .request()
             .args(
@@ -462,8 +475,10 @@ pub mod dataonly {
                 },
             )
             .accounts(onboard_accounts)
+            .instruction(compute_ix)
+            .instruction(compute_price_ix)
             .instructions()?;
-        ixs[0]
+        ixs[2]
             .accounts
             .extend_from_slice(&asset_proof.proof()?[0..3]);
 
@@ -483,30 +498,27 @@ pub mod dataonly {
         keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
         use helium_entity_manager::accounts::IssueDataOnlyEntityV0;
-        async fn mk_dataonly_issue<C: Clone + Deref<Target = impl Signer>>(
-            program: &anchor_client::Program<C>,
+        fn mk_issue_accounts(
+            config_account: helium_entity_manager::DataOnlyConfigV0,
+            owner: Pubkey,
             entity_key: &[u8],
-        ) -> Result<IssueDataOnlyEntityV0> {
+        ) -> IssueDataOnlyEntityV0 {
             let dao = Dao::Hnt;
             let dataonly_config_key = dao.dataonly_config_key();
-            let dataonly_config_acc = program
-                .account::<helium_entity_manager::DataOnlyConfigV0>(dataonly_config_key)
-                .await?;
-
-            Ok(IssueDataOnlyEntityV0 {
-                payer: program.payer(),
+            IssueDataOnlyEntityV0 {
+                payer: owner,
                 ecc_verifier: ECC_VERIFIER,
-                collection: dataonly_config_acc.collection,
-                collection_metadata: dao.collection_metadata_key(&dataonly_config_acc.collection),
+                collection: config_account.collection,
+                collection_metadata: dao.collection_metadata_key(&config_account.collection),
                 collection_master_edition: dao
-                    .collection_master_edition_key(&dataonly_config_acc.collection),
+                    .collection_master_edition_key(&config_account.collection),
                 data_only_config: dataonly_config_key,
                 entity_creator: dao.entity_creator_key(),
                 dao: dao.key(),
                 key_to_asset: dao.key_to_asset_key(&entity_key),
-                tree_authority: dao.merkle_tree_authority(&dataonly_config_acc.merkle_tree),
-                recipient: program.payer(),
-                merkle_tree: dataonly_config_acc.merkle_tree,
+                tree_authority: dao.merkle_tree_authority(&config_account.merkle_tree),
+                recipient: owner,
+                merkle_tree: config_account.merkle_tree,
                 data_only_escrow: dao.dataonly_escrow_key(),
                 bubblegum_signer: dao.bubblegum_signer(),
                 token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
@@ -514,21 +526,24 @@ pub mod dataonly {
                 bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
                 compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
                 system_program: solana_sdk::system_program::id(),
-            })
+            }
         }
 
         let anchor_client = settings.mk_anchor_client(keypair.clone())?;
         let solana_client = settings.mk_solana_client()?;
         let program = anchor_client.program(helium_entity_manager::id())?;
+        let config_account = program
+            .account::<helium_entity_manager::DataOnlyConfigV0>(Dao::Hnt.dataonly_config_key())
+            .await?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
         let entity_key = hotspot_key.as_entity_key();
 
-        let issue_entity_accounts = mk_dataonly_issue(&program, &entity_key).await?;
+        let issue_accounts = mk_issue_accounts(config_account, program.payer(), &entity_key);
         let compute_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(300_000);
         let priority_fee = priority_fee::get_estimate(
             &solana_client,
-            &issue_entity_accounts,
+            &issue_accounts,
             priority_fee::MIN_PRIORITY_FEE,
         )
         .await?;
@@ -542,7 +557,7 @@ pub mod dataonly {
             .args(helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
                 _args: helium_entity_manager::IssueDataOnlyEntityArgsV0 { entity_key },
             })
-            .accounts(issue_entity_accounts)
+            .accounts(issue_accounts)
             .instruction(compute_ix)
             .instruction(compute_price_ix)
             .instructions()?;

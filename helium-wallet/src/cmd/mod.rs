@@ -104,7 +104,7 @@ impl CommitOpts {
                 },
             ) = &client_err.kind
             {
-                captured_logs = logs.clone();
+                logs.clone_into(&mut captured_logs);
             }
             let mut mapped = Error::from(client_err);
             if let Some(logs) = captured_logs.as_ref() {

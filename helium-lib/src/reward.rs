@@ -121,11 +121,7 @@ where
         data_hash: asset.compression.data_hash,
         creator_hash: asset.compression.creator_hash,
         root: asset_proof.root.to_bytes(),
-        index: asset
-            .compression
-            .leaf_id
-            .try_into()
-            .map_err(DecodeError::from)?,
+        index: asset.compression.leaf_id()?,
     };
     let accounts = lazy_distributor::accounts::DistributeCompressionRewardsV0 {
         DistributeCompressionRewardsV0common:
@@ -375,11 +371,7 @@ pub mod recipient {
             data_hash: asset.compression.data_hash,
             creator_hash: asset.compression.creator_hash,
             root: asset_proof.root.to_bytes(),
-            index: asset
-                .compression
-                .leaf_id
-                .try_into()
-                .map_err(DecodeError::from)?,
+            index: asset.compression.leaf_id()?,
         };
 
         let accounts = lazy_distributor::accounts::InitializeCompressionRecipientV0 {

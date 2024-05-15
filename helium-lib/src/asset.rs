@@ -8,7 +8,7 @@ use crate::{
 use helium_anchor_gen::helium_entity_manager;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{bs58, signer::Signer};
-use std::{ops::Deref, str::FromStr};
+use std::{ops::Deref, result::Result as StdResult, str::FromStr};
 
 pub async fn account_for_entity_key<C: Clone + Deref<Target = impl Signer>, E>(
     client: &anchor_client::Client<C>,
@@ -119,6 +119,12 @@ pub struct AssetCompression {
     pub leaf_id: u64,
     #[serde(with = "serde_pubkey")]
     pub tree: Pubkey,
+}
+
+impl AssetCompression {
+    pub fn leaf_id(&self) -> StdResult<u32, DecodeError> {
+        self.leaf_id.try_into().map_err(DecodeError::from)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

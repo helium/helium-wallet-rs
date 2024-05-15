@@ -288,50 +288,35 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         asset: &asset::Asset,
         owner: &Pubkey,
     ) -> Vec<AccountMeta> {
-        let rewardable_entity_config = subdao.rewardable_entity_config_key();
+        use helium_entity_manager::accounts::{UpdateIotInfoV0, UpdateMobileInfoV0};
+        macro_rules! mk_update_info {
+            ($name:ident, $info:ident) => {
+                $name {
+                    bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
+                    payer: owner.to_owned(),
+                    dc_fee_payer: owner.to_owned(),
+                    $info: subdao.info_key(&asset_account.entity_key),
+                    hotspot_owner: owner.to_owned(),
+                    merkle_tree: asset.compression.tree,
+                    tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
+                    dc_burner: Token::Dc.associated_token_adress(owner),
+                    rewardable_entity_config: subdao.rewardable_entity_config_key(),
+                    dao: Dao::Hnt.key(),
+                    sub_dao: subdao.key(),
+                    dc_mint: *Token::Dc.mint(),
+                    dc: SubDao::dc_key(),
+                    compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+                    data_credits_program: data_credits::id(),
+                    token_program: anchor_spl::token::ID,
+                    associated_token_program: spl_associated_token_account::id(),
+                    system_program: solana_sdk::system_program::id(),
+                }
+                .to_account_metas(None)
+            };
+        }
         match subdao {
-            SubDao::Iot => helium_entity_manager::accounts::UpdateIotInfoV0 {
-                bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
-                payer: owner.to_owned(),
-                dc_fee_payer: owner.to_owned(),
-                iot_info: subdao.info_key(&asset_account.entity_key),
-                hotspot_owner: owner.to_owned(),
-                merkle_tree: asset.compression.tree,
-                tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
-                dc_burner: Token::Dc.associated_token_adress(owner),
-                rewardable_entity_config,
-                dao: Dao::Hnt.key(),
-                sub_dao: subdao.key(),
-                dc_mint: *Token::Dc.mint(),
-                dc: SubDao::dc_key(),
-                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-                data_credits_program: data_credits::id(),
-                token_program: anchor_spl::token::ID,
-                associated_token_program: spl_associated_token_account::id(),
-                system_program: solana_sdk::system_program::id(),
-            }
-            .to_account_metas(None),
-            SubDao::Mobile => helium_entity_manager::accounts::UpdateMobileInfoV0 {
-                bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
-                payer: owner.to_owned(),
-                dc_fee_payer: owner.to_owned(),
-                mobile_info: subdao.info_key(&asset_account.entity_key),
-                hotspot_owner: owner.to_owned(),
-                merkle_tree: asset.compression.tree,
-                tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
-                dc_burner: Token::Dc.associated_token_adress(owner),
-                rewardable_entity_config,
-                dao: Dao::Hnt.key(),
-                sub_dao: subdao.key(),
-                dc_mint: *Token::Dc.mint(),
-                dc: SubDao::dc_key(),
-                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-                data_credits_program: data_credits::id(),
-                token_program: anchor_spl::token::ID,
-                associated_token_program: spl_associated_token_account::id(),
-                system_program: solana_sdk::system_program::id(),
-            }
-            .to_account_metas(None),
+            SubDao::Iot => mk_update_info!(UpdateIotInfoV0, iot_info),
+            SubDao::Mobile => mk_update_info!(UpdateMobileInfoV0, mobile_info),
         }
     }
 
@@ -365,11 +350,7 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
                 root: asset_proof.root.to_bytes(),
                 data_hash: asset.compression.data_hash,
                 creator_hash: asset.compression.creator_hash,
-                index: asset
-                    .compression
-                    .leaf_id
-                    .try_into()
-                    .map_err(DecodeError::from)?,
+                index: asset.compression.leaf_id()?,
                 elevation: *update.elevation(),
                 gain: update.gain_i32(),
                 location: update.location_u64(),
@@ -472,11 +453,7 @@ pub mod dataonly {
                     _args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
                         data_hash: asset.compression.data_hash,
                         creator_hash: asset.compression.creator_hash,
-                        index: asset
-                            .compression
-                            .leaf_id
-                            .try_into()
-                            .map_err(DecodeError::from)?,
+                        index: asset.compression.leaf_id()?,
                         root: asset_proof.root.to_bytes(),
                         elevation: *assertion.elevation(),
                         gain: assertion.gain_i32(),

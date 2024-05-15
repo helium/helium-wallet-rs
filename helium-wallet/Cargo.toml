@@ -1,0 +1,36 @@
+[package]
+name = "helium-wallet"
+description = "A Helium Wallet CLI"
+version = "2.0.0-rc.4"
+readme = "README.md"
+keywords = ["helium", "blockchain", "wallet"]
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "helium-wallet"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+anyhow = "1"
+sha2 = {workspace = true}
+byteorder = "1.3.2"
+rand = "0.8"
+dialoguer = "0.8"
+pbkdf2 = "0.12"
+sodiumoxide = "~0.2"
+aes-gcm = "0"
+shamirsecretsharing = { version = "0.1.5", features = ["have_libsodium"] }
+serde = {workspace = true}
+serde_json = {workspace = true}
+clap = { workspace = true }
+qr2term = "0.2"
+rust_decimal = {workspace = true}
+rust_decimal_macros = "1"
+tokio = {version = "1.0", features = ["full"]}
+helium-lib = { path = "../helium-lib", features = ["clap", "mnemonic"] }
+helium-mnemonic = { path = "../helium-mnemonic" }
+helium-proto = {workspace = true}
+helium-crypto = {workspace = true, features = ["multisig", "solana"] }

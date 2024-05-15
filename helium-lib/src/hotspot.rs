@@ -17,10 +17,13 @@ use futures::{
     stream::{self, StreamExt, TryStreamExt},
     TryFutureExt,
 };
-use helium_anchor_gen::{data_credits, helium_entity_manager, helium_sub_daos};
+use helium_anchor_gen::{
+    anchor_lang::ToAccountMetas, data_credits, helium_entity_manager, helium_sub_daos,
+};
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use solana_program::instruction::AccountMeta;
 use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
 
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
@@ -279,33 +282,57 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     keypair: C,
     update: HotspotInfoUpdate,
 ) -> Result<solana_sdk::transaction::Transaction> {
-    async fn mk_update_accounts(
+    fn mk_update_accounts(
         subdao: SubDao,
         asset_account: &helium_entity_manager::KeyToAssetV0,
         asset: &asset::Asset,
         owner: &Pubkey,
-    ) -> Result<helium_entity_manager::accounts::UpdateIotInfoV0> {
+    ) -> Vec<AccountMeta> {
         let rewardable_entity_config = subdao.rewardable_entity_config_key();
-        Ok(helium_entity_manager::accounts::UpdateIotInfoV0 {
-            bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
-            payer: owner.to_owned(),
-            dc_fee_payer: owner.to_owned(),
-            iot_info: subdao.info_key(&asset_account.entity_key),
-            hotspot_owner: owner.to_owned(),
-            merkle_tree: asset.compression.tree,
-            tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
-            dc_burner: Token::Dc.associated_token_adress(owner),
-            rewardable_entity_config,
-            dao: Dao::Hnt.key(),
-            sub_dao: subdao.key(),
-            dc_mint: *Token::Dc.mint(),
-            dc: SubDao::dc_key(),
-            compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-            data_credits_program: data_credits::id(),
-            token_program: anchor_spl::token::ID,
-            associated_token_program: spl_associated_token_account::id(),
-            system_program: solana_sdk::system_program::id(),
-        })
+        match subdao {
+            SubDao::Iot => helium_entity_manager::accounts::UpdateIotInfoV0 {
+                bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
+                payer: owner.to_owned(),
+                dc_fee_payer: owner.to_owned(),
+                iot_info: subdao.info_key(&asset_account.entity_key),
+                hotspot_owner: owner.to_owned(),
+                merkle_tree: asset.compression.tree,
+                tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
+                dc_burner: Token::Dc.associated_token_adress(owner),
+                rewardable_entity_config,
+                dao: Dao::Hnt.key(),
+                sub_dao: subdao.key(),
+                dc_mint: *Token::Dc.mint(),
+                dc: SubDao::dc_key(),
+                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+                data_credits_program: data_credits::id(),
+                token_program: anchor_spl::token::ID,
+                associated_token_program: spl_associated_token_account::id(),
+                system_program: solana_sdk::system_program::id(),
+            }
+            .to_account_metas(None),
+            SubDao::Mobile => helium_entity_manager::accounts::UpdateMobileInfoV0 {
+                bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
+                payer: owner.to_owned(),
+                dc_fee_payer: owner.to_owned(),
+                mobile_info: subdao.info_key(&asset_account.entity_key),
+                hotspot_owner: owner.to_owned(),
+                merkle_tree: asset.compression.tree,
+                tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
+                dc_burner: Token::Dc.associated_token_adress(owner),
+                rewardable_entity_config,
+                dao: Dao::Hnt.key(),
+                sub_dao: subdao.key(),
+                dc_mint: *Token::Dc.mint(),
+                dc: SubDao::dc_key(),
+                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+                data_credits_program: data_credits::id(),
+                token_program: anchor_spl::token::ID,
+                associated_token_program: spl_associated_token_account::id(),
+                system_program: solana_sdk::system_program::id(),
+            }
+            .to_account_metas(None),
+        }
     }
 
     let anchor_client = settings.mk_anchor_client(keypair.clone())?;
@@ -317,7 +344,7 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     let asset_proof = asset::proof::get(settings, &asset_account).await?;
 
     let update_accounts =
-        mk_update_accounts(update.subdao(), &asset_account, &asset, &program.payer()).await?;
+        mk_update_accounts(update.subdao(), &asset_account, &asset, &program.payer());
     let priority_fee = priority_fee::get_estimate(
         &solana_client,
         &update_accounts,

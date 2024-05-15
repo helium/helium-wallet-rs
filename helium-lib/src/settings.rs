@@ -1,10 +1,9 @@
 use crate::{
     asset, is_zero, keypair,
     result::{DecodeError, Error, Result as CrateResult},
+    solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient,
 };
-use anchor_client::{
-    solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient, Client as AnchorClient,
-};
+use anchor_client::Client as AnchorClient;
 use jsonrpc_client::SendRequest;
 use reqwest::Client as RestClient;
 use serde::Deserialize;

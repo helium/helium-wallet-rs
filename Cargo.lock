@@ -2418,6 +2418,7 @@ dependencies = [
  "helium-mnemonic",
  "helium-proto",
  "hex",
+ "itertools",
  "jsonrpc_client",
  "lazy_static",
  "pyth-sdk-solana",

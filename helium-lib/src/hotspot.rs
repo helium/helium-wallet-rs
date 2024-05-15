@@ -4,7 +4,7 @@ use crate::{
     entity_key::AsEntityKey,
     is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey, PublicKey},
-    onboarding,
+    onboarding, priority_fee,
     programs::{MPL_BUBBLEGUM_PROGRAM_ID, SPL_ACCOUNT_COMPRESSION_PROGRAM_ID},
     result::{DecodeError, EncodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
@@ -308,19 +308,27 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         })
     }
 
-    let client = settings.mk_anchor_client(keypair.clone())?;
-    let program = client.program(helium_entity_manager::id())?;
+    let anchor_client = settings.mk_anchor_client(keypair.clone())?;
+    let program = anchor_client.program(helium_entity_manager::id())?;
+    let solana_client = settings.mk_solana_client()?;
 
-    let asset_account = asset::account_for_entity_key(&client, hotspot).await?;
+    let asset_account = asset::account_for_entity_key(&anchor_client, hotspot).await?;
     let asset = asset::get(settings, &asset_account).await?;
     let asset_proof = asset::proof::get(settings, &asset_account).await?;
+
     let update_accounts =
         mk_update_accounts(update.subdao(), &asset_account, &asset, &program.payer()).await?;
+    let priority_fee = priority_fee::get_estimate(
+        &solana_client,
+        &update_accounts,
+        priority_fee::MIN_PRIORITY_FEE,
+    )
+    .await?;
 
     let compute_ix =
         solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(80_000);
     let compute_price_ix =
-        solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(1000);
+        solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee);
     let mut ixs = program
         .request()
         .instruction(compute_ix)
@@ -505,14 +513,25 @@ pub mod dataonly {
             })
         }
 
-        let client = settings.mk_anchor_client(keypair.clone())?;
-        let program = client.program(helium_entity_manager::id())?;
+        let anchor_client = settings.mk_anchor_client(keypair.clone())?;
+        let solana_client = settings.mk_solana_client()?;
+        let program = anchor_client.program(helium_entity_manager::id())?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
         let entity_key = hotspot_key.as_entity_key();
 
         let issue_entity_accounts = mk_dataonly_issue(&program, &entity_key).await?;
         let compute_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500000);
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+        let priority_fee = priority_fee::get_estimate(
+            &solana_client,
+            &issue_entity_accounts,
+            priority_fee::MIN_PRIORITY_FEE,
+        )
+        .await?;
+        let compute_price_ix =
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                priority_fee,
+            );
 
         let ix = program
             .request()
@@ -521,6 +540,7 @@ pub mod dataonly {
             })
             .accounts(issue_entity_accounts)
             .instruction(compute_ix)
+            .instruction(compute_price_ix)
             .instructions()?;
 
         let mut tx =

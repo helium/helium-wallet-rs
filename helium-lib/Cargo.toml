@@ -19,6 +19,7 @@ anchor-spl = { version = "0.29.0", features = ["mint", "token"] }
 url = {version = "2", features = ["serde"]}
 h3o = {version = "0", features = ["std", "serde"]}
 helium-crypto = {workspace = true}
+itertools = "0"
 jsonrpc_client = {version = "0.7", features = ["reqwest"]}
 futures = "*"
 tracing = "0"

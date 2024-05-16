@@ -27,7 +27,7 @@ use solana_program::instruction::AccountMeta;
 use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
 
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
-pub const ECC_VERIFIER: Pubkey = pubkey!("eccCd1PHAPSTNLUtDzihhPmFPTqGPQn7kgLyjf6dYTS");
+pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
 pub async fn for_owner(settings: &Settings, owner: &Pubkey) -> Result<Vec<Hotspot>> {
     let assets = asset::for_owner(settings, &HOTSPOT_CREATOR, owner).await?;

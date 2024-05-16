@@ -338,7 +338,7 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     .await?;
 
     let compute_ix =
-        solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(80_000);
+        solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(200_000);
     let compute_price_ix =
         solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee);
     let mut ixs = program

@@ -3,6 +3,9 @@ use helium_lib::{dao::SubDao, hotspot, keypair::Signature};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Get metadata updates for a given hotspot
+///
+/// NOTE: Hotspots that were onboarded before the Solana transition will
+/// not include the metadata at transition time as part of the update list.
 pub struct Cmd {
     /// Subdao to fetch updates for
     subdao: SubDao,

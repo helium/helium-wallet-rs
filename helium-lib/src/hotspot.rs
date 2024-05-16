@@ -68,7 +68,9 @@ pub mod info {
     use super::*;
     use anchor_client::{
         anchor_lang::{AnchorDeserialize, Discriminator},
-        solana_client::rpc_client::GetConfirmedSignaturesForAddress2Config,
+        solana_client::{
+            rpc_client::GetConfirmedSignaturesForAddress2Config, rpc_config::RpcTransactionConfig,
+        },
     };
     use chrono::DateTime;
     use helium_anchor_gen::helium_entity_manager::{
@@ -79,10 +81,10 @@ pub mod info {
         OnboardDataOnlyIotHotspotArgsV0, OnboardIotHotspotArgsV0, OnboardMobileHotspotArgsV0,
         UpdateIotInfoArgsV0, UpdateMobileInfoArgsV0,
     };
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{commitment_config::CommitmentConfig, signature::Signature};
     use solana_transaction_status::{
         EncodedConfirmedTransactionWithStatusMeta, EncodedTransaction, UiInstruction, UiMessage,
-        UiParsedInstruction,
+        UiParsedInstruction, UiTransactionEncoding,
     };
 
     pub async fn for_subdao(
@@ -179,9 +181,13 @@ pub mod info {
             .map_ok(|signature| async move {
                 let client = settings.mk_solana_client()?;
                 client
-                    .get_transaction(
+                    .get_transaction_with_config(
                         &signature,
-                        solana_transaction_status::UiTransactionEncoding::JsonParsed,
+                        RpcTransactionConfig {
+                            encoding: Some(UiTransactionEncoding::JsonParsed),
+                            commitment: Some(CommitmentConfig::confirmed()),
+                            max_supported_transaction_version: Some(0),
+                        },
                     )
                     .map_err(Error::from)
                     .await

@@ -22,7 +22,6 @@ impl Cmd {
 pub enum RewardsCommand {
     Current(CurrentCmd),
     Pending(PendingCmd),
-    Init(InitCmd),
 }
 
 impl RewardsCommand {
@@ -77,58 +76,4 @@ impl PendingCmd {
 
         print_json(&pending)
     }
-}
-
-#[derive(Debug, Clone, clap::Args)]
-/// Inititialize reward recipient
-pub struct InitCmd {
-    /// Subdao for command
-    subdao: SubDao,
-
-    /// Entity key to init the rewards recipient for
-    entity_key: String,
-
-    #[command(flatten)]
-    commit: CommitOpts,
-}
-
-impl InitCmd {
-    pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
-        let settings: Settings = opts.try_into()?;
-
-        init(
-            &settings,
-            keypair.clone(),
-            &self.commit,
-            &self.subdao,
-            &self.entity_key,
-            EntityKeyEncoding::String,
-        )
-        .await
-    }
-}
-
-pub async fn init(
-    settings: &Settings,
-    keypair: Arc<Keypair>,
-    commit: &CommitOpts,
-    subdao: &SubDao,
-    entity_key_string: &str,
-    entity_key_encoding: EntityKeyEncoding,
-) -> Result {
-    let client = settings.mk_anchor_client(Keypair::void())?;
-    let entity_key = entity_key::from_string(entity_key_string.to_string(), entity_key_encoding)?;
-    let asset_account = asset::account_for_entity_key(&client, &entity_key).await?;
-    let json = match reward::recipient::for_asset_account(&client, subdao, &asset_account).await {
-        Ok(Some(_)) => json!({"result": "ok"}),
-        Ok(None) => {
-            let txn =
-                reward::recipient::init(settings, subdao, &entity_key, keypair.clone()).await?;
-            commit.maybe_commit(&txn, settings).await?.to_json()
-        }
-        Err(err) => return Err(Error::from(err)),
-    };
-    print_json(&json)
 }

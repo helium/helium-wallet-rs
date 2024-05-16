@@ -23,6 +23,7 @@ use std::{collections::HashMap, ops::Deref};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct OracleReward {
+    #[serde(with = "crate::keypair::serde_pubkey")]
     oracle: Pubkey,
     index: u16,
     reward: TokenAmount,

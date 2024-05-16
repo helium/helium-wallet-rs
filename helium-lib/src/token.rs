@@ -6,7 +6,7 @@ use crate::{
 use futures::stream::{self, StreamExt, TryStreamExt};
 use helium_anchor_gen::circuit_breaker;
 use solana_sdk::signer::Signer;
-use std::{ops::Deref, result::Result as StdResult, str::FromStr};
+use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
@@ -147,7 +147,7 @@ impl std::fmt::Display for Token {
     }
 }
 
-impl std::str::FromStr for Token {
+impl FromStr for Token {
     type Err = TokenError;
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
         serde_json::from_str(&format!("\"{s}\""))
@@ -209,11 +209,12 @@ impl Token {
 pub struct TokenBalance {
     #[serde(with = "serde_pubkey")]
     pub address: Pubkey,
+    #[serde(serialize_with = "crate::token::serde_amount_value")]
     pub amount: TokenAmount,
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct TokenBalanceMap(std::collections::HashMap<Token, TokenBalance>);
+pub struct TokenBalanceMap(HashMap<Token, TokenBalance>);
 
 impl From<Vec<TokenBalance>> for TokenBalanceMap {
     fn from(value: Vec<TokenBalance>) -> Self {
@@ -241,16 +242,31 @@ impl From<&TokenAmount> for f64 {
     }
 }
 
+pub fn serde_amount_value<S>(value: &TokenAmount, serializer: S) -> StdResult<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if value.token.decimals() == 0 {
+        serializer.serialize_u64(value.amount)
+    } else {
+        serializer.serialize_f64(value.into())
+    }
+}
+
 impl serde::Serialize for TokenAmount {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
+        use serde::ser::SerializeStruct;
+        let mut amount = serializer.serialize_struct("TokenAmount", 2)?;
+        amount.serialize_field("token", &self.token)?;
         if self.token.decimals() == 0 {
-            serializer.serialize_u64(self.amount)
+            amount.serialize_field("amount", &self.amount)?;
         } else {
-            serializer.serialize_f64(self.into())
+            amount.serialize_field("amount", &f64::from(self))?;
         }
+        amount.end()
     }
 }
 

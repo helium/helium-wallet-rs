@@ -22,9 +22,7 @@ impl Cmd {
             "router": self.router_key,
             "delegated_dc_key": delegated_dc_key.to_string(),
             "escrow_key": escrow_key.to_string(),
-            "balance": {
-                "dc": balance.unwrap_or_default(),
-            }
+            "balance": balance.unwrap_or_default(),
         });
         print_json(&json)
     }

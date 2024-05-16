@@ -3,9 +3,9 @@ use crate::cmd::*;
 mod add;
 mod info;
 mod list;
+mod rewards;
 mod update;
 mod updates;
-// mod rewards;
 
 #[derive(Debug, clap::Args)]
 pub struct Cmd {
@@ -27,7 +27,7 @@ pub enum HotspotCommand {
     List(list::Cmd),
     Info(info::Cmd),
     Updates(updates::Cmd),
-    // Rewards(rewards::Cmd),
+    Rewards(rewards::Cmd),
     // Transfer(Box<transfer::Cmd>),
 }
 
@@ -39,7 +39,7 @@ impl HotspotCommand {
             Self::List(cmd) => cmd.run(opts).await,
             Self::Info(cmd) => cmd.run(opts).await,
             Self::Updates(cmd) => cmd.run(opts).await,
-            // Self::Rewards(cmd) => cmd.run(opts).await,
+            Self::Rewards(cmd) => cmd.run(opts).await,
             // Self::Transfer(cmd) => cmd.run(opts).await,
         }
     }

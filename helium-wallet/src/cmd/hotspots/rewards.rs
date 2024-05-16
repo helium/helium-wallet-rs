@@ -15,7 +15,6 @@ impl Cmd {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum RewardsCommand {
-    Init(InitCmd),
     Pending(PendingCmd),
     Claim(ClaimCmd),
 }
@@ -23,7 +22,6 @@ pub enum RewardsCommand {
 impl RewardsCommand {
     pub async fn run(&self, opts: Opts) -> Result {
         match self {
-            Self::Init(cmd) => cmd.run(opts).await,
             Self::Pending(cmd) => cmd.run(opts).await,
             Self::Claim(cmd) => cmd.run(opts).await,
         }
@@ -31,7 +29,7 @@ impl RewardsCommand {
 }
 
 #[derive(Clone, Debug, clap::Args)]
-/// List pending rewards for given (or all owned) hotspots
+/// List pending rewards for given hotspots
 pub struct PendingCmd {
     /// Subdao for command
     subdao: SubDao,
@@ -78,38 +76,6 @@ impl ClaimCmd {
         // asset::get_bulk_rewards(&settings, &SubDao::Iot, &entity_key)?;
         unimplemented!();
         // Ok(())
-    }
-}
-
-#[derive(Debug, Clone, clap::Args)]
-/// Inititialize reward recipient
-pub struct InitCmd {
-    /// Subdao for command
-    subdao: SubDao,
-
-    /// Hotspot key to initialize reward receipients for
-    hotspot: helium_crypto::PublicKey,
-
-    #[command(flatten)]
-    commit: CommitOpts,
-}
-
-impl InitCmd {
-    pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
-
-        let settings: Settings = opts.try_into()?;
-
-        crate::cmd::assets::rewards::init(
-            &settings,
-            keypair.clone(),
-            &self.commit,
-            &self.subdao,
-            &self.hotspot.to_string(),
-            EntityKeyEncoding::UTF8,
-        )
-        .await
     }
 }
 

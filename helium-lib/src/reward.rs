@@ -113,10 +113,7 @@ where
         .flatten()
         .collect();
 
-    let (asset, asset_proof) = futures::try_join!(
-        asset::get(settings, &asset_account),
-        asset::proof::get(settings, &asset_account)
-    )?;
+    let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
 
     let _args = lazy_distributor::DistributeCompressionRewardsArgsV0 {
         data_hash: asset.compression.data_hash,
@@ -362,11 +359,7 @@ pub mod recipient {
         let client = settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(lazy_distributor::id())?;
         let asset_account = asset::account_for_entity_key(&client, entity_key).await?;
-
-        let (asset, asset_proof) = futures::try_join!(
-            asset::get(settings, &asset_account),
-            asset::proof::get(settings, &asset_account)
-        )?;
+        let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
 
         let _args = lazy_distributor::InitializeCompressionRecipientArgsV0 {
             data_hash: asset.compression.data_hash,

@@ -331,8 +331,7 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     let solana_client = settings.mk_solana_client()?;
 
     let asset_account = asset::account_for_entity_key(&anchor_client, hotspot).await?;
-    let asset = asset::get(settings, &asset_account).await?;
-    let asset_proof = asset::proof::get(settings, &asset_account).await?;
+    let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
 
     let update_accounts =
         mk_update_accounts(update.subdao(), &asset_account, &asset, &program.payer());
@@ -449,8 +448,7 @@ pub mod dataonly {
             .await?;
 
         let asset_account = asset::account_for_entity_key(&anchor_client, hotspot_key).await?;
-        let asset = asset::get(settings, &asset_account).await?;
-        let asset_proof = asset::proof::get(settings, &asset_account).await?;
+        let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
 
         let onboard_accounts = mk_onboard_accounts(config_account, program.payer(), hotspot_key);
         let compute_ix =

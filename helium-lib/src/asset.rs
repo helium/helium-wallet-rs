@@ -43,6 +43,17 @@ pub async fn get(
     Ok(asset_responase)
 }
 
+pub async fn get_with_proof(
+    settings: &Settings,
+    asset_account: &helium_entity_manager::KeyToAssetV0,
+) -> Result<(Asset, AssetProof)> {
+    let (asset, asset_proof) = futures::try_join!(
+        get(settings, asset_account),
+        proof::get(settings, asset_account)
+    )?;
+    Ok((asset, asset_proof))
+}
+
 pub mod proof {
     use super::*;
 

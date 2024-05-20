@@ -1,7 +1,7 @@
 use crate::{
     asset,
     dao::SubDao,
-    entity_key::{self, AsEntityKey, EntityKeyEncoding},
+    entity_key::{self, AsEntityKey, KeySerialization},
     keypair::{Keypair, Pubkey, PublicKey},
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     result::{DecodeError, Error, Result},
@@ -60,7 +60,7 @@ pub async fn claim<C: Clone + Deref<Target = impl Signer>, E>(
     settings: &Settings,
     subdao: &SubDao,
     entity_key_string: &str,
-    entity_key_encoding: EntityKeyEncoding,
+    entity_key_encoding: KeySerialization,
     keypair: C,
 ) -> Result<solana_sdk::transaction::Transaction>
 where
@@ -214,7 +214,7 @@ pub async fn pending(
     settings: &Settings,
     subdao: &SubDao,
     entity_key_strings: &[String],
-    entity_key_encoding: EntityKeyEncoding,
+    entity_key_encoding: KeySerialization,
 ) -> Result<HashMap<String, OracleReward>> {
     fn for_entity_key(
         bulk_rewards: &HashMap<String, Vec<OracleReward>>,

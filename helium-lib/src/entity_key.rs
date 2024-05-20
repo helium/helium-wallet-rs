@@ -37,16 +37,12 @@ impl AsEntityKey for helium_crypto::PublicKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub enum EntityKeyEncoding {
-    String,
-    UTF8,
-}
+pub use helium_anchor_gen::helium_entity_manager::KeySerialization;
 
-pub fn from_string(str: String, encoding: EntityKeyEncoding) -> Result<Vec<u8>> {
+pub fn from_string(str: String, encoding: KeySerialization) -> Result<Vec<u8>> {
     let entity_key = match encoding {
-        EntityKeyEncoding::String => str.as_entity_key(),
-        EntityKeyEncoding::UTF8 => bs58::decode(str).into_vec().map_err(DecodeError::from)?,
+        KeySerialization::UTF8 => str.as_entity_key(),
+        KeySerialization::B58 => bs58::decode(str).into_vec().map_err(DecodeError::from)?,
     };
     Ok(entity_key)
 }

@@ -1,5 +1,5 @@
 use crate::cmd::*;
-use helium_lib::{dao::SubDao, entity_key::EntityKeyEncoding, reward};
+use helium_lib::{dao::SubDao, entity_key::KeySerialization, reward};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -46,7 +46,7 @@ impl PendingCmd {
             &settings,
             &self.subdao,
             &entity_key_strings,
-            EntityKeyEncoding::UTF8,
+            KeySerialization::B58,
         )
         .await?;
 

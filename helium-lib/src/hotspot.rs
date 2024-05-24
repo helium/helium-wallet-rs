@@ -672,12 +672,12 @@ impl TryFrom<asset::AssetPage> for HotspotPage {
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[skip_serializing_none]
 pub struct Hotspot {
     pub key: helium_crypto::PublicKey,
     pub name: String,
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
 
@@ -740,6 +740,13 @@ impl TryFrom<u64> for HotspotLocation {
     type Error = h3o::error::InvalidCellIndex;
     fn try_from(value: u64) -> StdResult<Self, Self::Error> {
         h3o::CellIndex::try_from(value).map(Into::into)
+    }
+}
+
+impl FromStr for HotspotLocation {
+    type Err = h3o::error::InvalidCellIndex;
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        s.parse::<h3o::CellIndex>().map(Into::into)
     }
 }
 

@@ -743,6 +743,13 @@ impl TryFrom<u64> for HotspotLocation {
     }
 }
 
+impl FromStr for HotspotLocation {
+    type Err = h3o::error::InvalidCellIndex;
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        s.parse::<h3o::CellIndex>().map(Into::into)
+    }
+}
+
 impl HotspotLocation {
     pub fn from_maybe<T: TryInto<HotspotLocation>>(value: Option<T>) -> Option<Self> {
         value.and_then(|v| TryInto::try_into(v).ok())

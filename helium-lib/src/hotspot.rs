@@ -672,12 +672,12 @@ impl TryFrom<asset::AssetPage> for HotspotPage {
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[skip_serializing_none]
 pub struct Hotspot {
     pub key: helium_crypto::PublicKey,
     pub name: String,
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
 

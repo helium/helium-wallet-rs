@@ -758,22 +758,26 @@ impl HotspotLocation {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase", untagged)]
-#[skip_serializing_none]
 pub enum HotspotInfo {
     Iot {
+        #[serde(skip_serializing_if = "Option::is_none")]
         asset: Option<String>,
         mode: HotspotMode,
         gain: Option<Decimal>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         elevation: Option<i32>,
         #[serde(flatten)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<HotspotLocation>,
         #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,
     },
     Mobile {
+        #[serde(skip_serializing_if = "Option::is_none")]
         asset: Option<String>,
         mode: HotspotMode,
         #[serde(flatten)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<HotspotLocation>,
         #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,

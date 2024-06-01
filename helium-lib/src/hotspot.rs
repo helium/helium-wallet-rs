@@ -185,7 +185,7 @@ pub mod info {
                         &signature,
                         RpcTransactionConfig {
                             encoding: Some(UiTransactionEncoding::JsonParsed),
-                            commitment: Some(CommitmentConfig::confirmed()),
+                            commitment: Some(CommitmentConfig::finalized()),
                             max_supported_transaction_version: Some(0),
                         },
                     )

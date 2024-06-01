@@ -76,14 +76,14 @@ impl Settings {
         Ok(AnchorClient::new_with_options(
             cluster,
             payer,
-            solana_sdk::commitment_config::CommitmentConfig::confirmed(),
+            solana_sdk::commitment_config::CommitmentConfig::finalized(),
         ))
     }
 
     pub fn mk_solana_client(&self) -> CrateResult<SolanaRpcClient> {
         Ok(SolanaRpcClient::new_with_commitment(
             self.to_string(),
-            solana_sdk::commitment_config::CommitmentConfig::confirmed(),
+            solana_sdk::commitment_config::CommitmentConfig::finalized(),
         ))
     }
 

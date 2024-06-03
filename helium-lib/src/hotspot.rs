@@ -160,14 +160,12 @@ pub mod info {
 
     pub async fn updates(
         settings: &Settings,
-        subdao: SubDao,
-        key: &helium_crypto::PublicKey,
+        account: &Pubkey,
         params: HotspotInfoUpdateParams,
-    ) -> Result<Vec<ConfirmedHotspotInfoUpdate>> {
-        let info_key = subdao.info_key_for_helium_key(key)?;
+    ) -> Result<Vec<CommittedHotspotInfoUpdate>> {
         let client = settings.mk_solana_client()?;
         let signatures = client
-            .get_signatures_for_address_with_config(&info_key, params.into())
+            .get_signatures_for_address_with_config(account, params.into())
             .await?;
 
         let updates = stream::iter(signatures.iter())
@@ -194,16 +192,16 @@ pub mod info {
             })
             .try_buffered(5)
             .try_filter_map(|txn| async move {
-                ConfirmedHotspotInfoUpdate::from_confirmed_transaction(txn).map_err(Error::from)
+                CommittedHotspotInfoUpdate::from_transaction(txn).map_err(Error::from)
             })
-            .try_collect::<Vec<ConfirmedHotspotInfoUpdate>>()
+            .try_collect::<Vec<CommittedHotspotInfoUpdate>>()
             .await?;
 
         Ok(updates)
     }
 
-    impl ConfirmedHotspotInfoUpdate {
-        fn from_confirmed_transaction(
+    impl CommittedHotspotInfoUpdate {
+        fn from_transaction(
             txn: EncodedConfirmedTransactionWithStatusMeta,
         ) -> StdResult<Option<Self>, DecodeError> {
             let EncodedTransaction::Json(ui_txn) = txn.transaction.transaction else {
@@ -787,7 +785,7 @@ pub enum HotspotInfo {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
-pub struct ConfirmedHotspotInfoUpdate {
+pub struct CommittedHotspotInfoUpdate {
     timestamp: chrono::DateTime<Utc>,
     signature: String,
     update: HotspotInfoUpdate,

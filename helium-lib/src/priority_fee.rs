@@ -19,7 +19,7 @@ pub async fn get_estimate(
         .collect();
     let recent_fees = client.get_recent_prioritization_fees(&account_keys).await?;
     let mut max_per_slot = Vec::new();
-    for (slot, fees) in &recent_fees.into_iter().group_by(|x| x.slot) {
+    for (slot, fees) in &recent_fees.into_iter().chunk_by(|x| x.slot) {
         let Some(maximum) = fees.map(|x| x.prioritization_fee).max() else {
             continue;
         };

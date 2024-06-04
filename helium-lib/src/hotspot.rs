@@ -18,7 +18,8 @@ use futures::{
     TryFutureExt,
 };
 use helium_anchor_gen::{
-    anchor_lang::ToAccountMetas, data_credits, helium_entity_manager, helium_sub_daos,
+    anchor_lang::{AnchorDeserialize, Discriminator, ToAccountMetas},
+    data_credits, helium_entity_manager, helium_sub_daos,
 };
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -66,11 +67,8 @@ pub async fn get_with_info(
 
 pub mod info {
     use super::*;
-    use anchor_client::{
-        anchor_lang::{AnchorDeserialize, Discriminator},
-        solana_client::{
-            rpc_client::GetConfirmedSignaturesForAddress2Config, rpc_config::RpcTransactionConfig,
-        },
+    use anchor_client::solana_client::{
+        rpc_client::GetConfirmedSignaturesForAddress2Config, rpc_config::RpcTransactionConfig,
     };
     use chrono::DateTime;
     use helium_anchor_gen::helium_entity_manager::{

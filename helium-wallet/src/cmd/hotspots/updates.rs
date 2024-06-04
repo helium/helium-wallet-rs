@@ -27,7 +27,8 @@ impl Cmd {
             until: self.until,
             ..Default::default()
         };
-        let txns = hotspot::info::updates(&settings, self.subdao, &self.address, params).await?;
+        let info_key = self.subdao.info_key_for_helium_key(&self.address)?;
+        let txns = hotspot::info::updates(&settings, &info_key, params).await?;
         print_json(&txns)
     }
 }

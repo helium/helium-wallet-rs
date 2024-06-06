@@ -1,5 +1,5 @@
 use crate::{
-    keypair::{serde_pubkey, Pubkey, PublicKey},
+    keypair::{serde_pubkey, GetPubkey, Pubkey},
     result::{DecodeError, Error, Result},
     settings::Settings,
 };
@@ -24,7 +24,7 @@ lazy_static::lazy_static! {
     static ref SOL_MINT: Pubkey = anchor_spl::token::ID;
 }
 
-pub async fn transfer<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     transfers: &[(Pubkey, TokenAmount)],
     keypair: C,
@@ -32,7 +32,7 @@ pub async fn transfer<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     let client = settings.mk_anchor_client(keypair.clone())?;
     let program = client.program(anchor_spl::token::spl_token::id())?;
 
-    let wallet_public_key = keypair.public_key();
+    let wallet_public_key = keypair.pubkey();
     let mut builder = program.request();
 
     for (payee, token_amount) in transfers {

@@ -1,5 +1,5 @@
 use crate::{cmd::*, pwhash::*};
-use helium_lib::keypair::PublicKey;
+use helium_lib::keypair::GetPubkey;
 use qr2term::print_qr;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -71,7 +71,7 @@ impl Cmd {
 ///  3) base64 encode the salt, the nonce, and the encrypted result so it is easier to
 ///     render in JSON later.
 pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<EncryptedSeed> {
-    let address = keypair.public_key().to_string();
+    let address = keypair.pubkey().to_string();
     let phrase = keypair.phrase()?;
 
     let hasher = Argon2id13::with_limits(ARGON_OPS_LIMIT, ARGON_MEM_LIMIT);

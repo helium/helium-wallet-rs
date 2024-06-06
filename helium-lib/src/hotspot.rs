@@ -3,7 +3,7 @@ use crate::{
     dao::{Dao, SubDao},
     entity_key::AsEntityKey,
     is_zero,
-    keypair::{pubkey, serde_pubkey, Keypair, Pubkey, PublicKey},
+    keypair::{pubkey, serde_pubkey, GetPubkey, Keypair, Pubkey},
     onboarding, priority_fee,
     programs::{MPL_BUBBLEGUM_PROGRAM_ID, SPL_ACCOUNT_COMPRESSION_PROGRAM_ID},
     result::{DecodeError, EncodeError, Error, Result},
@@ -278,7 +278,7 @@ pub mod info {
     }
 }
 
-pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     hotspot: &helium_crypto::PublicKey,
     keypair: C,
@@ -369,14 +369,14 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     Ok(tx)
 }
 
-pub async fn update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     onboarding_server: Option<String>,
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
     keypair: C,
 ) -> Result<solana_sdk::transaction::Transaction> {
-    let public_key = keypair.public_key();
+    let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
         let onboarding_client = onboarding::Client::new(&server);
         let mut tx = onboarding_client
@@ -397,7 +397,7 @@ pub mod dataonly {
     };
     use helium_proto::{BlockchainTxnAddGatewayV1, Message};
 
-    pub async fn onboard<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+    pub async fn onboard<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
         settings: &Settings,
         hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotInfoUpdate,
@@ -483,7 +483,7 @@ pub mod dataonly {
             .extend_from_slice(&asset_proof.proof()?[0..3]);
 
         let mut tx =
-            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.public_key()));
+            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.pubkey()));
         let blockhash = program.rpc().get_latest_blockhash()?;
 
         tx.try_sign(&[&*keypair], blockhash)?;
@@ -491,7 +491,7 @@ pub mod dataonly {
         Ok(tx)
     }
 
-    pub async fn issue<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+    pub async fn issue<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
         settings: &Settings,
         verifier: &str,
         add_tx: &mut BlockchainTxnAddGatewayV1,
@@ -563,7 +563,7 @@ pub mod dataonly {
             .instructions()?;
 
         let mut tx =
-            solana_sdk::transaction::Transaction::new_with_payer(&ix, Some(&keypair.public_key()));
+            solana_sdk::transaction::Transaction::new_with_payer(&ix, Some(&keypair.pubkey()));
         let blockhash = program.rpc().get_latest_blockhash()?;
 
         tx.try_partial_sign(&[&*keypair], blockhash)?;

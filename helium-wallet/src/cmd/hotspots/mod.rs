@@ -4,6 +4,7 @@ mod add;
 mod info;
 mod list;
 mod rewards;
+mod transfer;
 mod update;
 mod updates;
 
@@ -28,7 +29,7 @@ pub enum HotspotCommand {
     Info(info::Cmd),
     Updates(updates::Cmd),
     Rewards(rewards::Cmd),
-    // Transfer(Box<transfer::Cmd>),
+    Transfer(transfer::Cmd),
 }
 
 impl HotspotCommand {
@@ -40,7 +41,7 @@ impl HotspotCommand {
             Self::Info(cmd) => cmd.run(opts).await,
             Self::Updates(cmd) => cmd.run(opts).await,
             Self::Rewards(cmd) => cmd.run(opts).await,
-            // Self::Transfer(cmd) => cmd.run(opts).await,
+            Self::Transfer(cmd) => cmd.run(opts).await,
         }
     }
 }

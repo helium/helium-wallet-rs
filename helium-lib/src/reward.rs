@@ -151,7 +151,7 @@ where
 
     distribute_ixs[0]
         .accounts
-        .extend_from_slice(&asset_proof.proof()?[0..3]);
+        .extend_from_slice(&asset_proof.proof(Some(3))?);
     ixs.push(distribute_ixs[0].clone());
 
     let mut tx = solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&program.payer()));
@@ -387,7 +387,7 @@ pub mod recipient {
 
         ixs[0]
             .accounts
-            .extend_from_slice(&asset_proof.proof()?[0..3]);
+            .extend_from_slice(&asset_proof.proof(Some(3))?);
 
         let mut tx =
             solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.pubkey()));

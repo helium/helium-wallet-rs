@@ -2,7 +2,7 @@ use crate::{
     asset,
     dao::SubDao,
     entity_key::{self, AsEntityKey, KeySerialization},
-    keypair::{Keypair, Pubkey, PublicKey},
+    keypair::{GetPubkey, Keypair, Pubkey},
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     result::{DecodeError, Error, Result},
     settings::Settings,
@@ -151,7 +151,7 @@ where
 
     distribute_ixs[0]
         .accounts
-        .extend_from_slice(&asset_proof.proof()?[0..3]);
+        .extend_from_slice(&asset_proof.proof(Some(3))?);
     ixs.push(distribute_ixs[0].clone());
 
     let mut tx = solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&program.payer()));
@@ -347,7 +347,7 @@ pub mod recipient {
         }
     }
 
-    pub async fn init<C: Clone + Deref<Target = impl Signer> + PublicKey, E>(
+    pub async fn init<C: Clone + Deref<Target = impl Signer> + GetPubkey, E>(
         settings: &Settings,
         subdao: &SubDao,
         entity_key: &E,
@@ -387,10 +387,10 @@ pub mod recipient {
 
         ixs[0]
             .accounts
-            .extend_from_slice(&asset_proof.proof()?[0..3]);
+            .extend_from_slice(&asset_proof.proof(Some(3))?);
 
         let mut tx =
-            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.public_key()));
+            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.pubkey()));
         let blockhash = program.rpc().get_latest_blockhash()?;
 
         tx.try_sign(&[&*keypair], blockhash)?;

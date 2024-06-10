@@ -3,14 +3,14 @@ use crate::{
     dao::{Dao, SubDao},
     entity_key::AsEntityKey,
     is_zero,
-    keypair::{pubkey, serde_pubkey, Keypair, Pubkey, PublicKey},
-    onboarding, priority_fee,
-    programs::{MPL_BUBBLEGUM_PROGRAM_ID, SPL_ACCOUNT_COMPRESSION_PROGRAM_ID},
+    keypair::{pubkey, serde_pubkey, GetPubkey, Keypair, Pubkey},
+    onboarding,
+    priority_fee::{self, SetPriorityFees},
+    programs::{MPL_BUBBLEGUM_PROGRAM_ID, SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
     result::{DecodeError, EncodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
     token::Token,
 };
-use anchor_client::{self, solana_sdk::signer::Signer};
 use angry_purple_tiger::AnimalName;
 use chrono::Utc;
 use futures::{
@@ -25,6 +25,7 @@ use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use solana_program::instruction::AccountMeta;
+use solana_sdk::{commitment_config::CommitmentConfig, signature::Signature, signer::Signer};
 use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
 
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
@@ -79,7 +80,6 @@ pub mod info {
         OnboardDataOnlyIotHotspotArgsV0, OnboardIotHotspotArgsV0, OnboardMobileHotspotArgsV0,
         UpdateIotInfoArgsV0, UpdateMobileInfoArgsV0,
     };
-    use solana_sdk::{commitment_config::CommitmentConfig, signature::Signature};
     use solana_transaction_status::{
         EncodedConfirmedTransactionWithStatusMeta, EncodedTransaction, UiInstruction, UiMessage,
         UiParsedInstruction, UiTransactionEncoding,
@@ -278,7 +278,7 @@ pub mod info {
     }
 }
 
-pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     hotspot: &helium_crypto::PublicKey,
     keypair: C,
@@ -328,24 +328,12 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
 
     let asset_account = asset::account_for_entity_key(&anchor_client, hotspot).await?;
     let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
+    let accounts = mk_update_accounts(update.subdao(), &asset_account, &asset, &program.payer());
 
-    let update_accounts =
-        mk_update_accounts(update.subdao(), &asset_account, &asset, &program.payer());
-    let priority_fee = priority_fee::get_estimate(
-        &solana_client,
-        &update_accounts,
-        priority_fee::MIN_PRIORITY_FEE,
-    )
-    .await?;
-
-    let compute_ix =
-        solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(200_000);
-    let compute_price_ix =
-        solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee);
     let mut ixs = program
         .request()
-        .instruction(compute_ix)
-        .instruction(compute_price_ix)
+        .compute_budget(200_000)
+        .compute_price(priority_fee::get_estimate(&solana_client, &accounts).await?)
         .args(helium_entity_manager::instruction::UpdateIotInfoV0 {
             _args: helium_entity_manager::UpdateIotInfoArgsV0 {
                 root: asset_proof.root.to_bytes(),
@@ -357,11 +345,11 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
                 location: update.location_u64(),
             },
         })
-        .accounts(update_accounts)
+        .accounts(accounts)
         .instructions()?;
     ixs[2]
         .accounts
-        .extend_from_slice(&asset_proof.proof()?[0..3]);
+        .extend_from_slice(&asset_proof.proof(Some(3))?);
 
     let mut tx = solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&program.payer()));
     let blockhash = program.rpc().get_latest_blockhash()?;
@@ -369,14 +357,14 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     Ok(tx)
 }
 
-pub async fn update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     onboarding_server: Option<String>,
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
     keypair: C,
 ) -> Result<solana_sdk::transaction::Transaction> {
-    let public_key = keypair.public_key();
+    let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
         let onboarding_client = onboarding::Client::new(&server);
         let mut tx = onboarding_client
@@ -390,21 +378,75 @@ pub async fn update<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     Ok(tx)
 }
 
+pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
+    settings: &Settings,
+    hotspot_key: &helium_crypto::PublicKey,
+    target: &Pubkey,
+    keypair: C,
+) -> Result<solana_sdk::transaction::Transaction> {
+    let anchor_client = settings.mk_anchor_client(keypair.clone())?;
+    let solana_client = settings.mk_solana_client()?;
+    let program = anchor_client.program(mpl_bubblegum::ID)?;
+    let asset_account = asset::account_for_entity_key(&anchor_client, hotspot_key).await?;
+    let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
+
+    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
+    let merkle_tree = asset_proof.tree_id;
+    let remaining_accounts = asset_proof.proof_for_tree(&merkle_tree).await?;
+
+    let transfer = mpl_bubblegum::instructions::Transfer {
+        leaf_owner: (asset.ownership.owner, false),
+        leaf_delegate: (leaf_delegate, false),
+        new_leaf_owner: *target,
+        tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
+        merkle_tree,
+        log_wrapper: SPL_NOOP_PROGRAM_ID,
+        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+        system_program: solana_sdk::system_program::id(),
+    };
+    let args = mpl_bubblegum::instructions::TransferInstructionArgs {
+        creator_hash: asset.compression.creator_hash,
+        root: asset_proof.root.to_bytes(),
+        data_hash: asset.compression.data_hash,
+        index: asset.compression.leaf_id()?,
+        nonce: asset.compression.leaf_id,
+    };
+
+    let transfer_ix = transfer.instruction_with_remaining_accounts(args, &remaining_accounts);
+    let mut priority_fee_accounts = transfer_ix.accounts.clone();
+    priority_fee_accounts.extend_from_slice(&remaining_accounts);
+
+    let ixs = program
+        .request()
+        .compute_budget(200_000)
+        .compute_price(priority_fee::get_estimate(&solana_client, &priority_fee_accounts).await?)
+        .instruction(transfer_ix)
+        .instructions()?;
+    let mut tx =
+        solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.pubkey()));
+    let blockhash = program.rpc().get_latest_blockhash()?;
+
+    tx.try_sign(&[&*keypair], blockhash)?;
+
+    Ok(tx)
+}
+
 pub mod dataonly {
     use super::*;
     use crate::programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     };
     use helium_proto::{BlockchainTxnAddGatewayV1, Message};
+    use priority_fee::SetPriorityFees;
 
-    pub async fn onboard<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+    pub async fn onboard<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
         settings: &Settings,
         hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotInfoUpdate,
         keypair: C,
     ) -> Result<solana_sdk::transaction::Transaction> {
         use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
-        fn mk_onboard_accounts(
+        fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
             hotspot_key: &helium_crypto::PublicKey,
@@ -445,22 +487,12 @@ pub mod dataonly {
 
         let asset_account = asset::account_for_entity_key(&anchor_client, hotspot_key).await?;
         let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
+        let onboard_accounts = mk_accounts(config_account, program.payer(), hotspot_key);
 
-        let onboard_accounts = mk_onboard_accounts(config_account, program.payer(), hotspot_key);
-        let compute_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(300_000);
-        let priority_fee = priority_fee::get_estimate(
-            &solana_client,
-            &onboard_accounts,
-            priority_fee::MIN_PRIORITY_FEE,
-        )
-        .await?;
-        let compute_price_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
-                priority_fee,
-            );
         let mut ixs = program
             .request()
+            .compute_budget(300_000)
+            .compute_price(priority_fee::get_estimate(&solana_client, &onboard_accounts).await?)
             .args(
                 helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
                     _args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
@@ -475,15 +507,13 @@ pub mod dataonly {
                 },
             )
             .accounts(onboard_accounts)
-            .instruction(compute_ix)
-            .instruction(compute_price_ix)
             .instructions()?;
         ixs[2]
             .accounts
-            .extend_from_slice(&asset_proof.proof()?[0..3]);
+            .extend_from_slice(&asset_proof.proof(Some(3))?);
 
         let mut tx =
-            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.public_key()));
+            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.pubkey()));
         let blockhash = program.rpc().get_latest_blockhash()?;
 
         tx.try_sign(&[&*keypair], blockhash)?;
@@ -491,7 +521,7 @@ pub mod dataonly {
         Ok(tx)
     }
 
-    pub async fn issue<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+    pub async fn issue<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
         settings: &Settings,
         verifier: &str,
         add_tx: &mut BlockchainTxnAddGatewayV1,
@@ -537,33 +567,20 @@ pub mod dataonly {
             .await?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
         let entity_key = hotspot_key.as_entity_key();
-
-        let issue_accounts = mk_issue_accounts(config_account, program.payer(), &entity_key);
-        let compute_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(300_000);
-        let priority_fee = priority_fee::get_estimate(
-            &solana_client,
-            &issue_accounts,
-            priority_fee::MIN_PRIORITY_FEE,
-        )
-        .await?;
-        let compute_price_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
-                priority_fee,
-            );
+        let accounts = mk_issue_accounts(config_account, program.payer(), &entity_key);
 
         let ix = program
             .request()
+            .compute_budget(300_000)
+            .compute_price(priority_fee::get_estimate(&solana_client, &accounts).await?)
             .args(helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
                 _args: helium_entity_manager::IssueDataOnlyEntityArgsV0 { entity_key },
             })
-            .accounts(issue_accounts)
-            .instruction(compute_ix)
-            .instruction(compute_price_ix)
+            .accounts(accounts)
             .instructions()?;
 
         let mut tx =
-            solana_sdk::transaction::Transaction::new_with_payer(&ix, Some(&keypair.public_key()));
+            solana_sdk::transaction::Transaction::new_with_payer(&ix, Some(&keypair.pubkey()));
         let blockhash = program.rpc().get_latest_blockhash()?;
 
         tx.try_partial_sign(&[&*keypair], blockhash)?;

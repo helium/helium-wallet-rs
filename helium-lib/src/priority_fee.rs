@@ -1,11 +1,21 @@
 use crate::{result::Error, solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient};
+use anchor_client::RequestBuilder;
 use helium_anchor_gen::anchor_lang::ToAccountMetas;
 use itertools::Itertools;
+use solana_sdk::signer::Signer;
+use std::ops::Deref;
 
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
 pub const MIN_PRIORITY_FEE: u64 = 1;
 
 pub async fn get_estimate(
+    client: &SolanaRpcClient,
+    accounts: &impl ToAccountMetas,
+) -> Result<u64, Error> {
+    get_estimate_with_min(client, accounts, MIN_PRIORITY_FEE).await
+}
+
+pub async fn get_estimate_with_min(
     client: &SolanaRpcClient,
     accounts: &impl ToAccountMetas,
     min_priority_fee: u64,
@@ -42,4 +52,27 @@ pub async fn get_estimate(
     }
     .max(min_priority_fee);
     Ok(estimate)
+}
+
+pub trait SetPriorityFees {
+    fn compute_budget(self, limit: u32) -> Self;
+    fn compute_price(self, priority_fee: u64) -> Self;
+}
+
+impl<'a, C: Deref<Target = impl Signer> + Clone> SetPriorityFees for RequestBuilder<'a, C> {
+    fn compute_budget(self, compute_limit: u32) -> Self {
+        let compute_ix =
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                compute_limit,
+            );
+        self.instruction(compute_ix)
+    }
+
+    fn compute_price(self, priority_fee: u64) -> Self {
+        let compute_price_ix =
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
+                priority_fee,
+            );
+        self.instruction(compute_price_ix)
+    }
 }

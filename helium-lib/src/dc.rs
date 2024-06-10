@@ -1,6 +1,6 @@
 use crate::{
     dao::{Dao, SubDao},
-    keypair::{Pubkey, PublicKey},
+    keypair::{GetPubkey, Pubkey},
     result::{DecodeError, Result},
     settings::Settings,
     token::{Token, TokenAmount},
@@ -9,7 +9,7 @@ use anchor_client::solana_sdk::signature::Signer;
 use helium_anchor_gen::{circuit_breaker, data_credits};
 use std::{ops::Deref, result::Result as StdResult};
 
-pub async fn mint<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn mint<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     amount: TokenAmount,
     payee: &Pubkey,
@@ -45,7 +45,7 @@ pub async fn mint<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     let recipient_token_account = Token::Dc.associated_token_adress(payee);
     let accounts = data_credits::accounts::MintDataCreditsV0 {
         data_credits,
-        owner: keypair.public_key(),
+        owner: keypair.pubkey(),
         hnt_mint: *Token::Hnt.mint(),
         dc_mint: *Token::Dc.mint(),
         recipient: *payee,
@@ -71,7 +71,7 @@ pub async fn mint<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     Ok(tx)
 }
 
-pub async fn delegate<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn delegate<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     subdao: SubDao,
     payer_key: &str,
@@ -89,10 +89,10 @@ pub async fn delegate<C: Clone + Deref<Target = impl Signer> + PublicKey>(
         dc_mint: *Token::Dc.mint(),
         dao: Dao::Hnt.key(),
         sub_dao: subdao.key(),
-        owner: keypair.public_key(),
-        from_account: Token::Dc.associated_token_adress(&keypair.public_key()),
+        owner: keypair.pubkey(),
+        from_account: Token::Dc.associated_token_adress(&keypair.pubkey()),
         escrow_account: subdao.escrow_account_key(&delegated_data_credits),
-        payer: keypair.public_key(),
+        payer: keypair.pubkey(),
         associated_token_program: anchor_spl::associated_token::ID,
         token_program: anchor_spl::token::ID,
         system_program: solana_sdk::system_program::ID,
@@ -113,7 +113,7 @@ pub async fn delegate<C: Clone + Deref<Target = impl Signer> + PublicKey>(
     Ok(tx)
 }
 
-pub async fn burn<C: Clone + Deref<Target = impl Signer> + PublicKey>(
+pub async fn burn<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     settings: &Settings,
     amount: u64,
     keypair: C,
@@ -130,7 +130,7 @@ pub async fn burn<C: Clone + Deref<Target = impl Signer> + PublicKey>(
                 token_program: anchor_spl::token::ID,
                 system_program: solana_sdk::system_program::ID,
                 associated_token_program: anchor_spl::associated_token::ID,
-                owner: keypair.public_key(),
+                owner: keypair.pubkey(),
             },
     };
 

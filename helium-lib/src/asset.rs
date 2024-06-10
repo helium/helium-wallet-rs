@@ -6,9 +6,10 @@ use crate::{
     settings::{DasClient, DasSearchAssetsParams, Settings},
 };
 use helium_anchor_gen::helium_entity_manager;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{bs58, signer::Signer};
-use std::{ops::Deref, result::Result as StdResult, str::FromStr};
+use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
 
 pub async fn account_for_entity_key<C: Clone + Deref<Target = impl Signer>, E>(
     client: &anchor_client::Client<C>,
@@ -52,6 +53,26 @@ pub async fn get_with_proof(
         proof::get(settings, asset_account)
     )?;
     Ok((asset, asset_proof))
+}
+
+pub async fn get_canopy_heights() -> Result<HashMap<Pubkey, usize>> {
+    const KNOWN_CANOPY_HEIGHT_URL: &str = "https://shdw-drive.genesysgo.net/6tcnBSybPG7piEDShBcrVtYJDPSvGrDbVvXmXKpzBvWP/merkles.json";
+    let client = reqwest::Client::new();
+    let map: HashMap<String, usize> = client
+        .get(KNOWN_CANOPY_HEIGHT_URL)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    map.into_iter()
+        .map(|(str, value)| {
+            Pubkey::from_str(str.as_str())
+                .map_err(|err| DecodeError::from(err).into())
+                .map(|key| (key, value))
+        })
+        .try_collect()
 }
 
 pub mod proof {
@@ -151,12 +172,18 @@ pub struct AssetProof {
     pub proof: Vec<String>,
     #[serde(with = "serde_pubkey")]
     pub root: Pubkey,
+    #[serde(with = "serde_pubkey")]
+    pub tree_id: Pubkey,
 }
 
 impl AssetProof {
-    pub fn proof(&self) -> Result<Vec<solana_program::instruction::AccountMeta>> {
+    pub fn proof(
+        &self,
+        len: Option<usize>,
+    ) -> Result<Vec<solana_program::instruction::AccountMeta>> {
         self.proof
             .iter()
+            .take(len.unwrap_or(self.proof.len()))
             .map(|s| {
                 Pubkey::from_str(s)
                     .map_err(DecodeError::from)
@@ -168,6 +195,17 @@ impl AssetProof {
                     .map_err(Error::from)
             })
             .collect()
+    }
+
+    pub async fn proof_for_tree(
+        &self,
+        tree: &Pubkey,
+    ) -> Result<Vec<solana_program::instruction::AccountMeta>> {
+        let canopy_heights = get_canopy_heights().await?;
+        let height = canopy_heights
+            .get(tree)
+            .ok_or_else(|| anchor_client::ClientError::AccountNotFound)?;
+        self.proof(Some(*height))
     }
 }
 

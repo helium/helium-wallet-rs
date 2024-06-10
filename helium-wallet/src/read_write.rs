@@ -60,7 +60,7 @@ impl ReadWrite for helium_lib::keypair::Keypair {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helium_lib::keypair::{Keypair, Pubkey, PublicKey};
+    use helium_lib::keypair::{GetPubkey, Keypair, Pubkey};
     use std::{io::Cursor, str::FromStr};
 
     #[test]
@@ -79,20 +79,20 @@ mod tests {
     fn roundtrip_public_key() {
         let pk = Keypair::default();
         let mut buffer = Vec::new();
-        pk.public_key()
+        pk.pubkey()
             .write(&mut buffer)
             .expect("Failed to encode public key");
 
         let decoded = Pubkey::read(&mut Cursor::new(buffer)).expect("Failed to decode public key");
-        assert_eq!(pk.public_key(), decoded);
+        assert_eq!(pk.pubkey(), decoded);
     }
 
     #[test]
     fn roundtrip_b58_public_key() {
         let pk = Keypair::default();
         let decoded =
-            Pubkey::from_str(&pk.public_key().to_string()).expect("Failed to decode public key");
-        assert_eq!(pk.public_key(), decoded);
+            Pubkey::from_str(&pk.pubkey().to_string()).expect("Failed to decode public key");
+        assert_eq!(pk.pubkey(), decoded);
     }
 
     #[test]

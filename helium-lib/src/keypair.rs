@@ -96,18 +96,18 @@ impl TryFrom<&[u8; 64]> for Keypair {
     }
 }
 
-pub trait PublicKey {
-    fn public_key(&self) -> solana_sdk::pubkey::Pubkey;
+pub trait GetPubkey {
+    fn pubkey(&self) -> solana_sdk::pubkey::Pubkey;
 }
 
-impl PublicKey for Keypair {
-    fn public_key(&self) -> solana_sdk::pubkey::Pubkey {
+impl GetPubkey for Keypair {
+    fn pubkey(&self) -> solana_sdk::pubkey::Pubkey {
         self.0.pubkey()
     }
 }
 
-impl PublicKey for Arc<Keypair> {
-    fn public_key(&self) -> solana_sdk::pubkey::Pubkey {
+impl GetPubkey for Arc<Keypair> {
+    fn pubkey(&self) -> solana_sdk::pubkey::Pubkey {
         self.0.pubkey()
     }
 }
@@ -130,7 +130,7 @@ impl Keypair {
 
     pub fn secret(&self) -> Vec<u8> {
         let mut result = self.0.secret().to_bytes().to_vec();
-        result.extend_from_slice(self.public_key().as_ref());
+        result.extend_from_slice(GetPubkey::pubkey(self).as_ref());
         result
     }
 

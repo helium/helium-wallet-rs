@@ -6,7 +6,7 @@ use crate::{
 };
 use aes_gcm::{aead::generic_array::GenericArray, AeadInPlace, Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use helium_lib::keypair::{to_helium_pubkey, Keypair, Pubkey, PublicKey, PUBKEY_BYTES};
+use helium_lib::keypair::{to_helium_pubkey, GetPubkey, Keypair, Pubkey, PUBKEY_BYTES};
 use sodiumoxide::randombytes;
 use std::io::{self, Cursor};
 use std::{
@@ -49,7 +49,7 @@ impl Wallet {
     pub fn encrypt(keypair: &Keypair, password: &[u8], fmt: Format) -> Result<Wallet> {
         let mut encryption_key = AesKey::default();
         let mut format = fmt;
-        let public_key = keypair.public_key();
+        let public_key = keypair.pubkey();
         format.derive_key(password, &mut encryption_key)?;
 
         let mut iv = Iv::default();

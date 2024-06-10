@@ -5,7 +5,7 @@ use crate::{
 };
 use futures::stream::{self, StreamExt, TryStreamExt};
 use helium_anchor_gen::circuit_breaker;
-use solana_sdk::signer::Signer;
+use solana_sdk::{signer::Signer, system_instruction};
 use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
 
 #[derive(Debug, thiserror::Error)]
@@ -21,7 +21,7 @@ lazy_static::lazy_static! {
     static ref MOBILE_MINT: Pubkey = Pubkey::from_str("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6").unwrap();
     static ref IOT_MINT: Pubkey = Pubkey::from_str("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns").unwrap();
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
-    static ref SOL_MINT: Pubkey = anchor_spl::token::ID;
+    static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
 
 pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
@@ -30,36 +30,45 @@ pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     keypair: C,
 ) -> Result<solana_sdk::transaction::Transaction> {
     let client = settings.mk_anchor_client(keypair.clone())?;
-    let program = client.program(anchor_spl::token::spl_token::id())?;
+    let spl_program = client.program(anchor_spl::token::spl_token::id())?;
 
     let wallet_public_key = keypair.pubkey();
-    let mut builder = program.request();
+    let mut builder = spl_program.request();
 
     for (payee, token_amount) in transfers {
-        let source_pubkey = token_amount
-            .token
-            .associated_token_adress(&wallet_public_key);
-        let destination_pubkey = token_amount.token.associated_token_adress(payee);
-        let ix =
+        match token_amount.token.mint() {
+            spl_mint if spl_mint == Token::Sol.mint() => {
+                let ix =
+                    system_instruction::transfer(&wallet_public_key, payee, token_amount.amount);
+                builder = builder.instruction(ix);
+            }
+            spl_mint => {
+                let source_pubkey = token_amount
+                    .token
+                    .associated_token_adress(&wallet_public_key);
+                let destination_pubkey = token_amount.token.associated_token_adress(payee);
+                let ix =
             spl_associated_token_account::instruction::create_associated_token_account_idempotent(
                 &wallet_public_key,
                 payee,
-                token_amount.token.mint(),
+                spl_mint,
                 &anchor_spl::token::spl_token::id(),
             );
-        builder = builder.instruction(ix);
+                builder = builder.instruction(ix);
 
-        let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
-            &anchor_spl::token::spl_token::id(),
-            &source_pubkey,
-            token_amount.token.mint(),
-            &destination_pubkey,
-            &wallet_public_key,
-            &[],
-            token_amount.amount,
-            token_amount.token.decimals(),
-        )?;
-        builder = builder.instruction(ix);
+                let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
+                    &anchor_spl::token::spl_token::id(),
+                    &source_pubkey,
+                    token_amount.token.mint(),
+                    &destination_pubkey,
+                    &wallet_public_key,
+                    &[],
+                    token_amount.amount,
+                    token_amount.token.decimals(),
+                )?;
+                builder = builder.instruction(ix);
+            }
+        }
     }
 
     let tx = builder.signed_transaction().await?;

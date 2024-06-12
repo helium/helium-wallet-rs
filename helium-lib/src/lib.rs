@@ -35,3 +35,7 @@ where
 {
     value == &T::ZERO
 }
+
+pub fn init(settings: &settings::Settings) -> result::Result<()> {
+    asset::account_cache::init(settings)
+}

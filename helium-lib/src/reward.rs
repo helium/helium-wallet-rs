@@ -84,7 +84,7 @@ where
 
     let client = settings.mk_anchor_client(keypair.clone())?;
     let program = client.program(lazy_distributor::id())?;
-    let asset_account = asset::account_for_entity_key(&client, &entity_key).await?;
+    let asset_account = asset::account_for_entity_key(&entity_key).await?;
     let ld_account = lazy_distributor(settings, subdao).await?;
 
     let mut ixs: Vec<Instruction> = rewards
@@ -233,7 +233,7 @@ pub async fn pending(
             let entity_key =
                 entity_key::from_string(entity_key_string.clone(), entity_key_encoding)?;
             let client = settings.mk_anchor_client(Keypair::void())?;
-            let asset_account = asset::account_for_entity_key(&client, &entity_key).await?;
+            let asset_account = asset::account_for_entity_key(&entity_key).await?;
             recipient::for_asset_account(&client, subdao, &asset_account)
                 .and_then(|maybe_recipient| async move {
                     maybe_recipient
@@ -358,7 +358,7 @@ pub mod recipient {
     {
         let client = settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(lazy_distributor::id())?;
-        let asset_account = asset::account_for_entity_key(&client, entity_key).await?;
+        let asset_account = asset::account_for_entity_key(entity_key).await?;
         let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
 
         let _args = lazy_distributor::InitializeCompressionRecipientArgsV0 {

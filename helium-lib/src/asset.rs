@@ -1,6 +1,6 @@
 use crate::{
     dao::Dao,
-    entity_key::AsEntityKey,
+    entity_key::{self, AsEntityKey},
     keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
     result::{DecodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
@@ -8,30 +8,83 @@ use crate::{
 use helium_anchor_gen::helium_entity_manager;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use solana_sdk::{bs58, signer::Signer};
-use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
+use solana_sdk::bs58;
+use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
-pub async fn account_for_entity_key<C: Clone + Deref<Target = impl Signer>, E>(
-    client: &anchor_client::Client<C>,
+pub mod account_cache {
+    use super::*;
+    use crate::keypair::VoidKeypair;
+    use std::sync::{Arc, OnceLock, RwLock};
+
+    static CACHE: OnceLock<AccountCache> = OnceLock::new();
+
+    struct AccountCache {
+        program: anchor_client::Program<Arc<VoidKeypair>>,
+        cache: RwLock<HashMap<Pubkey, helium_entity_manager::KeyToAssetV0>>,
+    }
+
+    impl AccountCache {
+        fn new(settings: &Settings) -> Result<Self> {
+            let anchor_client = settings.mk_anchor_client(Keypair::void())?;
+            let program = anchor_client.program(helium_entity_manager::id())?;
+            let cache = RwLock::new(HashMap::new());
+            Ok(Self { program, cache })
+        }
+
+        async fn get(&self, asset_key: &Pubkey) -> Result<helium_entity_manager::KeyToAssetV0> {
+            if let Some(account) = self
+                .cache
+                .read()
+                .expect("cache read lock poisoned")
+                .get(asset_key)
+            {
+                return Ok(account.clone());
+            }
+
+            let asset_account = self
+                .program
+                .account::<helium_entity_manager::KeyToAssetV0>(*asset_key)
+                .await?;
+            self.cache
+                .write()
+                .expect("cache write lock poisoned")
+                .insert(*asset_key, asset_account.clone());
+            Ok(asset_account)
+        }
+    }
+
+    pub fn init(settings: &Settings) -> Result<()> {
+        let _ = CACHE.set(AccountCache::new(settings)?);
+        Ok(())
+    }
+
+    pub async fn for_asset(asset_key: &Pubkey) -> Result<helium_entity_manager::KeyToAssetV0> {
+        let cache = CACHE
+            .get()
+            .ok_or_else(|| anchor_client::ClientError::AccountNotFound)?;
+        cache.get(asset_key).await
+    }
+}
+
+pub async fn account_for_entity_key<E>(
     entity_key: &E,
 ) -> Result<helium_entity_manager::KeyToAssetV0>
 where
     E: AsEntityKey,
 {
-    let program = client.program(helium_entity_manager::id())?;
     let asset_key = Dao::Hnt.key_to_asset_key(entity_key);
-    let asset_account = program
-        .account::<helium_entity_manager::KeyToAssetV0>(asset_key)
-        .await?;
-    Ok(asset_account)
+    account_for_asset(&asset_key).await
+}
+
+pub async fn account_for_asset(asset_key: &Pubkey) -> Result<helium_entity_manager::KeyToAssetV0> {
+    account_cache::for_asset(asset_key).await
 }
 
 pub async fn for_entity_key<E>(settings: &Settings, entity_key: &E) -> Result<Asset>
 where
     E: AsEntityKey,
 {
-    let client = settings.mk_anchor_client(Keypair::void())?;
-    let asset_account = account_for_entity_key(&client, entity_key).await?;
+    let asset_account = account_for_entity_key(entity_key).await?;
     get(settings, &asset_account).await
 }
 
@@ -93,8 +146,7 @@ pub mod proof {
     where
         E: AsEntityKey,
     {
-        let client = settings.mk_anchor_client(Keypair::void())?;
-        let asset_account = account_for_entity_key(&client, entity_key).await?;
+        let asset_account = account_for_entity_key(entity_key).await?;
         get(settings, &asset_account).await
     }
 }
@@ -136,8 +188,17 @@ pub struct Asset {
     #[serde(with = "serde_pubkey")]
     pub id: Pubkey,
     pub compression: AssetCompression,
+    pub creators: Vec<AssetCreator>,
     pub ownership: AssetOwnership,
     pub content: AssetContent,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AssetCreator {
+    #[serde(with = "serde_pubkey")]
+    address: Pubkey,
+    share: u8,
+    verified: bool,
 }
 
 pub type Hash = [u8; 32];
@@ -174,6 +235,37 @@ pub struct AssetProof {
     pub root: Pubkey,
     #[serde(with = "serde_pubkey")]
     pub tree_id: Pubkey,
+}
+
+impl Asset {
+    pub fn account_key(&self) -> Result<Pubkey> {
+        if let Some(creator) = self.creators.get(1) {
+            return Ok(creator.address);
+        }
+        let entity_key_str = self
+            .content
+            .json_uri
+            .path()
+            .strip_prefix('/')
+            .map(ToString::to_string)
+            .ok_or(DecodeError::other(format!(
+                "missing entity key in \"{}\"",
+                self.content.json_uri
+            )))?;
+        let key_serialization =
+            if ["IOT OPS", "CARRIER"].contains(&self.content.metadata.symbol.as_str()) {
+                helium_entity_manager::KeySerialization::UTF8
+            } else {
+                helium_entity_manager::KeySerialization::B58
+            };
+        let entity_key = entity_key::from_string(entity_key_str, key_serialization)?;
+        let asset_key = Dao::Hnt.key_to_asset_key(&entity_key);
+        Ok(asset_key)
+    }
+
+    pub async fn asset_account(&self) -> Result<helium_entity_manager::KeyToAssetV0> {
+        account_for_asset(&self.account_key()?).await
+    }
 }
 
 impl AssetProof {

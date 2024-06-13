@@ -390,14 +390,17 @@ pub async fn update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     Ok(tx)
 }
 
-pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
+/// Get an unsigned transaction for a hotspot transfer.
+///
+/// The hotspot is transferred from the owner of the hotspot to the given recipient
+/// Note that the owner is currently expected to sign this transaction and pay for
+/// transaction fees.
+pub async fn transfer_transaction(
     settings: &Settings,
     hotspot_key: &helium_crypto::PublicKey,
-    target: &Pubkey,
-    keypair: C,
+    recipient: &Pubkey,
 ) -> Result<solana_sdk::transaction::Transaction> {
-    let anchor_client = settings.mk_anchor_client(keypair.clone())?;
-    let solana_client = settings.mk_solana_client()?;
+    let anchor_client = settings.mk_anchor_client(Keypair::void())?;
     let program = anchor_client.program(mpl_bubblegum::ID)?;
     let kta = kta::for_entity_key(hotspot_key).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
@@ -409,7 +412,7 @@ pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     let transfer = mpl_bubblegum::instructions::Transfer {
         leaf_owner: (asset.ownership.owner, false),
         leaf_delegate: (leaf_delegate, false),
-        new_leaf_owner: *target,
+        new_leaf_owner: *recipient,
         tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
         merkle_tree,
         log_wrapper: SPL_NOOP_PROGRAM_ID,
@@ -431,13 +434,25 @@ pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     let ixs = program
         .request()
         .compute_budget(200_000)
-        .compute_price(priority_fee::get_estimate(&solana_client, &priority_fee_accounts).await?)
+        .compute_price(
+            priority_fee::get_estimate(&program.async_rpc(), &priority_fee_accounts).await?,
+        )
         .instruction(transfer_ix)
         .instructions()?;
-    let mut tx =
-        solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.pubkey()));
-    let blockhash = program.rpc().get_latest_blockhash()?;
+    let tx =
+        solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&asset.ownership.owner));
+    Ok(tx)
+}
 
+pub async fn transfer<C: Clone + Deref<Target = impl Signer>>(
+    settings: &Settings,
+    hotspot_key: &helium_crypto::PublicKey,
+    recipient: &Pubkey,
+    keypair: C,
+) -> Result<solana_sdk::transaction::Transaction> {
+    let mut tx = transfer_transaction(settings, hotspot_key, recipient).await?;
+    let solana_client = settings.mk_solana_client()?;
+    let blockhash = solana_client.get_latest_blockhash().await?;
     tx.try_sign(&[&*keypair], blockhash)?;
 
     Ok(tx)

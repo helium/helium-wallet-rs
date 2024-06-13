@@ -38,6 +38,12 @@ pub enum Error {
     Encode(#[from] EncodeError),
 }
 
+impl Error {
+    pub fn account_not_found() -> Self {
+        anchor_client::ClientError::AccountNotFound.into()
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum EncodeError {
     #[error("proto: {0}")]

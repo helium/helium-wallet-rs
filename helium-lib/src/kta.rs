@@ -19,16 +19,12 @@ pub fn init(settings: &Settings) -> Result<()> {
 }
 
 pub async fn get(kta_key: &Pubkey) -> Result<KeyToAssetV0> {
-    let cache = CACHE
-        .get()
-        .ok_or_else(|| anchor_client::ClientError::AccountNotFound)?;
+    let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get(kta_key).await
 }
 
 pub async fn get_many(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>> {
-    let cache = CACHE
-        .get()
-        .ok_or_else(|| anchor_client::ClientError::AccountNotFound)?;
+    let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get_many(kta_keys).await
 }
 
@@ -73,6 +69,9 @@ impl KtaCache {
             .program
             .account::<helium_entity_manager::KeyToAssetV0>(*kta_key)
             .await?;
+        // NOTE: Holding lock across an await will not work with std::sync
+        // Since sync::RwLock is much faster than sync options we take the hit
+        // of multipl requests for the same kta_key before the key is found
         self.cache_write().insert(*kta_key, kta.clone());
         Ok(kta)
     }
@@ -101,7 +100,7 @@ impl KtaCache {
                 .zip(missing_accounts.iter_mut())
                 .map(|(key, maybe_account)| {
                     let Some(account) = maybe_account.as_mut() else {
-                        return Err(Error::from(anchor_client::ClientError::AccountNotFound));
+                        return Err(Error::account_not_found());
                     };
                     helium_entity_manager::KeyToAssetV0::try_deserialize(&mut account.data.as_ref())
                         .map_err(Error::from)
@@ -116,12 +115,7 @@ impl KtaCache {
             let cache = self.cache_read();
             kta_keys
                 .iter()
-                .map(|key| {
-                    cache
-                        .get(key)
-                        .cloned()
-                        .ok_or(anchor_client::ClientError::AccountNotFound.into())
-                })
+                .map(|key| cache.get(key).cloned().ok_or(Error::account_not_found()))
                 .try_collect()
         }
     }

@@ -225,7 +225,7 @@ impl AssetProof {
         let canopy_heights = get_canopy_heights().await?;
         let height = canopy_heights
             .get(tree)
-            .ok_or_else(|| anchor_client::ClientError::AccountNotFound)?;
+            .ok_or_else(Error::account_not_found)?;
         self.proof(Some(*height))
     }
 }

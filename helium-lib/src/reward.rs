@@ -237,8 +237,7 @@ pub async fn pending(
             let kta = kta::for_entity_key(&entity_key).await?;
             recipient::for_kta(&client, subdao, &kta)
                 .and_then(|maybe_recipient| async move {
-                    maybe_recipient
-                        .ok_or_else(|| anchor_client::ClientError::AccountNotFound.into())
+                    maybe_recipient.ok_or_else(Error::account_not_found)
                 })
                 .map_ok(|recipient| {
                     for_entity_key(&bulk_rewards, entity_key_string).map(|mut oracle_reward| {

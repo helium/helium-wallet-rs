@@ -2,7 +2,6 @@ use crate::{hotspot::HotspotInfoUpdate, keypair};
 use futures::TryFutureExt;
 use rust_decimal::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_with::serde_as;
 use std::marker::Send;
 
 pub struct Client {
@@ -60,13 +59,11 @@ impl Client {
     ) -> Result<solana_sdk::transaction::Transaction, OnboardingError> {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
-        #[serde_as]
         struct UpdateParams {
             entity_key: helium_crypto::PublicKey,
             #[serde(with = "keypair::serde_pubkey")]
             wallet: keypair::Pubkey,
-            #[serde_with(as = "Option<SerializeDisplay>")]
-            location: Option<u64>,
+            location: Option<String>,
             gain: Option<f64>,
             elevation: Option<i32>,
         }
@@ -74,7 +71,9 @@ impl Client {
         let params = UpdateParams {
             entity_key: hotspot.clone(),
             wallet: *signer,
-            location: update.location().map(Into::into),
+            location: update
+                .location()
+                .map(|location| u64::from(location).to_string()),
             gain: update.gain().and_then(|gain| gain.to_f64()),
             elevation: update.elevation().to_owned(),
         };

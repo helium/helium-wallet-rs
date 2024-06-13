@@ -23,7 +23,6 @@ use helium_anchor_gen::{
 };
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
 use solana_program::instruction::AccountMeta;
 use solana_sdk::{bs58, commitment_config::CommitmentConfig, signature::Signature, signer::Signer};
 use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
@@ -154,10 +153,12 @@ pub mod info {
     }
 
     #[derive(Serialize, Deserialize, Debug, Default)]
-    #[skip_serializing_none]
     pub struct HotspotInfoUpdateParams {
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub before: Option<Signature>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub until: Option<Signature>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub limit: Option<usize>,
     }
 
@@ -751,7 +752,7 @@ impl From<h3o::CellIndex> for HotspotGeo {
 
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct HotspotLocation {
-    #[serde(with = "CellIndexHex")]
+    #[serde(with = "serde_cell_index")]
     location: h3o::CellIndex,
     geo: HotspotGeo,
 }
@@ -791,6 +792,29 @@ impl HotspotLocation {
     }
 }
 
+pub mod serde_cell_index {
+    use serde::de::{self, Deserialize};
+    use std::str::FromStr;
+
+    pub fn serialize<S>(
+        value: &h3o::CellIndex,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deser: D) -> std::result::Result<h3o::CellIndex, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let str = String::deserialize(deser)?;
+        h3o::CellIndex::from_str(&str).map_err(|_| de::Error::custom("invalid h3 index"))
+    }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum HotspotInfo {
@@ -798,6 +822,7 @@ pub enum HotspotInfo {
         #[serde(skip_serializing_if = "Option::is_none")]
         asset: Option<String>,
         mode: HotspotMode,
+        #[serde(skip_serializing_if = "Option::is_none")]
         gain: Option<Decimal>,
         #[serde(skip_serializing_if = "Option::is_none")]
         elevation: Option<i32>,
@@ -830,26 +855,22 @@ pub struct CommittedHotspotInfoUpdate {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase", untagged)]
-#[skip_serializing_none]
 pub enum HotspotInfoUpdate {
     Iot {
+        #[serde(skip_serializing_if = "Option::is_none")]
         gain: Option<Decimal>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         elevation: Option<i32>,
         #[serde(flatten)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<HotspotLocation>,
     },
     Mobile {
         #[serde(flatten)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<HotspotLocation>,
     },
 }
-
-serde_with::serde_conv!(
-    CellIndexHex,
-    h3o::CellIndex,
-    |index: &h3o::CellIndex| { index.to_string() },
-    |value: &str| -> StdResult<_, h3o::error::InvalidCellIndex> { value.parse() }
-);
 
 impl HotspotInfoUpdate {
     pub fn subdao(&self) -> SubDao {

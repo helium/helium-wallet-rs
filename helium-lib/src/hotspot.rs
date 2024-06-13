@@ -4,9 +4,9 @@ use crate::{
     entity_key::AsEntityKey,
     is_zero,
     keypair::{pubkey, serde_pubkey, GetPubkey, Keypair, Pubkey},
-    onboarding,
+    kta, onboarding,
     priority_fee::{self, SetPriorityFees},
-    programs::{MPL_BUBBLEGUM_PROGRAM_ID, SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
     result::{DecodeError, EncodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
     token::Token,
@@ -21,6 +21,7 @@ use helium_anchor_gen::{
     anchor_lang::{AnchorDeserialize, Discriminator, ToAccountMetas},
     data_credits, helium_entity_manager, helium_sub_daos,
 };
+use itertools::Itertools;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use solana_program::instruction::AccountMeta;
@@ -30,17 +31,11 @@ use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::Fr
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
-pub fn key_from_asset_account(
-    asset_account: helium_entity_manager::KeyToAssetV0,
-) -> Result<helium_crypto::PublicKey> {
-    let key_str = match asset_account.key_serialization {
-        helium_entity_manager::KeySerialization::B58 => {
-            bs58::encode(asset_account.entity_key).into_string()
-        }
-        helium_entity_manager::KeySerialization::UTF8 => {
-            String::from_utf8(asset_account.entity_key)
-                .map_err(|_| DecodeError::other("invalid entity key string"))?
-        }
+pub fn key_from_kta(kta: helium_entity_manager::KeyToAssetV0) -> Result<helium_crypto::PublicKey> {
+    let key_str = match kta.key_serialization {
+        helium_entity_manager::KeySerialization::B58 => bs58::encode(kta.entity_key).into_string(),
+        helium_entity_manager::KeySerialization::UTF8 => String::from_utf8(kta.entity_key)
+            .map_err(|_| DecodeError::other("invalid entity key string"))?,
     };
     Ok(helium_crypto::PublicKey::from_str(&key_str)?)
 }
@@ -61,8 +56,8 @@ pub async fn search(client: &DasClient, params: DasSearchAssetsParams) -> Result
 }
 
 pub async fn get(settings: &Settings, hotspot_key: &helium_crypto::PublicKey) -> Result<Hotspot> {
-    let asset_account = asset::account_for_entity_key(hotspot_key).await?;
-    let asset = asset::get(settings, &asset_account).await?;
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    let asset = asset::for_kta(settings, &kta).await?;
     Hotspot::from_asset(asset).await
 }
 
@@ -303,7 +298,7 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
 ) -> Result<solana_sdk::transaction::Transaction> {
     fn mk_update_accounts(
         subdao: SubDao,
-        asset_account: &helium_entity_manager::KeyToAssetV0,
+        kta: &helium_entity_manager::KeyToAssetV0,
         asset: &asset::Asset,
         owner: &Pubkey,
     ) -> Vec<AccountMeta> {
@@ -311,10 +306,10 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
         macro_rules! mk_update_info {
             ($name:ident, $info:ident) => {
                 $name {
-                    bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
+                    bubblegum_program: mpl_bubblegum::ID,
                     payer: owner.to_owned(),
                     dc_fee_payer: owner.to_owned(),
-                    $info: subdao.info_key(&asset_account.entity_key),
+                    $info: subdao.info_key(&kta.entity_key),
                     hotspot_owner: owner.to_owned(),
                     merkle_tree: asset.compression.tree,
                     tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
@@ -343,9 +338,9 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     let program = anchor_client.program(helium_entity_manager::id())?;
     let solana_client = settings.mk_solana_client()?;
 
-    let asset_account = asset::account_for_entity_key(hotspot).await?;
-    let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
-    let accounts = mk_update_accounts(update.subdao(), &asset_account, &asset, &program.payer());
+    let kta = kta::for_entity_key(hotspot).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
+    let accounts = mk_update_accounts(update.subdao(), &kta, &asset, &program.payer());
 
     let mut ixs = program
         .request()
@@ -404,8 +399,8 @@ pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
     let anchor_client = settings.mk_anchor_client(keypair.clone())?;
     let solana_client = settings.mk_solana_client()?;
     let program = anchor_client.program(mpl_bubblegum::ID)?;
-    let asset_account = asset::account_for_entity_key(hotspot_key).await?;
-    let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
     let merkle_tree = asset_proof.tree_id;
@@ -482,7 +477,7 @@ pub mod dataonly {
                 rewardable_entity_config: SubDao::Iot.rewardable_entity_config_key(),
                 data_only_config: data_only_config_key,
                 dao: dao.key(),
-                key_to_asset: dao.key_to_asset_key(&entity_key),
+                key_to_asset: dao.entity_key_to_kta_key(&entity_key),
                 sub_dao: SubDao::Iot.key(),
                 dc_mint: *Token::Dc.mint(),
                 dc: SubDao::dc_key(),
@@ -502,8 +497,8 @@ pub mod dataonly {
             .account::<helium_entity_manager::DataOnlyConfigV0>(Dao::Hnt.dataonly_config_key())
             .await?;
 
-        let asset_account = asset::account_for_entity_key(hotspot_key).await?;
-        let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
+        let kta = kta::for_entity_key(hotspot_key).await?;
+        let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
         let onboard_accounts = mk_accounts(config_account, program.payer(), hotspot_key);
 
         let mut ixs = program
@@ -562,7 +557,7 @@ pub mod dataonly {
                 data_only_config: dataonly_config_key,
                 entity_creator: dao.entity_creator_key(),
                 dao: dao.key(),
-                key_to_asset: dao.key_to_asset_key(&entity_key),
+                key_to_asset: dao.entity_key_to_kta_key(&entity_key),
                 tree_authority: dao.merkle_tree_authority(&config_account.merkle_tree),
                 recipient: owner,
                 merkle_tree: config_account.merkle_tree,
@@ -570,7 +565,7 @@ pub mod dataonly {
                 bubblegum_signer: dao.bubblegum_signer(),
                 token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
                 log_wrapper: SPL_NOOP_PROGRAM_ID,
-                bubblegum_program: MPL_BUBBLEGUM_PROGRAM_ID,
+                bubblegum_program: mpl_bubblegum::ID,
                 compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
                 system_program: solana_sdk::system_program::id(),
             }
@@ -687,11 +682,17 @@ pub struct HotspotPage {
 
 impl HotspotPage {
     pub async fn from_asset_page(asset_page: asset::AssetPage) -> Result<Self> {
-        let items = stream::iter(asset_page.items)
-            .map(|asset| async move { Hotspot::from_asset(asset).await })
-            .buffered(5)
-            .try_collect()
-            .await?;
+        let kta_keys: Vec<Pubkey> = asset_page
+            .items
+            .iter()
+            .map(asset::Asset::kta_key)
+            .try_collect()?;
+        let ktas = kta::get_many(&kta_keys).await?;
+        let items: Vec<Hotspot> = ktas
+            .into_iter()
+            .zip(asset_page.items)
+            .map(|(kta, asset)| Hotspot::from_asset_with_kta(kta, asset))
+            .try_collect()?;
         Ok(Self {
             total: asset_page.total,
             limit: asset_page.limit,
@@ -728,8 +729,15 @@ impl Hotspot {
     }
 
     pub async fn from_asset(asset: asset::Asset) -> Result<Self> {
-        let asset_account = asset.asset_account().await?;
-        let hotspot_key = key_from_asset_account(asset_account)?;
+        let kta = asset.get_kta().await?;
+        Self::from_asset_with_kta(kta, asset)
+    }
+
+    pub fn from_asset_with_kta(
+        kta: helium_entity_manager::KeyToAssetV0,
+        asset: asset::Asset,
+    ) -> Result<Self> {
+        let hotspot_key = key_from_kta(kta)?;
         Ok(Self::with_hotspot_key(hotspot_key, asset.ownership.owner))
     }
 }

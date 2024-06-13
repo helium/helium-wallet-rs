@@ -1,8 +1,5 @@
 use crate::{
-    entity_key::AsEntityKey,
-    keypair::Pubkey,
-    programs::{MPL_BUBBLEGUM_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
-    result::Result,
+    entity_key::AsEntityKey, keypair::Pubkey, programs::TOKEN_METADATA_PROGRAM_ID, result::Result,
     token::Token,
 };
 use helium_anchor_gen::{data_credits, helium_entity_manager, helium_sub_daos, lazy_distributor};
@@ -75,13 +72,13 @@ impl Dao {
 
     pub fn merkle_tree_authority(&self, merkle_tree: &Pubkey) -> Pubkey {
         let (tree_authority, _ta_bump) =
-            Pubkey::find_program_address(&[merkle_tree.as_ref()], &MPL_BUBBLEGUM_PROGRAM_ID);
+            Pubkey::find_program_address(&[merkle_tree.as_ref()], &mpl_bubblegum::ID);
         tree_authority
     }
 
     pub fn bubblegum_signer(&self) -> Pubkey {
         let (bubblegum_signer, _bs_bump) =
-            Pubkey::find_program_address(&[b"collection_cpi"], &MPL_BUBBLEGUM_PROGRAM_ID);
+            Pubkey::find_program_address(&[b"collection_cpi"], &mpl_bubblegum::ID);
         bubblegum_signer
     }
 
@@ -93,7 +90,7 @@ impl Dao {
         key
     }
 
-    pub fn key_to_asset_key<E: AsEntityKey + ?Sized>(&self, entity_key: &E) -> Pubkey {
+    pub fn entity_key_to_kta_key<E: AsEntityKey + ?Sized>(&self, entity_key: &E) -> Pubkey {
         let hash = Sha256::digest(entity_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
             &[b"key_to_asset", self.key().as_ref(), hash.as_ref()],
@@ -170,7 +167,7 @@ impl SubDao {
         key
     }
 
-    pub fn escrow_account_key(&self, delegated_dc_key: &Pubkey) -> Pubkey {
+    pub fn escrow_key(&self, delegated_dc_key: &Pubkey) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"escrow_dc_account", delegated_dc_key.as_ref()],
             &data_credits::id(),
@@ -217,12 +214,12 @@ impl SubDao {
         key
     }
 
-    pub fn asset_key_to_receipient_key(&self, asset_key: &Pubkey) -> Pubkey {
+    pub fn receipient_key_from_kta(&self, kta: &helium_entity_manager::KeyToAssetV0) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[
                 b"recipient",
                 self.lazy_distributor_key().as_ref(),
-                asset_key.as_ref(),
+                kta.asset.as_ref(),
             ],
             &lazy_distributor::id(),
         );

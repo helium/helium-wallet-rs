@@ -91,7 +91,7 @@ pub async fn delegate<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
         sub_dao: subdao.key(),
         owner: keypair.pubkey(),
         from_account: Token::Dc.associated_token_adress(&keypair.pubkey()),
-        escrow_account: subdao.escrow_account_key(&delegated_data_credits),
+        escrow_account: subdao.escrow_key(&delegated_data_credits),
         payer: keypair.pubkey(),
         associated_token_program: anchor_spl::associated_token::ID,
         token_program: anchor_spl::token::ID,

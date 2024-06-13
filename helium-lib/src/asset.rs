@@ -1,7 +1,8 @@
 use crate::{
     dao::Dao,
     entity_key::{self, AsEntityKey},
-    keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
+    keypair::{serde_opt_pubkey, serde_pubkey, Pubkey},
+    kta,
     result::{DecodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
 };
@@ -11,100 +12,29 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::bs58;
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
-pub mod account_cache {
-    use super::*;
-    use crate::keypair::VoidKeypair;
-    use std::sync::{Arc, OnceLock, RwLock};
-
-    static CACHE: OnceLock<AccountCache> = OnceLock::new();
-
-    struct AccountCache {
-        program: anchor_client::Program<Arc<VoidKeypair>>,
-        cache: RwLock<HashMap<Pubkey, helium_entity_manager::KeyToAssetV0>>,
-    }
-
-    impl AccountCache {
-        fn new(settings: &Settings) -> Result<Self> {
-            let anchor_client = settings.mk_anchor_client(Keypair::void())?;
-            let program = anchor_client.program(helium_entity_manager::id())?;
-            let cache = RwLock::new(HashMap::new());
-            Ok(Self { program, cache })
-        }
-
-        async fn get(&self, asset_key: &Pubkey) -> Result<helium_entity_manager::KeyToAssetV0> {
-            if let Some(account) = self
-                .cache
-                .read()
-                .expect("cache read lock poisoned")
-                .get(asset_key)
-            {
-                return Ok(account.clone());
-            }
-
-            let asset_account = self
-                .program
-                .account::<helium_entity_manager::KeyToAssetV0>(*asset_key)
-                .await?;
-            self.cache
-                .write()
-                .expect("cache write lock poisoned")
-                .insert(*asset_key, asset_account.clone());
-            Ok(asset_account)
-        }
-    }
-
-    pub fn init(settings: &Settings) -> Result<()> {
-        let _ = CACHE.set(AccountCache::new(settings)?);
-        Ok(())
-    }
-
-    pub async fn for_asset(asset_key: &Pubkey) -> Result<helium_entity_manager::KeyToAssetV0> {
-        let cache = CACHE
-            .get()
-            .ok_or_else(|| anchor_client::ClientError::AccountNotFound)?;
-        cache.get(asset_key).await
-    }
-}
-
-pub async fn account_for_entity_key<E>(
-    entity_key: &E,
-) -> Result<helium_entity_manager::KeyToAssetV0>
-where
-    E: AsEntityKey,
-{
-    let asset_key = Dao::Hnt.key_to_asset_key(entity_key);
-    account_for_asset(&asset_key).await
-}
-
-pub async fn account_for_asset(asset_key: &Pubkey) -> Result<helium_entity_manager::KeyToAssetV0> {
-    account_cache::for_asset(asset_key).await
-}
-
 pub async fn for_entity_key<E>(settings: &Settings, entity_key: &E) -> Result<Asset>
 where
     E: AsEntityKey,
 {
-    let asset_account = account_for_entity_key(entity_key).await?;
-    get(settings, &asset_account).await
+    let kta = kta::for_entity_key(entity_key).await?;
+    for_kta(settings, &kta).await
 }
 
-pub async fn get(
+pub async fn for_kta(
     settings: &Settings,
-    asset_account: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<Asset> {
     let jsonrpc = settings.mk_jsonrpc_client()?;
-    let asset_responase: Asset = jsonrpc.get_asset(&asset_account.asset).await?;
+    let asset_responase: Asset = jsonrpc.get_asset(&kta.asset).await?;
     Ok(asset_responase)
 }
 
-pub async fn get_with_proof(
+pub async fn for_kta_with_proof(
     settings: &Settings,
-    asset_account: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<(Asset, AssetProof)> {
-    let (asset, asset_proof) = futures::try_join!(
-        get(settings, asset_account),
-        proof::get(settings, asset_account)
-    )?;
+    let (asset, asset_proof) =
+        futures::try_join!(for_kta(settings, kta), proof::get(settings, kta))?;
     Ok((asset, asset_proof))
 }
 
@@ -133,11 +63,10 @@ pub mod proof {
 
     pub async fn get(
         settings: &Settings,
-        asset_account: &helium_entity_manager::KeyToAssetV0,
+        kta: &helium_entity_manager::KeyToAssetV0,
     ) -> Result<AssetProof> {
         let jsonrpc = settings.mk_jsonrpc_client()?;
-        let asset_proof_response: AssetProof =
-            jsonrpc.get_asset_proof(&asset_account.asset).await?;
+        let asset_proof_response: AssetProof = jsonrpc.get_asset_proof(&kta.asset).await?;
 
         Ok(asset_proof_response)
     }
@@ -146,8 +75,8 @@ pub mod proof {
     where
         E: AsEntityKey,
     {
-        let asset_account = account_for_entity_key(entity_key).await?;
-        get(settings, &asset_account).await
+        let kta = kta::for_entity_key(entity_key).await?;
+        get(settings, &kta).await
     }
 }
 
@@ -238,7 +167,7 @@ pub struct AssetProof {
 }
 
 impl Asset {
-    pub fn account_key(&self) -> Result<Pubkey> {
+    pub fn kta_key(&self) -> Result<Pubkey> {
         if let Some(creator) = self.creators.get(1) {
             return Ok(creator.address);
         }
@@ -259,12 +188,12 @@ impl Asset {
                 helium_entity_manager::KeySerialization::B58
             };
         let entity_key = entity_key::from_string(entity_key_str, key_serialization)?;
-        let asset_key = Dao::Hnt.key_to_asset_key(&entity_key);
-        Ok(asset_key)
+        let kta_key = Dao::Hnt.entity_key_to_kta_key(&entity_key);
+        Ok(kta_key)
     }
 
-    pub async fn asset_account(&self) -> Result<helium_entity_manager::KeyToAssetV0> {
-        account_for_asset(&self.account_key()?).await
+    pub async fn get_kta(&self) -> Result<helium_entity_manager::KeyToAssetV0> {
+        kta::get(&self.kta_key()?).await
     }
 }
 

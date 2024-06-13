@@ -36,7 +36,7 @@ solana-program = "*"
 solana-transaction-status = "*"
 serde = {workspace = true}
 serde_json = {workspace = true}
-serde_with = "2"
+# serde_with = "2"
 lazy_static = "1"
 rust_decimal = {workspace = true}
 helium-proto = {workspace= true}

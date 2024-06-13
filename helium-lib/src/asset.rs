@@ -1,57 +1,40 @@
 use crate::{
     dao::Dao,
-    entity_key::AsEntityKey,
-    keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
+    entity_key::{self, AsEntityKey},
+    keypair::{serde_opt_pubkey, serde_pubkey, Pubkey},
+    kta,
     result::{DecodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
 };
 use helium_anchor_gen::helium_entity_manager;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use solana_sdk::{bs58, signer::Signer};
-use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
-
-pub async fn account_for_entity_key<C: Clone + Deref<Target = impl Signer>, E>(
-    client: &anchor_client::Client<C>,
-    entity_key: &E,
-) -> Result<helium_entity_manager::KeyToAssetV0>
-where
-    E: AsEntityKey,
-{
-    let program = client.program(helium_entity_manager::id())?;
-    let asset_key = Dao::Hnt.key_to_asset_key(entity_key);
-    let asset_account = program
-        .account::<helium_entity_manager::KeyToAssetV0>(asset_key)
-        .await?;
-    Ok(asset_account)
-}
+use solana_sdk::bs58;
+use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
 pub async fn for_entity_key<E>(settings: &Settings, entity_key: &E) -> Result<Asset>
 where
     E: AsEntityKey,
 {
-    let client = settings.mk_anchor_client(Keypair::void())?;
-    let asset_account = account_for_entity_key(&client, entity_key).await?;
-    get(settings, &asset_account).await
+    let kta = kta::for_entity_key(entity_key).await?;
+    for_kta(settings, &kta).await
 }
 
-pub async fn get(
+pub async fn for_kta(
     settings: &Settings,
-    asset_account: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<Asset> {
     let jsonrpc = settings.mk_jsonrpc_client()?;
-    let asset_responase: Asset = jsonrpc.get_asset(&asset_account.asset).await?;
+    let asset_responase: Asset = jsonrpc.get_asset(&kta.asset).await?;
     Ok(asset_responase)
 }
 
-pub async fn get_with_proof(
+pub async fn for_kta_with_proof(
     settings: &Settings,
-    asset_account: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<(Asset, AssetProof)> {
-    let (asset, asset_proof) = futures::try_join!(
-        get(settings, asset_account),
-        proof::get(settings, asset_account)
-    )?;
+    let (asset, asset_proof) =
+        futures::try_join!(for_kta(settings, kta), proof::get(settings, kta))?;
     Ok((asset, asset_proof))
 }
 
@@ -80,11 +63,10 @@ pub mod proof {
 
     pub async fn get(
         settings: &Settings,
-        asset_account: &helium_entity_manager::KeyToAssetV0,
+        kta: &helium_entity_manager::KeyToAssetV0,
     ) -> Result<AssetProof> {
         let jsonrpc = settings.mk_jsonrpc_client()?;
-        let asset_proof_response: AssetProof =
-            jsonrpc.get_asset_proof(&asset_account.asset).await?;
+        let asset_proof_response: AssetProof = jsonrpc.get_asset_proof(&kta.asset).await?;
 
         Ok(asset_proof_response)
     }
@@ -93,9 +75,8 @@ pub mod proof {
     where
         E: AsEntityKey,
     {
-        let client = settings.mk_anchor_client(Keypair::void())?;
-        let asset_account = account_for_entity_key(&client, entity_key).await?;
-        get(settings, &asset_account).await
+        let kta = kta::for_entity_key(entity_key).await?;
+        get(settings, &kta).await
     }
 }
 
@@ -136,8 +117,17 @@ pub struct Asset {
     #[serde(with = "serde_pubkey")]
     pub id: Pubkey,
     pub compression: AssetCompression,
+    pub creators: Vec<AssetCreator>,
     pub ownership: AssetOwnership,
     pub content: AssetContent,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AssetCreator {
+    #[serde(with = "serde_pubkey")]
+    address: Pubkey,
+    share: u8,
+    verified: bool,
 }
 
 pub type Hash = [u8; 32];
@@ -176,6 +166,37 @@ pub struct AssetProof {
     pub tree_id: Pubkey,
 }
 
+impl Asset {
+    pub fn kta_key(&self) -> Result<Pubkey> {
+        if let Some(creator) = self.creators.get(1) {
+            return Ok(creator.address);
+        }
+        let entity_key_str = self
+            .content
+            .json_uri
+            .path()
+            .strip_prefix('/')
+            .map(ToString::to_string)
+            .ok_or(DecodeError::other(format!(
+                "missing entity key in \"{}\"",
+                self.content.json_uri
+            )))?;
+        let key_serialization =
+            if ["IOT OPS", "CARRIER"].contains(&self.content.metadata.symbol.as_str()) {
+                helium_entity_manager::KeySerialization::UTF8
+            } else {
+                helium_entity_manager::KeySerialization::B58
+            };
+        let entity_key = entity_key::from_string(entity_key_str, key_serialization)?;
+        let kta_key = Dao::Hnt.entity_key_to_kta_key(&entity_key);
+        Ok(kta_key)
+    }
+
+    pub async fn get_kta(&self) -> Result<helium_entity_manager::KeyToAssetV0> {
+        kta::get(&self.kta_key()?).await
+    }
+}
+
 impl AssetProof {
     pub fn proof(
         &self,
@@ -204,7 +225,7 @@ impl AssetProof {
         let canopy_heights = get_canopy_heights().await?;
         let height = canopy_heights
             .get(tree)
-            .ok_or_else(|| anchor_client::ClientError::AccountNotFound)?;
+            .ok_or_else(Error::account_not_found)?;
         self.proof(Some(*height))
     }
 }

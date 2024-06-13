@@ -5,6 +5,7 @@ pub mod dc;
 pub mod entity_key;
 pub mod hotspot;
 pub mod keypair;
+pub mod kta;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;
@@ -34,4 +35,8 @@ where
     T: PartialEq + Zero,
 {
     value == &T::ZERO
+}
+
+pub fn init(settings: &settings::Settings) -> result::Result<()> {
+    kta::init(settings)
 }

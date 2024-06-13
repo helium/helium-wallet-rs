@@ -14,7 +14,7 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let settings = opts.try_into()?;
         let delegated_dc_key = self.subdao.delegated_dc_key(&self.router_key);
-        let escrow_key = self.subdao.escrow_account_key(&delegated_dc_key);
+        let escrow_key = self.subdao.escrow_key(&delegated_dc_key);
         let balance = token::balance_for_address(&settings, &escrow_key)
             .await?
             .map(|balance| balance.amount);

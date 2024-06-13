@@ -3,6 +3,7 @@ use crate::{
     dao::SubDao,
     entity_key::{self, AsEntityKey, KeySerialization},
     keypair::{GetPubkey, Keypair, Pubkey},
+    kta,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     result::{DecodeError, Error, Result},
     settings::Settings,
@@ -84,7 +85,7 @@ where
 
     let client = settings.mk_anchor_client(keypair.clone())?;
     let program = client.program(lazy_distributor::id())?;
-    let asset_account = asset::account_for_entity_key(&client, &entity_key).await?;
+    let kta = kta::for_entity_key(&entity_key).await?;
     let ld_account = lazy_distributor(settings, subdao).await?;
 
     let mut ixs: Vec<Instruction> = rewards
@@ -97,7 +98,7 @@ where
             let accounts = lazy_distributor::accounts::SetCurrentRewardsV0 {
                 lazy_distributor: subdao.lazy_distributor(),
                 payer: program.payer(),
-                recipient: subdao.asset_key_to_receipient_key(&asset_account.asset),
+                recipient: subdao.receipient_key_from_kta(&kta),
                 oracle: oracle_reward.oracle,
                 system_program: solana_sdk::system_program::id(),
             };
@@ -113,7 +114,7 @@ where
         .flatten()
         .collect();
 
-    let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
 
     let _args = lazy_distributor::DistributeCompressionRewardsArgsV0 {
         data_hash: asset.compression.data_hash,
@@ -134,7 +135,7 @@ where
                 circuit_breaker_program: circuit_breaker::id(),
                 owner: asset.ownership.owner,
                 circuit_breaker: lazy_distributor_circuit_breaker(&ld_account),
-                recipient: subdao.asset_key_to_receipient_key(&asset_account.asset),
+                recipient: subdao.receipient_key_from_kta(&kta),
                 destination_account: subdao
                     .token()
                     .associated_token_adress(&asset.ownership.owner),
@@ -233,11 +234,10 @@ pub async fn pending(
             let entity_key =
                 entity_key::from_string(entity_key_string.clone(), entity_key_encoding)?;
             let client = settings.mk_anchor_client(Keypair::void())?;
-            let asset_account = asset::account_for_entity_key(&client, &entity_key).await?;
-            recipient::for_asset_account(&client, subdao, &asset_account)
+            let kta = kta::for_entity_key(&entity_key).await?;
+            recipient::for_kta(&client, subdao, &kta)
                 .and_then(|maybe_recipient| async move {
-                    maybe_recipient
-                        .ok_or_else(|| anchor_client::ClientError::AccountNotFound.into())
+                    maybe_recipient.ok_or_else(Error::account_not_found)
                 })
                 .map_ok(|recipient| {
                     for_entity_key(&bulk_rewards, entity_key_string).map(|mut oracle_reward| {
@@ -330,13 +330,13 @@ async fn bulk_from_oracle(
 pub mod recipient {
     use super::*;
 
-    pub async fn for_asset_account<C: Clone + Deref<Target = impl Signer>>(
+    pub async fn for_kta<C: Clone + Deref<Target = impl Signer>>(
         client: &anchor_client::Client<C>,
         subdao: &SubDao,
-        asset_account: &helium_entity_manager::KeyToAssetV0,
+        kta: &helium_entity_manager::KeyToAssetV0,
     ) -> Result<Option<lazy_distributor::RecipientV0>> {
         let program = client.program(lazy_distributor::id())?;
-        let recipient_key = subdao.asset_key_to_receipient_key(&asset_account.asset);
+        let recipient_key = subdao.receipient_key_from_kta(kta);
         match program
             .account::<lazy_distributor::RecipientV0>(recipient_key)
             .await
@@ -358,8 +358,8 @@ pub mod recipient {
     {
         let client = settings.mk_anchor_client(keypair.clone())?;
         let program = client.program(lazy_distributor::id())?;
-        let asset_account = asset::account_for_entity_key(&client, entity_key).await?;
-        let (asset, asset_proof) = asset::get_with_proof(settings, &asset_account).await?;
+        let kta = kta::for_entity_key(entity_key).await?;
+        let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
 
         let _args = lazy_distributor::InitializeCompressionRecipientArgsV0 {
             data_hash: asset.compression.data_hash,
@@ -371,7 +371,7 @@ pub mod recipient {
         let accounts = lazy_distributor::accounts::InitializeCompressionRecipientV0 {
             payer: program.payer(),
             lazy_distributor: subdao.lazy_distributor(),
-            recipient: subdao.asset_key_to_receipient_key(&asset.id),
+            recipient: subdao.receipient_key_from_kta(&kta),
             merkle_tree: asset.compression.tree,
             owner: asset.ownership.owner,
             delegate: asset.ownership.owner,

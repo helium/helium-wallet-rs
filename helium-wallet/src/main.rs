@@ -44,6 +44,7 @@ async fn main() -> Result {
 }
 
 async fn run(cli: Cli) -> Result {
+    helium_lib::init(&cli.opts.clone().try_into()?)?;
     match cli.cmd {
         Cmd::Info(cmd) => cmd.run(cli.opts).await,
         Cmd::Balance(cmd) => cmd.run(cli.opts).await,

@@ -5,7 +5,7 @@ use crate::{
     is_zero,
     keypair::{pubkey, serde_pubkey, GetPubkey, Keypair, Pubkey},
     kta, onboarding,
-    priority_fee::{self, SetPriorityFees},
+    priority_fee::{self, compute_budget_instruction, compute_price_instruction, SetPriorityFees},
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
     result::{DecodeError, EncodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
@@ -431,16 +431,16 @@ pub async fn transfer_transaction(
     let mut priority_fee_accounts = transfer_ix.accounts.clone();
     priority_fee_accounts.extend_from_slice(&remaining_accounts);
 
-    let ixs = program
-        .request()
-        .compute_budget(200_000)
-        .compute_price(
+    let ixs = &[
+        compute_budget_instruction(200_000),
+        compute_price_instruction(
             priority_fee::get_estimate(&program.async_rpc(), &priority_fee_accounts).await?,
-        )
-        .instruction(transfer_ix)
-        .instructions()?;
+        ),
+        transfer_ix,
+    ];
+
     let tx =
-        solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&asset.ownership.owner));
+        solana_sdk::transaction::Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
     Ok(tx)
 }
 

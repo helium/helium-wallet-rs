@@ -59,20 +59,20 @@ pub trait SetPriorityFees {
     fn compute_price(self, priority_fee: u64) -> Self;
 }
 
+pub fn compute_budget_instruction(compute_limit: u32) -> solana_sdk::instruction::Instruction {
+    solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(compute_limit)
+}
+
+pub fn compute_price_instruction(priority_fee: u64) -> solana_sdk::instruction::Instruction {
+    solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee)
+}
+
 impl<'a, C: Deref<Target = impl Signer> + Clone> SetPriorityFees for RequestBuilder<'a, C> {
     fn compute_budget(self, compute_limit: u32) -> Self {
-        let compute_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
-                compute_limit,
-            );
-        self.instruction(compute_ix)
+        self.instruction(compute_budget_instruction(compute_limit))
     }
 
     fn compute_price(self, priority_fee: u64) -> Self {
-        let compute_price_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(
-                priority_fee,
-            );
-        self.instruction(compute_price_ix)
+        self.instruction(compute_price_instruction(priority_fee))
     }
 }

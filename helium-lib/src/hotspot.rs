@@ -871,9 +871,9 @@ pub enum HotspotInfo {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub struct CommittedHotspotInfoUpdate {
-    timestamp: chrono::DateTime<Utc>,
-    signature: String,
-    update: HotspotInfoUpdate,
+    pub timestamp: chrono::DateTime<Utc>,
+    pub signature: String,
+    pub update: HotspotInfoUpdate,
 }
 
 #[derive(Debug, Serialize, Clone)]

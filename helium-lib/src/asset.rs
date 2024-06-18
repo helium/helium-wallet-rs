@@ -38,24 +38,47 @@ pub async fn for_kta_with_proof(
     Ok((asset, asset_proof))
 }
 
-pub async fn get_canopy_heights() -> Result<HashMap<Pubkey, usize>> {
-    const KNOWN_CANOPY_HEIGHT_URL: &str = "https://shdw-drive.genesysgo.net/6tcnBSybPG7piEDShBcrVtYJDPSvGrDbVvXmXKpzBvWP/merkles.json";
-    let client = reqwest::Client::new();
-    let map: HashMap<String, usize> = client
-        .get(KNOWN_CANOPY_HEIGHT_URL)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+pub mod canopy {
+    use super::*;
+    use spl_account_compression::state::{merkle_tree_get_size, ConcurrentMerkleTreeHeader};
 
-    map.into_iter()
-        .map(|(str, value)| {
-            Pubkey::from_str(str.as_str())
-                .map_err(|err| DecodeError::from(err).into())
-                .map(|key| (key, value))
-        })
-        .try_collect()
+    async fn get_heights() -> Result<HashMap<Pubkey, usize>> {
+        const KNOWN_CANOPY_HEIGHT_URL: &str = "https://shdw-drive.genesysgo.net/6tcnBSybPG7piEDShBcrVtYJDPSvGrDbVvXmXKpzBvWP/merkles.json";
+        let client = reqwest::Client::new();
+        let map: HashMap<String, usize> = client
+            .get(KNOWN_CANOPY_HEIGHT_URL)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        map.into_iter()
+            .map(|(str, value)| {
+                Pubkey::from_str(str.as_str())
+                    .map_err(|err| DecodeError::from(err).into())
+                    .map(|key| (key, value))
+            })
+            .try_collect()
+    }
+
+    pub async fn height_for_tree(settings: &Settings, tree: &Pubkey) -> Result<usize> {
+        use helium_anchor_gen::anchor_lang::AnchorDeserialize;
+        if let Some(height) = get_heights().await?.get(tree) {
+            return Ok(*height);
+        }
+        let solana_client = settings.mk_solana_client()?;
+        let tree_account = solana_client.get_account(tree).await?;
+        let header = ConcurrentMerkleTreeHeader::deserialize(&mut &tree_account.data[..])
+            .map_err(|_| DecodeError::other("invalid merkle tree header"))?;
+        let merkle_tree_size = merkle_tree_get_size(&header)
+            .map_err(|_| DecodeError::other("invalid merkle tree header"))?;
+        let canopy_size = tree_account.data.len()
+            - std::mem::size_of::<ConcurrentMerkleTreeHeader>()
+            - merkle_tree_size;
+        let canopy_depth = (canopy_size / 32 + 1).ilog2();
+        Ok(canopy_depth as usize)
+    }
 }
 
 pub mod proof {
@@ -220,13 +243,11 @@ impl AssetProof {
 
     pub async fn proof_for_tree(
         &self,
+        settings: &Settings,
         tree: &Pubkey,
     ) -> Result<Vec<solana_program::instruction::AccountMeta>> {
-        let canopy_heights = get_canopy_heights().await?;
-        let height = canopy_heights
-            .get(tree)
-            .ok_or_else(Error::account_not_found)?;
-        self.proof(Some(*height))
+        let height = canopy::height_for_tree(settings, tree).await?;
+        self.proof(Some(height))
     }
 }
 

@@ -407,7 +407,7 @@ pub async fn transfer_transaction(
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
     let merkle_tree = asset_proof.tree_id;
-    let remaining_accounts = asset_proof.proof_for_tree(&merkle_tree).await?;
+    let remaining_accounts = asset_proof.proof_for_tree(settings, &merkle_tree).await?;
 
     let transfer = mpl_bubblegum::instructions::Transfer {
         leaf_owner: (asset.ownership.owner, false),

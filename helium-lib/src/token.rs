@@ -1,8 +1,9 @@
 use crate::{
     keypair::{serde_pubkey, GetPubkey, Pubkey},
-    result::{DecodeError, Error, Result},
+    result::{DecodeError, Result},
     settings::Settings,
 };
+use chrono::{DateTime, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use helium_anchor_gen::circuit_breaker;
 use solana_sdk::{signer::Signer, system_instruction};
@@ -16,7 +17,7 @@ pub enum TokenError {
 
 lazy_static::lazy_static! {
     static ref HNT_MINT: Pubkey = Pubkey::from_str("hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux").unwrap();
-    static ref HNT_PRICE_KEY: Pubkey = Pubkey::from_str("7moA1i5vQUpfDwSpK6Pw9s56ahB7WFGidtbL2ujWrVvm").unwrap();
+    static ref HNT_PRICE_KEY: Pubkey = Pubkey::from_str("4DdmDswskDxXGpwHrXUfn2CNUm9rt21ac79GHNTN3J33").unwrap();
 
     static ref MOBILE_MINT: Pubkey = Pubkey::from_str("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6").unwrap();
     static ref IOT_MINT: Pubkey = Pubkey::from_str("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns").unwrap();
@@ -113,27 +114,66 @@ pub async fn balance_for_addresses(
         .await
 }
 
-pub async fn pyth_price(settings: &Settings, token: Token) -> Result<pyth_sdk_solana::Price> {
-    let price_key = token
-        .price_key()
-        .ok_or_else(|| DecodeError::other(format!("No pyth price key for {token}")))?;
-    let client = settings.mk_solana_client()?;
-    let mut price_account = client.get_account(price_key).await?;
-    let price_feed =
-        pyth_sdk_solana::state::SolanaPriceAccount::account_to_feed(price_key, &mut price_account)?;
+pub mod price {
+    use super::*;
+    use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
+    use rust_decimal::prelude::*;
 
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?;
-    price_feed
-        .get_ema_price_no_older_than(
-            current_time
-                .as_secs()
-                .try_into()
-                .map_err(DecodeError::from)?,
-            10 * 60,
-        )
-        .ok_or_else(|| DecodeError::other("No token price found"))
-        .map_err(Error::from)
+    pub const DC_PER_USD: i64 = 100_000;
+
+    #[derive(Debug, thiserror::Error)]
+    pub enum PriceError {
+        #[error("price too old")]
+        PriceTooOld,
+        #[error("price below 0")]
+        PriceBelowZero,
+        #[error("invalid price timestamp: {0}")]
+        InvalidTimestamp(i64),
+        #[error("unsupported positive price exponent")]
+        PositiveExponent,
+    }
+
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    pub struct Price {
+        pub timestamp: DateTime<Utc>,
+        pub price: Decimal,
+        pub token: super::Token,
+    }
+
+    pub async fn get(settings: &Settings, token: Token) -> Result<Price> {
+        let price_key = token
+            .price_key()
+            .ok_or_else(|| DecodeError::other(format!("No pyth price key for {token}")))?;
+        let anchor_client = settings.mk_anchor_client(crate::keypair::Keypair::void())?;
+        let program = anchor_client.program(pyth_solana_receiver_sdk::ID)?;
+        let PriceUpdateV2 { price_message, .. } =
+            program.account::<PriceUpdateV2>(*price_key).await?;
+
+        if (price_message.publish_time.saturating_add(10 * 60)) < Utc::now().timestamp() {
+            return Err(PriceError::PriceTooOld.into());
+        }
+        if price_message.ema_price < 0 {
+            return Err(PriceError::PriceBelowZero.into());
+        }
+        if price_message.exponent > 0 {
+            return Err(PriceError::PositiveExponent.into());
+        }
+        // Handle positive exponent by using scale 1 and multiplying by
+        let scale = price_message.exponent.unsigned_abs();
+        // Remove the confidence interval from the price to get the most optimistic price:
+        let mut price = Decimal::new(price_message.ema_price, scale)
+            - Decimal::new(price_message.ema_conf as i64, scale) * Decimal::new(2, 0);
+        // ensure we use only up to 6 decimals
+        price.rescale(6);
+        let timestamp = DateTime::from_timestamp(price_message.publish_time, 0)
+            .ok_or(PriceError::InvalidTimestamp(price_message.publish_time))?;
+
+        Ok(Price {
+            timestamp,
+            price,
+            token,
+        })
+    }
 }
 
 #[derive(

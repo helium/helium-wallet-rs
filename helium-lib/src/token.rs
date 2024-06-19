@@ -179,12 +179,11 @@ pub mod price {
         if price_message.feed_id != *price_feed {
             return Err(PriceError::InvalidFeed.into());
         }
-        // Handle positive exponent by using scale 1 and multiplying by
         let scale = price_message.exponent.unsigned_abs();
         // Remove the confidence interval from the price to get the most optimistic price:
         let mut price = Decimal::new(price_message.ema_price, scale)
-            - Decimal::new(price_message.ema_conf as i64, scale) * Decimal::new(2, 0);
-        // ensure we use only up to 6 decimals
+            + Decimal::new(price_message.ema_conf as i64, scale) * Decimal::new(2, 0);
+        // ensure we use only up to 6 decimals, this rounds using `MidpointAwayFromZero`
         price.rescale(6);
         let timestamp = DateTime::from_timestamp(price_message.publish_time, 0)
             .ok_or(PriceError::InvalidTimestamp(price_message.publish_time))?;

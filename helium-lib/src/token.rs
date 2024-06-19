@@ -18,12 +18,15 @@ pub enum TokenError {
 lazy_static::lazy_static! {
     static ref HNT_MINT: Pubkey = Pubkey::from_str("hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux").unwrap();
     static ref HNT_PRICE_KEY: Pubkey = Pubkey::from_str("4DdmDswskDxXGpwHrXUfn2CNUm9rt21ac79GHNTN3J33").unwrap();
+    static ref HNT_PRICE_FEED: price::FeedId = price::feed_from_hex("649fdd7ec08e8e2a20f425729854e90293dcbe2376abc47197a14da6ff339756").unwrap();
 
     static ref MOBILE_MINT: Pubkey = Pubkey::from_str("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6").unwrap();
     static ref MOBILE_PRICE_KEY: Pubkey = Pubkey::from_str("DQ4C1tzvu28cwo1roN1Wm6TW35sfJEjLh517k3ZeWevx").unwrap();
+    static ref MOBILE_PRICE_FEED: price::FeedId = price::feed_from_hex("ff4c53361e36a9b837433c87d290c229e1f01aec5ef98d9f3f70953a20a629ce").unwrap();
 
     static ref IOT_MINT: Pubkey = Pubkey::from_str("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns").unwrap();
     static ref IOT_PRICE_KEY: Pubkey = Pubkey::from_str("8UYEn5Weq7toHwgcmctvcAxaNJo3SJxXEayM57rpoXr9").unwrap();
+    static ref IOT_PRICE_FEED: price::FeedId = price::feed_from_hex("6b701e292e0836d18a5904a08fe94534f9ab5c3d4ff37dc02c74dd0f4901944d").unwrap();
 
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
@@ -120,19 +123,22 @@ pub async fn balance_for_addresses(
 
 pub mod price {
     use super::*;
-    use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
+    use pyth_solana_receiver_sdk::price_update::{self, PriceUpdateV2};
     use rust_decimal::prelude::*;
 
+    pub use pyth_solana_receiver_sdk::price_update::FeedId;
     pub const DC_PER_USD: i64 = 100_000;
 
     #[derive(Debug, thiserror::Error)]
     pub enum PriceError {
+        #[error("invalid or unsupported token: {0}")]
+        InvalidToken(super::Token),
+        #[error("invalid price feed")]
+        InvalidFeed,
         #[error("price too old")]
-        PriceTooOld,
-        #[error("invalid price account: {0}")]
-        InvalidPriceAccount(std::io::Error),
+        TooOld,
         #[error("price below 0")]
-        PriceBelowZero,
+        Negative,
         #[error("invalid price timestamp: {0}")]
         InvalidTimestamp(i64),
         #[error("unsupported positive price exponent")]
@@ -146,24 +152,32 @@ pub mod price {
         pub token: super::Token,
     }
 
+    pub fn feed_from_hex(str: &str) -> Result<FeedId> {
+        let feed_id =
+            price_update::get_feed_id_from_hex(str).map_err(|_| PriceError::InvalidFeed)?;
+        Ok(feed_id)
+    }
+
     pub async fn get(settings: &Settings, token: Token) -> Result<Price> {
         use helium_anchor_gen::anchor_lang::AccountDeserialize;
-        let price_key = token
-            .price_key()
-            .ok_or_else(|| DecodeError::other(format!("No pyth price key for {token}")))?;
+        let price_key = token.price_key().ok_or(PriceError::InvalidToken(token))?;
+        let price_feed = token.price_feed().ok_or(PriceError::InvalidToken(token))?;
         let solana_client = settings.mk_solana_client()?;
         let account = solana_client.get_account(price_key).await?;
         let PriceUpdateV2 { price_message, .. } =
             PriceUpdateV2::try_deserialize(&mut account.data.as_slice())?;
 
         if (price_message.publish_time.saturating_add(10 * 60)) < Utc::now().timestamp() {
-            return Err(PriceError::PriceTooOld.into());
+            return Err(PriceError::TooOld.into());
         }
         if price_message.ema_price < 0 {
-            return Err(PriceError::PriceBelowZero.into());
+            return Err(PriceError::Negative.into());
         }
         if price_message.exponent > 0 {
             return Err(PriceError::PositiveExponent.into());
+        }
+        if price_message.feed_id != *price_feed {
+            return Err(PriceError::InvalidFeed.into());
         }
         // Handle positive exponent by using scale 1 and multiplying by
         let scale = price_message.exponent.unsigned_abs();
@@ -378,6 +392,15 @@ impl Token {
             Self::Hnt => Some(&HNT_PRICE_KEY),
             Self::Iot => Some(&IOT_PRICE_KEY),
             Self::Mobile => Some(&MOBILE_PRICE_KEY),
+            _ => None,
+        }
+    }
+
+    pub fn price_feed(&self) -> Option<&price::FeedId> {
+        match self {
+            Self::Hnt => Some(&HNT_PRICE_FEED),
+            Self::Iot => Some(&IOT_PRICE_FEED),
+            Self::Mobile => Some(&MOBILE_PRICE_FEED),
             _ => None,
         }
     }

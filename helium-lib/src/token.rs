@@ -20,7 +20,11 @@ lazy_static::lazy_static! {
     static ref HNT_PRICE_KEY: Pubkey = Pubkey::from_str("4DdmDswskDxXGpwHrXUfn2CNUm9rt21ac79GHNTN3J33").unwrap();
 
     static ref MOBILE_MINT: Pubkey = Pubkey::from_str("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6").unwrap();
+    static ref MOBILE_PRICE_KEY: Pubkey = Pubkey::from_str("DQ4C1tzvu28cwo1roN1Wm6TW35sfJEjLh517k3ZeWevx").unwrap();
+
     static ref IOT_MINT: Pubkey = Pubkey::from_str("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns").unwrap();
+    static ref IOT_PRICE_KEY: Pubkey = Pubkey::from_str("8UYEn5Weq7toHwgcmctvcAxaNJo3SJxXEayM57rpoXr9").unwrap();
+
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
@@ -125,6 +129,8 @@ pub mod price {
     pub enum PriceError {
         #[error("price too old")]
         PriceTooOld,
+        #[error("invalid price account: {0}")]
+        InvalidPriceAccount(std::io::Error),
         #[error("price below 0")]
         PriceBelowZero,
         #[error("invalid price timestamp: {0}")]
@@ -141,13 +147,14 @@ pub mod price {
     }
 
     pub async fn get(settings: &Settings, token: Token) -> Result<Price> {
+        use helium_anchor_gen::anchor_lang::AccountDeserialize;
         let price_key = token
             .price_key()
             .ok_or_else(|| DecodeError::other(format!("No pyth price key for {token}")))?;
-        let anchor_client = settings.mk_anchor_client(crate::keypair::Keypair::void())?;
-        let program = anchor_client.program(pyth_solana_receiver_sdk::ID)?;
+        let solana_client = settings.mk_solana_client()?;
+        let account = solana_client.get_account(price_key).await?;
         let PriceUpdateV2 { price_message, .. } =
-            program.account::<PriceUpdateV2>(*price_key).await?;
+            PriceUpdateV2::try_deserialize(&mut account.data.as_slice())?;
 
         if (price_message.publish_time.saturating_add(10 * 60)) < Utc::now().timestamp() {
             return Err(PriceError::PriceTooOld.into());
@@ -222,13 +229,20 @@ impl Token {
         vec![Self::Hnt, Self::Iot, Self::Mobile, Self::Dc, Self::Sol]
     }
 
-    pub fn transferrable_value_parser(s: &str) -> StdResult<Self, TokenError> {
-        let transferrable = [Self::Iot, Self::Mobile, Self::Hnt, Self::Sol];
+    fn from_allowed(s: &str, allowed: &[Self]) -> StdResult<Self, TokenError> {
         let result = Self::from_str(s)?;
-        if !transferrable.contains(&result) {
+        if !allowed.contains(&result) {
             return Err(TokenError::InvalidToken(s.to_string()));
         }
         Ok(result)
+    }
+
+    pub fn transferrable_value_parser(s: &str) -> StdResult<Self, TokenError> {
+        Self::from_allowed(s, &[Self::Iot, Self::Mobile, Self::Hnt, Self::Sol])
+    }
+
+    pub fn pricekey_value_parser(s: &str) -> StdResult<Self, TokenError> {
+        Self::from_allowed(s, &[Self::Iot, Self::Mobile, Self::Hnt])
     }
 
     pub fn associated_token_adress(&self, address: &Pubkey) -> Pubkey {
@@ -362,6 +376,8 @@ impl Token {
     pub fn price_key(&self) -> Option<&Pubkey> {
         match self {
             Self::Hnt => Some(&HNT_PRICE_KEY),
+            Self::Iot => Some(&IOT_PRICE_KEY),
+            Self::Mobile => Some(&MOBILE_PRICE_KEY),
             _ => None,
         }
     }

@@ -759,8 +759,8 @@ impl Hotspot {
 
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct HotspotGeo {
-    lat: f64,
-    lng: f64,
+    pub lat: f64,
+    pub lng: f64,
 }
 
 impl From<h3o::CellIndex> for HotspotGeo {
@@ -776,8 +776,8 @@ impl From<h3o::CellIndex> for HotspotGeo {
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct HotspotLocation {
     #[serde(with = "serde_cell_index")]
-    location: h3o::CellIndex,
-    geo: HotspotGeo,
+    pub location: h3o::CellIndex,
+    pub geo: HotspotGeo,
 }
 
 impl From<h3o::CellIndex> for HotspotLocation {

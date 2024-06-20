@@ -123,6 +123,7 @@ pub async fn balance_for_addresses(
 
 pub mod price {
     use super::*;
+    use crate::solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
     use pyth_solana_receiver_sdk::price_update::{self, PriceUpdateV2};
     use rust_decimal::prelude::*;
 
@@ -158,11 +159,10 @@ pub mod price {
         Ok(feed_id)
     }
 
-    pub async fn get(settings: &Settings, token: Token) -> Result<Price> {
+    pub async fn get(solana_client: &SolanaRpcClient, token: Token) -> Result<Price> {
         use helium_anchor_gen::anchor_lang::AccountDeserialize;
         let price_key = token.price_key().ok_or(PriceError::InvalidToken(token))?;
         let price_feed = token.price_feed().ok_or(PriceError::InvalidToken(token))?;
-        let solana_client = settings.mk_solana_client()?;
         let account = solana_client.get_account(price_key).await?;
         let PriceUpdateV2 { price_message, .. } =
             PriceUpdateV2::try_deserialize(&mut account.data.as_slice())?;

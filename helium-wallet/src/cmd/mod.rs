@@ -24,6 +24,7 @@ pub mod dc;
 pub mod export;
 pub mod hotspots;
 pub mod info;
+pub mod price;
 pub mod router;
 pub mod sign;
 pub mod transfer;

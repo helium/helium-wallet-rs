@@ -1,6 +1,8 @@
 use clap::Parser;
 use helium_wallet::{
-    cmd::{balance, create, dc, export, hotspots, info, router, sign, transfer, upgrade, Opts},
+    cmd::{
+        balance, create, dc, export, hotspots, info, price, router, sign, transfer, upgrade, Opts,
+    },
     result::Result,
 };
 
@@ -30,6 +32,7 @@ pub enum Cmd {
     Create(create::Cmd),
     Hotspots(Box<hotspots::Cmd>),
     Dc(dc::Cmd),
+    Price(price::Cmd),
     Transfer(transfer::Cmd),
     Export(export::Cmd),
     Sign(sign::Cmd),
@@ -53,6 +56,7 @@ async fn run(cli: Cli) -> Result {
         Cmd::Create(cmd) => cmd.run(cli.opts).await,
         Cmd::Hotspots(cmd) => cmd.run(cli.opts).await,
         Cmd::Dc(cmd) => cmd.run(cli.opts).await,
+        Cmd::Price(cmd) => cmd.run(cli.opts).await,
         Cmd::Transfer(cmd) => cmd.run(cli.opts).await,
         Cmd::Export(cmd) => cmd.run(cli.opts).await,
         Cmd::Sign(cmd) => cmd.run(cli.opts).await,

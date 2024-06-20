@@ -1,7 +1,7 @@
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
-use crate::{onboarding, settings};
+use crate::{onboarding, settings, token};
 
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
@@ -18,8 +18,8 @@ pub enum Error {
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
     #[error("DAS client: {0}")]
     Das(#[from] settings::DasClientError),
-    #[error("pyth client: {0}")]
-    Pyth(#[from] pyth_sdk_solana::PythError),
+    #[error("price client: {0}")]
+    Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]
     Rest(#[from] reqwest::Error),
     #[error("system time: {0}")]

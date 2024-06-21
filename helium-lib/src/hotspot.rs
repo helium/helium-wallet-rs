@@ -232,15 +232,16 @@ pub mod info {
                 .into_iter()
                 .map(HotspotInfoUpdate::from_ui_instruction)
                 .filter(|result| matches!(result, Ok(Some(_v))))
-                .collect::<Vec<StdResult<Option<HotspotInfoUpdate>, _>>>()
+                .collect::<Vec<StdResult<Option<(Pubkey, HotspotInfoUpdate)>, _>>>()
                 .into_iter()
-                .collect::<StdResult<Vec<Option<HotspotInfoUpdate>>, _>>()?
+                .collect::<StdResult<Vec<Option<(Pubkey, HotspotInfoUpdate)>>, _>>()?
                 .first()
                 .cloned()
                 .flatten()
-                .map(|update| Self {
+                .map(|(info_key, update)| Self {
                     timestamp,
                     signature: signature.clone(),
+                    info_key,
                     update,
                 });
             Ok(update)
@@ -248,7 +249,10 @@ pub mod info {
     }
 
     impl HotspotInfoUpdate {
-        fn from_ui_instruction(ixn: UiInstruction) -> StdResult<Option<Self>, DecodeError> {
+        fn from_ui_instruction(
+            ixn: UiInstruction,
+        ) -> StdResult<Option<(Pubkey, Self)>, DecodeError> {
+            use solana_transaction_status::UiPartiallyDecodedInstruction;
             let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(decoded)) = ixn else {
                 return Err(DecodeError::other("not a decoded instruction"));
             };
@@ -266,21 +270,47 @@ pub mod info {
             discriminator.copy_from_slice(&decoded_data[..8]);
             let args = &decoded_data[8..];
 
+            fn get_info_key(
+                decoded: &UiPartiallyDecodedInstruction,
+                index: usize,
+            ) -> StdResult<Pubkey, DecodeError> {
+                let account_str = decoded.accounts.get(index).ok_or_else(|| {
+                    DecodeError::other("missing info key in instruction accounts")
+                })?;
+                let account = Pubkey::from_str(account_str).map_err(DecodeError::from)?;
+                Ok(account)
+            }
+
             match discriminator {
                 UpdateMobileInfoV0::DISCRIMINATOR => {
-                    UpdateMobileInfoArgsV0::try_from_slice(args).map(Into::into)
+                    let info_key = get_info_key(&decoded, 2)?;
+                    UpdateMobileInfoArgsV0::try_from_slice(args)
+                        .map(Into::into)
+                        .map(|v| (info_key, v))
                 }
                 OnboardMobileHotspotV0::DISCRIMINATOR => {
-                    OnboardMobileHotspotArgsV0::try_from_slice(args).map(Into::into)
+                    let info_key = get_info_key(&decoded, 3)?;
+                    OnboardMobileHotspotArgsV0::try_from_slice(args)
+                        .map(Into::into)
+                        .map(|v| (info_key, v))
                 }
                 OnboardIotHotspotV0::DISCRIMINATOR => {
-                    OnboardIotHotspotArgsV0::try_from_slice(args).map(Into::into)
+                    let info_key = get_info_key(&decoded, 3)?;
+                    OnboardIotHotspotArgsV0::try_from_slice(args)
+                        .map(Into::into)
+                        .map(|v| (info_key, v))
                 }
                 UpdateIotInfoV0::DISCRIMINATOR => {
-                    UpdateIotInfoArgsV0::try_from_slice(args).map(Into::into)
+                    let info_key = get_info_key(&decoded, 2)?;
+                    UpdateIotInfoArgsV0::try_from_slice(args)
+                        .map(Into::into)
+                        .map(|v| (info_key, v))
                 }
                 OnboardDataOnlyIotHotspotV0::DISCRIMINATOR => {
-                    OnboardDataOnlyIotHotspotArgsV0::try_from_slice(args).map(Into::into)
+                    let info_key = get_info_key(&decoded, 2)?;
+                    OnboardDataOnlyIotHotspotArgsV0::try_from_slice(args)
+                        .map(Into::into)
+                        .map(|v| (info_key, v))
                 }
                 _ => return Ok(None),
             }
@@ -759,8 +789,8 @@ impl Hotspot {
 
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct HotspotGeo {
-    lat: f64,
-    lng: f64,
+    pub lat: f64,
+    pub lng: f64,
 }
 
 impl From<h3o::CellIndex> for HotspotGeo {
@@ -776,8 +806,8 @@ impl From<h3o::CellIndex> for HotspotGeo {
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct HotspotLocation {
     #[serde(with = "serde_cell_index")]
-    location: h3o::CellIndex,
-    geo: HotspotGeo,
+    pub location: h3o::CellIndex,
+    pub geo: HotspotGeo,
 }
 
 impl From<h3o::CellIndex> for HotspotLocation {
@@ -873,6 +903,8 @@ pub enum HotspotInfo {
 pub struct CommittedHotspotInfoUpdate {
     pub timestamp: chrono::DateTime<Utc>,
     pub signature: String,
+    #[serde(with = "serde_pubkey")]
+    pub info_key: Pubkey,
     pub update: HotspotInfoUpdate,
 }
 

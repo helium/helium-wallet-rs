@@ -16,7 +16,7 @@ async-trait = "0"
 anchor-client = {version = "0.30.0", features = ["async"] }
 anchor-spl = { version = "0.30.0", features = ["mint", "token"] }
 url = {version = "2", features = ["serde"]}
-h3o = {version = "0", features = ["std", "serde"]}
+h3o = {version = "0", features = ["serde"]}
 helium-crypto = {workspace = true}
 itertools = "0.10.5"
 jsonrpc_client = {version = "0.7", features = ["reqwest"]}

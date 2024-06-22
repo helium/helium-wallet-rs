@@ -9,6 +9,7 @@ use crate::{
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
     result::{DecodeError, EncodeError, Error, Result},
     settings::{DasClient, DasSearchAssetsParams, Settings},
+    solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient,
     token::Token,
 };
 use angry_purple_tiger::AnimalName;
@@ -147,7 +148,7 @@ pub mod info {
             .await
     }
 
-    #[derive(Serialize, Deserialize, Debug, Default)]
+    #[derive(Serialize, Deserialize, Debug, Default, Clone)]
     pub struct HotspotInfoUpdateParams {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub before: Option<Signature>,
@@ -169,12 +170,11 @@ pub mod info {
     }
 
     pub async fn updates(
-        settings: &Settings,
+        solana_client: &SolanaRpcClient,
         account: &Pubkey,
         params: HotspotInfoUpdateParams,
     ) -> Result<Vec<CommittedHotspotInfoUpdate>> {
-        let client = settings.mk_solana_client()?;
-        let signatures = client
+        let signatures = solana_client
             .get_signatures_for_address_with_config(account, params.into())
             .await?;
 
@@ -187,8 +187,7 @@ pub mod info {
                     .map_err(Error::from)
             })
             .map_ok(|signature| async move {
-                let client = settings.mk_solana_client()?;
-                client
+                solana_client
                     .get_transaction_with_config(
                         &signature,
                         RpcTransactionConfig {

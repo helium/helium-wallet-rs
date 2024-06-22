@@ -4,8 +4,10 @@ use crate::{
     keypair::{Keypair, Pubkey, VoidKeypair},
     result::{Error, Result},
     settings::Settings,
+    solana_sdk::account::Account,
 };
 use anchor_client::anchor_lang::AccountDeserialize;
+use futures::{stream, StreamExt, TryStreamExt};
 use helium_anchor_gen::helium_entity_manager::{self, KeyToAssetV0};
 use itertools::Itertools;
 use std::{
@@ -88,11 +90,22 @@ impl KtaCache {
                 .copied()
                 .collect()
         };
-        let mut missing_accounts = self
-            .program
-            .async_rpc()
-            .get_multiple_accounts(&missing_keys)
-            .await?;
+
+        let mut missing_accounts = stream::iter(missing_keys.clone())
+            // Chunk into documented max keys to pass to getMultipleAccounts
+            .chunks(100)
+            .map(|key_chunk| async move {
+                self.program
+                    .async_rpc()
+                    .get_multiple_accounts(key_chunk.as_slice())
+                    .await
+            })
+            .buffered(5)
+            .try_collect::<Vec<Vec<Option<Account>>>>()
+            .await?
+            .into_iter()
+            .flatten()
+            .collect_vec();
         {
             let mut cache = self.cache_write();
             missing_keys

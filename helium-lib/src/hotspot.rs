@@ -1,14 +1,23 @@
 use crate::{
-    asset,
+    anchor_lang::{AnchorDeserialize, Discriminator, InstructionData, ToAccountMetas},
+    asset, bs58,
+    client::{DasClient, DasSearchAssetsParams, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
+    data_credits,
     entity_key::AsEntityKey,
-    is_zero,
-    keypair::{pubkey, serde_pubkey, GetPubkey, Keypair, Pubkey},
+    error::{DecodeError, EncodeError, Error},
+    helium_entity_manager, helium_sub_daos, is_zero,
+    keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
     kta, onboarding,
-    priority_fee::{self, compute_budget_instruction, compute_price_instruction, SetPriorityFees},
+    priority_fee::{self, compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
-    result::{DecodeError, EncodeError, Error, Result},
-    settings::{DasClient, DasSearchAssetsParams, Settings},
+    solana_sdk::{
+        commitment_config::CommitmentConfig,
+        instruction::{AccountMeta, Instruction},
+        signature::Signature,
+        signer::Signer,
+        transaction::Transaction,
+    },
     token::Token,
 };
 use angry_purple_tiger::AnimalName;
@@ -17,21 +26,17 @@ use futures::{
     stream::{self, StreamExt, TryStreamExt},
     TryFutureExt,
 };
-use helium_anchor_gen::{
-    anchor_lang::{AnchorDeserialize, Discriminator, ToAccountMetas},
-    data_credits, helium_entity_manager, helium_sub_daos,
-};
 use itertools::Itertools;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use solana_program::instruction::AccountMeta;
-use solana_sdk::{bs58, commitment_config::CommitmentConfig, signature::Signature, signer::Signer};
-use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
-pub fn key_from_kta(kta: helium_entity_manager::KeyToAssetV0) -> Result<helium_crypto::PublicKey> {
+pub fn key_from_kta(
+    kta: helium_entity_manager::KeyToAssetV0,
+) -> Result<helium_crypto::PublicKey, Error> {
     let key_str = match kta.key_serialization {
         helium_entity_manager::KeySerialization::B58 => bs58::encode(kta.entity_key).into_string(),
         helium_entity_manager::KeySerialization::UTF8 => String::from_utf8(kta.entity_key)
@@ -40,35 +45,47 @@ pub fn key_from_kta(kta: helium_entity_manager::KeyToAssetV0) -> Result<helium_c
     Ok(helium_crypto::PublicKey::from_str(&key_str)?)
 }
 
-pub async fn for_owner(settings: &Settings, owner: &Pubkey) -> Result<Vec<Hotspot>> {
-    let assets = asset::for_owner(settings, &HOTSPOT_CREATOR, owner).await?;
-    stream::iter(assets)
+pub async fn for_owner<C: AsRef<DasClient>>(
+    client: &C,
+    owner: &Pubkey,
+) -> Result<Vec<Hotspot>, Error> {
+    let assets = asset::for_owner(client, &HOTSPOT_CREATOR, owner).await?;
+    let hotspot_assets = assets
+        .into_iter()
+        .filter(|asset| asset.content.metadata.symbol == "HOTSPOT");
+    stream::iter(hotspot_assets)
         .map(|asset| async move { Hotspot::from_asset(asset).await })
         .buffered(5)
         .try_collect::<Vec<Hotspot>>()
         .await
 }
 
-pub async fn search(client: &DasClient, params: DasSearchAssetsParams) -> Result<HotspotPage> {
+pub async fn search<C: AsRef<DasClient>>(
+    client: &C,
+    params: DasSearchAssetsParams,
+) -> Result<HotspotPage, Error> {
     asset::search(client, params)
         .and_then(HotspotPage::from_asset_page)
         .await
 }
 
-pub async fn get(settings: &Settings, hotspot_key: &helium_crypto::PublicKey) -> Result<Hotspot> {
+pub async fn get<C: AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+) -> Result<Hotspot, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
-    let asset = asset::for_kta(settings, &kta).await?;
+    let asset = asset::for_kta(client, &kta).await?;
     Hotspot::from_asset(asset).await
 }
 
-pub async fn get_with_info(
-    settings: &Settings,
+pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
+    client: &C,
     subdaos: &[SubDao],
     hotspot_key: &helium_crypto::PublicKey,
-) -> Result<Hotspot> {
+) -> Result<Hotspot, Error> {
     let (mut hotspot, info) = futures::try_join!(
-        get(settings, hotspot_key),
-        info::get(settings, subdaos, hotspot_key)
+        get(client, hotspot_key),
+        info::get(client, subdaos, hotspot_key)
     )?;
     if !info.is_empty() {
         hotspot.info = Some(info);
@@ -95,49 +112,34 @@ pub mod info {
         UiParsedInstruction, UiTransactionEncoding,
     };
 
-    pub async fn for_subdao(
-        settings: &Settings,
+    pub async fn for_subdao<C: GetAnchorAccount>(
+        client: &C,
         subdao: SubDao,
         key: &helium_crypto::PublicKey,
-    ) -> Result<Option<HotspotInfo>> {
-        fn maybe_info<T>(
-            result: StdResult<T, anchor_client::ClientError>,
-        ) -> Result<Option<HotspotInfo>>
-        where
-            T: Into<HotspotInfo>,
-        {
-            match result {
-                Ok(account) => Ok(Some(account.into())),
-                Err(anchor_client::ClientError::AccountNotFound) => Ok(None),
-                Err(err) => Err(err.into()),
-            }
-        }
-
-        let client = settings.mk_anchor_client(Keypair::void())?;
+    ) -> Result<Option<HotspotInfo>, Error> {
         let info_key = subdao.info_key_for_helium_key(key)?;
-        let program = client.program(helium_entity_manager::id())?;
-        match subdao {
-            SubDao::Iot => maybe_info(
-                program
-                    .account::<helium_entity_manager::IotHotspotInfoV0>(info_key)
-                    .await,
-            ),
-            SubDao::Mobile => maybe_info(
-                program
-                    .account::<helium_entity_manager::MobileHotspotInfoV0>(info_key)
-                    .await,
-            ),
+        let hotspot_info = match subdao {
+            SubDao::Iot => client
+                .anchor_account::<helium_entity_manager::IotHotspotInfoV0>(&info_key)
+                .await
+                .map(Into::into),
+            SubDao::Mobile => client
+                .anchor_account::<helium_entity_manager::MobileHotspotInfoV0>(&info_key)
+                .await
+                .map(Into::into),
         }
+        .ok();
+        Ok(hotspot_info)
     }
 
-    pub async fn get(
-        settings: &Settings,
+    pub async fn get<C: GetAnchorAccount>(
+        client: &C,
         subdaos: &[SubDao],
         key: &helium_crypto::PublicKey,
-    ) -> Result<HashMap<SubDao, HotspotInfo>> {
+    ) -> Result<HashMap<SubDao, HotspotInfo>, Error> {
         stream::iter(subdaos.to_vec())
             .map(|subdao| {
-                for_subdao(settings, subdao, key)
+                for_subdao(client, subdao, key)
                     .map_ok(move |maybe_metadata| maybe_metadata.map(|metadata| (subdao, metadata)))
             })
             .buffer_unordered(10)
@@ -147,7 +149,7 @@ pub mod info {
             .await
     }
 
-    #[derive(Serialize, Deserialize, Debug, Default)]
+    #[derive(Serialize, Deserialize, Debug, Default, Clone)]
     pub struct HotspotInfoUpdateParams {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub before: Option<Signature>,
@@ -168,13 +170,13 @@ pub mod info {
         }
     }
 
-    pub async fn updates(
-        settings: &Settings,
+    pub async fn updates<C: AsRef<SolanaRpcClient>>(
+        client: &C,
         account: &Pubkey,
         params: HotspotInfoUpdateParams,
-    ) -> Result<Vec<CommittedHotspotInfoUpdate>> {
-        let client = settings.mk_solana_client()?;
+    ) -> Result<Vec<CommittedHotspotInfoUpdate>, Error> {
         let signatures = client
+            .as_ref()
             .get_signatures_for_address_with_config(account, params.into())
             .await?;
 
@@ -187,8 +189,8 @@ pub mod info {
                     .map_err(Error::from)
             })
             .map_ok(|signature| async move {
-                let client = settings.mk_solana_client()?;
                 client
+                    .as_ref()
                     .get_transaction_with_config(
                         &signature,
                         RpcTransactionConfig {
@@ -213,7 +215,7 @@ pub mod info {
     impl CommittedHotspotInfoUpdate {
         fn from_transaction(
             txn: EncodedConfirmedTransactionWithStatusMeta,
-        ) -> StdResult<Option<Self>, DecodeError> {
+        ) -> Result<Option<Self>, DecodeError> {
             let EncodedTransaction::Json(ui_txn) = txn.transaction.transaction else {
                 return Err(DecodeError::other("not a json encoded transaction"));
             };
@@ -232,9 +234,9 @@ pub mod info {
                 .into_iter()
                 .map(HotspotInfoUpdate::from_ui_instruction)
                 .filter(|result| matches!(result, Ok(Some(_v))))
-                .collect::<Vec<StdResult<Option<(Pubkey, HotspotInfoUpdate)>, _>>>()
+                .collect::<Vec<Result<Option<(Pubkey, HotspotInfoUpdate)>, _>>>()
                 .into_iter()
-                .collect::<StdResult<Vec<Option<(Pubkey, HotspotInfoUpdate)>>, _>>()?
+                .collect::<Result<Vec<Option<(Pubkey, HotspotInfoUpdate)>>, _>>()?
                 .first()
                 .cloned()
                 .flatten()
@@ -249,9 +251,7 @@ pub mod info {
     }
 
     impl HotspotInfoUpdate {
-        fn from_ui_instruction(
-            ixn: UiInstruction,
-        ) -> StdResult<Option<(Pubkey, Self)>, DecodeError> {
+        fn from_ui_instruction(ixn: UiInstruction) -> Result<Option<(Pubkey, Self)>, DecodeError> {
             use solana_transaction_status::UiPartiallyDecodedInstruction;
             let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(decoded)) = ixn else {
                 return Err(DecodeError::other("not a decoded instruction"));
@@ -273,7 +273,7 @@ pub mod info {
             fn get_info_key(
                 decoded: &UiPartiallyDecodedInstruction,
                 index: usize,
-            ) -> StdResult<Pubkey, DecodeError> {
+            ) -> Result<Pubkey, DecodeError> {
                 let account_str = decoded.accounts.get(index).ok_or_else(|| {
                     DecodeError::other("missing info key in instruction accounts")
                 })?;
@@ -320,13 +320,13 @@ pub mod info {
     }
 }
 
-pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-    settings: &Settings,
+pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
     hotspot: &helium_crypto::PublicKey,
-    keypair: C,
     update: HotspotInfoUpdate,
-) -> Result<solana_sdk::transaction::Transaction> {
-    fn mk_update_accounts(
+    keypair: &Keypair,
+) -> Result<Transaction, Error> {
+    fn mk_accounts(
         subdao: SubDao,
         kta: &helium_entity_manager::KeyToAssetV0,
         asset: &asset::Asset,
@@ -364,19 +364,15 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
         }
     }
 
-    let anchor_client = settings.mk_anchor_client(keypair.clone())?;
-    let program = anchor_client.program(helium_entity_manager::id())?;
-    let solana_client = settings.mk_solana_client()?;
-
     let kta = kta::for_entity_key(hotspot).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
-    let accounts = mk_update_accounts(update.subdao(), &kta, &asset, &program.payer());
+    let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
+    let mut accounts = mk_accounts(update.subdao(), &kta, &asset, &keypair.pubkey());
+    accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
-    let mut ixs = program
-        .request()
-        .compute_budget(200_000)
-        .compute_price(priority_fee::get_estimate(&solana_client, &accounts).await?)
-        .args(helium_entity_manager::instruction::UpdateIotInfoV0 {
+    let update_ix = Instruction {
+        program_id: helium_entity_manager::id(),
+        accounts: accounts.to_account_metas(None),
+        data: helium_entity_manager::instruction::UpdateIotInfoV0 {
             _args: helium_entity_manager::UpdateIotInfoArgsV0 {
                 root: asset_proof.root.to_bytes(),
                 data_hash: asset.compression.data_hash,
@@ -386,37 +382,45 @@ pub async fn direct_update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
                 gain: update.gain_i32(),
                 location: update.location_u64(),
             },
-        })
-        .accounts(accounts)
-        .instructions()?;
-    ixs[2]
-        .accounts
-        .extend_from_slice(&asset_proof.proof(Some(3))?);
+        }
+        .data(),
+    };
 
-    let mut tx = solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&program.payer()));
-    let blockhash = program.rpc().get_latest_blockhash()?;
-    tx.try_sign(&[&*keypair], blockhash)?;
+    let ixs = &[
+        priority_fee::compute_budget_instruction(200_000),
+        priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
+        update_ix,
+    ];
+
+    let recent_blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
+        .get_latest_blockhash()
+        .await?;
+    let tx = Transaction::new_signed_with_payer(
+        ixs,
+        Some(&keypair.pubkey()),
+        &[keypair],
+        recent_blockhash,
+    );
     Ok(tx)
 }
 
-pub async fn update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-    settings: &Settings,
+pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
     onboarding_server: Option<String>,
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
-    keypair: C,
-) -> Result<solana_sdk::transaction::Transaction> {
+    keypair: &Keypair,
+) -> Result<Transaction, Error> {
     let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
         let onboarding_client = onboarding::Client::new(&server);
         let mut tx = onboarding_client
             .get_update_txn(hotspot, &public_key, update)
             .await?;
-        tx.try_partial_sign(&[&*keypair], tx.message.recent_blockhash)?;
+        tx.try_partial_sign(&[keypair], tx.message.recent_blockhash)?;
         return Ok(tx);
     };
-    let mut tx = direct_update(settings, hotspot, keypair.clone(), update).await?;
-    tx.try_partial_sign(&[&*keypair], tx.message.recent_blockhash)?;
+    let tx = direct_update(client, hotspot, update, keypair).await?;
     Ok(tx)
 }
 
@@ -425,19 +429,17 @@ pub async fn update<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
 /// The hotspot is transferred from the owner of the hotspot to the given recipient
 /// Note that the owner is currently expected to sign this transaction and pay for
 /// transaction fees.
-pub async fn transfer_transaction(
-    settings: &Settings,
+pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
-) -> Result<solana_sdk::transaction::Transaction> {
-    let anchor_client = settings.mk_anchor_client(Keypair::void())?;
-    let program = anchor_client.program(mpl_bubblegum::ID)?;
+) -> Result<Transaction, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
     let merkle_tree = asset_proof.tree_id;
-    let remaining_accounts = asset_proof.proof_for_tree(settings, &merkle_tree).await?;
+    let remaining_accounts = asset_proof.proof_for_tree(client, &merkle_tree).await?;
 
     let transfer = mpl_bubblegum::instructions::Transfer {
         leaf_owner: (asset.ownership.owner, false),
@@ -463,27 +465,25 @@ pub async fn transfer_transaction(
 
     let ixs = &[
         compute_budget_instruction(200_000),
-        compute_price_instruction(
-            priority_fee::get_estimate(&program.async_rpc(), &priority_fee_accounts).await?,
-        ),
+        compute_price_instruction_for_accounts(client, &priority_fee_accounts).await?,
         transfer_ix,
     ];
 
-    let tx =
-        solana_sdk::transaction::Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
+    let tx = Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
     Ok(tx)
 }
 
-pub async fn transfer<C: Clone + Deref<Target = impl Signer>>(
-    settings: &Settings,
+pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
-    keypair: C,
-) -> Result<solana_sdk::transaction::Transaction> {
-    let mut tx = transfer_transaction(settings, hotspot_key, recipient).await?;
-    let solana_client = settings.mk_solana_client()?;
-    let blockhash = solana_client.get_latest_blockhash().await?;
-    tx.try_sign(&[&*keypair], blockhash)?;
+    keypair: &Keypair,
+) -> Result<Transaction, Error> {
+    let mut tx = transfer_transaction(client, hotspot_key, recipient).await?;
+    let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
+        .get_latest_blockhash()
+        .await?;
+    tx.try_sign(&[keypair], blockhash)?;
 
     Ok(tx)
 }
@@ -494,14 +494,13 @@ pub mod dataonly {
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     };
     use helium_proto::{BlockchainTxnAddGatewayV1, Message};
-    use priority_fee::SetPriorityFees;
 
-    pub async fn onboard<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-        settings: &Settings,
+    pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+        client: &C,
         hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotInfoUpdate,
-        keypair: C,
-    ) -> Result<solana_sdk::transaction::Transaction> {
+        keypair: &Keypair,
+    ) -> Result<Transaction, Error> {
         use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
@@ -511,7 +510,6 @@ pub mod dataonly {
             let dao = Dao::Hnt;
             let entity_key = hotspot_key.as_entity_key();
             let data_only_config_key = dao.dataonly_config_key();
-
             OnboardDataOnlyIotHotspotV0 {
                 payer: owner,
                 dc_fee_payer: owner,
@@ -535,57 +533,57 @@ pub mod dataonly {
             }
         }
 
-        let anchor_client = settings.mk_anchor_client(keypair.clone())?;
-        let solana_client = settings.mk_solana_client()?;
-        let program = anchor_client.program(helium_entity_manager::id())?;
-        let config_account = program
-            .account::<helium_entity_manager::DataOnlyConfigV0>(Dao::Hnt.dataonly_config_key())
-            .await?;
-
-        let kta = kta::for_entity_key(hotspot_key).await?;
-        let (asset, asset_proof) = asset::for_kta_with_proof(settings, &kta).await?;
-        let onboard_accounts = mk_accounts(config_account, program.payer(), hotspot_key);
-
-        let mut ixs = program
-            .request()
-            .compute_budget(300_000)
-            .compute_price(priority_fee::get_estimate(&solana_client, &onboard_accounts).await?)
-            .args(
-                helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
-                    _args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
-                        data_hash: asset.compression.data_hash,
-                        creator_hash: asset.compression.creator_hash,
-                        index: asset.compression.leaf_id()?,
-                        root: asset_proof.root.to_bytes(),
-                        elevation: *assertion.elevation(),
-                        gain: assertion.gain_i32(),
-                        location: assertion.location_u64(),
-                    },
-                },
+        let config_account = client
+            .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(
+                &Dao::Hnt.dataonly_config_key(),
             )
-            .accounts(onboard_accounts)
-            .instructions()?;
-        ixs[2]
-            .accounts
-            .extend_from_slice(&asset_proof.proof(Some(3))?);
+            .await?;
+        let kta = kta::for_entity_key(hotspot_key).await?;
+        let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
+        let mut onboard_accounts =
+            mk_accounts(config_account, keypair.pubkey(), hotspot_key).to_account_metas(None);
+        onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
-        let mut tx =
-            solana_sdk::transaction::Transaction::new_with_payer(&ixs, Some(&keypair.pubkey()));
-        let blockhash = program.rpc().get_latest_blockhash()?;
+        let onboard_ix = solana_sdk::instruction::Instruction {
+            program_id: helium_entity_manager::id(),
+            accounts: onboard_accounts,
+            data: helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
+                _args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
+                    data_hash: asset.compression.data_hash,
+                    creator_hash: asset.compression.creator_hash,
+                    index: asset.compression.leaf_id()?,
+                    root: asset_proof.root.to_bytes(),
+                    elevation: *assertion.elevation(),
+                    gain: assertion.gain_i32(),
+                    location: assertion.location_u64(),
+                },
+            }
+            .data(),
+        };
 
-        tx.try_sign(&[&*keypair], blockhash)?;
+        let ixs = &[
+            priority_fee::compute_budget_instruction(300_000),
+            priority_fee::compute_price_instruction_for_accounts(client, &onboard_ix.accounts)
+                .await?,
+            onboard_ix,
+        ];
 
+        let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
+            .get_latest_blockhash()
+            .await?;
+        let tx =
+            Transaction::new_signed_with_payer(ixs, Some(&keypair.pubkey()), &[keypair], blockhash);
         Ok(tx)
     }
 
-    pub async fn issue<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-        settings: &Settings,
+    pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
+        client: &C,
         verifier: &str,
         add_tx: &mut BlockchainTxnAddGatewayV1,
-        keypair: C,
-    ) -> Result<solana_sdk::transaction::Transaction> {
+        keypair: &Keypair,
+    ) -> Result<Transaction, Error> {
         use helium_entity_manager::accounts::IssueDataOnlyEntityV0;
-        fn mk_issue_accounts(
+        fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
             entity_key: &[u8],
@@ -616,31 +614,35 @@ pub mod dataonly {
             }
         }
 
-        let anchor_client = settings.mk_anchor_client(keypair.clone())?;
-        let solana_client = settings.mk_solana_client()?;
-        let program = anchor_client.program(helium_entity_manager::id())?;
-        let config_account = program
-            .account::<helium_entity_manager::DataOnlyConfigV0>(Dao::Hnt.dataonly_config_key())
+        let config_account = client
+            .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(
+                &Dao::Hnt.dataonly_config_key(),
+            )
             .await?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
         let entity_key = hotspot_key.as_entity_key();
-        let accounts = mk_issue_accounts(config_account, program.payer(), &entity_key);
+        let accounts = mk_accounts(config_account, keypair.pubkey(), &entity_key);
 
-        let ix = program
-            .request()
-            .compute_budget(300_000)
-            .compute_price(priority_fee::get_estimate(&solana_client, &accounts).await?)
-            .args(helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
+        let issue_ix = Instruction {
+            program_id: helium_entity_manager::id(),
+            accounts: accounts.to_account_metas(None),
+            data: helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
                 _args: helium_entity_manager::IssueDataOnlyEntityArgsV0 { entity_key },
-            })
-            .accounts(accounts)
-            .instructions()?;
+            }
+            .data(),
+        };
 
-        let mut tx =
-            solana_sdk::transaction::Transaction::new_with_payer(&ix, Some(&keypair.pubkey()));
-        let blockhash = program.rpc().get_latest_blockhash()?;
+        let ixs = &[
+            priority_fee::compute_budget_instruction(300_000),
+            priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
+            issue_ix,
+        ];
+        let mut tx = Transaction::new_with_payer(ixs, Some(&keypair.pubkey()));
 
-        tx.try_partial_sign(&[&*keypair], blockhash)?;
+        let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
+            .get_latest_blockhash()
+            .await?;
+        tx.try_partial_sign(&[keypair], blockhash)?;
 
         let sig = add_tx.gateway_signature.clone();
         add_tx.gateway_signature = vec![];
@@ -654,8 +656,8 @@ pub mod dataonly {
         verifier: &str,
         msg: &[u8],
         signature: &[u8],
-        tx: solana_sdk::transaction::Transaction,
-    ) -> Result<solana_sdk::transaction::Transaction> {
+        tx: Transaction,
+    ) -> Result<Transaction, Error> {
         #[derive(Deserialize, Serialize, Default)]
         struct VerifyRequest<'a> {
             // hex encoded solana transaction
@@ -670,8 +672,7 @@ pub mod dataonly {
             // hex encoded solana transaction
             pub transaction: String,
         }
-
-        let client = Settings::mk_rest_client()?;
+        let client = reqwest::Client::new();
         let serialized_tx = hex::encode(bincode::serialize(&tx).map_err(EncodeError::from)?);
         let response = client
             .post(format!("{}/verify", verifier))
@@ -726,7 +727,7 @@ pub struct HotspotPage {
 }
 
 impl HotspotPage {
-    pub async fn from_asset_page(asset_page: asset::AssetPage) -> Result<Self> {
+    pub async fn from_asset_page(asset_page: asset::AssetPage) -> Result<Self, Error> {
         let kta_keys: Vec<Pubkey> = asset_page
             .items
             .iter()
@@ -773,7 +774,7 @@ impl Hotspot {
         }
     }
 
-    pub async fn from_asset(asset: asset::Asset) -> Result<Self> {
+    pub async fn from_asset(asset: asset::Asset) -> Result<Self, Error> {
         let kta = asset.get_kta().await?;
         Self::from_asset_with_kta(kta, asset)
     }
@@ -781,7 +782,7 @@ impl Hotspot {
     pub fn from_asset_with_kta(
         kta: helium_entity_manager::KeyToAssetV0,
         asset: asset::Asset,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         let hotspot_key = key_from_kta(kta)?;
         Ok(Self::with_hotspot_key(hotspot_key, asset.ownership.owner))
     }
@@ -827,14 +828,14 @@ impl From<HotspotLocation> for u64 {
 
 impl TryFrom<u64> for HotspotLocation {
     type Error = h3o::error::InvalidCellIndex;
-    fn try_from(value: u64) -> StdResult<Self, Self::Error> {
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
         h3o::CellIndex::try_from(value).map(Into::into)
     }
 }
 
 impl FromStr for HotspotLocation {
     type Err = h3o::error::InvalidCellIndex;
-    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse::<h3o::CellIndex>().map(Into::into)
     }
 }
@@ -966,7 +967,7 @@ impl HotspotInfoUpdate {
         self
     }
 
-    pub fn set_geo(self, lat: Option<f64>, lon: Option<f64>) -> StdResult<Self, EncodeError> {
+    pub fn set_geo(self, lat: Option<f64>, lon: Option<f64>) -> Result<Self, EncodeError> {
         let location: Option<h3o::CellIndex> = match (lat, lon) {
             (Some(lat), Some(lon)) => Some(
                 h3o::LatLng::new(lat, lon)

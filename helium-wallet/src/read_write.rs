@@ -60,7 +60,7 @@ impl ReadWrite for helium_lib::keypair::Keypair {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helium_lib::keypair::{GetPubkey, Keypair, Pubkey};
+    use helium_lib::keypair::{Keypair, Pubkey, Signer};
     use std::{io::Cursor, str::FromStr};
 
     #[test]

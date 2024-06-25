@@ -19,10 +19,10 @@ impl Cmd {
             let wallet = opts.load_wallet()?;
             wallet.public_key
         };
-        let settings = opts.try_into()?;
 
+        let client = opts.client()?;
         let balances =
-            token::balance_for_addresses(&settings, &Token::associated_token_adresses(&address))
+            token::balance_for_addresses(&client, &Token::associated_token_adresses(&address))
                 .await?;
         let json = json!({
             "address": address.to_string(),

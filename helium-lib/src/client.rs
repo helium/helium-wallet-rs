@@ -1,18 +1,11 @@
 use crate::{
-    asset, is_zero, keypair,
-    result::{DecodeError, Error, Result as CrateResult},
-    solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient,
+    asset,
+    error::{DecodeError, Error},
+    is_zero, keypair, solana_client,
 };
-use anchor_client::Client as AnchorClient;
 use jsonrpc_client::SendRequest;
-use reqwest::Client as RestClient;
-use serde::Deserialize;
-use solana_sdk::signer::Signer;
-use std::{ops::Deref, str::FromStr};
+use std::sync::Arc;
 use tracing::instrument;
-
-static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
-static _SESSION_KEY_URL: &str = "https://wallet-api-v2.helium.com/api/sessionKey";
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
@@ -23,77 +16,71 @@ pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com
 pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443?session-key=Pluto";
 pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com";
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct Settings {
-    url: url::Url,
+pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
+
+#[derive(Clone)]
+pub struct Client {
+    pub solana_client: Arc<SolanaRpcClient>,
+    pub das_client: Arc<DasClient>,
 }
 
-impl TryFrom<&Settings> for url::Url {
+#[async_trait::async_trait]
+pub trait GetAnchorAccount {
+    async fn anchor_account<T: anchor_client::anchor_lang::AccountDeserialize>(
+        &self,
+        pubkey: &keypair::Pubkey,
+    ) -> Result<T, Error>;
+}
+
+#[async_trait::async_trait]
+impl GetAnchorAccount for SolanaRpcClient {
+    async fn anchor_account<T: anchor_client::anchor_lang::AccountDeserialize>(
+        &self,
+        pubkey: &keypair::Pubkey,
+    ) -> Result<T, Error> {
+        let account = self.get_account(pubkey).await?;
+        let decoded = T::try_deserialize(&mut account.data.as_ref())?;
+        Ok(decoded)
+    }
+}
+
+#[async_trait::async_trait]
+impl GetAnchorAccount for Client {
+    async fn anchor_account<T: anchor_client::anchor_lang::AccountDeserialize>(
+        &self,
+        pubkey: &keypair::Pubkey,
+    ) -> Result<T, Error> {
+        self.solana_client.anchor_account(pubkey).await
+    }
+}
+
+impl TryFrom<&str> for Client {
     type Error = Error;
-    fn try_from(value: &Settings) -> CrateResult<Self> {
-        Ok(value
-            .to_string()
-            .parse::<Self>()
-            .map_err(DecodeError::from)?)
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            url: SOLANA_URL_MAINNET.parse().unwrap(),
-        }
-    }
-}
-
-impl std::fmt::Display for Settings {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.url.fmt(f)
-    }
-}
-
-impl TryFrom<&str> for Settings {
-    type Error = Error;
-    fn try_from(value: &str) -> CrateResult<Self> {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         let url = match value {
             "m" | "mainnet-beta" => SOLANA_URL_MAINNET,
             "d" | "devnet" => SOLANA_URL_DEVNET,
             url => url,
         };
 
-        let url: url::Url = url.parse().map_err(DecodeError::from)?;
-        Ok(Self { url })
+        let das_client = Arc::new(DasClient::with_base_url(url)?);
+        let solana_client = Arc::new(SolanaRpcClient::new(url.to_string()));
+        Ok(Self {
+            solana_client,
+            das_client,
+        })
     }
 }
 
-impl Settings {
-    pub fn mk_anchor_client<C: Clone + Deref<Target = impl Signer>>(
-        &self,
-        payer: C,
-    ) -> CrateResult<AnchorClient<C>> {
-        let url_str = self.to_string();
-        let cluster = anchor_client::Cluster::from_str(&url_str).map_err(DecodeError::other)?;
-        Ok(AnchorClient::new_with_options(
-            cluster,
-            payer,
-            solana_sdk::commitment_config::CommitmentConfig::finalized(),
-        ))
+impl AsRef<SolanaRpcClient> for Client {
+    fn as_ref(&self) -> &SolanaRpcClient {
+        &self.solana_client
     }
+}
 
-    pub fn mk_solana_client(&self) -> CrateResult<SolanaRpcClient> {
-        Ok(SolanaRpcClient::new_with_commitment(
-            self.to_string(),
-            solana_sdk::commitment_config::CommitmentConfig::finalized(),
-        ))
-    }
-
-    pub fn mk_jsonrpc_client(&self) -> CrateResult<DasClient> {
-        let client = DasClient::from_settings(self)?;
-        Ok(client)
-    }
-
-    pub fn mk_rest_client() -> CrateResult<RestClient> {
-        Ok(RestClient::builder().user_agent(USER_AGENT).build()?)
+impl AsRef<DasClient> for Client {
+    fn as_ref(&self) -> &DasClient {
+        &self.das_client
     }
 }
 
@@ -137,6 +124,8 @@ pub type DasClientError = jsonrpc_client::Error<reqwest::Error>;
 #[jsonrpc_client::api]
 pub trait DAS {}
 
+static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
 #[jsonrpc_client::implement(DAS)]
 #[derive(Debug, Clone)]
 pub struct DasClient {
@@ -144,10 +133,17 @@ pub struct DasClient {
     base_url: reqwest::Url,
 }
 
+impl Default for DasClient {
+    fn default() -> Self {
+        // safe to unwrap
+        Self::with_base_url(SOLANA_URL_MAINNET).unwrap()
+    }
+}
+
 impl DasClient {
-    pub fn from_settings(settings: &Settings) -> CrateResult<Self> {
+    pub fn with_base_url(url: &str) -> Result<Self, Error> {
         let client = reqwest::Client::new();
-        let base_url = settings.to_string().parse().map_err(DecodeError::from)?;
+        let base_url = url.parse().map_err(DecodeError::from)?;
         Ok(Self {
             inner: client,
             base_url,

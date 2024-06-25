@@ -40,10 +40,10 @@ pub struct PendingCmd {
 
 impl PendingCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let settings: Settings = opts.try_into()?;
+        let client = opts.client()?;
         let entity_key_strings = hotspots_to_entity_key_strings(&self.hotspots);
         let pending = reward::pending(
-            &settings,
+            &client,
             &self.subdao,
             &entity_key_strings,
             KeySerialization::B58,

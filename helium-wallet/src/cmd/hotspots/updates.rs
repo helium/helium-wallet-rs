@@ -21,14 +21,14 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let settings = opts.try_into()?;
+        let client = opts.client()?;
         let params = hotspot::info::HotspotInfoUpdateParams {
             before: self.before,
             until: self.until,
             ..Default::default()
         };
         let info_key = self.subdao.info_key_for_helium_key(&self.address)?;
-        let txns = hotspot::info::updates(&settings, &info_key, params).await?;
+        let txns = hotspot::info::updates(&client, &info_key, params).await?;
         print_json(&txns)
     }
 }

@@ -1,8 +1,7 @@
 use crate::{
-    entity_key::AsEntityKey, keypair::Pubkey, programs::TOKEN_METADATA_PROGRAM_ID, result::Result,
-    token::Token,
+    data_credits, entity_key::AsEntityKey, error::Error, helium_entity_manager, helium_sub_daos,
+    keypair::Pubkey, lazy_distributor, programs::TOKEN_METADATA_PROGRAM_ID, token::Token,
 };
-use helium_anchor_gen::{data_credits, helium_entity_manager, helium_sub_daos, lazy_distributor};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -201,7 +200,10 @@ impl SubDao {
         key
     }
 
-    pub fn info_key_for_helium_key(&self, public_key: &helium_crypto::PublicKey) -> Result<Pubkey> {
+    pub fn info_key_for_helium_key(
+        &self,
+        public_key: &helium_crypto::PublicKey,
+    ) -> Result<Pubkey, Error> {
         let entity_key = public_key.as_entity_key();
         Ok(self.info_key(&entity_key))
     }

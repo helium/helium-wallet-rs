@@ -1,4 +1,4 @@
-use crate::result::{DecodeError, Result};
+use crate::error::DecodeError;
 use solana_sdk::bs58;
 
 pub trait AsEntityKey {
@@ -39,10 +39,12 @@ impl AsEntityKey for helium_crypto::PublicKey {
 
 pub use helium_anchor_gen::helium_entity_manager::KeySerialization;
 
-pub fn from_string(str: String, encoding: KeySerialization) -> Result<Vec<u8>> {
+pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, DecodeError> {
     let entity_key = match encoding {
         KeySerialization::UTF8 => str.as_entity_key(),
-        KeySerialization::B58 => bs58::decode(str).into_vec().map_err(DecodeError::from)?,
+        KeySerialization::B58 => bs58::decode(str)
+            .into_vec()
+            .map_err(|_| DecodeError::other(format!("invalid entity key {}", str)))?,
     };
     Ok(entity_key)
 }

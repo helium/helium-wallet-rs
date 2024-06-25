@@ -1,9 +1,9 @@
 use crate::{cmd::*, txn_envelope::TxnEnvelope};
 use helium_lib::{
     asset,
+    client::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
     dao::SubDao,
     hotspot::{self, HotspotInfoUpdate, HotspotMode},
-    settings::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
 
@@ -83,8 +83,8 @@ impl Cmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
         let hotspot_key = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
         let verifier_key = self.verifier.as_ref().unwrap_or(&opts.url);
-        let settings = opts.clone().try_into()?;
-        let hotspot_issued = asset::for_entity_key(&settings, &hotspot_key).await.is_ok();
+        let client = opts.client()?;
+        let hotspot_issued = asset::for_entity_key(&client, &hotspot_key).await.is_ok();
         let verifier = match verifier_key.as_str() {
             "m" | "mainnet-beta" => VERIFIER_URL_MAINNET,
             "d" | "devnet" => VERIFIER_URL_DEVNET,
@@ -92,9 +92,8 @@ impl Cmd {
         };
 
         if !hotspot_issued {
-            let tx =
-                hotspot::dataonly::issue(&settings, verifier, &mut txn, keypair.clone()).await?;
-            let _ = self.commit.maybe_commit(&tx, &settings).await?;
+            let tx = hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair).await?;
+            let _ = self.commit.maybe_commit(&tx, &client).await?;
         }
         // Only assert the hotspot if either (a) it has already been issued before this cli was run or (b) `commit` is enabled,
         // which means the previous command should have created it.
@@ -105,8 +104,8 @@ impl Cmd {
                 .set_gain(self.gain)
                 .set_elevation(self.elevation)
                 .set_geo(self.lat, self.lon)?;
-            let tx = hotspot::dataonly::onboard(&settings, &hotspot_key, update, keypair).await?;
-            print_json(&self.commit.maybe_commit(&tx, &settings).await?.to_json())
+            let tx = hotspot::dataonly::onboard(&client, &hotspot_key, update, &keypair).await?;
+            print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
         } else {
             Ok(())
         }

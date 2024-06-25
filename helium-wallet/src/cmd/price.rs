@@ -11,9 +11,8 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let settings: Settings = opts.try_into()?;
-        let solana_client = settings.mk_solana_client()?;
-        let price = token::price::get(&solana_client, self.token).await?;
+        let client = opts.client()?;
+        let price = token::price::get(&client, self.token).await?;
 
         print_json(&price)
     }

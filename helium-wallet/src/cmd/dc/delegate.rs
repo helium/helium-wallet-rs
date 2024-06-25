@@ -22,9 +22,9 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
-        let settings = opts.try_into()?;
 
-        let tx = dc::delegate(&settings, self.subdao, &self.payer, self.dc, keypair).await?;
-        print_json(&self.commit.maybe_commit(&tx, &settings).await?.to_json())
+        let client = opts.client()?;
+        let tx = dc::delegate(&client, self.subdao, &self.payer, self.dc, &keypair).await?;
+        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

@@ -1,13 +1,16 @@
 use crate::{
-    keypair::{serde_pubkey, GetPubkey, Pubkey},
-    result::{DecodeError, Result},
-    settings::Settings,
+    client::SolanaRpcClient,
+    error::{DecodeError, Error},
+    keypair::{serde_pubkey, Keypair, Pubkey},
+    solana_sdk::{
+        commitment_config::CommitmentConfig, signer::Signer, system_instruction,
+        transaction::Transaction,
+    },
 };
 use chrono::{DateTime, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use helium_anchor_gen::circuit_breaker;
-use solana_sdk::{signer::Signer, system_instruction};
-use std::{collections::HashMap, ops::Deref, result::Result as StdResult, str::FromStr};
+use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
@@ -32,37 +35,33 @@ lazy_static::lazy_static! {
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
 
-pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-    settings: &Settings,
+pub async fn transfer<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     transfers: &[(Pubkey, TokenAmount)],
-    keypair: C,
-) -> Result<solana_sdk::transaction::Transaction> {
-    let client = settings.mk_anchor_client(keypair.clone())?;
-    let spl_program = client.program(anchor_spl::token::spl_token::id())?;
-
+    keypair: &Keypair,
+) -> Result<Transaction, Error> {
     let wallet_public_key = keypair.pubkey();
-    let mut builder = spl_program.request();
 
+    let mut ixs = vec![];
     for (payee, token_amount) in transfers {
         match token_amount.token.mint() {
             spl_mint if spl_mint == Token::Sol.mint() => {
                 let ix =
                     system_instruction::transfer(&wallet_public_key, payee, token_amount.amount);
-                builder = builder.instruction(ix);
+                ixs.push(ix);
             }
             spl_mint => {
                 let source_pubkey = token_amount
                     .token
                     .associated_token_adress(&wallet_public_key);
                 let destination_pubkey = token_amount.token.associated_token_adress(payee);
-                let ix =
-            spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-                &wallet_public_key,
-                payee,
-                spl_mint,
-                &anchor_spl::token::spl_token::id(),
-            );
-                builder = builder.instruction(ix);
+                let ix = spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    &wallet_public_key,
+                    payee,
+                    spl_mint,
+                    &anchor_spl::token::spl_token::id(),
+                );
+                ixs.push(ix);
 
                 let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
                     &anchor_spl::token::spl_token::id(),
@@ -74,23 +73,24 @@ pub async fn transfer<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
                     token_amount.amount,
                     token_amount.token.decimals(),
                 )?;
-                builder = builder.instruction(ix);
+                ixs.push(ix);
             }
         }
     }
 
-    let tx = builder.signed_transaction().await?;
+    let blockhash = client.as_ref().get_latest_blockhash().await?;
+    let tx =
+        Transaction::new_signed_with_payer(&ixs, Some(&wallet_public_key), &[keypair], blockhash);
     Ok(tx)
 }
 
-pub async fn balance_for_address(
-    settings: &Settings,
+pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     pubkey: &Pubkey,
-) -> Result<Option<TokenBalance>> {
-    let client = settings.mk_solana_client()?;
-
+) -> Result<Option<TokenBalance>, Error> {
     match client
-        .get_account_with_commitment(pubkey, client.commitment())
+        .as_ref()
+        .get_account_with_commitment(pubkey, CommitmentConfig::confirmed())
         .await?
         .value
     {
@@ -109,12 +109,12 @@ pub async fn balance_for_address(
     }
 }
 
-pub async fn balance_for_addresses(
-    settings: &Settings,
+pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     pubkeys: &[Pubkey],
-) -> Result<Vec<TokenBalance>> {
+) -> Result<Vec<TokenBalance>, Error> {
     stream::iter(pubkeys)
-        .map(|pubkey| balance_for_address(settings, pubkey))
+        .map(|pubkey| balance_for_address(client, pubkey))
         .buffered(10)
         .filter_map(|result| async { result.transpose() })
         .try_collect()
@@ -123,7 +123,6 @@ pub async fn balance_for_addresses(
 
 pub mod price {
     use super::*;
-    use crate::solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
     use pyth_solana_receiver_sdk::price_update::{self, PriceUpdateV2};
     use rust_decimal::prelude::*;
 
@@ -153,17 +152,17 @@ pub mod price {
         pub token: super::Token,
     }
 
-    pub fn feed_from_hex(str: &str) -> Result<FeedId> {
+    pub fn feed_from_hex(str: &str) -> Result<FeedId, PriceError> {
         let feed_id =
             price_update::get_feed_id_from_hex(str).map_err(|_| PriceError::InvalidFeed)?;
         Ok(feed_id)
     }
 
-    pub async fn get(solana_client: &SolanaRpcClient, token: Token) -> Result<Price> {
+    pub async fn get<C: AsRef<SolanaRpcClient>>(client: &C, token: Token) -> Result<Price, Error> {
         use helium_anchor_gen::anchor_lang::AccountDeserialize;
         let price_key = token.price_key().ok_or(PriceError::InvalidToken(token))?;
         let price_feed = token.price_feed().ok_or(PriceError::InvalidToken(token))?;
-        let account = solana_client.get_account(price_key).await?;
+        let account = client.as_ref().get_account(price_key).await?;
         let PriceUpdateV2 { price_message, .. } =
             PriceUpdateV2::try_deserialize(&mut account.data.as_slice())?;
 

@@ -16,8 +16,8 @@ impl Cmd {
             let wallet = opts.load_wallet()?;
             wallet.public_key
         };
-        let settings = opts.try_into()?;
-        let hotspots = hotspot::for_owner(&settings, &owner).await?;
+        let client = opts.client()?;
+        let hotspots = hotspot::for_owner(&client, &owner).await?;
         let json = json!( {
             "address": owner.to_string(),
             "hotspots": hotspots,

@@ -1,13 +1,16 @@
-use crate::result::{DecodeError, Result};
-use solana_sdk::signature::{Signer, SignerError};
+use crate::{
+    error::{DecodeError, Error},
+    solana_sdk::signature::SignerError,
+};
 use std::sync::Arc;
 
 #[derive(PartialEq, Debug)]
 pub struct Keypair(solana_sdk::signer::keypair::Keypair);
+#[derive(Debug, Clone)]
 pub struct VoidKeypair;
 
 pub use solana_sdk::pubkey;
-pub use solana_sdk::{pubkey::Pubkey, pubkey::PUBKEY_BYTES, signature::Signature};
+pub use solana_sdk::{pubkey::Pubkey, pubkey::PUBKEY_BYTES, signature::Signature, signer::Signer};
 
 pub mod serde_pubkey {
     use super::*;
@@ -57,17 +60,17 @@ pub mod serde_opt_pubkey {
     }
 }
 
-pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey> {
+pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey, DecodeError> {
     match key.key_type() {
         helium_crypto::KeyType::Ed25519 => {
             let bytes = key.to_vec();
             Ok(Pubkey::try_from(&bytes[1..]).map_err(DecodeError::from)?)
         }
-        _ => Err(DecodeError::other("unsupported key type").into()),
+        _ => Err(DecodeError::other("unsupported key type")),
     }
 }
 
-pub fn to_helium_pubkey(key: &Pubkey) -> Result<helium_crypto::PublicKey> {
+pub fn to_helium_pubkey(key: &Pubkey) -> Result<helium_crypto::PublicKey, DecodeError> {
     use helium_crypto::ReadFrom;
     let mut input = std::io::Cursor::new(key.as_ref());
     let helium_key = helium_crypto::ed25519::PublicKey::read_from(&mut input)?;
@@ -96,22 +99,6 @@ impl TryFrom<&[u8; 64]> for Keypair {
     }
 }
 
-pub trait GetPubkey {
-    fn pubkey(&self) -> solana_sdk::pubkey::Pubkey;
-}
-
-impl GetPubkey for Keypair {
-    fn pubkey(&self) -> solana_sdk::pubkey::Pubkey {
-        self.0.pubkey()
-    }
-}
-
-impl GetPubkey for Arc<Keypair> {
-    fn pubkey(&self) -> solana_sdk::pubkey::Pubkey {
-        self.0.pubkey()
-    }
-}
-
 impl Keypair {
     pub fn generate() -> Self {
         Keypair(solana_sdk::signer::keypair::Keypair::new())
@@ -121,7 +108,7 @@ impl Keypair {
         Arc::new(VoidKeypair)
     }
 
-    pub fn generate_from_entropy(entropy: &[u8]) -> Result<Self> {
+    pub fn generate_from_entropy(entropy: &[u8]) -> Result<Self, Error> {
         Ok(Keypair(
             solana_sdk::signer::keypair::keypair_from_seed(entropy)
                 .map_err(|e| DecodeError::other(format!("invalid entropy: {e}")))?,
@@ -130,11 +117,11 @@ impl Keypair {
 
     pub fn secret(&self) -> Vec<u8> {
         let mut result = self.0.secret().to_bytes().to_vec();
-        result.extend_from_slice(GetPubkey::pubkey(self).as_ref());
+        result.extend_from_slice(self.pubkey().as_ref());
         result
     }
 
-    pub fn sign(&self, msg: &[u8]) -> Result<solana_sdk::signature::Signature> {
+    pub fn sign(&self, msg: &[u8]) -> Result<Signature, Error> {
         Ok(self.try_sign_message(msg)?)
     }
 
@@ -142,13 +129,13 @@ impl Keypair {
     /// This function is implemented here to avoid passing the secret between
     /// too many modules.
     #[cfg(feature = "mnemonic")]
-    pub fn phrase(&self) -> Result<String> {
+    pub fn phrase(&self) -> Result<String, helium_mnemonic::MnmemonicError> {
         let words = helium_mnemonic::entropy_to_mnemonic(self.0.secret().as_bytes())?;
         Ok(words.join(" "))
     }
 
     #[cfg(feature = "mnemonic")]
-    pub fn from_words(words: Vec<String>) -> Result<Arc<Self>> {
+    pub fn from_words(words: Vec<String>) -> Result<Arc<Self>, Error> {
         let entropy_bytes = helium_mnemonic::mnemonic_to_entropy(words)?;
         let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
             .map_err(|_| DecodeError::other("invalid words"))?;
@@ -157,7 +144,7 @@ impl Keypair {
 }
 
 impl VoidKeypair {
-    pub fn sign(&self, msg: &[u8]) -> Result<solana_sdk::signature::Signature> {
+    pub fn sign(&self, msg: &[u8]) -> Result<Signature, Error> {
         Ok(self.try_sign_message(msg)?)
     }
 
@@ -171,10 +158,7 @@ impl Signer for VoidKeypair {
         Err(Self::void_signer_error())
     }
 
-    fn try_sign_message(
-        &self,
-        _message: &[u8],
-    ) -> std::result::Result<solana_sdk::signature::Signature, SignerError> {
+    fn try_sign_message(&self, _message: &[u8]) -> std::result::Result<Signature, SignerError> {
         Err(Self::void_signer_error())
     }
 

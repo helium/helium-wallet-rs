@@ -3,9 +3,8 @@ use crate::{
     wallet::Wallet,
 };
 use helium_lib::{
-    b64,
+    b64, client,
     keypair::Keypair,
-    settings::Settings,
     solana_client::{
         self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
     },
@@ -71,12 +70,9 @@ impl Opts {
         let wallet = self.load_wallet()?;
         wallet.decrypt(password)
     }
-}
 
-impl TryFrom<Opts> for Settings {
-    type Error = Error;
-    fn try_from(value: Opts) -> Result<Self> {
-        Ok(Settings::try_from(value.url.as_str())?)
+    pub fn client(&self) -> Result<client::Client> {
+        Ok(client::Client::try_from(self.url.as_str())?)
     }
 }
 
@@ -88,10 +84,10 @@ pub struct CommitOpts {
 }
 
 impl CommitOpts {
-    pub async fn maybe_commit(
+    pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>>(
         &self,
         tx: &helium_lib::solana_sdk::transaction::Transaction,
-        settings: &Settings,
+        client: &C,
     ) -> Result<CommitResponse> {
         fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
             let mut captured_logs: Option<Vec<String>> = None;
@@ -116,15 +112,16 @@ impl CommitOpts {
             mapped
         }
 
-        let client = settings.mk_solana_client()?;
         if self.commit {
             client
+                .as_ref()
                 .send_transaction(tx)
                 .await
                 .map(Into::into)
                 .map_err(context_err)
         } else {
             client
+                .as_ref()
                 .simulate_transaction(tx)
                 .await
                 .map_err(context_err)?

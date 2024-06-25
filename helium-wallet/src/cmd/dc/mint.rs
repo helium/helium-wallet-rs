@@ -33,8 +33,8 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
         let wallet = opts.load_wallet()?;
-        let settings = opts.try_into()?;
 
+        let client = opts.client()?;
         let payee = self.payee.as_ref().unwrap_or(&wallet.public_key);
         let amount = match (self.hnt, self.dc) {
             (Some(hnt), None) => TokenAmount::from_f64(Token::Hnt, hnt),
@@ -43,7 +43,7 @@ impl Cmd {
         };
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let tx = dc::mint(&settings, amount, payee, keypair).await?;
-        print_json(&self.commit.maybe_commit(&tx, &settings).await?.to_json())
+        let tx = dc::mint(&client, amount, payee, &keypair).await?;
+        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

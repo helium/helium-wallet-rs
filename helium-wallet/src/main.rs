@@ -47,7 +47,8 @@ async fn main() -> Result {
 }
 
 async fn run(cli: Cli) -> Result {
-    helium_lib::init(&cli.opts.clone().try_into()?)?;
+    let client = cli.opts.client()?;
+    helium_lib::init(client.solana_client)?;
     match cli.cmd {
         Cmd::Info(cmd) => cmd.run(cli.opts).await,
         Cmd::Balance(cmd) => cmd.run(cli.opts).await,

@@ -1,8 +1,8 @@
 use crate::cmd::*;
 use helium_lib::{
+    client::{ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
     dao::SubDao,
     hotspot::{self, HotspotInfoUpdate},
-    settings::{ONBOARDING_URL_DEVNET, ONBOARDING_URL_MAINNET},
 };
 
 #[derive(Debug, Clone, clap::Args)]
@@ -64,7 +64,6 @@ impl Cmd {
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
 
-        let settings = opts.clone().try_into()?;
         let server = self.onboarding.as_ref().map(|value| {
             match value.as_str() {
                 "m" | "mainnet-beta" => ONBOARDING_URL_MAINNET,
@@ -79,8 +78,9 @@ impl Cmd {
             .set_elevation(self.elevation)
             .set_geo(self.lat, self.lon)?;
 
-        let tx = hotspot::update(&settings, server, &self.gateway, update, keypair).await?;
+        let client = opts.client()?;
+        let tx = hotspot::update(&client, server, &self.gateway, update, &keypair).await?;
 
-        print_json(&self.commit.maybe_commit(&tx, &settings).await.to_json())
+        print_json(&self.commit.maybe_commit(&tx, &client).await.to_json())
     }
 }

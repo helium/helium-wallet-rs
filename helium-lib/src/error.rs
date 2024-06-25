@@ -1,9 +1,6 @@
+use crate::{client, onboarding, token};
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
-
-use crate::{onboarding, settings, token};
-
-pub type Result<T = ()> = std::result::Result<T, Error>;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -17,7 +14,7 @@ pub enum Error {
     #[error("anchor lang: {0}")]
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
     #[error("DAS client: {0}")]
-    Das(#[from] settings::DasClientError),
+    Das(#[from] client::DasClientError),
     #[error("price client: {0}")]
     Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]

@@ -1,7 +1,7 @@
 use crate::cmd::*;
 use helium_lib::{
     hotspot,
-    keypair::{GetPubkey, Pubkey},
+    keypair::{Pubkey, Signer},
 };
 
 #[derive(Clone, Debug, clap::Args)]
@@ -23,8 +23,8 @@ impl Cmd {
         if keypair.pubkey() == self.recipient {
             bail!("recipient already owner of hotspot");
         }
-        let settings = opts.clone().try_into()?;
-        let tx = hotspot::transfer(&settings, &self.address, &self.recipient, keypair).await?;
-        print_json(&self.commit.maybe_commit(&tx, &settings).await?.to_json())
+        let client = opts.client()?;
+        let tx = hotspot::transfer(&client, &self.address, &self.recipient, &keypair).await?;
+        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

@@ -9,8 +9,8 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let settings = opts.try_into()?;
-        let hotspot = hotspot::get_with_info(&settings, &SubDao::all(), &self.address).await?;
+        let client = opts.client()?;
+        let hotspot = hotspot::get_with_info(&client, &SubDao::all(), &self.address).await?;
         print_json(&hotspot)
     }
 }

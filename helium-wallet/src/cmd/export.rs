@@ -1,5 +1,5 @@
 use crate::{cmd::*, pwhash::*};
-use helium_lib::keypair::GetPubkey;
+use helium_lib::keypair::Signer;
 use qr2term::print_qr;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

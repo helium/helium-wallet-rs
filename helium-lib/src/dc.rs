@@ -1,23 +1,24 @@
 use crate::{
+    anchor_lang::{InstructionData, ToAccountMetas},
+    circuit_breaker,
+    client::{GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
-    keypair::{GetPubkey, Pubkey},
-    result::{DecodeError, Result},
-    settings::Settings,
+    data_credits,
+    error::{DecodeError, Error},
+    keypair::{Keypair, Pubkey},
+    solana_sdk::{instruction::Instruction, signer::Signer, transaction::Transaction},
     token::{Token, TokenAmount},
 };
-use anchor_client::solana_sdk::signature::Signer;
-use helium_anchor_gen::{circuit_breaker, data_credits};
-use std::{ops::Deref, result::Result as StdResult};
 
-pub async fn mint<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-    settings: &Settings,
+pub async fn mint<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     amount: TokenAmount,
     payee: &Pubkey,
-    keypair: C,
-) -> Result<solana_sdk::transaction::Transaction> {
+    keypair: &Keypair,
+) -> Result<Transaction, Error> {
     fn token_amount_to_mint_args(
         amount: TokenAmount,
-    ) -> StdResult<data_credits::MintDataCreditsArgsV0, DecodeError> {
+    ) -> Result<data_credits::MintDataCreditsArgsV0, DecodeError> {
         match amount.token {
             Token::Hnt => Ok(data_credits::MintDataCreditsArgsV0 {
                 hnt_amount: Some(amount.amount),
@@ -30,118 +31,134 @@ pub async fn mint<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
             other => Err(DecodeError::other(format!("Invalid token type: {other}"))),
         }
     }
+    fn mk_accounts(
+        owner: Pubkey,
+        recipient: Pubkey,
+        hnt_price_oracle: Pubkey,
+    ) -> impl ToAccountMetas {
+        data_credits::accounts::MintDataCreditsV0 {
+            data_credits: SubDao::dc_key(),
+            owner,
+            hnt_mint: *Token::Hnt.mint(),
+            dc_mint: *Token::Dc.mint(),
+            recipient,
+            recipient_token_account: Token::Dc.associated_token_adress(&recipient),
+            system_program: solana_sdk::system_program::ID,
+            token_program: anchor_spl::token::ID,
+            associated_token_program: anchor_spl::associated_token::ID,
+            hnt_price_oracle,
+            circuit_breaker_program: circuit_breaker::id(),
+            circuit_breaker: Token::Dc.mint_circuit_breaker_address(),
+            burner: Token::Hnt.associated_token_adress(&owner),
+        }
+    }
 
-    // let client = self.settings.mk_anchor_client(keypair.clone())?;
-    let dc_program = settings
-        .mk_anchor_client(keypair.clone())?
-        .program(data_credits::id())?;
-    let data_credits = SubDao::dc_key();
-    let hnt_price_oracle = dc_program
-        .account::<data_credits::DataCreditsV0>(data_credits)
+    let hnt_price_oracle = client
+        .as_ref()
+        .anchor_account::<data_credits::DataCreditsV0>(&SubDao::dc_key())
         .await?
         .hnt_price_oracle;
 
-    let burner = Token::Hnt.associated_token_adress(&keypair.pubkey());
-    let recipient_token_account = Token::Dc.associated_token_adress(payee);
-    let accounts = data_credits::accounts::MintDataCreditsV0 {
-        data_credits,
-        owner: keypair.pubkey(),
-        hnt_mint: *Token::Hnt.mint(),
-        dc_mint: *Token::Dc.mint(),
-        recipient: *payee,
-        recipient_token_account,
-        system_program: solana_sdk::system_program::ID,
-        token_program: anchor_spl::token::ID,
-        associated_token_program: anchor_spl::associated_token::ID,
-        hnt_price_oracle,
-        circuit_breaker_program: circuit_breaker::id(),
-        circuit_breaker: Token::Dc.mint_circuit_breaker_address(),
-        burner,
+    let mint_ix = Instruction {
+        program_id: data_credits::id(),
+        accounts: mk_accounts(keypair.pubkey(), *payee, hnt_price_oracle).to_account_metas(None),
+        data: data_credits::instruction::MintDataCreditsV0 {
+            _args: token_amount_to_mint_args(amount)?,
+        }
+        .data(),
     };
 
-    let args = data_credits::instruction::MintDataCreditsV0 {
-        _args: token_amount_to_mint_args(amount)?,
-    };
-    let tx = dc_program
-        .request()
-        .accounts(accounts)
-        .args(args)
-        .signed_transaction()
-        .await?;
+    let recent_blockhash = client.as_ref().get_latest_blockhash().await?;
+    let tx = Transaction::new_signed_with_payer(
+        &[mint_ix],
+        Some(&keypair.pubkey()),
+        &[keypair],
+        recent_blockhash,
+    );
+
     Ok(tx)
 }
 
-pub async fn delegate<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-    settings: &Settings,
+pub async fn delegate<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     subdao: SubDao,
     payer_key: &str,
     amount: u64,
-    keypair: C,
-) -> Result<solana_sdk::transaction::Transaction> {
-    let client = settings.mk_anchor_client(keypair.clone())?;
-    let dc_program = client.program(data_credits::id())?;
+    keypair: &Keypair,
+) -> Result<solana_sdk::transaction::Transaction, Error> {
+    fn mk_accounts(delegated_dc_key: Pubkey, subdao: SubDao, owner: Pubkey) -> impl ToAccountMetas {
+        data_credits::accounts::DelegateDataCreditsV0 {
+            delegated_data_credits: delegated_dc_key,
+            data_credits: SubDao::dc_key(),
+            dc_mint: *Token::Dc.mint(),
+            dao: Dao::Hnt.key(),
+            sub_dao: subdao.key(),
+            owner,
+            from_account: Token::Dc.associated_token_adress(&owner),
+            escrow_account: subdao.escrow_key(&delegated_dc_key),
+            payer: owner,
+            associated_token_program: anchor_spl::associated_token::ID,
+            token_program: anchor_spl::token::ID,
+            system_program: solana_sdk::system_program::ID,
+        }
+    }
 
-    let delegated_data_credits = subdao.delegated_dc_key(payer_key);
-
-    let accounts = data_credits::accounts::DelegateDataCreditsV0 {
-        delegated_data_credits,
-        data_credits: SubDao::dc_key(),
-        dc_mint: *Token::Dc.mint(),
-        dao: Dao::Hnt.key(),
-        sub_dao: subdao.key(),
-        owner: keypair.pubkey(),
-        from_account: Token::Dc.associated_token_adress(&keypair.pubkey()),
-        escrow_account: subdao.escrow_key(&delegated_data_credits),
-        payer: keypair.pubkey(),
-        associated_token_program: anchor_spl::associated_token::ID,
-        token_program: anchor_spl::token::ID,
-        system_program: solana_sdk::system_program::ID,
+    let delegated_dc_key = subdao.delegated_dc_key(payer_key);
+    let delegate_ix = Instruction {
+        program_id: data_credits::id(),
+        accounts: mk_accounts(delegated_dc_key, subdao, keypair.pubkey()).to_account_metas(None),
+        data: data_credits::instruction::DelegateDataCreditsV0 {
+            _args: data_credits::DelegateDataCreditsArgsV0 {
+                amount,
+                router_key: payer_key.to_string(),
+            },
+        }
+        .data(),
     };
-
-    let args = data_credits::instruction::DelegateDataCreditsV0 {
-        _args: data_credits::DelegateDataCreditsArgsV0 {
-            amount,
-            router_key: payer_key.to_string(),
-        },
-    };
-    let tx = dc_program
-        .request()
-        .accounts(accounts)
-        .args(args)
-        .signed_transaction()
-        .await?;
+    let recent_blockhash = client.as_ref().get_latest_blockhash().await?;
+    let tx = Transaction::new_signed_with_payer(
+        &[delegate_ix],
+        Some(&keypair.pubkey()),
+        &[keypair],
+        recent_blockhash,
+    );
     Ok(tx)
 }
 
-pub async fn burn<C: Clone + Deref<Target = impl Signer> + GetPubkey>(
-    settings: &Settings,
+pub async fn burn<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     amount: u64,
-    keypair: C,
-) -> Result<solana_sdk::transaction::Transaction> {
-    let client = settings.mk_anchor_client(keypair.clone())?;
-    let dc_program = client.program(data_credits::id())?;
+    keypair: &Keypair,
+) -> Result<solana_sdk::transaction::Transaction, Error> {
+    fn mk_accounts(owner: Pubkey) -> impl ToAccountMetas {
+        data_credits::accounts::BurnWithoutTrackingV0 {
+            BurnWithoutTrackingV0burn_accounts:
+                data_credits::accounts::BurnWithoutTrackingV0BurnAccounts {
+                    burner: Token::Dc.associated_token_adress(&owner),
+                    dc_mint: *Token::Dc.mint(),
+                    data_credits: SubDao::dc_key(),
+                    token_program: anchor_spl::token::ID,
+                    system_program: solana_sdk::system_program::ID,
+                    associated_token_program: anchor_spl::associated_token::ID,
+                    owner,
+                },
+        }
+    }
 
-    let accounts = data_credits::accounts::BurnWithoutTrackingV0 {
-        BurnWithoutTrackingV0burn_accounts:
-            data_credits::accounts::BurnWithoutTrackingV0BurnAccounts {
-                burner: Token::Dc.associated_token_adress(&keypair.pubkey()),
-                dc_mint: *Token::Dc.mint(),
-                data_credits: SubDao::dc_key(),
-                token_program: anchor_spl::token::ID,
-                system_program: solana_sdk::system_program::ID,
-                associated_token_program: anchor_spl::associated_token::ID,
-                owner: keypair.pubkey(),
-            },
+    let burn_ix = Instruction {
+        program_id: data_credits::id(),
+        accounts: mk_accounts(keypair.pubkey()).to_account_metas(None),
+        data: data_credits::instruction::BurnWithoutTrackingV0 {
+            _args: data_credits::BurnWithoutTrackingArgsV0 { amount },
+        }
+        .data(),
     };
-
-    let args = data_credits::instruction::BurnWithoutTrackingV0 {
-        _args: data_credits::BurnWithoutTrackingArgsV0 { amount },
-    };
-    let tx = dc_program
-        .request()
-        .accounts(accounts)
-        .args(args)
-        .signed_transaction()
-        .await?;
+    let recent_blockhash = client.as_ref().get_latest_blockhash().await?;
+    let tx = Transaction::new_signed_with_payer(
+        &[burn_ix],
+        Some(&keypair.pubkey()),
+        &[keypair],
+        recent_blockhash,
+    );
     Ok(tx)
 }

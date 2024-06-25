@@ -6,7 +6,7 @@ use crate::{
 };
 use aes_gcm::{aead::generic_array::GenericArray, AeadInPlace, Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use helium_lib::keypair::{to_helium_pubkey, GetPubkey, Keypair, Pubkey, PUBKEY_BYTES};
+use helium_lib::keypair::{to_helium_pubkey, Keypair, Pubkey, Signer, PUBKEY_BYTES};
 use sodiumoxide::randombytes;
 use std::io::{self, Cursor};
 use std::{

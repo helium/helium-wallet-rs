@@ -1,36 +1,31 @@
 use crate::{
-    dao::Dao,
-    entity_key::AsEntityKey,
-    keypair::{Keypair, Pubkey, VoidKeypair},
-    result::{Error, Result},
-    settings::Settings,
+    anchor_lang::AccountDeserialize, client::SolanaRpcClient, dao::Dao, entity_key::AsEntityKey,
+    error::Error, helium_entity_manager::KeyToAssetV0, keypair::Pubkey,
     solana_sdk::account::Account,
 };
-use anchor_client::anchor_lang::AccountDeserialize;
-use futures::{stream, StreamExt, TryStreamExt};
-use helium_anchor_gen::helium_entity_manager::{self, KeyToAssetV0};
+use futures::{stream, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::Itertools;
 use std::{
     collections::HashMap,
     sync::{Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-pub fn init(settings: &Settings) -> Result<()> {
-    let _ = CACHE.set(KtaCache::new(settings)?);
+pub fn init(solana_client: Arc<SolanaRpcClient>) -> Result<(), Error> {
+    let _ = CACHE.set(KtaCache::new(solana_client)?);
     Ok(())
 }
 
-pub async fn get(kta_key: &Pubkey) -> Result<KeyToAssetV0> {
+pub async fn get(kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get(kta_key).await
 }
 
-pub async fn get_many(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>> {
+pub async fn get_many(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get_many(kta_keys).await
 }
 
-pub async fn for_entity_key<E>(entity_key: &E) -> Result<KeyToAssetV0>
+pub async fn for_entity_key<E>(entity_key: &E) -> Result<KeyToAssetV0, Error>
 where
     E: AsEntityKey,
 {
@@ -42,16 +37,17 @@ static CACHE: OnceLock<KtaCache> = OnceLock::new();
 
 type KtaCacheMap = HashMap<Pubkey, KeyToAssetV0>;
 struct KtaCache {
-    program: anchor_client::Program<Arc<VoidKeypair>>,
+    solana_client: Arc<SolanaRpcClient>,
     cache: RwLock<KtaCacheMap>,
 }
 
 impl KtaCache {
-    fn new(settings: &Settings) -> Result<Self> {
-        let anchor_client = settings.mk_anchor_client(Keypair::void())?;
-        let program = anchor_client.program(helium_entity_manager::id())?;
+    fn new(solana_client: Arc<SolanaRpcClient>) -> Result<Self, Error> {
         let cache = RwLock::new(KtaCacheMap::new());
-        Ok(Self { program, cache })
+        Ok(Self {
+            solana_client,
+            cache,
+        })
     }
 
     fn cache_read(&self) -> RwLockReadGuard<'_, KtaCacheMap> {
@@ -62,14 +58,18 @@ impl KtaCache {
         self.cache.write().expect("cache write lock poisoned")
     }
 
-    async fn get(&self, kta_key: &Pubkey) -> Result<helium_entity_manager::KeyToAssetV0> {
+    async fn get(&self, kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
         if let Some(account) = self.cache_read().get(kta_key) {
             return Ok(account.clone());
         }
 
         let kta = self
-            .program
-            .account::<helium_entity_manager::KeyToAssetV0>(*kta_key)
+            .solana_client
+            .get_account(kta_key)
+            .map_err(Error::from)
+            .and_then(|acc| async move {
+                KeyToAssetV0::try_deserialize(&mut acc.data.as_ref()).map_err(Error::from)
+            })
             .await?;
         // NOTE: Holding lock across an await will not work with std::sync
         // Since sync::RwLock is much faster than sync options we take the hit
@@ -78,10 +78,7 @@ impl KtaCache {
         Ok(kta)
     }
 
-    async fn get_many(
-        &self,
-        kta_keys: &[Pubkey],
-    ) -> Result<Vec<helium_entity_manager::KeyToAssetV0>> {
+    async fn get_many(&self, kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
         let missing_keys: Vec<Pubkey> = {
             let cache = self.cache_read();
             kta_keys
@@ -95,8 +92,7 @@ impl KtaCache {
             // Chunk into documented max keys to pass to getMultipleAccounts
             .chunks(100)
             .map(|key_chunk| async move {
-                self.program
-                    .async_rpc()
+                self.solana_client
                     .get_multiple_accounts(key_chunk.as_slice())
                     .await
             })
@@ -115,14 +111,14 @@ impl KtaCache {
                     let Some(account) = maybe_account.as_mut() else {
                         return Err(Error::account_not_found());
                     };
-                    helium_entity_manager::KeyToAssetV0::try_deserialize(&mut account.data.as_ref())
+                    KeyToAssetV0::try_deserialize(&mut account.data.as_ref())
                         .map_err(Error::from)
                         .map(|kta| (key, kta))
                 })
                 .map_ok(|(key, kta)| {
                     cache.insert(key, kta);
                 })
-                .try_collect()?;
+                .try_collect::<_, (), _>()?;
         }
         {
             let cache = self.cache_read();

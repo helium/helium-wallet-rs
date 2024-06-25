@@ -84,11 +84,11 @@ impl PayCmd {
         let payments = self.collect_payments()?;
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
-        let settings = opts.try_into()?;
 
-        let tx = token::transfer(&settings, &payments, keypair).await?;
+        let client = opts.client()?;
+        let tx = token::transfer(&client, &payments, &keypair).await?;
 
-        print_json(&self.commit().maybe_commit(&tx, &settings).await?.to_json())
+        print_json(&self.commit().maybe_commit(&tx, &client).await?.to_json())
     }
 
     fn collect_payments(&self) -> Result<Vec<(Pubkey, TokenAmount)>> {

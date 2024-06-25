@@ -1,22 +1,22 @@
-use crate::{result::Error, solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient};
-use anchor_client::RequestBuilder;
-use helium_anchor_gen::anchor_lang::ToAccountMetas;
+use crate::{
+    anchor_client::RequestBuilder, anchor_lang::ToAccountMetas, client::SolanaRpcClient,
+    error::Error, solana_sdk::signer::Signer,
+};
 use itertools::Itertools;
-use solana_sdk::signer::Signer;
 use std::ops::Deref;
 
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
 pub const MIN_PRIORITY_FEE: u64 = 1;
 
-pub async fn get_estimate(
-    client: &SolanaRpcClient,
+pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     accounts: &impl ToAccountMetas,
 ) -> Result<u64, Error> {
     get_estimate_with_min(client, accounts, MIN_PRIORITY_FEE).await
 }
 
-pub async fn get_estimate_with_min(
-    client: &SolanaRpcClient,
+pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
+    client: &C,
     accounts: &impl ToAccountMetas,
     min_priority_fee: u64,
 ) -> Result<u64, Error> {
@@ -27,7 +27,10 @@ pub async fn get_estimate_with_min(
         .unique()
         .take(MAX_RECENT_PRIORITY_FEE_ACCOUNTS)
         .collect();
-    let recent_fees = client.get_recent_prioritization_fees(&account_keys).await?;
+    let recent_fees = client
+        .as_ref()
+        .get_recent_prioritization_fees(&account_keys)
+        .await?;
     let mut max_per_slot = Vec::new();
     for (slot, fees) in &recent_fees.into_iter().group_by(|x| x.slot) {
         let Some(maximum) = fees.map(|x| x.prioritization_fee).max() else {
@@ -65,6 +68,14 @@ pub fn compute_budget_instruction(compute_limit: u32) -> solana_sdk::instruction
 
 pub fn compute_price_instruction(priority_fee: u64) -> solana_sdk::instruction::Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee)
+}
+
+pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    accounts: &impl ToAccountMetas,
+) -> Result<solana_sdk::instruction::Instruction, Error> {
+    let priority_fee = get_estimate(client, accounts).await?;
+    Ok(compute_price_instruction(priority_fee))
 }
 
 impl<'a, C: Deref<Target = impl Signer> + Clone> SetPriorityFees for RequestBuilder<'a, C> {

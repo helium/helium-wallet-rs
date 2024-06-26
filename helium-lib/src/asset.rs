@@ -219,6 +219,10 @@ impl Asset {
     pub async fn get_kta(&self) -> Result<helium_entity_manager::KeyToAssetV0, Error> {
         kta::get(&self.kta_key()?).await
     }
+
+    pub fn is_symbol(&self, symbol: &str) -> bool {
+        self.content.metadata.symbol == symbol
+    }
 }
 
 impl AssetProof {

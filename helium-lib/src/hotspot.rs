@@ -52,7 +52,7 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     let assets = asset::for_owner(client, &HOTSPOT_CREATOR, owner).await?;
     let hotspot_assets = assets
         .into_iter()
-        .filter(|asset| asset.content.metadata.symbol == "HOTSPOT");
+        .filter(|asset| asset.is_symbol("HOTSPOT"));
     stream::iter(hotspot_assets)
         .map(|asset| async move { Hotspot::from_asset(asset).await })
         .buffered(5)
@@ -65,6 +65,10 @@ pub async fn search<C: AsRef<DasClient>>(
     params: DasSearchAssetsParams,
 ) -> Result<HotspotPage, Error> {
     asset::search(client, params)
+        .map_ok(|mut asset_page| {
+            asset_page.items.retain(|asset| asset.is_symbol("HOTSPOT"));
+            asset_page
+        })
         .and_then(HotspotPage::from_asset_page)
         .await
 }

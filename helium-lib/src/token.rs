@@ -1,4 +1,6 @@
 use crate::{
+    anchor_lang::AccountDeserialize,
+    anchor_spl,
     client::SolanaRpcClient,
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
@@ -98,7 +100,6 @@ pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
             Ok(Some(Token::Sol.to_balance(*pubkey, account.lamports)))
         }
         Some(account) => {
-            use anchor_client::anchor_lang::AccountDeserialize;
             let token_account =
                 anchor_spl::token::TokenAccount::try_deserialize(&mut account.data.as_slice())?;
             let token = Token::from_mint(token_account.mint)

@@ -1,10 +1,15 @@
 use crate::{
+    anchor_lang::AccountDeserialize,
     asset,
     error::{DecodeError, Error},
-    is_zero, keypair, solana_client,
+    is_zero, keypair,
+    keypair::Pubkey,
+    solana_client,
 };
+use futures::{stream, StreamExt, TryStreamExt};
+use itertools::Itertools;
 use jsonrpc_client::SendRequest;
-use std::sync::Arc;
+use std::{marker::Send, sync::Arc};
 use tracing::instrument;
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
@@ -26,31 +31,67 @@ pub struct Client {
 
 #[async_trait::async_trait]
 pub trait GetAnchorAccount {
-    async fn anchor_account<T: anchor_client::anchor_lang::AccountDeserialize>(
+    async fn anchor_account<T: AccountDeserialize>(&self, pubkey: &Pubkey) -> Result<T, Error>;
+    async fn anchor_accounts<T: AccountDeserialize + Send>(
         &self,
-        pubkey: &keypair::Pubkey,
-    ) -> Result<T, Error>;
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<Option<T>>, Error>;
 }
 
 #[async_trait::async_trait]
 impl GetAnchorAccount for SolanaRpcClient {
-    async fn anchor_account<T: anchor_client::anchor_lang::AccountDeserialize>(
-        &self,
-        pubkey: &keypair::Pubkey,
-    ) -> Result<T, Error> {
+    async fn anchor_account<T: AccountDeserialize>(&self, pubkey: &Pubkey) -> Result<T, Error> {
         let account = self.get_account(pubkey).await?;
         let decoded = T::try_deserialize(&mut account.data.as_ref())?;
         Ok(decoded)
+    }
+
+    async fn anchor_accounts<T: AccountDeserialize + Send>(
+        &self,
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<Option<T>>, Error> {
+        async fn get_accounts<A: AccountDeserialize + Send>(
+            client: &SolanaRpcClient,
+            pubkeys: &[Pubkey],
+        ) -> Result<Vec<Option<A>>, Error> {
+            let accounts = client.get_multiple_accounts(pubkeys).await?;
+            accounts
+                .into_iter()
+                .map(|maybe_account| {
+                    maybe_account
+                        .map(|account| A::try_deserialize(&mut account.data.as_ref()))
+                        .transpose()
+                        .map_err(Error::from)
+                })
+                .try_collect()
+        }
+
+        let accounts = stream::iter(pubkeys.to_vec())
+            .chunks(100)
+            .map(|key_chunk| async move { get_accounts::<T>(self, &key_chunk).await })
+            .buffered(5)
+            .try_collect::<Vec<Vec<Option<T>>>>()
+            .await?
+            .into_iter()
+            .flatten()
+            .collect_vec();
+        Ok(accounts)
     }
 }
 
 #[async_trait::async_trait]
 impl GetAnchorAccount for Client {
-    async fn anchor_account<T: anchor_client::anchor_lang::AccountDeserialize>(
+    async fn anchor_account<T: AccountDeserialize>(
         &self,
         pubkey: &keypair::Pubkey,
     ) -> Result<T, Error> {
         self.solana_client.anchor_account(pubkey).await
+    }
+    async fn anchor_accounts<T: AccountDeserialize + Send>(
+        &self,
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<Option<T>>, Error> {
+        self.solana_client.anchor_accounts(pubkeys).await
     }
 }
 
@@ -95,12 +136,12 @@ pub struct DasSearchAssetsParams {
         with = "keypair::serde_opt_pubkey",
         skip_serializing_if = "Option::is_none"
     )]
-    pub creator_address: Option<keypair::Pubkey>,
+    pub creator_address: Option<Pubkey>,
     #[serde(
         with = "keypair::serde_opt_pubkey",
         skip_serializing_if = "Option::is_none"
     )]
-    pub owner_address: Option<keypair::Pubkey>,
+    pub owner_address: Option<Pubkey>,
     #[serde(skip_serializing_if = "is_zero")]
     pub page: u32,
     #[serde(skip_serializing_if = "is_zero")]
@@ -108,7 +149,7 @@ pub struct DasSearchAssetsParams {
 }
 
 impl DasSearchAssetsParams {
-    pub fn for_owner(owner_address: keypair::Pubkey, creator_address: keypair::Pubkey) -> Self {
+    pub fn for_owner(owner_address: Pubkey, creator_address: Pubkey) -> Self {
         Self {
             owner_address: Some(owner_address),
             creator_address: Some(creator_address),
@@ -153,7 +194,7 @@ impl DasClient {
     #[instrument(skip(self), level = "trace")]
     pub async fn get_asset(
         &self,
-        address: &keypair::Pubkey,
+        address: &Pubkey,
     ) -> Result<asset::Asset, jsonrpc_client::Error<reqwest::Error>> {
         let body = jsonrpc_client::Request::new_v2("getAsset")
             .with_argument("id".to_string(), address.to_string())?
@@ -171,7 +212,7 @@ impl DasClient {
     #[instrument(skip(self), level = "trace")]
     pub async fn get_asset_proof(
         &self,
-        address: &keypair::Pubkey,
+        address: &Pubkey,
     ) -> Result<asset::AssetProof, jsonrpc_client::Error<reqwest::Error>> {
         let body = jsonrpc_client::Request::new_v2("getAssetProof")
             .with_argument("id".to_string(), address.to_string())?

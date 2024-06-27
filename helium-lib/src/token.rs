@@ -210,16 +210,28 @@ pub enum Token {
 
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        f.write_str(&str)
+        let str = match self {
+            Token::Sol => "sol",
+            Token::Hnt => "hnt",
+            Token::Mobile => "mobile",
+            Token::Iot => "iot",
+            Token::Dc => "dc",
+        };
+        f.write_str(str)
     }
 }
 
 impl FromStr for Token {
     type Err = TokenError;
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
-        serde_json::from_str(&format!("\"{s}\""))
-            .map_err(|_| TokenError::InvalidToken(s.to_string()))
+        match s {
+            "sol" => Ok(Token::Sol),
+            "hnt" => Ok(Token::Hnt),
+            "mobile" => Ok(Token::Mobile),
+            "iot" => Ok(Token::Iot),
+            "dc" => Ok(Token::Dc),
+            _ => Err(TokenError::InvalidToken(s.to_string())),
+        }
     }
 }
 

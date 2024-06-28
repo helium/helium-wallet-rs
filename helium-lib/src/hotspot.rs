@@ -1,6 +1,6 @@
 use crate::{
     anchor_lang::{AnchorDeserialize, Discriminator, InstructionData, ToAccountMetas},
-    asset, bs58,
+    anchor_spl, asset, bs58,
     client::{DasClient, DasSearchAssetsParams, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
@@ -89,7 +89,7 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
 ) -> Result<Hotspot, Error> {
     let (mut hotspot, info) = futures::try_join!(
         get(client, hotspot_key),
-        info::get(client, subdaos, hotspot_key)
+        info::for_entity_key(client, subdaos, hotspot_key)
     )?;
     if !info.is_empty() {
         hotspot.info = Some(info);
@@ -99,7 +99,7 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
 
 pub mod info {
     use super::*;
-    use anchor_client::solana_client::{
+    use crate::anchor_client::solana_client::{
         rpc_client::GetConfirmedSignaturesForAddress2Config, rpc_config::RpcTransactionConfig,
     };
     use chrono::DateTime;
@@ -116,19 +116,18 @@ pub mod info {
         UiParsedInstruction, UiTransactionEncoding,
     };
 
-    pub async fn for_subdao<C: GetAnchorAccount>(
+    pub async fn get<C: GetAnchorAccount>(
         client: &C,
         subdao: SubDao,
-        key: &helium_crypto::PublicKey,
+        info_key: &Pubkey,
     ) -> Result<Option<HotspotInfo>, Error> {
-        let info_key = subdao.info_key_for_helium_key(key)?;
         let hotspot_info = match subdao {
             SubDao::Iot => client
-                .anchor_account::<helium_entity_manager::IotHotspotInfoV0>(&info_key)
+                .anchor_account::<helium_entity_manager::IotHotspotInfoV0>(info_key)
                 .await
                 .map(Into::into),
             SubDao::Mobile => client
-                .anchor_account::<helium_entity_manager::MobileHotspotInfoV0>(&info_key)
+                .anchor_account::<helium_entity_manager::MobileHotspotInfoV0>(info_key)
                 .await
                 .map(Into::into),
         }
@@ -136,14 +135,51 @@ pub mod info {
         Ok(hotspot_info)
     }
 
-    pub async fn get<C: GetAnchorAccount>(
+    pub async fn get_many<C: GetAnchorAccount>(
+        client: &C,
+        subdao: SubDao,
+        info_keys: &[Pubkey],
+    ) -> Result<Vec<Option<HotspotInfo>>, Error> {
+        fn to_infos<T: Into<HotspotInfo>>(
+            maybe_accounts: Vec<Option<T>>,
+        ) -> Vec<Option<HotspotInfo>> {
+            maybe_accounts
+                .into_iter()
+                .map(HotspotInfo::from_maybe)
+                .collect()
+        }
+        let accounts = match subdao {
+            SubDao::Iot => to_infos(
+                client
+                    .anchor_accounts::<helium_entity_manager::IotHotspotInfoV0>(info_keys)
+                    .await?,
+            ),
+            SubDao::Mobile => to_infos(
+                client
+                    .anchor_accounts::<helium_entity_manager::MobileHotspotInfoV0>(info_keys)
+                    .await?,
+            ),
+        };
+        Ok(accounts)
+    }
+
+    async fn for_entity_key_in_subdao<C: GetAnchorAccount, E: AsEntityKey>(
+        client: &C,
+        subdao: SubDao,
+        entity_key: &E,
+    ) -> Result<Option<HotspotInfo>, Error> {
+        let info_key = subdao.info_key(entity_key);
+        get(client, subdao, &info_key).await
+    }
+
+    pub async fn for_entity_key<C: GetAnchorAccount>(
         client: &C,
         subdaos: &[SubDao],
         key: &helium_crypto::PublicKey,
     ) -> Result<HashMap<SubDao, HotspotInfo>, Error> {
         stream::iter(subdaos.to_vec())
             .map(|subdao| {
-                for_subdao(client, subdao, key)
+                for_entity_key_in_subdao(client, subdao, key)
                     .map_ok(move |maybe_metadata| maybe_metadata.map(|metadata| (subdao, metadata)))
             })
             .buffer_unordered(10)
@@ -1056,6 +1092,12 @@ impl From<helium_entity_manager::MobileDeviceTypeV0> for MobileDeviceType {
             helium_entity_manager::MobileDeviceTypeV0::WifiIndoor => Self::WifiIndoor,
             helium_entity_manager::MobileDeviceTypeV0::WifiOutdoor => Self::WifiOutdoor,
         }
+    }
+}
+
+impl HotspotInfo {
+    pub fn from_maybe<T: Into<Self>>(value: Option<T>) -> Option<Self> {
+        value.map(Into::into)
     }
 }
 

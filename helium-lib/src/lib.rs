@@ -17,6 +17,7 @@ pub mod token;
 
 pub use anchor_client;
 pub use anchor_client::solana_client;
+pub use anchor_spl;
 pub use helium_anchor_gen::{
     anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
     lazy_distributor,

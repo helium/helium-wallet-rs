@@ -2,13 +2,13 @@ use crate::{
     anchor_lang::AccountDeserialize,
     asset,
     error::{DecodeError, Error},
-    is_zero, keypair,
-    keypair::Pubkey,
+    is_zero,
+    keypair::{self, Pubkey},
     solana_client,
 };
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
-use jsonrpc_client::SendRequest;
+use jsonrpc_client::{JsonRpcError, SendRequest};
 use std::{marker::Send, sync::Arc};
 use tracing::instrument;
 
@@ -160,7 +160,27 @@ impl DasSearchAssetsParams {
     }
 }
 
-pub type DasClientError = jsonrpc_client::Error<reqwest::Error>;
+#[derive(Debug, thiserror::Error)]
+pub enum DasClientError {
+    #[error("jsonrpc: {0}")]
+    Rpc(#[from] jsonrpc_client::Error<reqwest::Error>),
+    #[error("json error {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+impl From<reqwest::Error> for DasClientError {
+    fn from(value: reqwest::Error) -> Self {
+        jsonrpc_client::Error::from(value).into()
+    }
+}
+
+impl From<JsonRpcError> for DasClientError {
+    fn from(value: JsonRpcError) -> Self {
+        Self::from(jsonrpc_client::Error::JsonRpc(value))
+    }
+}
+
+// impl From<serde_json::Error> for DasClientError
 
 #[jsonrpc_client::api]
 pub trait DAS {}
@@ -192,17 +212,13 @@ impl DasClient {
     }
 
     #[instrument(skip(self), level = "trace")]
-    pub async fn get_asset(
-        &self,
-        address: &Pubkey,
-    ) -> Result<asset::Asset, jsonrpc_client::Error<reqwest::Error>> {
+    pub async fn get_asset(&self, address: &Pubkey) -> Result<asset::Asset, DasClientError> {
         let body = jsonrpc_client::Request::new_v2("getAsset")
             .with_argument("id".to_string(), address.to_string())?
             .serialize()?;
 
         let response = Result::from(
-            self.inner
-                .send_request::<asset::Asset>(self.base_url.clone(), body)
+            SendRequest::send_request::<asset::Asset>(self, self.base_url.clone(), body)
                 .await?
                 .payload,
         )?;
@@ -213,14 +229,13 @@ impl DasClient {
     pub async fn get_asset_proof(
         &self,
         address: &Pubkey,
-    ) -> Result<asset::AssetProof, jsonrpc_client::Error<reqwest::Error>> {
+    ) -> Result<asset::AssetProof, DasClientError> {
         let body = jsonrpc_client::Request::new_v2("getAssetProof")
             .with_argument("id".to_string(), address.to_string())?
             .serialize()?;
 
         let response = Result::from(
-            self.inner
-                .send_request::<asset::AssetProof>(self.base_url.clone(), body)
+            SendRequest::send_request::<asset::AssetProof>(self, self.base_url.clone(), body)
                 .await?
                 .payload,
         )?;
@@ -231,24 +246,19 @@ impl DasClient {
     pub async fn search_assets(
         &self,
         params: DasSearchAssetsParams,
-    ) -> Result<asset::AssetPage, jsonrpc_client::Error<reqwest::Error>> {
-        let mut body = jsonrpc_client::Request::new_v2("searchAssets")
-            .with_argument("creatorVerified".to_string(), params.creator_verified)?;
-        if let Some(creator_address) = params.creator_address {
-            body = body.with_argument("creatorAddress".to_string(), creator_address.to_string())?;
-        }
-        if let Some(owner_address) = params.owner_address {
-            body = body.with_argument("ownerAddress".to_string(), owner_address.to_string())?;
-        }
-        let body = body
-            .with_argument("page".to_string(), params.page)?
-            .serialize()?;
-
+    ) -> Result<asset::AssetPage, DasClientError> {
+        let params =
+            serde_json::to_value(params).map(|value| value.as_object().unwrap().to_owned())?;
+        let mut body = jsonrpc_client::Request::new_v2("searchAssets");
+        body.params = jsonrpc_client::Params::ByName(params.to_owned());
         let response = Result::from(
-            self.inner
-                .send_request::<asset::AssetPage>(self.base_url.clone(), body)
-                .await?
-                .payload,
+            SendRequest::send_request::<asset::AssetPage>(
+                self,
+                self.base_url.clone(),
+                body.serialize()?,
+            )
+            .await?
+            .payload,
         )?;
         Ok(response)
     }

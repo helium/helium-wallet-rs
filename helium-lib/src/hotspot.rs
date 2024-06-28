@@ -34,12 +34,12 @@ use std::{collections::HashMap, str::FromStr};
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
-pub fn key_from_kta(
-    kta: helium_entity_manager::KeyToAssetV0,
+pub fn entity_key_from_kta(
+    kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<helium_crypto::PublicKey, Error> {
     let key_str = match kta.key_serialization {
-        helium_entity_manager::KeySerialization::B58 => bs58::encode(kta.entity_key).into_string(),
-        helium_entity_manager::KeySerialization::UTF8 => String::from_utf8(kta.entity_key)
+        helium_entity_manager::KeySerialization::B58 => bs58::encode(&kta.entity_key).into_string(),
+        helium_entity_manager::KeySerialization::UTF8 => String::from_utf8(kta.entity_key.to_vec())
             .map_err(|_| DecodeError::other("invalid entity key string"))?,
     };
     Ok(helium_crypto::PublicKey::from_str(&key_str)?)
@@ -791,6 +791,8 @@ impl HotspotPage {
 #[derive(Debug, Serialize, Clone)]
 pub struct Hotspot {
     pub key: helium_crypto::PublicKey,
+    #[serde(with = "serde_pubkey")]
+    pub asset: Pubkey,
     pub name: String,
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
@@ -799,21 +801,6 @@ pub struct Hotspot {
 }
 
 impl Hotspot {
-    pub fn with_hotspot_key(key: helium_crypto::PublicKey, owner: Pubkey) -> Self {
-        let name = key
-            .to_string()
-            .parse::<AnimalName>()
-            // can unwrap safely
-            .unwrap()
-            .to_string();
-        Self {
-            key,
-            name,
-            owner,
-            info: None,
-        }
-    }
-
     pub async fn from_asset(asset: asset::Asset) -> Result<Self, Error> {
         let kta = asset.get_kta().await?;
         Self::from_asset_with_kta(kta, asset)
@@ -823,8 +810,20 @@ impl Hotspot {
         kta: helium_entity_manager::KeyToAssetV0,
         asset: asset::Asset,
     ) -> Result<Self, Error> {
-        let hotspot_key = key_from_kta(kta)?;
-        Ok(Self::with_hotspot_key(hotspot_key, asset.ownership.owner))
+        let entity_key = entity_key_from_kta(&kta)?;
+        let name = entity_key
+            .to_string()
+            .parse::<AnimalName>()
+            // can unwrap safely
+            .unwrap()
+            .to_string();
+        Ok(Self {
+            asset: kta.asset,
+            key: entity_key,
+            name,
+            owner: asset.ownership.owner,
+            info: None,
+        })
     }
 }
 
@@ -913,8 +912,6 @@ pub mod serde_cell_index {
 #[serde(rename_all = "lowercase", untagged)]
 pub enum HotspotInfo {
     Iot {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        asset: Option<String>,
         mode: HotspotMode,
         #[serde(skip_serializing_if = "Option::is_none")]
         gain: Option<Decimal>,
@@ -927,8 +924,6 @@ pub enum HotspotInfo {
         location_asserts: u16,
     },
     Mobile {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        asset: Option<String>,
         mode: HotspotMode,
         #[serde(flatten)]
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1104,7 +1099,6 @@ impl HotspotInfo {
 impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
     fn from(value: helium_entity_manager::IotHotspotInfoV0) -> Self {
         Self::Iot {
-            asset: Some(value.asset.to_string()),
             mode: value.is_full_hotspot.into(),
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
@@ -1117,7 +1111,6 @@ impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
 impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
     fn from(value: helium_entity_manager::MobileHotspotInfoV0) -> Self {
         Self::Mobile {
-            asset: Some(value.asset.to_string()),
             mode: value.is_full_hotspot.into(),
             location: HotspotLocation::from_maybe(value.location),
             location_asserts: value.num_location_asserts,

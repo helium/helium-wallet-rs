@@ -256,6 +256,12 @@ pub mod info {
         fn from_transaction(
             txn: EncodedConfirmedTransactionWithStatusMeta,
         ) -> Result<Option<Self>, DecodeError> {
+            // don't handle failed transactions
+            if let Some(meta) = txn.transaction.meta {
+                if meta.err.is_some() {
+                    return Ok(None);
+                }
+            }
             let EncodedTransaction::Json(ui_txn) = txn.transaction.transaction else {
                 return Err(DecodeError::other("not a json encoded transaction"));
             };

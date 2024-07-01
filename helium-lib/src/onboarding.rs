@@ -1,6 +1,5 @@
 use crate::{hotspot::HotspotInfoUpdate, keypair};
 use futures::TryFutureExt;
-use rust_decimal::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::marker::Send;
 

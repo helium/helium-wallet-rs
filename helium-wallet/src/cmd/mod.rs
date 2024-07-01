@@ -91,19 +91,25 @@ impl CommitOpts {
     ) -> Result<CommitResponse> {
         fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
             let mut captured_logs: Option<Vec<String>> = None;
+            let mut error_message: Option<String> = None;
             if let solana_client::client_error::ClientErrorKind::RpcError(
                 solana_client::rpc_request::RpcError::RpcResponseError {
                     data:
                         RpcResponseErrorData::SendTransactionPreflightFailure(
                             RpcSimulateTransactionResult { logs, .. },
                         ),
+                    message,
                     ..
                 },
             ) = &client_err.kind
             {
                 logs.clone_into(&mut captured_logs);
+                error_message = Some(message.clone());
             }
             let mut mapped = Error::from(client_err);
+            if let Some(message) = error_message {
+                mapped = mapped.context(message);
+            }
             if let Some(logs) = captured_logs.as_ref() {
                 if let Ok(serialized_logs) = serde_json::to_string(logs) {
                     mapped = mapped.context(serialized_logs);

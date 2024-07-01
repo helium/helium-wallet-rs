@@ -64,7 +64,7 @@ impl Client {
             #[serde(with = "keypair::serde_pubkey")]
             wallet: keypair::Pubkey,
             location: Option<String>,
-            gain: Option<f64>,
+            gain: Option<i32>,
             elevation: Option<i32>,
         }
 
@@ -74,7 +74,7 @@ impl Client {
             location: update
                 .location()
                 .map(|location| u64::from(location).to_string()),
-            gain: update.gain().and_then(|gain| gain.to_f64()),
+            gain: update.gain_i32(),
             elevation: update.elevation().to_owned(),
         };
 

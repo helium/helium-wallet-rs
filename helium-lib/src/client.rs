@@ -286,3 +286,337 @@ impl jsonrpc_client::SendRequest for DasClient {
             .await
     }
 }
+
+pub mod config {
+    use super::*;
+    use crate::hotspot::{HotspotInfo, HotspotMode, MobileDeviceType};
+    use helium_proto::{
+        services::{Channel, Endpoint, Uri},
+        Message,
+    };
+    use std::{collections::HashMap, time::Duration};
+
+    pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+    pub const RPC_TIMEOUT: Duration = Duration::from_secs(5);
+    trait MessageSign {
+        /// Sign the given message
+        fn sign<K: AsRef<helium_crypto::Keypair>>(&mut self, keypair: K) -> Result<(), Error>;
+    }
+
+    trait MessageVerify {
+        fn verify(&self, address: &helium_crypto::PublicKey) -> Result<(), Error>;
+    }
+
+    macro_rules! impl_message_sign {
+        ($type: ty) => {
+            impl MessageSign for $type {
+                fn sign<K>(&mut self, keypair: K) -> Result<(), Error>
+                where
+                    K: AsRef<helium_crypto::Keypair>,
+                {
+                    use helium_crypto::Sign as _;
+                    self.signature = keypair.as_ref().sign(&self.encode_to_vec())?;
+                    Ok(())
+                }
+            }
+        };
+    }
+
+    macro_rules! impl_message_verify {
+        ($type: ty) => {
+            impl MessageVerify for $type {
+                fn verify(&self, pub_key: &helium_crypto::PublicKey) -> Result<(), Error> {
+                    use helium_crypto::Verify as _;
+                    let mut _msg = self.clone();
+                    _msg.signature = vec![];
+                    let buf = _msg.encode_to_vec();
+                    pub_key.verify(&buf, &self.signature).map_err(Error::from)
+                }
+            }
+        };
+    }
+
+    fn channel_for_uri(uri: &str) -> Result<Channel, DecodeError> {
+        let uri: Uri = uri
+            .parse()
+            .map_err(|_| DecodeError::other(format!("invalid config url: {uri}")))?;
+        let channel = Endpoint::from(uri)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(RPC_TIMEOUT)
+            .connect_lazy();
+        Ok(channel)
+    }
+
+    pub mod iot {
+        use super::*;
+        use helium_proto::services::iot_config::{
+            GatewayClient, GatewayInfoReqV1, GatewayInfoResV1, GatewayInfoStreamReqV1,
+            GatewayInfoStreamResV1,
+        };
+
+        impl_message_sign!(GatewayInfoReqV1);
+        impl_message_sign!(GatewayInfoStreamReqV1);
+        impl_message_verify!(GatewayInfoResV1);
+        impl_message_verify!(GatewayInfoStreamResV1);
+
+        #[derive(Clone)]
+        pub struct Client {
+            keypair: Arc<helium_crypto::Keypair>,
+            client: GatewayClient<Channel>,
+            address: helium_crypto::PublicKey,
+        }
+
+        impl Client {
+            pub fn new(
+                uri: &str,
+                address: helium_crypto::PublicKey,
+                keypair: Arc<helium_crypto::Keypair>,
+            ) -> Result<Self, Error> {
+                let channel = channel_for_uri(uri)?;
+                let client = GatewayClient::new(channel);
+                Ok(Self {
+                    client,
+                    address,
+                    keypair,
+                })
+            }
+
+            pub async fn info(
+                &mut self,
+                address: &helium_crypto::PublicKey,
+            ) -> Result<Option<HotspotInfo>, Error> {
+                let mut req = GatewayInfoReqV1 {
+                    signer: self.keypair.public_key().into(),
+                    address: address.into(),
+                    signature: vec![],
+                };
+                req.sign(&self.keypair)?;
+                match self.client.info(req).await {
+                    Ok(resp) => {
+                        let inner = resp.into_inner();
+                        inner.verify(&self.address)?;
+                        info_from_res(inner)
+                    }
+                    Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
+                    Err(err) => Err(err.into()),
+                }
+            }
+
+            pub async fn batch_info(
+                &mut self,
+                addresses: &[helium_crypto::PublicKey],
+            ) -> Result<HashMap<helium_crypto::PublicKey, HotspotInfo>, Error> {
+                let map = stream::iter(addresses.to_vec())
+                    .map(|address| (address, self.clone()))
+                    .map(move |(address, mut client)| async move {
+                        let info = client.info(&address).await?;
+                        let tuple = info.map(|info| (address, info));
+                        Ok::<_, Error>(tuple)
+                    })
+                    .buffered(10)
+                    .try_filter_map(|maybe_tuple| async move { Ok(maybe_tuple) })
+                    .try_collect::<Vec<(helium_crypto::PublicKey, HotspotInfo)>>()
+                    .await?
+                    .into_iter()
+                    .collect();
+                Ok(map)
+            }
+
+            pub async fn stream_info(
+                &mut self,
+            ) -> Result<impl stream::Stream<Item = Result<GatewayInfoStreamResV1, Error>> + '_, Error>
+            {
+                let mut req = GatewayInfoStreamReqV1 {
+                    signer: self.keypair.public_key().into(),
+                    batch_size: 1000,
+                    signature: vec![],
+                };
+                req.sign(&self.keypair)?;
+                let streaming = self
+                    .client
+                    .info_stream(req)
+                    .await?
+                    .into_inner()
+                    .map_err(Error::from)
+                    .and_then(|res| {
+                        let address = self.address.clone();
+                        async move {
+                            res.verify(&address)?;
+                            Ok(res)
+                        }
+                    });
+
+                Ok(streaming)
+            }
+        }
+
+        fn info_from_res(res: GatewayInfoResV1) -> Result<Option<HotspotInfo>, Error> {
+            let Some(info) = res.info else {
+                return Ok(None);
+            };
+            let Some(metadata) = info.metadata else {
+                return Ok(None);
+            };
+
+            let mode = if info.is_full_hotspot {
+                HotspotMode::Full
+            } else {
+                HotspotMode::DataOnly
+            };
+            Ok(Some(HotspotInfo::Iot {
+                mode,
+                gain: Some(rust_decimal::Decimal::new(metadata.gain.into(), 1)),
+                elevation: Some(metadata.elevation),
+                location: metadata.location.parse().ok(),
+                location_asserts: 0,
+            }))
+        }
+    }
+
+    pub mod mobile {
+        use super::*;
+        use helium_proto::services::mobile_config::{
+            DeviceType, GatewayClient, GatewayInfo, GatewayInfoBatchReqV1, GatewayInfoReqV1,
+            GatewayInfoResV1, GatewayInfoStreamReqV1, GatewayInfoStreamResV1,
+        };
+
+        impl_message_sign!(GatewayInfoReqV1);
+        impl_message_sign!(GatewayInfoStreamReqV1);
+        impl_message_sign!(GatewayInfoBatchReqV1);
+        impl_message_verify!(GatewayInfoResV1);
+        impl_message_verify!(GatewayInfoStreamResV1);
+
+        pub struct Client {
+            keypair: Arc<helium_crypto::Keypair>,
+            client: GatewayClient<Channel>,
+            address: helium_crypto::PublicKey,
+        }
+
+        impl Client {
+            pub fn new(
+                uri: &str,
+                address: helium_crypto::PublicKey,
+                keypair: Arc<helium_crypto::Keypair>,
+            ) -> Result<Self, Error> {
+                let channel = channel_for_uri(uri)?;
+                let client = GatewayClient::new(channel);
+                Ok(Self {
+                    client,
+                    address,
+                    keypair,
+                })
+            }
+
+            pub async fn info(
+                &mut self,
+                address: &helium_crypto::PublicKey,
+            ) -> Result<Option<HotspotInfo>, Error> {
+                let mut req = GatewayInfoReqV1 {
+                    signer: self.keypair.public_key().into(),
+                    address: address.into(),
+                    signature: vec![],
+                };
+                req.sign(&self.keypair)?;
+                match self.client.info(req).await {
+                    Ok(resp) => {
+                        let inner = resp.into_inner();
+                        inner.verify(&self.address)?;
+                        info_from_res(inner)
+                    }
+                    Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
+                    Err(err) => Err(err.into()),
+                }
+            }
+
+            pub async fn batch_info(
+                &mut self,
+                addresses: &[helium_crypto::PublicKey],
+            ) -> Result<HashMap<helium_crypto::PublicKey, HotspotInfo>, Error> {
+                let mut req = GatewayInfoBatchReqV1 {
+                    batch_size: 1000,
+                    addresses: addresses.iter().map(|address| address.to_vec()).collect(),
+                    signer: self.keypair.public_key().into(),
+                    signature: vec![],
+                };
+                req.sign(&self.keypair)?;
+                let mut result = Vec::with_capacity(addresses.len());
+                let mut stream = self.client.info_batch(req).await?.into_inner();
+                loop {
+                    match stream.try_next().await {
+                        Ok(Some(res)) => {
+                            res.verify(&self.address)?;
+                            let infos = res
+                                .gateways
+                                .into_iter()
+                                .map(info_from_info)
+                                .filter_map(|result| result.transpose())
+                                .collect::<Vec<Result<_, _>>>()
+                                .into_iter()
+                                .collect::<Result<Vec<(helium_crypto::PublicKey, HotspotInfo)>, _>>(
+                                )?;
+                            result.extend_from_slice(&infos);
+                        }
+                        Ok(None) => break,
+                        Err(err) => return Err(err.into()),
+                    }
+                }
+                Ok(result.into_iter().collect())
+            }
+
+            pub async fn stream_info(
+                &mut self,
+            ) -> Result<impl stream::Stream<Item = Result<GatewayInfoStreamResV1, Error>> + '_, Error>
+            {
+                let mut req = GatewayInfoStreamReqV1 {
+                    signer: self.keypair.public_key().into(),
+                    batch_size: 1000,
+                    signature: vec![],
+                };
+                req.sign(&self.keypair)?;
+                let streaming = self.client.info_stream(req).await?.into_inner();
+                let streaming = streaming.map_err(Error::from).and_then(|res| {
+                    let address = self.address.clone();
+                    async move {
+                        res.verify(&address)?;
+                        Ok(res)
+                    }
+                });
+
+                Ok(streaming)
+            }
+        }
+
+        fn info_from_res(res: GatewayInfoResV1) -> Result<Option<HotspotInfo>, Error> {
+            let Some(info) = res.info else {
+                return Ok(None);
+            };
+            info_from_info(info).map(|maybe_info| maybe_info.map(|(_, info)| info))
+        }
+
+        fn info_from_info(
+            info: GatewayInfo,
+        ) -> Result<Option<(helium_crypto::PublicKey, HotspotInfo)>, Error> {
+            let address = info.address.try_into()?;
+            let Some(metadata) = info.metadata else {
+                return Ok(None);
+            };
+
+            let device_type =
+                match DeviceType::try_from(info.device_type).map_err(DecodeError::from)? {
+                    DeviceType::Cbrs => MobileDeviceType::Cbrs,
+                    DeviceType::WifiIndoor => MobileDeviceType::WifiIndoor,
+                    DeviceType::WifiOutdoor => MobileDeviceType::WifiOutdoor,
+                };
+
+            Ok(Some((
+                address,
+                HotspotInfo::Mobile {
+                    device_type,
+                    mode: HotspotMode::Full,
+                    location: metadata.location.parse().ok(),
+                    location_asserts: 0,
+                },
+            )))
+        }
+    }
+}

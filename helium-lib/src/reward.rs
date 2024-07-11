@@ -232,8 +232,10 @@ pub async fn pending<C: GetAnchorAccount>(
                 })
                 .map_ok(|recipient| {
                     for_entity_key(&bulk_rewards, entity_key_string).map(|mut oracle_reward| {
-                        oracle_reward.reward.amount =
-                            (oracle_reward.reward.amount - recipient.total_rewards).max(0);
+                        oracle_reward.reward.amount = oracle_reward
+                            .reward
+                            .amount
+                            .saturating_sub(recipient.total_rewards);
                         (entity_key_string.clone(), oracle_reward)
                     })
                 })

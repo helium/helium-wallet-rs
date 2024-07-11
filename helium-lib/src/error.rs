@@ -15,6 +15,10 @@ pub enum Error {
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
+    #[error("grpc: {0}")]
+    Grpc(#[from] tonic::Status),
+    #[error("service: {0}")]
+    Servcice(#[from] helium_proto::services::Error),
     #[error("price client: {0}")]
     Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]

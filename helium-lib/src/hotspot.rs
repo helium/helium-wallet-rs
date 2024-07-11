@@ -326,7 +326,6 @@ pub mod info {
                 let account = Pubkey::from_str(account_str).map_err(DecodeError::from)?;
                 Ok(account)
             }
-
             match discriminator {
                 UpdateMobileInfoV0::DISCRIMINATOR => {
                     let info_key = get_info_key(&decoded, 2)?;

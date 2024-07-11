@@ -10,6 +10,7 @@ mnemonic = ["helium-mnemonic"]
 
 [dependencies]
 hex = "0.4"
+hex-literal = "0"
 chrono = {version = "0", features = ["serde"]}
 thiserror = "1"
 async-trait = "0"
@@ -31,6 +32,7 @@ reqwest = { version = "0", default-features = false, features = [
 helium-anchor-gen = {git = "https://github.com/helium/helium-anchor-gen.git"}
 spl-associated-token-account = { version = "*", features = ["no-entrypoint"] }
 spl-account-compression = { version = "0.3", features = ["no-entrypoint"] }
+tonic = { version = "0", features = ["tls", "tls-roots"] }
 mpl-bubblegum = "1"
 pyth-solana-receiver-sdk = "0"
 solana-program = "*"

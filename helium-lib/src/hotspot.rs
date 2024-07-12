@@ -1099,6 +1099,46 @@ impl HotspotInfo {
     pub fn from_maybe<T: Into<Self>>(value: Option<T>) -> Option<Self> {
         value.map(Into::into)
     }
+
+    pub fn location(&self) -> &Option<HotspotLocation> {
+        match self {
+            Self::Iot { location, .. } => location,
+            Self::Mobile { location, .. } => location,
+        }
+    }
+
+    pub fn location_u64(&self) -> Option<u64> {
+        self.location().map(Into::into)
+    }
+
+    pub fn elevation(&self) -> &Option<i32> {
+        match self {
+            Self::Iot { elevation, .. } => elevation,
+            Self::Mobile { .. } => &None,
+        }
+    }
+
+    pub fn gain_i32(&self) -> Option<i32> {
+        self.gain().and_then(|gain| {
+            f32::try_from(gain)
+                .map(|fgain| (fgain * 10.0).trunc() as i32)
+                .ok()
+        })
+    }
+
+    pub fn gain(&self) -> &Option<Decimal> {
+        match self {
+            Self::Iot { gain, .. } => gain,
+            Self::Mobile { .. } => &None,
+        }
+    }
+
+    pub fn mode(&self) -> &HotspotMode {
+        match self {
+            Self::Iot { mode, .. } => mode,
+            Self::Mobile { mode, .. } => mode,
+        }
+    }
 }
 
 impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {

@@ -295,6 +295,7 @@ pub mod config {
         Message,
     };
     use std::{collections::HashMap, time::Duration};
+    use stream::BoxStream;
 
     pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
     pub const RPC_TIMEOUT: Duration = Duration::from_secs(5);
@@ -425,9 +426,7 @@ pub mod config {
             pub async fn stream_info(
                 &mut self,
             ) -> Result<
-                impl stream::Stream<
-                        Item = Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>,
-                    > + '_,
+                BoxStream<Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
                 let mut req = GatewayInfoStreamReqV1 {
@@ -449,7 +448,7 @@ pub mod config {
                     .map_ok(|res| stream::iter(res.gateways).map(info_from_info))
                     .try_flatten();
 
-                Ok(streaming)
+                Ok(streaming.boxed())
             }
         }
 
@@ -578,9 +577,7 @@ pub mod config {
             pub async fn stream_info(
                 &mut self,
             ) -> Result<
-                impl stream::Stream<
-                        Item = Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>,
-                    > + '_,
+                BoxStream<Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
                 let mut req = GatewayInfoStreamReqV1 {
@@ -602,7 +599,7 @@ pub mod config {
                     .map_ok(|res| stream::iter(res.gateways).map(info_from_info))
                     .try_flatten();
 
-                Ok(streaming)
+                Ok(streaming.boxed())
             }
         }
 

@@ -884,6 +884,12 @@ impl FromStr for HotspotLocation {
     }
 }
 
+impl std::fmt::Display for HotspotLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.location.fmt(f)
+    }
+}
+
 impl HotspotLocation {
     pub fn from_maybe<T: TryInto<HotspotLocation>>(value: Option<T>) -> Option<Self> {
         value.and_then(|v| TryInto::try_into(v).ok())

@@ -350,7 +350,7 @@ pub mod config {
     pub mod iot {
         use super::*;
         use helium_proto::services::iot_config::{
-            GatewayClient, GatewayInfoReqV1, GatewayInfoResV1, GatewayInfoStreamReqV1,
+            GatewayClient, GatewayInfo, GatewayInfoReqV1, GatewayInfoResV1, GatewayInfoStreamReqV1,
             GatewayInfoStreamResV1,
         };
 
@@ -424,19 +424,20 @@ pub mod config {
 
             pub async fn stream_info(
                 &mut self,
-            ) -> Result<impl stream::Stream<Item = Result<GatewayInfoStreamResV1, Error>> + '_, Error>
-            {
+            ) -> Result<
+                impl stream::Stream<
+                        Item = Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>,
+                    > + '_,
+                Error,
+            > {
                 let mut req = GatewayInfoStreamReqV1 {
                     signer: self.keypair.public_key().into(),
                     batch_size: 1000,
                     signature: vec![],
                 };
                 req.sign(&self.keypair)?;
-                let streaming = self
-                    .client
-                    .info_stream(req)
-                    .await?
-                    .into_inner()
+                let streaming = self.client.info_stream(req).await?.into_inner();
+                let streaming = streaming
                     .map_err(Error::from)
                     .and_then(|res| {
                         let address = self.address.clone();
@@ -444,7 +445,9 @@ pub mod config {
                             res.verify(&address)?;
                             Ok(res)
                         }
-                    });
+                    })
+                    .map_ok(|res| stream::iter(res.gateways).map(info_from_info))
+                    .try_flatten();
 
                 Ok(streaming)
             }
@@ -454,8 +457,15 @@ pub mod config {
             let Some(info) = res.info else {
                 return Ok(None);
             };
+            info_from_info(info).map(|(_, maybe_info)| maybe_info)
+        }
+
+        fn info_from_info(
+            info: GatewayInfo,
+        ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
+            let address = info.address.try_into()?;
             let Some(metadata) = info.metadata else {
-                return Ok(None);
+                return Ok((address, None));
             };
 
             let mode = if info.is_full_hotspot {
@@ -463,13 +473,16 @@ pub mod config {
             } else {
                 HotspotMode::DataOnly
             };
-            Ok(Some(HotspotInfo::Iot {
-                mode,
-                gain: Some(rust_decimal::Decimal::new(metadata.gain.into(), 1)),
-                elevation: Some(metadata.elevation),
-                location: metadata.location.parse().ok(),
-                location_asserts: 0,
-            }))
+            Ok((
+                address,
+                Some(HotspotInfo::Iot {
+                    mode,
+                    gain: Some(rust_decimal::Decimal::new(metadata.gain.into(), 1)),
+                    elevation: Some(metadata.elevation),
+                    location: metadata.location.parse().ok(),
+                    location_asserts: 0,
+                }),
+            ))
         }
     }
 
@@ -545,15 +558,14 @@ pub mod config {
                     match stream.try_next().await {
                         Ok(Some(res)) => {
                             res.verify(&self.address)?;
-                            let infos = res
+                            let infos: Vec<(helium_crypto::PublicKey, HotspotInfo)> = res
                                 .gateways
                                 .into_iter()
                                 .map(info_from_info)
-                                .filter_map(|result| result.transpose())
-                                .collect::<Vec<Result<_, _>>>()
-                                .into_iter()
-                                .collect::<Result<Vec<(helium_crypto::PublicKey, HotspotInfo)>, _>>(
-                                )?;
+                                .filter_map_ok(|(address, maybe_info)| {
+                                    maybe_info.map(|info| (address, info))
+                                })
+                                .try_collect()?;
                             result.extend_from_slice(&infos);
                         }
                         Ok(None) => break,
@@ -565,8 +577,12 @@ pub mod config {
 
             pub async fn stream_info(
                 &mut self,
-            ) -> Result<impl stream::Stream<Item = Result<GatewayInfoStreamResV1, Error>> + '_, Error>
-            {
+            ) -> Result<
+                impl stream::Stream<
+                        Item = Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>,
+                    > + '_,
+                Error,
+            > {
                 let mut req = GatewayInfoStreamReqV1 {
                     signer: self.keypair.public_key().into(),
                     batch_size: 1000,
@@ -574,13 +590,17 @@ pub mod config {
                 };
                 req.sign(&self.keypair)?;
                 let streaming = self.client.info_stream(req).await?.into_inner();
-                let streaming = streaming.map_err(Error::from).and_then(|res| {
-                    let address = self.address.clone();
-                    async move {
-                        res.verify(&address)?;
-                        Ok(res)
-                    }
-                });
+                let streaming = streaming
+                    .map_err(Error::from)
+                    .and_then(|res| {
+                        let address = self.address.clone();
+                        async move {
+                            res.verify(&address)?;
+                            Ok(res)
+                        }
+                    })
+                    .map_ok(|res| stream::iter(res.gateways).map(info_from_info))
+                    .try_flatten();
 
                 Ok(streaming)
             }
@@ -590,15 +610,15 @@ pub mod config {
             let Some(info) = res.info else {
                 return Ok(None);
             };
-            info_from_info(info).map(|maybe_info| maybe_info.map(|(_, info)| info))
+            info_from_info(info).map(|(_, maybe_info)| maybe_info)
         }
 
         fn info_from_info(
             info: GatewayInfo,
-        ) -> Result<Option<(helium_crypto::PublicKey, HotspotInfo)>, Error> {
+        ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
             let address = info.address.try_into()?;
             let Some(metadata) = info.metadata else {
-                return Ok(None);
+                return Ok((address, None));
             };
 
             let device_type =
@@ -608,15 +628,15 @@ pub mod config {
                     DeviceType::WifiOutdoor => MobileDeviceType::WifiOutdoor,
                 };
 
-            Ok(Some((
+            Ok((
                 address,
-                HotspotInfo::Mobile {
+                Some(HotspotInfo::Mobile {
                     device_type,
                     mode: HotspotMode::Full,
                     location: metadata.location.parse().ok(),
                     location_asserts: 0,
-                },
-            )))
+                }),
+            ))
         }
     }
 }

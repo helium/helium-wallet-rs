@@ -72,6 +72,14 @@ pub async fn search<C: AsRef<DasClient>>(
         .and_then(HotspotPage::from_asset_page)
         .await
 }
+pub fn name(hotspot_key: &helium_crypto::PublicKey) -> String {
+    hotspot_key
+        .to_string()
+        .parse::<AnimalName>()
+        // can unwrap safely
+        .unwrap()
+        .to_string()
+}
 
 pub async fn get<C: AsRef<DasClient>>(
     client: &C,
@@ -816,16 +824,10 @@ impl Hotspot {
         asset: asset::Asset,
     ) -> Result<Self, Error> {
         let entity_key = entity_key_from_kta(&kta)?;
-        let name = entity_key
-            .to_string()
-            .parse::<AnimalName>()
-            // can unwrap safely
-            .unwrap()
-            .to_string();
         Ok(Self {
             asset: kta.asset,
+            name: name(&entity_key),
             key: entity_key,
-            name,
             owner: asset.ownership.owner,
             info: None,
         })

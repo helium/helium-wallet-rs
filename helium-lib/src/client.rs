@@ -289,7 +289,10 @@ impl jsonrpc_client::SendRequest for DasClient {
 
 pub mod config {
     use super::*;
-    use crate::hotspot::{HotspotInfo, HotspotMode, MobileDeviceType};
+    use crate::{
+        dao::SubDao,
+        hotspot::{HotspotInfo, HotspotMode, MobileDeviceType},
+    };
     use helium_proto::{
         services::{Channel, Endpoint, Uri},
         Message,
@@ -346,6 +349,56 @@ pub mod config {
             .timeout(RPC_TIMEOUT)
             .connect_lazy();
         Ok(channel)
+    }
+
+    pub enum Client {
+        Iot(iot::Client),
+        Mobile(mobile::Client),
+    }
+
+    impl Client {
+        pub fn for_subdao(
+            subdao: SubDao,
+            config: &str,
+            address: helium_crypto::PublicKey,
+            keypair: Arc<helium_crypto::Keypair>,
+        ) -> Result<Self, Error> {
+            let result = match subdao {
+                SubDao::Iot => Self::Iot(iot::Client::new(config, address, keypair)?),
+                SubDao::Mobile => Self::Mobile(mobile::Client::new(config, address, keypair)?),
+            };
+            Ok(result)
+        }
+
+        pub async fn info(
+            &mut self,
+            address: &helium_crypto::PublicKey,
+        ) -> Result<Option<HotspotInfo>, Error> {
+            match self {
+                Self::Iot(client) => client.info(address).await,
+                Self::Mobile(client) => client.info(address).await,
+            }
+        }
+
+        pub async fn batch_info(
+            &mut self,
+            addresses: &[helium_crypto::PublicKey],
+        ) -> Result<HashMap<helium_crypto::PublicKey, HotspotInfo>, Error> {
+            match self {
+                Self::Iot(client) => client.batch_info(addresses).await,
+                Self::Mobile(client) => client.batch_info(addresses).await,
+            }
+        }
+
+        pub async fn stream_info(
+            &mut self,
+        ) -> Result<BoxStream<Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>, Error>
+        {
+            match self {
+                Self::Iot(client) => client.stream_info().await,
+                Self::Mobile(client) => client.stream_info().await,
+            }
+        }
     }
 
     pub mod iot {

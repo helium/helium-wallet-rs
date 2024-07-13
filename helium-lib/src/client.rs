@@ -351,6 +351,7 @@ pub mod config {
         Ok(channel)
     }
 
+    #[derive(Clone)]
     pub enum Client {
         Iot(iot::Client),
         Mobile(mobile::Client),
@@ -551,6 +552,7 @@ pub mod config {
         impl_message_verify!(GatewayInfoResV1);
         impl_message_verify!(GatewayInfoStreamResV1);
 
+        #[derive(Clone)]
         pub struct Client {
             keypair: Arc<helium_crypto::Keypair>,
             client: GatewayClient<Channel>,

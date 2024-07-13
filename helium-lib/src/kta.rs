@@ -33,6 +33,17 @@ where
     get(&kta_key).await
 }
 
+pub async fn for_entity_keys<E>(entity_keys: &[E]) -> Result<Vec<KeyToAssetV0>, Error>
+where
+    E: AsEntityKey,
+{
+    let kta_keys = entity_keys
+        .iter()
+        .map(|entity_key| Dao::Hnt.entity_key_to_kta_key(entity_key))
+        .collect::<Vec<Pubkey>>();
+    get_many(&kta_keys).await
+}
+
 static CACHE: OnceLock<KtaCache> = OnceLock::new();
 
 type KtaCacheMap = HashMap<Pubkey, KeyToAssetV0>;

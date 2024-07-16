@@ -766,8 +766,22 @@ impl From<bool> for HotspotMode {
 
 impl std::fmt::Display for HotspotMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        f.write_str(&str)
+        let str = match self {
+            Self::Full => "full",
+            Self::DataOnly => "data-only",
+        };
+        f.write_str(str)
+    }
+}
+
+impl std::str::FromStr for HotspotMode {
+    type Err = DecodeError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "full" => Ok(Self::Full),
+            "data-only" => Ok(Self::DataOnly),
+            _ => Err(DecodeError::other("invalid hotspot mode")),
+        }
     }
 }
 
@@ -1088,8 +1102,25 @@ pub enum MobileDeviceType {
 
 impl std::fmt::Display for MobileDeviceType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        f.write_str(&str)
+        let str = match self {
+            Self::Cbrs => "cbrs",
+            Self::WifiIndoor => "wifi_indoor",
+            Self::WifiOutdoor => "wifi_outdoor",
+        };
+        f.write_str(str)
+    }
+}
+
+impl std::str::FromStr for MobileDeviceType {
+    type Err = DecodeError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value = match s {
+            "cbrs" => Self::Cbrs,
+            "wifi_indoor" => Self::WifiIndoor,
+            "wifi_outdoor" => Self::WifiOutdoor,
+            _ => return Err(DecodeError::other("invald mobile device type")),
+        };
+        Ok(value)
     }
 }
 

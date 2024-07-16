@@ -2727,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "2.0.0-rc.9"
+version = "2.0.0-rc.10"
 dependencies = [
  "aes-gcm",
  "anyhow",

@@ -1,4 +1,4 @@
-use crate::{client, onboarding, token};
+use crate::{anchor_client, client, onboarding, solana_client, token};
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -28,7 +28,7 @@ pub enum Error {
     #[error("program: {0}")]
     Program(#[from] solana_program::program_error::ProgramError),
     #[error("solana: {0}")]
-    Solana(#[from] anchor_client::solana_client::client_error::ClientError),
+    Solana(#[from] solana_client::client_error::ClientError),
     #[error("signing: {0}")]
     Signing(#[from] solana_sdk::signer::SignerError),
     #[error("crypto: {0}")]
@@ -42,6 +42,23 @@ pub enum Error {
 impl Error {
     pub fn account_not_found() -> Self {
         anchor_client::ClientError::AccountNotFound.into()
+    }
+
+    pub fn is_account_not_found(&self) -> bool {
+        use solana_client::{
+            client_error::{
+                ClientError as SolanaClientError, ClientErrorKind as SolanaClientErrorKind,
+            },
+            rpc_request::RpcError as SolanaClientRpcError,
+        };
+        match self {
+            Self::Anchor(anchor_client::ClientError::AccountNotFound) => true,
+            Self::Solana(SolanaClientError {
+                kind: SolanaClientErrorKind::RpcError(SolanaClientRpcError::ForUser(msg)),
+                ..
+            }) if msg.starts_with("AccountNotFound") => true,
+            _ => false,
+        }
     }
 }
 

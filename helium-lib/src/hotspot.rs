@@ -72,6 +72,14 @@ pub async fn search<C: AsRef<DasClient>>(
         .and_then(HotspotPage::from_asset_page)
         .await
 }
+pub fn name(hotspot_key: &helium_crypto::PublicKey) -> String {
+    hotspot_key
+        .to_string()
+        .parse::<AnimalName>()
+        // can unwrap safely
+        .unwrap()
+        .to_string()
+}
 
 pub async fn get<C: AsRef<DasClient>>(
     client: &C,
@@ -326,7 +334,6 @@ pub mod info {
                 let account = Pubkey::from_str(account_str).map_err(DecodeError::from)?;
                 Ok(account)
             }
-
             match discriminator {
                 UpdateMobileInfoV0::DISCRIMINATOR => {
                     let info_key = get_info_key(&decoded, 2)?;
@@ -817,16 +824,10 @@ impl Hotspot {
         asset: asset::Asset,
     ) -> Result<Self, Error> {
         let entity_key = entity_key_from_kta(&kta)?;
-        let name = entity_key
-            .to_string()
-            .parse::<AnimalName>()
-            // can unwrap safely
-            .unwrap()
-            .to_string();
         Ok(Self {
             asset: kta.asset,
+            name: name(&entity_key),
             key: entity_key,
-            name,
             owner: asset.ownership.owner,
             info: None,
         })
@@ -882,6 +883,12 @@ impl FromStr for HotspotLocation {
     type Err = h3o::error::InvalidCellIndex;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse::<h3o::CellIndex>().map(Into::into)
+    }
+}
+
+impl std::fmt::Display for HotspotLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.location.fmt(f)
     }
 }
 
@@ -1099,6 +1106,46 @@ impl From<helium_entity_manager::MobileDeviceTypeV0> for MobileDeviceType {
 impl HotspotInfo {
     pub fn from_maybe<T: Into<Self>>(value: Option<T>) -> Option<Self> {
         value.map(Into::into)
+    }
+
+    pub fn location(&self) -> &Option<HotspotLocation> {
+        match self {
+            Self::Iot { location, .. } => location,
+            Self::Mobile { location, .. } => location,
+        }
+    }
+
+    pub fn location_u64(&self) -> Option<u64> {
+        self.location().map(Into::into)
+    }
+
+    pub fn elevation(&self) -> &Option<i32> {
+        match self {
+            Self::Iot { elevation, .. } => elevation,
+            Self::Mobile { .. } => &None,
+        }
+    }
+
+    pub fn gain_i32(&self) -> Option<i32> {
+        self.gain().and_then(|gain| {
+            f32::try_from(gain)
+                .map(|fgain| (fgain * 10.0).trunc() as i32)
+                .ok()
+        })
+    }
+
+    pub fn gain(&self) -> &Option<Decimal> {
+        match self {
+            Self::Iot { gain, .. } => gain,
+            Self::Mobile { .. } => &None,
+        }
+    }
+
+    pub fn mode(&self) -> &HotspotMode {
+        match self {
+            Self::Iot { mode, .. } => mode,
+            Self::Mobile { mode, .. } => mode,
+        }
     }
 }
 

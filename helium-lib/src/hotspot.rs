@@ -322,7 +322,7 @@ pub mod info {
             }
             let mut discriminator: [u8; 8] = Default::default();
             discriminator.copy_from_slice(&decoded_data[..8]);
-            let args = &decoded_data[8..];
+            let mut args = &decoded_data[8..];
 
             fn get_info_key(
                 decoded: &UiPartiallyDecodedInstruction,
@@ -337,31 +337,31 @@ pub mod info {
             match discriminator {
                 UpdateMobileInfoV0::DISCRIMINATOR => {
                     let info_key = get_info_key(&decoded, 2)?;
-                    UpdateMobileInfoArgsV0::try_from_slice(args)
+                    UpdateMobileInfoArgsV0::deserialize(&mut args)
                         .map(Into::into)
                         .map(|v| (info_key, v))
                 }
                 OnboardMobileHotspotV0::DISCRIMINATOR => {
                     let info_key = get_info_key(&decoded, 3)?;
-                    OnboardMobileHotspotArgsV0::try_from_slice(args)
-                        .map(Into::into)
+                    OnboardMobileHotspotArgsV0::deserialize(&mut args)
+                        .map(Self::from)
                         .map(|v| (info_key, v))
                 }
                 OnboardIotHotspotV0::DISCRIMINATOR => {
                     let info_key = get_info_key(&decoded, 3)?;
-                    OnboardIotHotspotArgsV0::try_from_slice(args)
+                    OnboardIotHotspotArgsV0::deserialize(&mut args)
                         .map(Into::into)
                         .map(|v| (info_key, v))
                 }
                 UpdateIotInfoV0::DISCRIMINATOR => {
                     let info_key = get_info_key(&decoded, 2)?;
-                    UpdateIotInfoArgsV0::try_from_slice(args)
+                    UpdateIotInfoArgsV0::deserialize(&mut args)
                         .map(Into::into)
                         .map(|v| (info_key, v))
                 }
                 OnboardDataOnlyIotHotspotV0::DISCRIMINATOR => {
                     let info_key = get_info_key(&decoded, 2)?;
-                    OnboardDataOnlyIotHotspotArgsV0::try_from_slice(args)
+                    OnboardDataOnlyIotHotspotArgsV0::deserialize(&mut args)
                         .map(Into::into)
                         .map(|v| (info_key, v))
                 }

@@ -302,6 +302,8 @@ pub mod config {
 
     pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
     pub const RPC_TIMEOUT: Duration = Duration::from_secs(5);
+    pub const RPC_TCP_KEEPALIVE: Duration = Duration::from_secs(100);
+
     trait MessageSign {
         /// Sign the given message
         fn sign<K: AsRef<helium_crypto::Keypair>>(&mut self, keypair: K) -> Result<(), Error>;
@@ -347,6 +349,7 @@ pub mod config {
         let channel = Endpoint::from(uri)
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(RPC_TIMEOUT)
+            .tcp_keepalive(Some(RPC_TCP_KEEPALIVE))
             .connect_lazy();
         Ok(channel)
     }

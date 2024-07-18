@@ -1172,10 +1172,17 @@ impl HotspotInfo {
         }
     }
 
-    pub fn mode(&self) -> &HotspotMode {
+    pub fn mode(&self) -> HotspotMode {
         match self {
-            Self::Iot { mode, .. } => mode,
-            Self::Mobile { mode, .. } => mode,
+            Self::Iot { mode, .. } => *mode,
+            Self::Mobile { mode, .. } => *mode,
+        }
+    }
+
+    pub fn mobile_device_type(&self) -> Option<MobileDeviceType> {
+        match self {
+            Self::Iot { .. } => None,
+            Self::Mobile { device_type, .. } => Some(*device_type),
         }
     }
 }

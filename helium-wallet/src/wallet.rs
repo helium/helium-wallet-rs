@@ -482,7 +482,7 @@ mod tests {
     fn sharded_from_builder() {
         let path = Path::new(".test-sharded.key");
         // Delete Any existing test wallet in case prev error
-        let _ = clean_up_shards(&path, 3);
+        clean_up_shards(path, 3);
 
         let password = String::from("password");
         let shard_config = ShardConfig {
@@ -496,7 +496,7 @@ mod tests {
 
         let wallet = Wallet::builder()
             .password(&password)
-            .output(&path)
+            .output(path)
             .seed_phrase(Some(seed_words.clone()))
             .shard(Some(shard_config))
             .create()
@@ -508,7 +508,7 @@ mod tests {
         assert_eq!(from_keypair, to_keypair);
 
         // clean up
-        let _ = clean_up_shards(&path, 3);
+        clean_up_shards(path, 3);
     }
 
     fn clean_up_shards(path: &Path, shards: u8) {

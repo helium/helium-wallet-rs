@@ -266,6 +266,7 @@ pub struct AssetContent {
 pub struct AssetMetadata {
     #[serde(default)]
     pub attributes: Vec<AssetMetadataAttribute>,
+    pub name: Option<String>,
     pub symbol: String,
 }
 

@@ -147,6 +147,7 @@ pub struct Asset {
     pub creators: Vec<AssetCreator>,
     pub ownership: AssetOwnership,
     pub content: AssetContent,
+    pub grouping: Vec<AssetGroup>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -174,6 +175,13 @@ impl AssetCompression {
     pub fn leaf_id(&self) -> StdResult<u32, DecodeError> {
         self.leaf_id.try_into().map_err(DecodeError::from)
     }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AssetGroup {
+    pub group_key: String,
+    #[serde(with = "serde_pubkey")]
+    pub group_value: Pubkey,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

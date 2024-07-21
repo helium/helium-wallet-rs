@@ -153,9 +153,9 @@ pub struct Asset {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetCreator {
     #[serde(with = "serde_pubkey")]
-    address: Pubkey,
-    share: u8,
-    verified: bool,
+    pub address: Pubkey,
+    pub share: u8,
+    pub verified: bool,
 }
 
 pub type Hash = [u8; 32];

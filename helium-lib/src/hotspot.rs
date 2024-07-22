@@ -228,14 +228,15 @@ pub mod info {
             .get_signatures_for_address_with_config(account, params.into())
             .await?;
 
-        let updates = stream::iter(signatures.iter())
-            .filter(|signature| async { signature.err.is_none() })
-            .map(Ok)
-            .and_then(|signature| async {
+        let signature_iter = signatures
+            .into_iter()
+            .filter(|signature| signature.err.is_none())
+            .map(|signature| {
                 Signature::from_str(signature.signature.as_str())
                     .map_err(DecodeError::from)
                     .map_err(Error::from)
-            })
+            });
+        let updates = stream::iter(signature_iter)
             .map_ok(|signature| async move {
                 client
                     .as_ref()

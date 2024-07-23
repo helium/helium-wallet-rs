@@ -29,7 +29,7 @@ use futures::{
 use itertools::Itertools;
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, hash::Hash, str::FromStr};
 
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
@@ -228,14 +228,15 @@ pub mod info {
             .get_signatures_for_address_with_config(account, params.into())
             .await?;
 
-        let updates = stream::iter(signatures.iter())
-            .filter(|signature| async { signature.err.is_none() })
-            .map(Ok)
-            .and_then(|signature| async {
+        let signature_iter = signatures
+            .into_iter()
+            .filter(|signature| signature.err.is_none())
+            .map(|signature| {
                 Signature::from_str(signature.signature.as_str())
                     .map_err(DecodeError::from)
                     .map_err(Error::from)
-            })
+            });
+        let updates = stream::iter(signature_iter)
             .map_ok(|signature| async move {
                 client
                     .as_ref()
@@ -745,7 +746,7 @@ pub mod dataonly {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "kebab-case")]
 pub enum HotspotMode {
@@ -871,6 +872,12 @@ pub struct HotspotLocation {
     pub geo: HotspotGeo,
 }
 
+impl std::hash::Hash for HotspotLocation {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.location.hash(state)
+    }
+}
+
 impl From<h3o::CellIndex> for HotspotLocation {
     fn from(value: h3o::CellIndex) -> Self {
         Self {
@@ -935,7 +942,7 @@ pub mod serde_cell_index {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Hash)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum HotspotInfo {
     Iot {
@@ -1090,7 +1097,7 @@ impl HotspotInfoUpdate {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "snake_case")]
 pub enum MobileDeviceType {

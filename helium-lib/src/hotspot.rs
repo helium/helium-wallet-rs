@@ -283,6 +283,7 @@ pub mod info {
             else {
                 return Err(DecodeError::other("no valid block time found"));
             };
+            let block = txn.slot;
             let signature = &ui_txn.signatures[0];
             let update = ui_msg
                 .instructions
@@ -296,6 +297,7 @@ pub mod info {
                 .cloned()
                 .flatten()
                 .map(|(info_key, update)| Self {
+                    block,
                     timestamp,
                     signature: signature.clone(),
                     info_key,
@@ -971,6 +973,7 @@ pub enum HotspotInfo {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub struct CommittedHotspotInfoUpdate {
+    pub block: u64,
     pub timestamp: chrono::DateTime<Utc>,
     pub signature: String,
     #[serde(with = "serde_pubkey")]

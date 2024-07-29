@@ -157,12 +157,12 @@ is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
 precision.
 
 The default behavior of the `pay` command is to print out what the
-intended payment is going to be _without_ submiting it to the
+intended payment is going to be _without_ submitting it to the
 blockchain.  In the second example the `--commit` option commits the
 actual payment to the API for processing by the blockchain.
 
 #### Multiple Payees in one transaction
-To send tokens to mulitple other accounts use:
+To send tokens to multiple other accounts use:
 
 ```
     helium-wallet pay multi <path to json file>
@@ -178,10 +178,10 @@ Example json file:
 Where `<address#>` is the wallet address for the wallet you want to
 send tokens to, `<hnt#>` is the number of HNT you want to send. Since 1 HNT
 is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
-precision. `<memo#>` is an 8 byte base 64 encdoded message.
+precision. `<memo#>` is an 8 byte base 64 encoded message.
 
 The default behavior of the `pay` command is to print out what the
-intended payment is going to be _without_ submiting it to the
+intended payment is going to be _without_ submitting it to the
 blockchain.  In the second example the `--commit` option commits the
 actual payment to the API for processing by the blockchain.
 
@@ -234,5 +234,5 @@ cargo build --release
 ```
 
 The resulting `target/release/helium-wallet` is ready for use. Place
-it somewhere in your `$PATH` or run it straight from the the target
+it somewhere in your `$PATH` or run it straight from the target
 folder.

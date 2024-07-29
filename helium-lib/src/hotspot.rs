@@ -309,7 +309,6 @@ pub mod info {
 
     impl HotspotInfoUpdate {
         fn from_ui_instruction(ixn: UiInstruction) -> Result<Option<(Pubkey, Self)>, DecodeError> {
-            use solana_transaction_status::UiPartiallyDecodedInstruction;
             let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(decoded)) = ixn else {
                 return Err(DecodeError::other("not a decoded instruction"));
             };
@@ -320,53 +319,46 @@ pub mod info {
                 return Ok(None);
             }
             let decoded_data = solana_sdk::bs58::decode(decoded.data.clone()).into_vec()?;
-            if decoded_data.len() < 9 {
+            let Some((info_index, update)) = Self::from_instruction(&decoded_data)? else {
+                return Ok(None);
+            };
+            let account_str = decoded
+                .accounts
+                .get(info_index)
+                .ok_or_else(|| DecodeError::other("missing info key in instruction accounts"))?;
+            let account = Pubkey::from_str(account_str).map_err(DecodeError::from)?;
+            Ok(Some((account, update)))
+        }
+
+        pub fn from_instruction(data: &[u8]) -> Result<Option<(usize, Self)>, DecodeError> {
+            if data.len() < 9 {
                 return Ok(None);
             }
             let mut discriminator: [u8; 8] = Default::default();
-            discriminator.copy_from_slice(&decoded_data[..8]);
-            let mut args = &decoded_data[8..];
+            discriminator.copy_from_slice(&data[..8]);
+            let mut args = &data[8..];
 
-            fn get_info_key(
-                decoded: &UiPartiallyDecodedInstruction,
-                index: usize,
-            ) -> Result<Pubkey, DecodeError> {
-                let account_str = decoded.accounts.get(index).ok_or_else(|| {
-                    DecodeError::other("missing info key in instruction accounts")
-                })?;
-                let account = Pubkey::from_str(account_str).map_err(DecodeError::from)?;
-                Ok(account)
-            }
             match discriminator {
-                UpdateMobileInfoV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 2)?;
-                    UpdateMobileInfoArgsV0::deserialize(&mut args)
-                        .map(Into::into)
-                        .map(|v| (info_key, v))
-                }
+                UpdateMobileInfoV0::DISCRIMINATOR => UpdateMobileInfoArgsV0::deserialize(&mut args)
+                    .map(Into::into)
+                    .map(|v| (2, v)),
                 OnboardMobileHotspotV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 3)?;
                     OnboardMobileHotspotArgsV0::deserialize(&mut args)
                         .map(Self::from)
-                        .map(|v| (info_key, v))
+                        .map(|v| (3, v))
                 }
                 OnboardIotHotspotV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 3)?;
                     OnboardIotHotspotArgsV0::deserialize(&mut args)
                         .map(Into::into)
-                        .map(|v| (info_key, v))
+                        .map(|v| (3, v))
                 }
-                UpdateIotInfoV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 2)?;
-                    UpdateIotInfoArgsV0::deserialize(&mut args)
-                        .map(Into::into)
-                        .map(|v| (info_key, v))
-                }
+                UpdateIotInfoV0::DISCRIMINATOR => UpdateIotInfoArgsV0::deserialize(&mut args)
+                    .map(Into::into)
+                    .map(|v| (2, v)),
                 OnboardDataOnlyIotHotspotV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 2)?;
                     OnboardDataOnlyIotHotspotArgsV0::deserialize(&mut args)
                         .map(Into::into)
-                        .map(|v| (info_key, v))
+                        .map(|v| (2, v))
                 }
                 _ => return Ok(None),
             }

@@ -1,7 +1,7 @@
 # How to Contribute to this repository #
 
 We value contributions from the community and will do everything we
-can go get them reviewed in a timely fashion. If you have code to send
+can to get them reviewed in a timely fashion. If you have code to send
 our way or a bug to report:
 
 * **Contributing Code**: If you have new code or a bug fix, fork this

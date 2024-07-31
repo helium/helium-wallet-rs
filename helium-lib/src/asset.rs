@@ -1,7 +1,7 @@
 use crate::{
     bs58,
-    client::{DasClient, DasSearchAssetsParams, SolanaRpcClient},
-    dao::Dao,
+    client::{DasClient, DasSearchAssetsParams, GetAnchorAccount, SolanaRpcClient},
+    dao::{Dao, SubDao},
     entity_key::{self, AsEntityKey},
     error::{DecodeError, Error},
     helium_entity_manager,
@@ -9,6 +9,7 @@ use crate::{
     kta,
     solana_sdk::instruction::AccountMeta,
 };
+use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
@@ -22,6 +23,88 @@ where
 {
     let kta = kta::for_entity_key(entity_key).await?;
     for_kta(client, &kta).await
+}
+
+trait GetInfoAssetKey: Sized {
+    fn asset_key(maybe_info: Option<Self>) -> Option<Pubkey>;
+}
+
+impl GetInfoAssetKey for helium_entity_manager::MobileHotspotInfoV0 {
+    fn asset_key(maybe_info: Option<Self>) -> Option<Pubkey> {
+        maybe_info.map(|info| info.asset)
+    }
+}
+
+impl GetInfoAssetKey for helium_entity_manager::IotHotspotInfoV0 {
+    fn asset_key(maybe_info: Option<Self>) -> Option<Pubkey> {
+        maybe_info.map(|info| info.asset)
+    }
+}
+
+pub async fn for_info_key<C: AsRef<DasClient> + GetAnchorAccount>(
+    client: &C,
+    subdao: SubDao,
+    info_key: &Pubkey,
+) -> Result<Option<Asset>, Error> {
+    fn to_asset_key<T: GetInfoAssetKey>(
+        maybe_info: Result<T, Error>,
+    ) -> Result<Option<Pubkey>, Error> {
+        match maybe_info {
+            Ok(info) => Ok(GetInfoAssetKey::asset_key(Some(info))),
+            Err(err) if err.is_account_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+    let maybe_asset_key = match subdao {
+        SubDao::Iot => to_asset_key(
+            client
+                .anchor_account::<helium_entity_manager::IotHotspotInfoV0>(info_key)
+                .await,
+        )?,
+        SubDao::Mobile => to_asset_key(
+            client
+                .anchor_account::<helium_entity_manager::MobileHotspotInfoV0>(info_key)
+                .await,
+        )?,
+    };
+
+    let Some(asset_key) = maybe_asset_key else {
+        return Ok(None);
+    };
+    let asset = client.as_ref().get_asset(&asset_key).await?;
+    Ok(Some(asset))
+}
+
+pub async fn for_info_keys<C: AsRef<DasClient> + GetAnchorAccount>(
+    client: &C,
+    subdao: SubDao,
+    info_keys: &[Pubkey],
+) -> Result<Vec<Asset>, Error> {
+    fn to_asset_keys<T: GetInfoAssetKey>(maybe_infos: Vec<Option<T>>) -> Vec<Pubkey> {
+        maybe_infos
+            .into_iter()
+            .filter_map(GetInfoAssetKey::asset_key)
+            .collect()
+    }
+    let asset_keys: Vec<Pubkey> = match subdao {
+        SubDao::Iot => to_asset_keys(
+            client
+                .anchor_accounts::<helium_entity_manager::IotHotspotInfoV0>(info_keys)
+                .await?,
+        ),
+        SubDao::Mobile => to_asset_keys(
+            client
+                .anchor_accounts::<helium_entity_manager::MobileHotspotInfoV0>(info_keys)
+                .await?,
+        ),
+    };
+    let das_client: &DasClient = client.as_ref();
+    let assets = stream::iter(asset_keys.iter())
+        .map(|asset_key| das_client.get_asset(asset_key))
+        .buffered(10)
+        .try_collect()
+        .await?;
+    Ok(assets)
 }
 
 pub async fn for_kta<C: AsRef<DasClient>>(

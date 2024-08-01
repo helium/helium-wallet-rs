@@ -1,3 +1,9 @@
+use anchor_client::anchor_lang::AccountDeserialize;
+use helium_anchor_gen::{
+    data_credits::accounts::BurnDelegatedDataCreditsV0,
+    helium_sub_daos::{self, DaoV0, SubDaoV0},
+};
+
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     anchor_spl, circuit_breaker,
@@ -6,6 +12,7 @@ use crate::{
     data_credits,
     error::{DecodeError, Error},
     keypair::{Keypair, Pubkey},
+    priority_fee,
     solana_sdk::{instruction::Instruction, signer::Signer, transaction::Transaction},
     token::{Token, TokenAmount},
 };
@@ -156,6 +163,79 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     let recent_blockhash = client.as_ref().get_latest_blockhash().await?;
     let tx = Transaction::new_signed_with_payer(
         &[burn_ix],
+        Some(&keypair.pubkey()),
+        &[keypair],
+        recent_blockhash,
+    );
+    Ok(tx)
+}
+
+pub async fn burn_delegated<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    sub_dao: SubDao,
+    keypair: &Keypair,
+    amount: u64,
+    router_key: Pubkey,
+) -> Result<solana_sdk::transaction::Transaction, Error> {
+    fn mk_accounts(
+        sub_dao: SubDao,
+        router_key: Pubkey,
+        dc_burn_authority: Pubkey,
+        registrar: Pubkey,
+    ) -> BurnDelegatedDataCreditsV0 {
+        let delegated_data_credits = SubDao::Iot.delegated_dc_key(&router_key.to_string());
+        let escrow_account = SubDao::Iot.escrow_key(&delegated_data_credits);
+
+        BurnDelegatedDataCreditsV0 {
+            sub_dao_epoch_info: sub_dao.epoch_info_key(),
+            delegated_data_credits,
+            escrow_account,
+
+            dao: Dao::Hnt.key(),
+            sub_dao: sub_dao.key(),
+
+            account_payer: Dao::dc_account_payer(),
+            data_credits: Dao::dc_key(),
+            dc_burn_authority,
+            dc_mint: *Token::Dc.mint(),
+            registrar,
+
+            token_program: anchor_spl::token::ID,
+            helium_sub_daos_program: helium_sub_daos::id(),
+            system_program: solana_sdk::system_program::ID,
+        }
+    }
+
+    let (dc_burn_authority, registrar) = {
+        let account_data = client.as_ref().get_account_data(&SubDao::Iot.key()).await?;
+        let sub_dao = SubDaoV0::try_deserialize(&mut account_data.as_ref())?;
+
+        let account_data = client.as_ref().get_account_data(&Dao::Hnt.key()).await?;
+        let dao = DaoV0::try_deserialize(&mut account_data.as_ref())?;
+
+        (sub_dao.dc_burn_authority, dao.registrar)
+    };
+
+    let accounts = mk_accounts(sub_dao, router_key, dc_burn_authority, registrar);
+    let burn_ix = solana_sdk::instruction::Instruction {
+        program_id: data_credits::id(),
+        accounts: accounts.to_account_metas(None),
+        data: data_credits::instruction::BurnDelegatedDataCreditsV0 {
+            _args: data_credits::BurnDelegatedDataCreditsArgsV0 { amount },
+        }
+        .data(),
+    };
+
+    let ixs = [
+        priority_fee::compute_price_instruction(300_000),
+        priority_fee::compute_price_instruction_for_accounts(client, &burn_ix.accounts).await?,
+        burn_ix,
+    ];
+
+    let recent_blockhash = client.as_ref().get_latest_blockhash().await?;
+
+    let tx = Transaction::new_signed_with_payer(
+        &ixs,
         Some(&keypair.pubkey()),
         &[keypair],
         recent_blockhash,

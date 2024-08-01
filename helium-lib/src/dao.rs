@@ -2,6 +2,7 @@ use crate::{
     data_credits, entity_key::AsEntityKey, helium_entity_manager, helium_sub_daos, keypair::Pubkey,
     lazy_distributor, programs::TOKEN_METADATA_PROGRAM_ID, token::Token,
 };
+use chrono::Timelike;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -95,6 +96,11 @@ impl Dao {
             &[b"key_to_asset", self.key().as_ref(), hash.as_ref()],
             &helium_entity_manager::id(),
         );
+        key
+    }
+
+    pub fn dc_account_payer() -> Pubkey {
+        let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::id());
         key
     }
 
@@ -228,6 +234,21 @@ impl SubDao {
         let (key, _) = Pubkey::find_program_address(
             &[prefix.as_bytes(), self.key().as_ref()],
             &helium_entity_manager::id(),
+        );
+        key
+    }
+
+    pub fn epoch_info_key(&self) -> Pubkey {
+        const EPOCH_LENGTH: u32 = 60 * 60 * 24;
+        let epoch = chrono::Utc::now().second() / EPOCH_LENGTH;
+
+        let (key, _) = Pubkey::find_program_address(
+            &[
+                "sub_dao_epoch_info".as_bytes(),
+                self.key().as_ref(),
+                &epoch.to_le_bytes(),
+            ],
+            &helium_sub_daos::ID,
         );
         key
     }

@@ -37,7 +37,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
         hnt_price_oracle: Pubkey,
     ) -> impl ToAccountMetas {
         data_credits::accounts::MintDataCreditsV0 {
-            data_credits: SubDao::dc_key(),
+            data_credits: Dao::dc_key(),
             owner,
             hnt_mint: *Token::Hnt.mint(),
             dc_mint: *Token::Dc.mint(),
@@ -55,7 +55,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
 
     let hnt_price_oracle = client
         .as_ref()
-        .anchor_account::<data_credits::DataCreditsV0>(&SubDao::dc_key())
+        .anchor_account::<data_credits::DataCreditsV0>(&Dao::dc_key())
         .await?
         .hnt_price_oracle;
 
@@ -89,7 +89,7 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     fn mk_accounts(delegated_dc_key: Pubkey, subdao: SubDao, owner: Pubkey) -> impl ToAccountMetas {
         data_credits::accounts::DelegateDataCreditsV0 {
             delegated_data_credits: delegated_dc_key,
-            data_credits: SubDao::dc_key(),
+            data_credits: Dao::dc_key(),
             dc_mint: *Token::Dc.mint(),
             dao: Dao::Hnt.key(),
             sub_dao: subdao.key(),
@@ -136,7 +136,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
                 data_credits::accounts::BurnWithoutTrackingV0BurnAccounts {
                     burner: Token::Dc.associated_token_adress(&owner),
                     dc_mint: *Token::Dc.mint(),
-                    data_credits: SubDao::dc_key(),
+                    data_credits: Dao::dc_key(),
                     token_program: anchor_spl::token::ID,
                     system_program: solana_sdk::system_program::ID,
                     associated_token_program: anchor_spl::associated_token::ID,

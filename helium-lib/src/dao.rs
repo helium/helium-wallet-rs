@@ -97,6 +97,12 @@ impl Dao {
         );
         key
     }
+
+    pub fn dc_key() -> Pubkey {
+        let (key, _) =
+            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::id());
+        key
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -148,12 +154,6 @@ impl SubDao {
             &[b"lazy_distributor", self.mint().as_ref()],
             &lazy_distributor::id(),
         );
-        key
-    }
-
-    pub fn dc_key() -> Pubkey {
-        let (key, _) =
-            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::id());
         key
     }
 

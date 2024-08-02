@@ -99,8 +99,8 @@ pub async fn for_info_keys<C: AsRef<DasClient> + GetAnchorAccount>(
         ),
     };
     let das_client: &DasClient = client.as_ref();
-    let assets = stream::iter(asset_keys.iter())
-        .map(|asset_key| das_client.get_asset(asset_key))
+    let assets = stream::iter(asset_keys.into_iter())
+        .map(|asset_key| async move { das_client.get_asset(&asset_key).await })
         .buffered(10)
         .try_collect()
         .await?;

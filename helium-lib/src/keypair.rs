@@ -99,6 +99,12 @@ impl TryFrom<&[u8; 64]> for Keypair {
     }
 }
 
+impl From<solana_sdk::signer::keypair::Keypair> for Keypair {
+    fn from(keypair: solana_sdk::signer::keypair::Keypair) -> Self {
+        Self(keypair)
+    }
+}
+
 impl Keypair {
     pub fn generate() -> Self {
         Keypair(solana_sdk::signer::keypair::Keypair::new())

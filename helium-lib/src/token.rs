@@ -9,7 +9,7 @@ use crate::{
         transaction::Transaction,
     },
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use helium_anchor_gen::circuit_breaker;
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
@@ -159,7 +159,11 @@ pub mod price {
         Ok(feed_id)
     }
 
-    pub async fn get<C: AsRef<SolanaRpcClient>>(client: &C, token: Token) -> Result<Price, Error> {
+    pub async fn get_with_max_age<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        token: Token,
+        max_age: Duration,
+    ) -> Result<Price, Error> {
         use helium_anchor_gen::anchor_lang::AccountDeserialize;
         let price_key = token.price_key().ok_or(PriceError::InvalidToken(token))?;
         let price_feed = token.price_feed().ok_or(PriceError::InvalidToken(token))?;
@@ -167,7 +171,11 @@ pub mod price {
         let PriceUpdateV2 { price_message, .. } =
             PriceUpdateV2::try_deserialize(&mut account.data.as_slice())?;
 
-        if (price_message.publish_time.saturating_add(10 * 60)) < Utc::now().timestamp() {
+        if (price_message
+            .publish_time
+            .saturating_add(max_age.num_seconds()))
+            < Utc::now().timestamp()
+        {
             return Err(PriceError::TooOld.into());
         }
         if price_message.ema_price < 0 {
@@ -193,6 +201,10 @@ pub mod price {
             price,
             token,
         })
+    }
+
+    pub async fn get<C: AsRef<SolanaRpcClient>>(client: &C, token: Token) -> Result<Price, Error> {
+        get_with_max_age(client, token, Duration::minutes(10)).await
     }
 }
 

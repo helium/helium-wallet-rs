@@ -117,7 +117,7 @@ pub enum OnboardingError {
     Server { code: u32, reason: String },
     #[error("no data in response")]
     NoData,
-    #[error("invalid data in resopnse")]
+    #[error("invalid data in response")]
     InvalidData,
 }
 

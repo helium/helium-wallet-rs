@@ -9,7 +9,7 @@ use helium_lib::{dao::SubDao, hotspot, keypair::Signature};
 pub struct Cmd {
     /// Subdao to fetch updates for
     subdao: SubDao,
-    /// The hotspot to fetch udpates for
+    /// The hotspot to fetch updates for
     address: helium_crypto::PublicKey,
     /// The signature to start looking backwards from
     #[arg(long)]

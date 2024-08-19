@@ -31,7 +31,7 @@ impl AsEntityKey for Vec<u8> {
 
 impl AsEntityKey for helium_crypto::PublicKey {
     fn as_entity_key(&self) -> Vec<u8> {
-        // Entity keys are (regrettably) encoded through the bytes of a the b58
+        // Entity keys are (regrettably) encoded through the bytes of the b58
         // string form of the helium public key
         bs58::decode(self.to_string()).into_vec().unwrap() // Safe to unwrap
     }

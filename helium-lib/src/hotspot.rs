@@ -1128,7 +1128,7 @@ impl std::str::FromStr for MobileDeviceType {
             "cbrs" => Self::Cbrs,
             "wifi_indoor" => Self::WifiIndoor,
             "wifi_outdoor" => Self::WifiOutdoor,
-            _ => return Err(DecodeError::other("invald mobile device type")),
+            _ => return Err(DecodeError::other("invalid mobile device type")),
         };
         Ok(value)
     }

@@ -92,7 +92,7 @@ impl Cmd {
         };
 
         if !hotspot_issued {
-            let tx = hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair).await?;
+            let tx = hotspot::dataonly::iot::issue(&client, verifier, &mut txn, &keypair).await?;
             let _ = self.commit.maybe_commit(&tx, &client).await?;
         }
         // Only assert the hotspot if either (a) it has already been issued before this cli was run or (b) `commit` is enabled,
@@ -104,7 +104,8 @@ impl Cmd {
                 .set_gain(self.gain)
                 .set_elevation(self.elevation)
                 .set_geo(self.lat, self.lon)?;
-            let tx = hotspot::dataonly::onboard(&client, &hotspot_key, update, &keypair).await?;
+            let tx =
+                hotspot::dataonly::iot::onboard(&client, &hotspot_key, update, &keypair).await?;
             print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
         } else {
             Ok(())

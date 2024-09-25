@@ -24,7 +24,7 @@ impl Cmd {
 /// Commands on hotspots
 pub enum HotspotCommand {
     Update(update::Cmd),
-    Add(add::Cmd),
+    Add(Box<add::Cmd>),
     List(list::Cmd),
     Info(info::Cmd),
     Updates(updates::Cmd),

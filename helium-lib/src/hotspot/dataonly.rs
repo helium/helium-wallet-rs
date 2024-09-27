@@ -22,11 +22,13 @@ use serde::{Deserialize, Serialize};
 mod iot {
     use super::*;
 
-    pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+    pub async fn onboard_transaction<
+        C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
+    >(
         client: &C,
         hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotInfoUpdate,
-        keypair: &Keypair,
+        owner: &Pubkey,
     ) -> Result<Transaction, Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
@@ -68,7 +70,7 @@ mod iot {
         let kta = kta::for_entity_key(hotspot_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
         let mut onboard_accounts =
-            mk_accounts(config_account, keypair.pubkey(), hotspot_key).to_account_metas(None);
+            mk_accounts(config_account, *owner, hotspot_key).to_account_metas(None);
         onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
         let onboard_ix = solana_sdk::instruction::Instruction {
@@ -95,11 +97,7 @@ mod iot {
             onboard_ix,
         ];
 
-        let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-            .get_latest_blockhash()
-            .await?;
-        let tx =
-            Transaction::new_signed_with_payer(ixs, Some(&keypair.pubkey()), &[keypair], blockhash);
+        let tx = Transaction::new_with_payer(ixs, Some(owner));
         Ok(tx)
     }
 }
@@ -107,11 +105,13 @@ mod iot {
 mod mobile {
     use super::*;
 
-    pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+    pub async fn onboard_transaction<
+        C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
+    >(
         client: &C,
         hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotInfoUpdate,
-        keypair: &Keypair,
+        owner: &Pubkey,
     ) -> Result<Transaction, Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
@@ -156,7 +156,7 @@ mod mobile {
         let kta = kta::for_entity_key(hotspot_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
         let mut onboard_accounts =
-            mk_accounts(config_account, keypair.pubkey(), hotspot_key).to_account_metas(None);
+            mk_accounts(config_account, *owner, hotspot_key).to_account_metas(None);
         onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
         let onboard_ix = solana_sdk::instruction::Instruction {
@@ -181,12 +181,23 @@ mod mobile {
             onboard_ix,
         ];
 
-        let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-            .get_latest_blockhash()
-            .await?;
-        let tx =
-            Transaction::new_signed_with_payer(ixs, Some(&keypair.pubkey()), &[keypair], blockhash);
+        let tx = Transaction::new_with_payer(ixs, Some(owner));
         Ok(tx)
+    }
+}
+
+pub async fn onboard_transaction<
+    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
+>(
+    client: &C,
+    subdao: SubDao,
+    hotspot_key: &helium_crypto::PublicKey,
+    assertion: HotspotInfoUpdate,
+    owner: &Pubkey,
+) -> Result<Transaction, Error> {
+    match subdao {
+        SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner).await,
+        SubDao::Mobile => mobile::onboard_transaction(client, hotspot_key, assertion, owner).await,
     }
 }
 
@@ -197,24 +208,27 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     assertion: HotspotInfoUpdate,
     keypair: &Keypair,
 ) -> Result<Transaction, Error> {
-    match subdao {
-        SubDao::Iot => iot::onboard(client, hotspot_key, assertion, keypair).await,
-        SubDao::Mobile => mobile::onboard(client, hotspot_key, assertion, keypair).await,
-    }
+    let mut txn =
+        onboard_transaction(client, subdao, hotspot_key, assertion, &keypair.pubkey()).await?;
+    let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
+        .get_latest_blockhash()
+        .await?;
+    txn.try_sign(&[keypair], blockhash)?;
+    Ok(txn)
 }
 
-pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
+pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     verifier: &str,
     add_tx: &mut BlockchainTxnAddGatewayV1,
-    keypair: &Keypair,
+    owner: Pubkey,
 ) -> Result<Transaction, Error> {
-    use helium_entity_manager::accounts::IssueDataOnlyEntityV0;
     fn mk_accounts(
         config_account: helium_entity_manager::DataOnlyConfigV0,
         owner: Pubkey,
         entity_key: &[u8],
-    ) -> IssueDataOnlyEntityV0 {
+    ) -> impl ToAccountMetas {
+        use helium_entity_manager::accounts::IssueDataOnlyEntityV0;
         let dao = Dao::Hnt;
         let dataonly_config_key = dao.dataonly_config_key();
         IssueDataOnlyEntityV0 {
@@ -246,7 +260,7 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
         .await?;
     let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
     let entity_key = hotspot_key.as_entity_key();
-    let accounts = mk_accounts(config_account, keypair.pubkey(), &entity_key);
+    let accounts = mk_accounts(config_account, owner, &entity_key);
 
     let issue_ix = Instruction {
         program_id: helium_entity_manager::id(),
@@ -262,19 +276,29 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
         priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
         issue_ix,
     ];
-    let mut tx = Transaction::new_with_payer(ixs, Some(&keypair.pubkey()));
-
-    let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
+    let mut txn = Transaction::new_with_payer(ixs, Some(&owner));
+    txn.message.recent_blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
         .get_latest_blockhash()
         .await?;
-    tx.try_partial_sign(&[keypair], blockhash)?;
 
     let sig = add_tx.gateway_signature.clone();
     add_tx.gateway_signature = vec![];
     let msg = add_tx.encode_to_vec();
 
-    let signed_tx = verify_helium_key(verifier, &msg, &sig, tx).await?;
-    Ok(signed_tx)
+    let signed_txn = verify_helium_key(verifier, &msg, &sig, txn).await?;
+    Ok(signed_txn)
+}
+
+pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
+    client: &C,
+    verifier: &str,
+    add_tx: &mut BlockchainTxnAddGatewayV1,
+    keypair: &Keypair,
+) -> Result<Transaction, Error> {
+    let mut txn = issue_transaction(client, verifier, add_tx, keypair.pubkey()).await?;
+    let blockhash = txn.message.recent_blockhash;
+    txn.try_partial_sign(&[keypair], blockhash)?;
+    Ok(txn)
 }
 
 async fn verify_helium_key(

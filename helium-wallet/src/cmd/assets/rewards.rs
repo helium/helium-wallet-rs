@@ -1,10 +1,5 @@
 use crate::cmd::*;
-use helium_lib::{
-    asset,
-    dao::SubDao,
-    entity_key::{self, EntityKeyEncoding},
-    reward,
-};
+use helium_lib::{dao::SubDao, entity_key, reward};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -29,7 +24,6 @@ impl RewardsCommand {
         match self {
             Self::Current(cmd) => cmd.run(opts).await,
             Self::Pending(cmd) => cmd.run(opts).await,
-            Self::Init(cmd) => cmd.run(opts).await,
         }
     }
 }
@@ -46,8 +40,8 @@ pub struct CurrentCmd {
 
 impl CurrentCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let settings: Settings = opts.try_into()?;
-        let current = reward::current(&settings, &self.subdao, &self.entity_key).await?;
+        let client = opts.client()?;
+        let current = reward::current(&client, &self.subdao, &self.entity_key).await?;
 
         print_json(&current)
     }
@@ -65,12 +59,12 @@ pub struct PendingCmd {
 
 impl PendingCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let settings: Settings = opts.try_into()?;
+        let client = opts.client()?;
         let pending = reward::pending(
-            &settings,
+            &client,
             &self.subdao,
             &[self.entity_key.clone()],
-            EntityKeyEncoding::String,
+            entity_key::KeySerialization::UTF8,
         )
         .await?;
 

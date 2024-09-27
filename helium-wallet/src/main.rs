@@ -1,7 +1,8 @@
 use clap::Parser;
 use helium_wallet::{
     cmd::{
-        balance, create, dc, export, hotspots, info, price, router, sign, transfer, upgrade, Opts,
+        assets, balance, create, dc, export, hotspots, info, price, router, sign, transfer,
+        upgrade, Opts,
     },
     result::Result,
 };
@@ -36,7 +37,7 @@ pub enum Cmd {
     Transfer(transfer::Cmd),
     Export(export::Cmd),
     Sign(sign::Cmd),
-    // Assets(assets::Cmd),
+    Assets(assets::Cmd),
 }
 
 #[tokio::main]
@@ -61,6 +62,6 @@ async fn run(cli: Cli) -> Result {
         Cmd::Transfer(cmd) => cmd.run(cli.opts).await,
         Cmd::Export(cmd) => cmd.run(cli.opts).await,
         Cmd::Sign(cmd) => cmd.run(cli.opts).await,
-        // Cmd::Assets(cmd) => cmd.run(cli.opts).await,
+        Cmd::Assets(cmd) => cmd.run(cli.opts).await,
     }
 }

@@ -18,7 +18,7 @@ use std::{
     sync::Arc,
 };
 
-// pub mod assets;
+pub mod assets;
 pub mod balance;
 pub mod create;
 pub mod dc;

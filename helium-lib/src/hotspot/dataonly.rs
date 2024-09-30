@@ -1,12 +1,12 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
-    asset,
+    asset, b64,
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
     entity_key::AsEntityKey,
     error::{DecodeError, EncodeError, Error},
-    helium_entity_manager, helium_sub_daos,
+    helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::{Keypair, Pubkey},
     kta, priority_fee,
@@ -16,6 +16,7 @@ use crate::{
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
     token::Token,
 };
+use helium_crypto::PublicKey;
 use helium_proto::{BlockchainTxnAddGatewayV1, Message};
 use serde::{Deserialize, Serialize};
 
@@ -287,6 +288,53 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
 
     let signed_txn = verify_helium_key(verifier, &msg, &sig, txn).await?;
     Ok(signed_txn)
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct IssueHotspot {
+    key: PublicKey,
+    name: String,
+}
+
+impl From<&helium_crypto::Keypair> for IssueHotspot {
+    fn from(value: &helium_crypto::Keypair) -> Self {
+        Self {
+            key: value.public_key().clone(),
+            name: hotspot::name(value.public_key()),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct IssueToken {
+    hotspot: IssueHotspot,
+    txn: String,
+}
+
+pub fn issue_token(gw_keypair: &helium_crypto::Keypair) -> Result<IssueToken, Error> {
+    use helium_crypto::Sign;
+    use helium_proto::{BlockchainTxn, Txn};
+    let mut txn = BlockchainTxnAddGatewayV1 {
+        gateway: gw_keypair.public_key().to_vec(),
+        gateway_signature: vec![],
+        owner: vec![],
+        owner_signature: vec![],
+        payer: vec![],
+        payer_signature: vec![],
+        fee: 0,
+        staking_fee: 0,
+    };
+    let encoded = txn.encode_to_vec();
+    txn.gateway_signature = gw_keypair.sign(&encoded)?;
+
+    let encoded = BlockchainTxn {
+        txn: Some(Txn::AddGateway(txn)),
+    }
+    .encode_to_vec();
+    Ok(IssueToken {
+        hotspot: IssueHotspot::from(gw_keypair),
+        txn: b64::encode(encoded),
+    })
 }
 
 pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(

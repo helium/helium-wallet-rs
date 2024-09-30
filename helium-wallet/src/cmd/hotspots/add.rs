@@ -1,5 +1,5 @@
 use crate::{cmd::*, txn_envelope::TxnEnvelope};
-use helium_crypto::{KeyTag, Sign};
+use helium_crypto::KeyTag;
 use helium_lib::{
     asset,
     client::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
@@ -7,7 +7,6 @@ use helium_lib::{
     hotspot::{self, HotspotInfoUpdate},
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
-use helium_proto::Message as _;
 use rand::rngs::OsRng;
 
 #[derive(Debug, Clone, clap::Args)]
@@ -181,28 +180,8 @@ struct MobileTxn {}
 impl MobileTxn {
     pub async fn run(&self, _opts: Opts) -> Result {
         let gw_keypair = helium_crypto::Keypair::generate(KeyTag::default(), &mut OsRng);
-        let mut txn = BlockchainTxnAddGatewayV1 {
-            gateway: gw_keypair.public_key().to_vec(),
-            gateway_signature: vec![],
-            owner: vec![],
-            owner_signature: vec![],
-            payer: vec![],
-            payer_signature: vec![],
-            fee: 0,
-            staking_fee: 0,
-        };
-        let encoded = txn.encode_to_vec();
-        txn.gateway_signature = gw_keypair.sign(&encoded)?;
-
-        let encoded = txn.in_envelope().encode_to_vec();
-        let json = json!({
-            "gateway": json!({
-                "address": gw_keypair.public_key(),
-                "name": hotspot::name(gw_keypair.public_key()),
-            }),
-            "txn": b64::encode(encoded),
-        });
-        print_json(&json)
+        let issue_token = hotspot::dataonly::issue_token(&gw_keypair)?;
+        print_json(&issue_token)
     }
 }
 

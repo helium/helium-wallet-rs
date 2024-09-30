@@ -28,7 +28,7 @@ pub enum Error {
     #[error("program: {0}")]
     Program(#[from] solana_program::program_error::ProgramError),
     #[error("solana: {0}")]
-    Solana(#[from] solana_client::client_error::ClientError),
+    Solana(Box<solana_client::client_error::ClientError>),
     #[error("signing: {0}")]
     Signing(#[from] solana_sdk::signer::SignerError),
     #[error("crypto: {0}")]
@@ -37,6 +37,12 @@ pub enum Error {
     Decode(#[from] DecodeError),
     #[error("encode: {0}")]
     Encode(#[from] EncodeError),
+}
+
+impl From<solana_client::client_error::ClientError> for Error {
+    fn from(value: solana_client::client_error::ClientError) -> Self {
+        Self::Solana(Box::new(value))
+    }
 }
 
 impl Error {
@@ -53,10 +59,10 @@ impl Error {
         };
         match self {
             Self::Anchor(anchor_client::ClientError::AccountNotFound) => true,
-            Self::Solana(SolanaClientError {
-                kind: SolanaClientErrorKind::RpcError(SolanaClientRpcError::ForUser(msg)),
-                ..
-            }) if msg.starts_with("AccountNotFound") => true,
+            Self::Solana(client_error) => matches!(client_error.as_ref(), SolanaClientError {
+                    kind: SolanaClientErrorKind::RpcError(SolanaClientRpcError::ForUser(msg)),
+                    ..
+                } if msg.starts_with("AccountNotFound")),
             _ => false,
         }
     }

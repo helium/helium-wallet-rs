@@ -1,7 +1,8 @@
 use clap::Parser;
 use helium_wallet::{
     cmd::{
-        balance, create, dc, export, hotspots, info, price, router, sign, transfer, upgrade, Opts,
+        assets, balance, create, dc, export, hotspots, info, price, router, sign, transfer,
+        upgrade, Opts,
     },
     result::Result,
 };
@@ -36,31 +37,34 @@ pub enum Cmd {
     Transfer(transfer::Cmd),
     Export(export::Cmd),
     Sign(sign::Cmd),
-    // Assets(assets::Cmd),
+    Assets(assets::Cmd),
 }
 
+#[allow(clippy::needless_return)]
 #[tokio::main]
 async fn main() -> Result {
     init();
     let cli = Cli::parse();
-    run(cli).await
+    cli.run().await
 }
 
-async fn run(cli: Cli) -> Result {
-    let client = cli.opts.client()?;
-    helium_lib::init(client.solana_client)?;
-    match cli.cmd {
-        Cmd::Info(cmd) => cmd.run(cli.opts).await,
-        Cmd::Balance(cmd) => cmd.run(cli.opts).await,
-        Cmd::Upgrade(cmd) => cmd.run(cli.opts).await,
-        Cmd::Router(cmd) => cmd.run(cli.opts).await,
-        Cmd::Create(cmd) => cmd.run(cli.opts).await,
-        Cmd::Hotspots(cmd) => cmd.run(cli.opts).await,
-        Cmd::Dc(cmd) => cmd.run(cli.opts).await,
-        Cmd::Price(cmd) => cmd.run(cli.opts).await,
-        Cmd::Transfer(cmd) => cmd.run(cli.opts).await,
-        Cmd::Export(cmd) => cmd.run(cli.opts).await,
-        Cmd::Sign(cmd) => cmd.run(cli.opts).await,
-        // Cmd::Assets(cmd) => cmd.run(cli.opts).await,
+impl Cli {
+    async fn run(self) -> Result {
+        let client = self.opts.client()?;
+        helium_lib::init(client.solana_client)?;
+        match self.cmd {
+            Cmd::Info(cmd) => cmd.run(self.opts).await,
+            Cmd::Balance(cmd) => cmd.run(self.opts).await,
+            Cmd::Upgrade(cmd) => cmd.run(self.opts).await,
+            Cmd::Router(cmd) => cmd.run(self.opts).await,
+            Cmd::Create(cmd) => cmd.run(self.opts).await,
+            Cmd::Hotspots(cmd) => cmd.run(self.opts).await,
+            Cmd::Dc(cmd) => cmd.run(self.opts).await,
+            Cmd::Price(cmd) => cmd.run(self.opts).await,
+            Cmd::Transfer(cmd) => cmd.run(self.opts).await,
+            Cmd::Export(cmd) => cmd.run(self.opts).await,
+            Cmd::Sign(cmd) => cmd.run(self.opts).await,
+            Cmd::Assets(cmd) => cmd.run(self.opts).await,
+        }
     }
 }

@@ -6,17 +6,19 @@ use helium_lib::{
     b64, client,
     keypair::Keypair,
     solana_client::{
-        self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
+        self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
+        rpc_response::RpcSimulateTransactionResult,
     },
 };
 use serde_json::json;
 use std::{
     env, fs, io,
+    ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-// pub mod assets;
+pub mod assets;
 pub mod balance;
 pub mod create;
 pub mod dc;
@@ -78,6 +80,9 @@ impl Opts {
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct CommitOpts {
+    /// Skip pre-flight
+    #[arg(long)]
+    skip_preflight: bool,
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
@@ -119,9 +124,13 @@ impl CommitOpts {
         }
 
         if self.commit {
+            let config = RpcSendTransactionConfig {
+                skip_preflight: self.skip_preflight,
+                ..Default::default()
+            };
             client
                 .as_ref()
-                .send_transaction(tx)
+                .send_transaction_with_config(tx, config)
                 .await
                 .map(Into::into)
                 .map_err(context_err)
@@ -139,6 +148,13 @@ impl CommitOpts {
 
 #[derive(Debug, Clone)]
 pub struct Transaction(helium_proto::BlockchainTxn);
+
+impl Deref for Transaction {
+    type Target = helium_proto::BlockchainTxn;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl std::str::FromStr for Transaction {
     type Err = Error;
@@ -163,17 +179,6 @@ fn get_password(prompt: &str, confirm: bool) -> std::io::Result<String> {
         builder.with_confirmation("Confirm password", "Passwords do not match");
     };
     builder.interact()
-}
-
-fn read_txn(txn: &Option<Transaction>) -> Result<helium_proto::BlockchainTxn> {
-    match txn {
-        Some(txn) => Ok(txn.0.clone()),
-        None => {
-            let mut buffer = String::new();
-            io::stdin().read_line(&mut buffer)?;
-            Ok(buffer.trim().parse::<Transaction>()?.0)
-        }
-    }
 }
 
 pub fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {

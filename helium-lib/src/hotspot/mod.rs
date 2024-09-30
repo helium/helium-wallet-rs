@@ -1,21 +1,17 @@
 use crate::{
-    anchor_lang::{AnchorDeserialize, Discriminator, InstructionData, ToAccountMetas},
+    anchor_lang::{InstructionData, ToAccountMetas},
     anchor_spl, asset, bs58,
     client::{DasClient, DasSearchAssetsParams, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
-    entity_key::AsEntityKey,
     error::{DecodeError, EncodeError, Error},
-    helium_entity_manager, helium_sub_daos, is_zero,
+    helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
     kta, onboarding,
     priority_fee::{self, compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
     solana_sdk::{
-        commitment_config::CommitmentConfig,
-        instruction::{AccountMeta, Instruction},
-        signature::Signature,
-        signer::Signer,
+        instruction::AccountMeta, instruction::Instruction, signer::Signer,
         transaction::Transaction,
     },
     token::Token,
@@ -28,8 +24,11 @@ use futures::{
 };
 use itertools::Itertools;
 use rust_decimal::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{collections::HashMap, hash::Hash, str::FromStr};
+
+pub mod dataonly;
+pub mod info;
 
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
@@ -103,277 +102,6 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
         hotspot.info = Some(info);
     }
     Ok(hotspot)
-}
-
-pub mod info {
-    use super::*;
-    use crate::anchor_client::solana_client::{
-        rpc_client::GetConfirmedSignaturesForAddress2Config, rpc_config::RpcTransactionConfig,
-    };
-    use chrono::DateTime;
-    use helium_anchor_gen::helium_entity_manager::{
-        instruction::{
-            OnboardDataOnlyIotHotspotV0, OnboardIotHotspotV0, OnboardMobileHotspotV0,
-            UpdateIotInfoV0, UpdateMobileInfoV0,
-        },
-        OnboardDataOnlyIotHotspotArgsV0, OnboardIotHotspotArgsV0, OnboardMobileHotspotArgsV0,
-        UpdateIotInfoArgsV0, UpdateMobileInfoArgsV0,
-    };
-    use solana_transaction_status::{
-        EncodedConfirmedTransactionWithStatusMeta, EncodedTransaction, UiInstruction, UiMessage,
-        UiParsedInstruction, UiTransactionEncoding,
-    };
-
-    pub async fn get<C: GetAnchorAccount>(
-        client: &C,
-        subdao: SubDao,
-        info_key: &Pubkey,
-    ) -> Result<Option<HotspotInfo>, Error> {
-        let hotspot_info = match subdao {
-            SubDao::Iot => client
-                .anchor_account::<helium_entity_manager::IotHotspotInfoV0>(info_key)
-                .await
-                .map(Into::into),
-            SubDao::Mobile => client
-                .anchor_account::<helium_entity_manager::MobileHotspotInfoV0>(info_key)
-                .await
-                .map(Into::into),
-        }
-        .ok();
-        Ok(hotspot_info)
-    }
-
-    pub async fn get_many<C: GetAnchorAccount>(
-        client: &C,
-        subdao: SubDao,
-        info_keys: &[Pubkey],
-    ) -> Result<Vec<Option<HotspotInfo>>, Error> {
-        fn to_infos<T: Into<HotspotInfo>>(
-            maybe_accounts: Vec<Option<T>>,
-        ) -> Vec<Option<HotspotInfo>> {
-            maybe_accounts
-                .into_iter()
-                .map(HotspotInfo::from_maybe)
-                .collect()
-        }
-        let accounts = match subdao {
-            SubDao::Iot => to_infos(
-                client
-                    .anchor_accounts::<helium_entity_manager::IotHotspotInfoV0>(info_keys)
-                    .await?,
-            ),
-            SubDao::Mobile => to_infos(
-                client
-                    .anchor_accounts::<helium_entity_manager::MobileHotspotInfoV0>(info_keys)
-                    .await?,
-            ),
-        };
-        Ok(accounts)
-    }
-
-    async fn for_entity_key_in_subdao<C: GetAnchorAccount, E: AsEntityKey>(
-        client: &C,
-        subdao: SubDao,
-        entity_key: &E,
-    ) -> Result<Option<HotspotInfo>, Error> {
-        let info_key = subdao.info_key(entity_key);
-        get(client, subdao, &info_key).await
-    }
-
-    pub async fn for_entity_key<C: GetAnchorAccount>(
-        client: &C,
-        subdaos: &[SubDao],
-        key: &helium_crypto::PublicKey,
-    ) -> Result<HashMap<SubDao, HotspotInfo>, Error> {
-        stream::iter(subdaos.to_vec())
-            .map(|subdao| {
-                for_entity_key_in_subdao(client, subdao, key)
-                    .map_ok(move |maybe_metadata| maybe_metadata.map(|metadata| (subdao, metadata)))
-            })
-            .buffer_unordered(10)
-            .filter_map(|result| async move { result.transpose() })
-            .try_collect::<Vec<(SubDao, HotspotInfo)>>()
-            .map_ok(HashMap::from_iter)
-            .await
-    }
-
-    #[derive(Serialize, Deserialize, Debug, Default, Clone)]
-    pub struct HotspotInfoUpdateParams {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub before: Option<Signature>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub until: Option<Signature>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub limit: Option<usize>,
-    }
-
-    impl From<HotspotInfoUpdateParams> for GetConfirmedSignaturesForAddress2Config {
-        fn from(value: HotspotInfoUpdateParams) -> Self {
-            Self {
-                before: value.before,
-                until: value.until,
-                limit: value.limit,
-                ..Default::default()
-            }
-        }
-    }
-
-    pub async fn updates<C: AsRef<SolanaRpcClient>>(
-        client: &C,
-        account: &Pubkey,
-        params: HotspotInfoUpdateParams,
-    ) -> Result<Vec<CommittedHotspotInfoUpdate>, Error> {
-        let signatures = client
-            .as_ref()
-            .get_signatures_for_address_with_config(account, params.into())
-            .await?;
-
-        let signature_iter = signatures
-            .into_iter()
-            .filter(|signature| signature.err.is_none())
-            .map(|signature| {
-                Signature::from_str(signature.signature.as_str())
-                    .map_err(DecodeError::from)
-                    .map_err(Error::from)
-            });
-        let updates = stream::iter(signature_iter)
-            .map_ok(|signature| async move {
-                client
-                    .as_ref()
-                    .get_transaction_with_config(
-                        &signature,
-                        RpcTransactionConfig {
-                            encoding: Some(UiTransactionEncoding::JsonParsed),
-                            commitment: Some(CommitmentConfig::finalized()),
-                            max_supported_transaction_version: Some(0),
-                        },
-                    )
-                    .map_err(Error::from)
-                    .await
-            })
-            .try_buffered(5)
-            .try_filter_map(|txn| async move {
-                CommittedHotspotInfoUpdate::from_transaction(txn).map_err(Error::from)
-            })
-            .try_collect::<Vec<CommittedHotspotInfoUpdate>>()
-            .await?;
-
-        Ok(updates)
-    }
-
-    impl CommittedHotspotInfoUpdate {
-        fn from_transaction(
-            txn: EncodedConfirmedTransactionWithStatusMeta,
-        ) -> Result<Option<Self>, DecodeError> {
-            // don't handle failed transactions
-            if let Some(meta) = txn.transaction.meta {
-                if meta.err.is_some() {
-                    return Ok(None);
-                }
-            }
-            let EncodedTransaction::Json(ui_txn) = txn.transaction.transaction else {
-                return Err(DecodeError::other("not a json encoded transaction"));
-            };
-            let UiMessage::Parsed(ui_msg) = ui_txn.message else {
-                return Err(DecodeError::other("not a parsed transaction message"));
-            };
-            let Some(timestamp) = txn
-                .block_time
-                .and_then(|block_time| DateTime::from_timestamp(block_time, 0))
-            else {
-                return Err(DecodeError::other("no valid block time found"));
-            };
-            let block = txn.slot;
-            let signature = &ui_txn.signatures[0];
-            let update = ui_msg
-                .instructions
-                .into_iter()
-                .map(HotspotInfoUpdate::from_ui_instruction)
-                .filter(|result| matches!(result, Ok(Some(_v))))
-                .collect::<Vec<Result<Option<(Pubkey, HotspotInfoUpdate)>, _>>>()
-                .into_iter()
-                .collect::<Result<Vec<Option<(Pubkey, HotspotInfoUpdate)>>, _>>()?
-                .first()
-                .cloned()
-                .flatten()
-                .map(|(info_key, update)| Self {
-                    block,
-                    timestamp,
-                    signature: signature.clone(),
-                    info_key,
-                    update,
-                });
-            Ok(update)
-        }
-    }
-
-    impl HotspotInfoUpdate {
-        fn from_ui_instruction(ixn: UiInstruction) -> Result<Option<(Pubkey, Self)>, DecodeError> {
-            use solana_transaction_status::UiPartiallyDecodedInstruction;
-            let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(decoded)) = ixn else {
-                return Err(DecodeError::other("not a decoded instruction"));
-            };
-            if decoded.program_id != helium_entity_manager::id().to_string() {
-                return Ok(None);
-            }
-            if decoded.data.is_empty() {
-                return Ok(None);
-            }
-            let decoded_data = solana_sdk::bs58::decode(decoded.data.clone()).into_vec()?;
-            if decoded_data.len() < 9 {
-                return Ok(None);
-            }
-            let mut discriminator: [u8; 8] = Default::default();
-            discriminator.copy_from_slice(&decoded_data[..8]);
-            let mut args = &decoded_data[8..];
-
-            fn get_info_key(
-                decoded: &UiPartiallyDecodedInstruction,
-                index: usize,
-            ) -> Result<Pubkey, DecodeError> {
-                let account_str = decoded.accounts.get(index).ok_or_else(|| {
-                    DecodeError::other("missing info key in instruction accounts")
-                })?;
-                let account = Pubkey::from_str(account_str).map_err(DecodeError::from)?;
-                Ok(account)
-            }
-            match discriminator {
-                UpdateMobileInfoV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 2)?;
-                    UpdateMobileInfoArgsV0::deserialize(&mut args)
-                        .map(Into::into)
-                        .map(|v| (info_key, v))
-                }
-                OnboardMobileHotspotV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 3)?;
-                    OnboardMobileHotspotArgsV0::deserialize(&mut args)
-                        .map(Self::from)
-                        .map(|v| (info_key, v))
-                }
-                OnboardIotHotspotV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 3)?;
-                    OnboardIotHotspotArgsV0::deserialize(&mut args)
-                        .map(Into::into)
-                        .map(|v| (info_key, v))
-                }
-                UpdateIotInfoV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 2)?;
-                    UpdateIotInfoArgsV0::deserialize(&mut args)
-                        .map(Into::into)
-                        .map(|v| (info_key, v))
-                }
-                OnboardDataOnlyIotHotspotV0::DISCRIMINATOR => {
-                    let info_key = get_info_key(&decoded, 2)?;
-                    OnboardDataOnlyIotHotspotArgsV0::deserialize(&mut args)
-                        .map(Into::into)
-                        .map(|v| (info_key, v))
-                }
-                _ => return Ok(None),
-            }
-            .map(Some)
-            .map_err(DecodeError::from)
-        }
-    }
 }
 
 pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -542,210 +270,6 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     tx.try_sign(&[keypair], blockhash)?;
 
     Ok(tx)
-}
-
-pub mod dataonly {
-    use super::*;
-    use crate::programs::{
-        SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
-    };
-    use helium_proto::{BlockchainTxnAddGatewayV1, Message};
-
-    pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
-        client: &C,
-        hotspot_key: &helium_crypto::PublicKey,
-        assertion: HotspotInfoUpdate,
-        keypair: &Keypair,
-    ) -> Result<Transaction, Error> {
-        use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
-        fn mk_accounts(
-            config_account: helium_entity_manager::DataOnlyConfigV0,
-            owner: Pubkey,
-            hotspot_key: &helium_crypto::PublicKey,
-        ) -> OnboardDataOnlyIotHotspotV0 {
-            let dao = Dao::Hnt;
-            let entity_key = hotspot_key.as_entity_key();
-            let data_only_config_key = dao.dataonly_config_key();
-            OnboardDataOnlyIotHotspotV0 {
-                payer: owner,
-                dc_fee_payer: owner,
-                iot_info: SubDao::Iot.info_key(&entity_key),
-                hotspot_owner: owner,
-                merkle_tree: config_account.merkle_tree,
-                dc_burner: Token::Dc.associated_token_adress(&owner),
-                rewardable_entity_config: SubDao::Iot.rewardable_entity_config_key(),
-                data_only_config: data_only_config_key,
-                dao: dao.key(),
-                key_to_asset: dao.entity_key_to_kta_key(&entity_key),
-                sub_dao: SubDao::Iot.key(),
-                dc_mint: *Token::Dc.mint(),
-                dc: SubDao::dc_key(),
-                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-                data_credits_program: data_credits::id(),
-                helium_sub_daos_program: helium_sub_daos::id(),
-                token_program: anchor_spl::token::ID,
-                associated_token_program: spl_associated_token_account::id(),
-                system_program: solana_sdk::system_program::id(),
-            }
-        }
-
-        let config_account = client
-            .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(
-                &Dao::Hnt.dataonly_config_key(),
-            )
-            .await?;
-        let kta = kta::for_entity_key(hotspot_key).await?;
-        let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
-        let mut onboard_accounts =
-            mk_accounts(config_account, keypair.pubkey(), hotspot_key).to_account_metas(None);
-        onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
-
-        let onboard_ix = solana_sdk::instruction::Instruction {
-            program_id: helium_entity_manager::id(),
-            accounts: onboard_accounts,
-            data: helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
-                _args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
-                    data_hash: asset.compression.data_hash,
-                    creator_hash: asset.compression.creator_hash,
-                    index: asset.compression.leaf_id()?,
-                    root: asset_proof.root.to_bytes(),
-                    elevation: *assertion.elevation(),
-                    gain: assertion.gain_i32(),
-                    location: assertion.location_u64(),
-                },
-            }
-            .data(),
-        };
-
-        let ixs = &[
-            priority_fee::compute_budget_instruction(300_000),
-            priority_fee::compute_price_instruction_for_accounts(client, &onboard_ix.accounts)
-                .await?,
-            onboard_ix,
-        ];
-
-        let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-            .get_latest_blockhash()
-            .await?;
-        let tx =
-            Transaction::new_signed_with_payer(ixs, Some(&keypair.pubkey()), &[keypair], blockhash);
-        Ok(tx)
-    }
-
-    pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
-        client: &C,
-        verifier: &str,
-        add_tx: &mut BlockchainTxnAddGatewayV1,
-        keypair: &Keypair,
-    ) -> Result<Transaction, Error> {
-        use helium_entity_manager::accounts::IssueDataOnlyEntityV0;
-        fn mk_accounts(
-            config_account: helium_entity_manager::DataOnlyConfigV0,
-            owner: Pubkey,
-            entity_key: &[u8],
-        ) -> IssueDataOnlyEntityV0 {
-            let dao = Dao::Hnt;
-            let dataonly_config_key = dao.dataonly_config_key();
-            IssueDataOnlyEntityV0 {
-                payer: owner,
-                ecc_verifier: ECC_VERIFIER,
-                collection: config_account.collection,
-                collection_metadata: dao.collection_metadata_key(&config_account.collection),
-                collection_master_edition: dao
-                    .collection_master_edition_key(&config_account.collection),
-                data_only_config: dataonly_config_key,
-                entity_creator: dao.entity_creator_key(),
-                dao: dao.key(),
-                key_to_asset: dao.entity_key_to_kta_key(&entity_key),
-                tree_authority: dao.merkle_tree_authority(&config_account.merkle_tree),
-                recipient: owner,
-                merkle_tree: config_account.merkle_tree,
-                data_only_escrow: dao.dataonly_escrow_key(),
-                bubblegum_signer: dao.bubblegum_signer(),
-                token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
-                log_wrapper: SPL_NOOP_PROGRAM_ID,
-                bubblegum_program: mpl_bubblegum::ID,
-                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-                system_program: solana_sdk::system_program::id(),
-            }
-        }
-
-        let config_account = client
-            .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(
-                &Dao::Hnt.dataonly_config_key(),
-            )
-            .await?;
-        let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
-        let entity_key = hotspot_key.as_entity_key();
-        let accounts = mk_accounts(config_account, keypair.pubkey(), &entity_key);
-
-        let issue_ix = Instruction {
-            program_id: helium_entity_manager::id(),
-            accounts: accounts.to_account_metas(None),
-            data: helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
-                _args: helium_entity_manager::IssueDataOnlyEntityArgsV0 { entity_key },
-            }
-            .data(),
-        };
-
-        let ixs = &[
-            priority_fee::compute_budget_instruction(300_000),
-            priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
-            issue_ix,
-        ];
-        let mut tx = Transaction::new_with_payer(ixs, Some(&keypair.pubkey()));
-
-        let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-            .get_latest_blockhash()
-            .await?;
-        tx.try_partial_sign(&[keypair], blockhash)?;
-
-        let sig = add_tx.gateway_signature.clone();
-        add_tx.gateway_signature = vec![];
-        let msg = add_tx.encode_to_vec();
-
-        let signed_tx = verify_helium_key(verifier, &msg, &sig, tx).await?;
-        Ok(signed_tx)
-    }
-
-    async fn verify_helium_key(
-        verifier: &str,
-        msg: &[u8],
-        signature: &[u8],
-        tx: Transaction,
-    ) -> Result<Transaction, Error> {
-        #[derive(Deserialize, Serialize, Default)]
-        struct VerifyRequest<'a> {
-            // hex encoded solana transaction
-            pub transaction: &'a str,
-            // hex encoded signed message
-            pub msg: &'a str,
-            // hex encoded signature
-            pub signature: &'a str,
-        }
-        #[derive(Deserialize, Serialize, Default)]
-        struct VerifyResponse {
-            // hex encoded solana transaction
-            pub transaction: String,
-        }
-        let client = reqwest::Client::new();
-        let serialized_tx = hex::encode(bincode::serialize(&tx).map_err(EncodeError::from)?);
-        let response = client
-            .post(format!("{}/verify", verifier))
-            .json(&VerifyRequest {
-                transaction: &serialized_tx,
-                msg: &hex::encode(msg),
-                signature: &hex::encode(signature),
-            })
-            .send()
-            .await?
-            .json::<VerifyResponse>()
-            .await?;
-        let signed_tx =
-            bincode::deserialize(&hex::decode(response.transaction).map_err(DecodeError::from)?)
-                .map_err(DecodeError::from)?;
-        Ok(signed_tx)
-    }
 }
 
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -1108,6 +632,7 @@ pub enum MobileDeviceType {
     Cbrs,
     WifiIndoor,
     WifiOutdoor,
+    WifiDataOnly,
 }
 
 impl std::fmt::Display for MobileDeviceType {
@@ -1116,6 +641,7 @@ impl std::fmt::Display for MobileDeviceType {
             Self::Cbrs => "cbrs",
             Self::WifiIndoor => "wifi_indoor",
             Self::WifiOutdoor => "wifi_outdoor",
+            Self::WifiDataOnly => "wifi_dataonly",
         };
         f.write_str(str)
     }
@@ -1128,6 +654,7 @@ impl std::str::FromStr for MobileDeviceType {
             "cbrs" => Self::Cbrs,
             "wifi_indoor" => Self::WifiIndoor,
             "wifi_outdoor" => Self::WifiOutdoor,
+            "wifi_dataonly" => Self::WifiDataOnly,
             _ => return Err(DecodeError::other("invalid mobile device type")),
         };
         Ok(value)
@@ -1140,6 +667,7 @@ impl From<helium_entity_manager::MobileDeviceTypeV0> for MobileDeviceType {
             helium_entity_manager::MobileDeviceTypeV0::Cbrs => Self::Cbrs,
             helium_entity_manager::MobileDeviceTypeV0::WifiIndoor => Self::WifiIndoor,
             helium_entity_manager::MobileDeviceTypeV0::WifiOutdoor => Self::WifiOutdoor,
+            helium_entity_manager::MobileDeviceTypeV0::WifiDataOnly => Self::WifiDataOnly,
         }
     }
 }

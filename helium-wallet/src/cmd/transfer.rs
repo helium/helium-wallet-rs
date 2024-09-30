@@ -41,6 +41,8 @@ pub struct One {
     commit: CommitOpts,
 }
 
+/// Multiple playment descriptor file
+///
 /// The input file for multiple payments is expected to be json file with a list
 /// of payees, amounts, tokens, and optional memos.
 /// Notes:

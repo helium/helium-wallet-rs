@@ -16,8 +16,8 @@ use crate::{
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
     token::Token,
 };
-use helium_crypto::PublicKey;
-use helium_proto::{BlockchainTxnAddGatewayV1, Message};
+use helium_crypto::{PublicKey, Sign};
+use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use serde::{Deserialize, Serialize};
 
 mod iot {
@@ -308,12 +308,10 @@ impl From<&helium_crypto::Keypair> for IssueHotspot {
 #[derive(Debug, serde::Serialize)]
 pub struct IssueToken {
     hotspot: IssueHotspot,
-    txn: String,
+    token: String,
 }
 
 pub fn issue_token(gw_keypair: &helium_crypto::Keypair) -> Result<IssueToken, Error> {
-    use helium_crypto::Sign;
-    use helium_proto::{BlockchainTxn, Txn};
     let mut txn = BlockchainTxnAddGatewayV1 {
         gateway: gw_keypair.public_key().to_vec(),
         gateway_signature: vec![],
@@ -333,8 +331,16 @@ pub fn issue_token(gw_keypair: &helium_crypto::Keypair) -> Result<IssueToken, Er
     .encode_to_vec();
     Ok(IssueToken {
         hotspot: IssueHotspot::from(gw_keypair),
-        txn: b64::encode(encoded),
+        token: b64::encode(encoded),
     })
+}
+
+pub fn issue_token_to_add_tx(token: &str) -> Result<BlockchainTxnAddGatewayV1, Error> {
+    let envelope: BlockchainTxn = b64::decode_message(token)?;
+    match envelope.txn {
+        Some(Txn::AddGateway(txn)) => Ok(txn),
+        _ => Err(DecodeError::other("unsupported transaction").into()),
+    }
 }
 
 pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(

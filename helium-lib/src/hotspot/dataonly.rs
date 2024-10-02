@@ -322,16 +322,14 @@ pub fn issue_token(gw_keypair: &helium_crypto::Keypair) -> Result<IssueToken, Er
         fee: 0,
         staking_fee: 0,
     };
-    let encoded = txn.encode_to_vec();
-    txn.gateway_signature = gw_keypair.sign(&encoded)?;
+    txn.gateway_signature = gw_keypair.sign(&txn.encode_to_vec())?;
 
-    let encoded = BlockchainTxn {
+    let envelope = BlockchainTxn {
         txn: Some(Txn::AddGateway(txn)),
-    }
-    .encode_to_vec();
+    };
     Ok(IssueToken {
         hotspot: IssueHotspot::from(gw_keypair),
-        token: b64::encode(encoded),
+        token: b64::encode_message(&envelope)?,
     })
 }
 
@@ -392,4 +390,22 @@ async fn verify_helium_key(
         bincode::deserialize(&hex::decode(response.transaction).map_err(DecodeError::from)?)
             .map_err(DecodeError::from)?;
     Ok(signed_tx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::OsRng;
+
+    #[test]
+    fn roundtrip_issue_token() {
+        let gw_keypair = helium_crypto::Keypair::generate(Default::default(), &mut OsRng);
+        let issue_token = issue_token(&gw_keypair).expect("issue token");
+        let gw_pubkey =
+            helium_crypto::PublicKey::try_from(issue_token.hotspot.key).expect("hotspot key");
+        let decoded = issue_token_to_add_tx(&issue_token.token).expect("decoded issue token");
+        let decoded_gw_pubkey =
+            helium_crypto::PublicKey::try_from(decoded.gateway).expect("decoded hotspot key");
+        assert_eq!(gw_pubkey, decoded_gw_pubkey);
+    }
 }

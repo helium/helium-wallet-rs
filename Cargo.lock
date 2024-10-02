@@ -2675,6 +2675,7 @@ dependencies = [
  "lazy_static",
  "mpl-bubblegum",
  "pyth-solana-receiver-sdk",
+ "rand 0.8.5",
  "reqwest",
  "rust_decimal",
  "serde",

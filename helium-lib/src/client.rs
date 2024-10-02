@@ -681,6 +681,7 @@ pub mod config {
                     DeviceType::Cbrs => MobileDeviceType::Cbrs,
                     DeviceType::WifiIndoor => MobileDeviceType::WifiIndoor,
                     DeviceType::WifiOutdoor => MobileDeviceType::WifiOutdoor,
+                    DeviceType::WifiDataOnly => MobileDeviceType::WifiDataOnly,
                 };
 
             Ok((

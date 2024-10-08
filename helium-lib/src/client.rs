@@ -19,7 +19,7 @@ pub static VERIFIER_URL_MAINNET: &str = "https://ecc-verifier.web.helium.io";
 pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com";
 
 pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443?session-key=Pluto";
-pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com";
+pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?session-key=Pluto";
 
 pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 

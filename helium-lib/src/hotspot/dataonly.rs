@@ -196,10 +196,14 @@ pub async fn onboard_transaction<
     assertion: HotspotInfoUpdate,
     owner: &Pubkey,
 ) -> Result<Transaction, Error> {
-    match subdao {
+    let mut tx = match subdao {
         SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner).await,
         SubDao::Mobile => mobile::onboard_transaction(client, hotspot_key, assertion, owner).await,
-    }
+    }?;
+    tx.message.recent_blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
+        .get_latest_blockhash()
+        .await?;
+    Ok(tx)
 }
 
 pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(

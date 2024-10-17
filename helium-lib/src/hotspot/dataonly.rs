@@ -16,6 +16,7 @@ use crate::{
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
     token::Token,
 };
+use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use helium_crypto::{PublicKey, Sign};
 use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use serde::{Deserialize, Serialize};
@@ -195,15 +196,17 @@ pub async fn onboard_transaction<
     hotspot_key: &helium_crypto::PublicKey,
     assertion: HotspotInfoUpdate,
     owner: &Pubkey,
-) -> Result<Transaction, Error> {
+) -> Result<(Transaction, u64), Error> {
     let mut tx = match subdao {
         SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner).await,
         SubDao::Mobile => mobile::onboard_transaction(client, hotspot_key, assertion, owner).await,
     }?;
-    tx.message.recent_blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-        .get_latest_blockhash()
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let (latest_blockhash, latest_block_height) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
         .await?;
-    Ok(tx)
+    tx.message.recent_blockhash = latest_blockhash;
+    Ok((tx, latest_block_height))
 }
 
 pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
@@ -212,14 +215,11 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     hotspot_key: &helium_crypto::PublicKey,
     assertion: HotspotInfoUpdate,
     keypair: &Keypair,
-) -> Result<Transaction, Error> {
-    let mut txn =
+) -> Result<(Transaction, u64), Error> {
+    let (mut txn, latest_block_height) =
         onboard_transaction(client, subdao, hotspot_key, assertion, &keypair.pubkey()).await?;
-    let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-        .get_latest_blockhash()
-        .await?;
-    txn.try_sign(&[keypair], blockhash)?;
-    Ok(txn)
+    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+    Ok((txn, latest_block_height))
 }
 
 pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
@@ -227,7 +227,7 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     verifier: &str,
     add_tx: &mut BlockchainTxnAddGatewayV1,
     owner: Pubkey,
-) -> Result<Transaction, Error> {
+) -> Result<(Transaction, u64), Error> {
     fn mk_accounts(
         config_account: helium_entity_manager::DataOnlyConfigV0,
         owner: Pubkey,
@@ -282,16 +282,18 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
         issue_ix,
     ];
     let mut txn = Transaction::new_with_payer(ixs, Some(&owner));
-    txn.message.recent_blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-        .get_latest_blockhash()
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let (latest_blockhash, latest_block_height) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
         .await?;
+    txn.message.recent_blockhash = latest_blockhash;
 
     let sig = add_tx.gateway_signature.clone();
     add_tx.gateway_signature = vec![];
     let msg = add_tx.encode_to_vec();
 
     let signed_txn = verify_helium_key(verifier, &msg, &sig, txn).await?;
-    Ok(signed_txn)
+    Ok((signed_txn, latest_block_height))
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -350,11 +352,12 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     verifier: &str,
     add_tx: &mut BlockchainTxnAddGatewayV1,
     keypair: &Keypair,
-) -> Result<Transaction, Error> {
-    let mut txn = issue_transaction(client, verifier, add_tx, keypair.pubkey()).await?;
+) -> Result<(Transaction, u64), Error> {
+    let (mut txn, block_height) =
+        issue_transaction(client, verifier, add_tx, keypair.pubkey()).await?;
     let blockhash = txn.message.recent_blockhash;
     txn.try_partial_sign(&[keypair], blockhash)?;
-    Ok(txn)
+    Ok((txn, block_height))
 }
 
 async fn verify_helium_key(

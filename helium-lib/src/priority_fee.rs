@@ -78,7 +78,7 @@ pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     Ok(compute_price_instruction(priority_fee))
 }
 
-impl<'a, C: Deref<Target = impl Signer> + Clone> SetPriorityFees for RequestBuilder<'a, C> {
+impl<C: Deref<Target = impl Signer> + Clone> SetPriorityFees for RequestBuilder<'_, C> {
     fn compute_budget(self, compute_limit: u32) -> Self {
         self.instruction(compute_budget_instruction(compute_limit))
     }

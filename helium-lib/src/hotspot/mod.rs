@@ -641,7 +641,7 @@ impl std::fmt::Display for MobileDeviceType {
             Self::Cbrs => "cbrs",
             Self::WifiIndoor => "wifi_indoor",
             Self::WifiOutdoor => "wifi_outdoor",
-            Self::WifiDataOnly => "wifi_dataonly",
+            Self::WifiDataOnly => "wifi_data_only",
         };
         f.write_str(str)
     }
@@ -654,7 +654,7 @@ impl std::str::FromStr for MobileDeviceType {
             "cbrs" => Self::Cbrs,
             "wifi_indoor" => Self::WifiIndoor,
             "wifi_outdoor" => Self::WifiOutdoor,
-            "wifi_dataonly" => Self::WifiDataOnly,
+            "wifi_data_only" => Self::WifiDataOnly,
             _ => return Err(DecodeError::other("invalid mobile device type")),
         };
         Ok(value)

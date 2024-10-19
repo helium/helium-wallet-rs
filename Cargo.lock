@@ -2627,7 +2627,7 @@ dependencies = [
  "bs58 0.5.1",
  "byteorder",
  "ed25519-compact",
- "getrandom 0.1.16",
+ "getrandom 0.2.15",
  "k256",
  "lazy_static",
  "multihash",
@@ -4024,7 +4024,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22505a5c94da8e3b7c2996394d1c933236c4d743e81a410bcca4e6989fc066a4"
 dependencies = [
  "bytes",
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools",
  "log",
  "multimap",
@@ -4082,9 +4082,9 @@ dependencies = [
 
 [[package]]
 name = "pyth-solana-receiver-sdk"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e6559643f0b377b6f293269251f6a804ae7332c37f7310371f50c833453cd0"
+checksum = "1b7854c4176470c8d86de301dc5b57ac84227dabb9527328b585fc332962d60b"
 dependencies = [
  "anchor-lang 0.30.1",
  "hex",
@@ -4094,9 +4094,9 @@ dependencies = [
 
 [[package]]
 name = "pythnet-sdk"
-version = "2.1.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bbbc0456f9f27c9ad16b6c3bf1b2a7fea61eebf900f4d024a0468b9a84fe0c1"
+checksum = "d674382ba4798254178b47c8a4cdd9ace09cb8d1554a6de180f8ab326c4d5c41"
 dependencies = [
  "anchor-lang 0.30.1",
  "bincode",
@@ -4105,7 +4105,6 @@ dependencies = [
  "byteorder",
  "fast-math",
  "hex",
- "proc-macro2",
  "rustc_version",
  "serde",
  "sha3 0.10.8",

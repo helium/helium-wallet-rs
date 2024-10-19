@@ -793,3 +793,11 @@ impl From<helium_entity_manager::OnboardMobileHotspotArgsV0> for HotspotInfoUpda
         }
     }
 }
+
+impl From<helium_entity_manager::OnboardDataOnlyMobileHotspotArgsV0> for HotspotInfoUpdate {
+    fn from(value: helium_entity_manager::OnboardDataOnlyMobileHotspotArgsV0) -> Self {
+        Self::Mobile {
+            location: HotspotLocation::from_maybe(value.location),
+        }
+    }
+}

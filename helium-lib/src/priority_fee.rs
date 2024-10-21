@@ -23,6 +23,7 @@ pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
     let account_keys: Vec<_> = accounts
         .to_account_metas(None)
         .into_iter()
+        .filter(|account_meta| account_meta.is_writable)
         .map(|x| x.pubkey)
         .unique()
         .take(MAX_RECENT_PRIORITY_FEE_ACCOUNTS)

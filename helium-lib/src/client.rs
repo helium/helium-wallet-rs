@@ -676,19 +676,20 @@ pub mod config {
                 return Ok((address, None));
             };
 
-            let device_type =
-                match DeviceType::try_from(info.device_type).map_err(DecodeError::from)? {
-                    DeviceType::Cbrs => MobileDeviceType::Cbrs,
-                    DeviceType::WifiIndoor => MobileDeviceType::WifiIndoor,
-                    DeviceType::WifiOutdoor => MobileDeviceType::WifiOutdoor,
-                    DeviceType::WifiDataOnly => MobileDeviceType::WifiDataOnly,
-                };
+            let (device_type, mode) = match DeviceType::try_from(info.device_type)
+                .map_err(DecodeError::from)?
+            {
+                DeviceType::Cbrs => (MobileDeviceType::Cbrs, HotspotMode::Full),
+                DeviceType::WifiIndoor => (MobileDeviceType::WifiIndoor, HotspotMode::Full),
+                DeviceType::WifiOutdoor => (MobileDeviceType::WifiOutdoor, HotspotMode::Full),
+                DeviceType::WifiDataOnly => (MobileDeviceType::WifiDataOnly, HotspotMode::DataOnly),
+            };
 
             Ok((
                 address,
                 Some(HotspotInfo::Mobile {
                     device_type,
-                    mode: HotspotMode::Full,
+                    mode,
                     location: metadata.location.parse().ok(),
                     location_asserts: 0,
                 }),

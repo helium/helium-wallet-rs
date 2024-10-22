@@ -1,9 +1,8 @@
 use crate::{
     error::{DecodeError, Error},
-    read_write::ReadWrite,
     solana_sdk::signature::SignerError,
 };
-use std::{fs::File, path::Path, sync::Arc};
+use std::sync::Arc;
 
 #[derive(PartialEq, Debug)]
 pub struct Keypair(solana_sdk::signer::keypair::Keypair);
@@ -103,11 +102,6 @@ impl TryFrom<&[u8; 64]> for Keypair {
 impl Keypair {
     pub fn generate() -> Self {
         Keypair(solana_sdk::signer::keypair::Keypair::new())
-    }
-
-    pub fn read_from_file<F: AsRef<Path>>(path: F) -> Result<Self, DecodeError> {
-        let mut file = File::open(path.as_ref())?;
-        Self::read(&mut file)
     }
 
     pub fn void() -> Arc<VoidKeypair> {

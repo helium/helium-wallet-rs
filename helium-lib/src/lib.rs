@@ -13,7 +13,6 @@ pub mod kta;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;
-pub mod read_write;
 pub mod reward;
 pub mod token;
 

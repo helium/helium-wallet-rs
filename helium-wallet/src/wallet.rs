@@ -1,14 +1,12 @@
 use crate::{
     format::{self, Format},
     pwhash::PwHash,
+    read_write::ReadWrite,
     result::{anyhow, bail, Error, Result},
 };
 use aes_gcm::{aead::generic_array::GenericArray, AeadInPlace, Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use helium_lib::{
-    keypair::{to_helium_pubkey, Keypair, Pubkey, Signer, PUBKEY_BYTES},
-    read_write::ReadWrite,
-};
+use helium_lib::keypair::{to_helium_pubkey, Keypair, Pubkey, Signer, PUBKEY_BYTES};
 use sodiumoxide::randombytes;
 use std::io::{self, Cursor};
 use std::{

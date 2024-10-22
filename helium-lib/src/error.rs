@@ -63,6 +63,8 @@ impl Error {
                     kind: SolanaClientErrorKind::RpcError(SolanaClientRpcError::ForUser(msg)),
                     ..
                 } if msg.starts_with("AccountNotFound")),
+
+            Self::Das(das_error) => das_error.is_account_not_found(),
             _ => false,
         }
     }

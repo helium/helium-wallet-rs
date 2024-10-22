@@ -56,7 +56,7 @@ impl ReadWrite for crate::keypair::Keypair {
     fn read(reader: &mut dyn io::Read) -> Result<Self, DecodeError> {
         let mut sk_buf = [0u8; 64];
         reader.read_exact(&mut sk_buf)?;
-        Ok(Self::try_from(&sk_buf)?)
+        Self::try_from(&sk_buf)
     }
 }
 

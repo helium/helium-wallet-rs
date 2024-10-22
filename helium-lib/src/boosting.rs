@@ -6,8 +6,7 @@ use crate::{
     client::SolanaRpcClient,
     error::Error,
     hexboosting,
-    keypair::Keypair,
-    keypair::Pubkey,
+    keypair::{Keypair, Pubkey},
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
 };
 

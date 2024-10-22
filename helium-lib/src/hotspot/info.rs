@@ -19,11 +19,11 @@ use futures::{
 };
 use helium_anchor_gen::helium_entity_manager::{
     instruction::{
-        OnboardDataOnlyIotHotspotV0, OnboardIotHotspotV0, OnboardMobileHotspotV0, UpdateIotInfoV0,
-        UpdateMobileInfoV0,
+        OnboardDataOnlyIotHotspotV0, OnboardDataOnlyMobileHotspotV0, OnboardIotHotspotV0,
+        OnboardMobileHotspotV0, UpdateIotInfoV0, UpdateMobileInfoV0,
     },
-    OnboardDataOnlyIotHotspotArgsV0, OnboardIotHotspotArgsV0, OnboardMobileHotspotArgsV0,
-    UpdateIotInfoArgsV0, UpdateMobileInfoArgsV0,
+    OnboardDataOnlyIotHotspotArgsV0, OnboardDataOnlyMobileHotspotArgsV0, OnboardIotHotspotArgsV0,
+    OnboardMobileHotspotArgsV0, UpdateIotInfoArgsV0, UpdateMobileInfoArgsV0,
 };
 use serde::{Deserialize, Serialize};
 use solana_transaction_status::{
@@ -254,6 +254,12 @@ impl HotspotInfoUpdate {
             OnboardMobileHotspotV0::DISCRIMINATOR => {
                 let info_key = get_info_key(&decoded, 3)?;
                 OnboardMobileHotspotArgsV0::deserialize(&mut args)
+                    .map(Self::from)
+                    .map(|v| (info_key, v))
+            }
+            OnboardDataOnlyMobileHotspotV0::DISCRIMINATOR => {
+                let info_key = get_info_key(&decoded, 2)?;
+                OnboardDataOnlyMobileHotspotArgsV0::deserialize(&mut args)
                     .map(Self::from)
                     .map(|v| (info_key, v))
             }

@@ -180,7 +180,17 @@ impl From<JsonRpcError> for DasClientError {
     }
 }
 
-// impl From<serde_json::Error> for DasClientError
+impl DasClientError {
+    pub fn is_account_not_found(&self) -> bool {
+        match self {
+            Self::Rpc(jsonrpc_client::Error::JsonRpc(jsonrpc_client::JsonRpcError {
+                message,
+                ..
+            })) => message.starts_with("Database Error: RecordNotFound"),
+            _other => false,
+        }
+    }
+}
 
 #[jsonrpc_client::api]
 pub trait DAS {}

@@ -54,7 +54,7 @@ mod iot {
                 key_to_asset: dao.entity_key_to_kta_key(&entity_key),
                 sub_dao: SubDao::Iot.key(),
                 dc_mint: *Token::Dc.mint(),
-                dc: SubDao::dc_key(),
+                dc: Dao::dc_key(),
                 compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
                 data_credits_program: data_credits::id(),
                 helium_sub_daos_program: helium_sub_daos::id(),
@@ -137,7 +137,7 @@ mod mobile {
                 key_to_asset: dao.entity_key_to_kta_key(&entity_key),
                 sub_dao: SubDao::Mobile.key(),
                 dc_mint: *Token::Dc.mint(),
-                dc: SubDao::dc_key(),
+                dc: Dao::dc_key(),
                 dnt_mint: *Token::Mobile.mint(),
                 dnt_price: *Token::Mobile.price_key().unwrap(), // safe to unwrap
                 dnt_burner: Token::Mobile.associated_token_adress(&owner),

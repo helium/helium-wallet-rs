@@ -3203,9 +3203,9 @@ checksum = "8e9489c2807c139ffd9c1794f4af0ebe86a828db53ecdc7fea2111d0fed085d1"
 
 [[package]]
 name = "libm"
-version = "0.2.8"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+checksum = "a00419de735aac21d53b0de5ce2c03bd3627277cf471300f27ebc89f7d828047"
 
 [[package]]
 name = "libsecp256k1"
@@ -4145,9 +4145,9 @@ dependencies = [
 [[package]]
 name = "pyth-solana-receiver-sdk"
 version = "0.3.1"
-source = "git+https://github.com/madninja/pyth-crosschain.git?branch=madninja/cap_solana_dep#98a06309d5a6d319e8d819ad24ed16af105d5142"
+source = "git+https://github.com/madninja/pyth-crosschain.git?branch=madninja/cap_solana_dep#6576247294bde3ab7b62f7a2dfb4d4d48c401b35"
 dependencies = [
- "anchor-lang 0.30.1",
+ "anchor-lang 0.29.0",
  "hex",
  "pythnet-sdk",
  "solana-program 1.18.26",
@@ -4156,7 +4156,7 @@ dependencies = [
 [[package]]
 name = "pythnet-sdk"
 version = "2.3.0"
-source = "git+https://github.com/madninja/pyth-crosschain.git?branch=madninja/cap_solana_dep#98a06309d5a6d319e8d819ad24ed16af105d5142"
+source = "git+https://github.com/madninja/pyth-crosschain.git?branch=madninja/cap_solana_dep#6576247294bde3ab7b62f7a2dfb4d4d48c401b35"
 dependencies = [
  "anchor-lang 0.30.1",
  "bincode",
@@ -4645,9 +4645,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.38.37"
+version = "0.38.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8acb788b847c24f28525660c4d7758620a7210875711f79e7f663cc152726811"
+checksum = "aa260229e6538e52293eeb577aabd09945a09d6d9cc0fc550ed7529056c2e32a"
 dependencies = [
  "bitflags 2.6.0",
  "errno",
@@ -4824,9 +4824,9 @@ checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
 
 [[package]]
 name = "serde"
-version = "1.0.213"
+version = "1.0.214"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ea7893ff5e2466df8d720bb615088341b295f849602c6956047f8f80f0e9bc1"
+checksum = "f55c3193aca71c12ad7890f1785d2b73e1b9f63a0bbc353c08ef26fe03fc56b5"
 dependencies = [
  "serde_derive",
 ]
@@ -4842,9 +4842,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.213"
+version = "1.0.214"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e85ad2009c50b58e87caa8cd6dac16bdf511bbfb7af6c33df902396aa480fa5"
+checksum = "de523f781f095e28fa605cdce0f8307e451cc0fd14e2eb4cd2e98a355b147766"
 dependencies = [
  "proc-macro2",
  "quote",

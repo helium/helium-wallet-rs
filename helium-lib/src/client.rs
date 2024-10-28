@@ -651,6 +651,7 @@ pub mod config {
                 let mut req = GatewayInfoStreamReqV1 {
                     signer: self.keypair.public_key().into(),
                     batch_size: 1000,
+                    device_types: vec![],
                     signature: vec![],
                 };
                 req.sign(&self.keypair)?;

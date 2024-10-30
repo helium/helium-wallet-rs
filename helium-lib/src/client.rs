@@ -31,7 +31,10 @@ pub struct Client {
 
 #[async_trait::async_trait]
 pub trait GetAnchorAccount {
-    async fn anchor_account<T: AccountDeserialize>(&self, pubkey: &Pubkey) -> Result<T, Error>;
+    async fn anchor_account<T: AccountDeserialize>(
+        &self,
+        pubkey: &Pubkey,
+    ) -> Result<Option<T>, Error>;
     async fn anchor_accounts<T: AccountDeserialize + Send>(
         &self,
         pubkeys: &[Pubkey],
@@ -40,10 +43,13 @@ pub trait GetAnchorAccount {
 
 #[async_trait::async_trait]
 impl GetAnchorAccount for SolanaRpcClient {
-    async fn anchor_account<T: AccountDeserialize>(&self, pubkey: &Pubkey) -> Result<T, Error> {
+    async fn anchor_account<T: AccountDeserialize>(
+        &self,
+        pubkey: &Pubkey,
+    ) -> Result<Option<T>, Error> {
         let account = self.get_account(pubkey).await?;
         let decoded = T::try_deserialize(&mut account.data.as_ref())?;
-        Ok(decoded)
+        Ok(Some(decoded))
     }
 
     async fn anchor_accounts<T: AccountDeserialize + Send>(
@@ -84,7 +90,7 @@ impl GetAnchorAccount for Client {
     async fn anchor_account<T: AccountDeserialize>(
         &self,
         pubkey: &keypair::Pubkey,
-    ) -> Result<T, Error> {
+    ) -> Result<Option<T>, Error> {
         self.solana_client.anchor_account(pubkey).await
     }
     async fn anchor_accounts<T: AccountDeserialize + Send>(

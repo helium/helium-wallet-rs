@@ -8,6 +8,7 @@ pub mod dc;
 pub mod entity_key;
 pub mod error;
 pub mod hotspot;
+pub mod iot_routing_manager;
 pub mod keypair;
 pub mod kta;
 pub mod onboarding;

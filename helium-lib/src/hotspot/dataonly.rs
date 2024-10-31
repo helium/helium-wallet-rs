@@ -13,10 +13,10 @@ use crate::{
     programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     },
+    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
     token::Token,
 };
-use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use helium_crypto::{PublicKey, Sign};
 use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use serde::{Deserialize, Serialize};

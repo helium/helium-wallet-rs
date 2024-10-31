@@ -10,6 +10,7 @@ use crate::{
     kta, onboarding,
     priority_fee::{self, compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
         instruction::AccountMeta, instruction::Instruction, signer::Signer,
         transaction::Transaction,
@@ -104,12 +105,12 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
     Ok(hotspot)
 }
 
-pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
-    keypair: &Keypair,
-) -> Result<Transaction, Error> {
+    owner: &Pubkey,
+) -> Result<(Transaction, u64), Error> {
     fn mk_accounts(
         subdao: SubDao,
         kta: &helium_entity_manager::KeyToAssetV0,
@@ -150,7 +151,7 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let kta = kta::for_entity_key(hotspot).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
-    let mut accounts = mk_accounts(update.subdao(), &kta, &asset, &keypair.pubkey());
+    let mut accounts = mk_accounts(update.subdao(), &kta, &asset, owner);
     accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
     let update_ix = Instruction {
@@ -176,16 +177,25 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         update_ix,
     ];
 
-    let recent_blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-        .get_latest_blockhash()
+    let mut txn = Transaction::new_with_payer(ixs, Some(owner));
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let (latest_blockhash, latest_block_height) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
         .await?;
-    let tx = Transaction::new_signed_with_payer(
-        ixs,
-        Some(&keypair.pubkey()),
-        &[keypair],
-        recent_blockhash,
-    );
-    Ok(tx)
+    txn.message.recent_blockhash = latest_blockhash;
+    Ok((txn, latest_block_height))
+}
+
+pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot: &helium_crypto::PublicKey,
+    update: HotspotInfoUpdate,
+    keypair: &Keypair,
+) -> Result<(Transaction, u64), Error> {
+    let (mut txn, latest_block_height) =
+        direct_update_transaction(client, hotspot, update, &keypair.pubkey()).await?;
+    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+    Ok((txn, latest_block_height))
 }
 
 pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -204,7 +214,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         tx.try_partial_sign(&[keypair], tx.message.recent_blockhash)?;
         return Ok(tx);
     };
-    let tx = direct_update(client, hotspot, update, keypair).await?;
+    let (tx, _) = direct_update(client, hotspot, update, keypair).await?;
     Ok(tx)
 }
 

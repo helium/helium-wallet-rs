@@ -1,17 +1,19 @@
-use crate::{client::GetAnchorAccount, error::Error, programs::TOKEN_METADATA_PROGRAM_ID};
 use anchor_lang::{prelude::*, InstructionData};
-use futures::{future::BoxFuture, Stream, StreamExt};
-use itertools::Itertools;
-use solana_sdk::{hash::hash, instruction::Instruction};
+use sha2::{Digest, Sha256};
+use solana_sdk::instruction::Instruction;
 use spl_associated_token_account::get_associated_token_address;
-use std::{ops::Range, result::Result, sync::Arc};
+use std::result::Result;
 
-use helium_anchor_gen::iot_routing_manager::{self, typedefs::*};
+use crate::{helium_entity_manager, programs::TOKEN_METADATA_PROGRAM_ID};
 
-declare_id!("irtjLnjCMmyowq2m3KWqpuFB3M9gdNA9A4t4d6VWmzB");
+pub use helium_anchor_gen::iot_routing_manager::*;
 
 pub fn routing_manager_key(sub_dao: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(&[b"routing_manager", sub_dao.as_ref()], &ID).0
+    Pubkey::find_program_address(
+        &[b"routing_manager", sub_dao.as_ref()],
+        &helium_anchor_gen::iot_routing_manager::ID,
+    )
+    .0
 }
 
 pub fn organization_key(routing_manager: &Pubkey, oui: u64) -> Pubkey {
@@ -21,7 +23,7 @@ pub fn organization_key(routing_manager: &Pubkey, oui: u64) -> Pubkey {
             routing_manager.as_ref(),
             &oui.to_le_bytes(),
         ],
-        &ID,
+        &helium_anchor_gen::iot_routing_manager::ID,
     )
     .0
 }
@@ -33,7 +35,7 @@ pub fn devaddr_constraint_key(organization: &Pubkey, start_addr: u64) -> Pubkey 
             organization.as_ref(),
             &start_addr.to_le_bytes(),
         ],
-        &ID,
+        &helium_anchor_gen::iot_routing_manager::ID,
     )
     .0
 }
@@ -41,7 +43,7 @@ pub fn devaddr_constraint_key(organization: &Pubkey, start_addr: u64) -> Pubkey 
 pub fn net_id_key(routing_manager: &Pubkey, net_id: u32) -> Pubkey {
     Pubkey::find_program_address(
         &[b"net_id", routing_manager.as_ref(), &net_id.to_le_bytes()],
-        &ID,
+        &helium_anchor_gen::iot_routing_manager::ID,
     )
     .0
 }
@@ -53,16 +55,20 @@ pub fn organization_delegate_key(organization: &Pubkey, delegate: &Pubkey) -> Pu
             organization.as_ref(),
             delegate.as_ref(),
         ],
-        &ID,
+        &helium_anchor_gen::iot_routing_manager::ID,
     )
     .0
 }
 
-pub fn routing_manager_collection_key(routing_manager: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(&[b"collection", routing_manager.as_ref()], &ID).0
+pub fn organization_collection_key(routing_manager: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[b"collection", routing_manager.as_ref()],
+        &helium_anchor_gen::iot_routing_manager::ID,
+    )
+    .0
 }
 
-pub fn routing_manager_collection_metadata_key(collection: &Pubkey) -> Pubkey {
+pub fn organization_collection_metadata_key(collection: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[
             b"metadata",
@@ -74,7 +80,7 @@ pub fn routing_manager_collection_metadata_key(collection: &Pubkey) -> Pubkey {
     .0
 }
 
-pub fn routing_manager_collection_master_edition_key(collection: &Pubkey) -> Pubkey {
+pub fn organization_collection_master_edition_key(collection: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[
             b"metadata",
@@ -87,38 +93,92 @@ pub fn routing_manager_collection_master_edition_key(collection: &Pubkey) -> Pub
     .0
 }
 
+pub fn organization_key_to_asset(dao: &Pubkey, oui: u64) -> Pubkey {
+    let seed_str = format!("OUI_{}", oui);
+    let hash = Sha256::digest(seed_str.as_bytes());
+    helium_entity_manager::key_to_asset_key_raw(dao, &hash)
+}
+
 pub mod organization {
     use super::*;
+
     use crate::{
         client::GetAnchorAccount,
         error::Error,
-        programs::{BUBBLEGUM_PROGRAM_ID, SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+        helium_entity_manager, helium_sub_daos, iot_routing_manager, metaplex,
+        programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+        token::Token,
     };
-    use iot_routing_manager::IotRoutingManagerV0;
 
     pub async fn create<C: GetAnchorAccount>(
         client: &C,
         payer: Pubkey,
+        net_id_key: Pubkey,
         authority: Option<Pubkey>,
-        routing_manager_key: Pubkey,
+        recipient: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
-        let routing_manager: IotRoutingManagerV0 = client
-            .anchor_account(&routing_manager_key)
+        let dao_key = helium_sub_daos::dao_key(Token::Hnt.mint());
+        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+
+        let program_approval_key =
+            helium_entity_manager::program_approval_key(&dao_key, &iot_routing_manager::ID);
+
+        client
+            .anchor_account::<helium_entity_manager::ProgramApprovalV0>(&program_approval_key)
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
+        let shared_merkle_key = helium_entity_manager::shared_merkle_key(3);
+        let shared_merkle = client
+            .anchor_account::<helium_entity_manager::SharedMerkleV0>(&shared_merkle_key)
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
+        let routing_manager_key = routing_manager_key(&sub_dao);
+        let routing_manager = client
+            .anchor_account::<IotRoutingManagerV0>(&routing_manager_key)
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
+        client
+            .anchor_account::<NetIdV0>(&net_id_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
         let oui = routing_manager.next_oui_id;
         let organization_key = organization_key(&routing_manager_key, oui);
+        let collection_key = organization_collection_key(&routing_manager_key);
 
         Ok((
             organization_key,
             Instruction {
-                program_id: ID,
+                program_id: iot_routing_manager::ID,
                 accounts: iot_routing_manager::accounts::InitializeOrganizationV0 {
                     payer,
+                    program_approval: program_approval_key,
+                    routing_manager: routing_manager_key,
+                    net_id: net_id_key,
+                    iot_mint: Token::Iot.mint().clone(),
+                    payer_iot_account: get_associated_token_address(&payer, Token::Iot.mint()),
+                    iot_price_oracle: Token::Iot.price_key().unwrap().clone(),
+                    authority: authority.unwrap_or(payer.clone()),
+                    bubblegum_signer: metaplex::bubblegum_signer_key(),
+                    shared_merkle: shared_merkle_key,
+                    helium_entity_manager_program: helium_entity_manager::ID,
+                    dao: dao_key,
+                    sub_dao: routing_manager.sub_dao,
                     organization: organization_key,
-
-                    bubblegum_program: BUBBLEGUM_PROGRAM_ID,
+                    collection: collection_key,
+                    collection_metadata: organization_collection_metadata_key(&collection_key),
+                    collection_master_edition: organization_collection_master_edition_key(
+                        &collection_key,
+                    ),
+                    entity_creator: helium_entity_manager::entity_creator_key(&dao_key),
+                    key_to_asset: organization_key_to_asset(&dao_key, oui),
+                    tree_authority: metaplex::merkle_tree_authority_key(&shared_merkle.merkle_tree),
+                    recipient: recipient.unwrap_or(payer.clone()),
+                    merkle_tree: shared_merkle.merkle_tree,
+                    bubblegum_program: mpl_bubblegum::ID,
                     token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
                     log_wrapper: SPL_NOOP_PROGRAM_ID,
                     compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
@@ -130,10 +190,214 @@ pub mod organization {
             },
         ))
     }
+
+    pub async fn approve<C: GetAnchorAccount>(
+        _client: &C,
+        authority: Pubkey,
+        organizaion_key: Pubkey,
+        net_id_key: Pubkey,
+    ) -> Result<Instruction, Error> {
+        Ok(Instruction {
+            program_id: iot_routing_manager::ID,
+            accounts: iot_routing_manager::accounts::ApproveOrganizationV0 {
+                authority,
+                organization: organizaion_key,
+                net_id: net_id_key,
+                system_program: solana_sdk::system_program::ID,
+            }
+            .to_account_metas(None),
+            data: iot_routing_manager::instruction::ApproveOrganizationV0 {}.data(),
+        })
+    }
+
+    // pub async fn update<C: GetAnchorAccount>(
+    //   client: &C,
+    //   payer: Pubkey,
+    //   organization: Pubkey,
+    // ) -> Result<(Pubkey, Instruction), Error> {}
 }
 
-pub mod orgainization_delegate {}
+pub mod orgainization_delegate {
+    use super::*;
 
-pub mod net_id {}
+    use crate::{client::GetAnchorAccount, error::Error, iot_routing_manager};
 
-pub mod devaddr_constraint {}
+    pub async fn create<C: GetAnchorAccount>(
+        _client: &C,
+        payer: Pubkey,
+        delegate: Pubkey,
+        organization_key: Pubkey,
+        authority: Option<Pubkey>,
+    ) -> Result<(Pubkey, Instruction), Error> {
+        let orgainization_delegate_key = organization_delegate_key(&organization_key, &delegate);
+
+        Ok((
+            orgainization_delegate_key,
+            Instruction {
+                program_id: iot_routing_manager::ID,
+                accounts: iot_routing_manager::accounts::InitializeOrganizationDelegateV0 {
+                    payer,
+                    authority: authority.unwrap_or(payer.clone()),
+                    delegate,
+                    organization: organization_key,
+                    organization_delegate: orgainization_delegate_key,
+                    system_program: solana_sdk::system_program::ID,
+                }
+                .to_account_metas(None),
+                data: iot_routing_manager::instruction::InitializeOrganizationDelegateV0 {}.data(),
+            },
+        ))
+    }
+
+    pub async fn remove<C: GetAnchorAccount>(
+        _client: &C,
+        rent_refund: Pubkey,
+        delegate: Pubkey,
+        organization_key: Pubkey,
+        authority: Option<Pubkey>,
+    ) -> Result<Instruction, Error> {
+        let orgainization_delegate_key = organization_delegate_key(&organization_key, &delegate);
+
+        Ok(Instruction {
+            program_id: iot_routing_manager::ID,
+            accounts: iot_routing_manager::accounts::RemoveOrganizationDelegateV0 {
+                rent_refund,
+                authority: authority.unwrap_or(rent_refund.clone()),
+                organization: organization_key,
+                organization_delegate: orgainization_delegate_key,
+            }
+            .to_account_metas(None),
+            data: iot_routing_manager::instruction::RemoveOrganizationDelegateV0 {}.data(),
+        })
+    }
+}
+
+pub mod net_id {
+    use super::*;
+
+    use crate::{
+        client::GetAnchorAccount, error::Error, helium_sub_daos, iot_routing_manager, token::Token,
+    };
+
+    pub async fn create<C: GetAnchorAccount>(
+        client: &C,
+        payer: Pubkey,
+        net_id: u32,
+        authority: Option<Pubkey>,
+    ) -> Result<(Pubkey, Instruction), Error> {
+        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let routing_manager_key = routing_manager_key(&sub_dao);
+        let routing_manager = client
+            .anchor_account::<IotRoutingManagerV0>(&routing_manager_key)
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
+        let net_id_key = net_id_key(&routing_manager_key, net_id);
+        let net_id_exists = client
+            .anchor_account::<NetIdV0>(&net_id_key)
+            .await?
+            .is_some();
+
+        if net_id_exists {
+            return Err(Error::account_exists());
+        }
+
+        Ok((
+            net_id_key,
+            Instruction {
+                program_id: iot_routing_manager::ID,
+                accounts: iot_routing_manager::accounts::InitializeNetIdV0 {
+                    payer,
+                    routing_manager: routing_manager_key,
+                    net_id_authority: routing_manager.net_id_authority,
+                    authority: authority.unwrap_or(payer.clone()),
+                    net_id: net_id_key,
+                    system_program: solana_sdk::system_program::ID,
+                }
+                .to_account_metas(None),
+                data: iot_routing_manager::instruction::InitializeNetIdV0 {
+                    _args: InitializeNetIdArgsV0 { net_id },
+                }
+                .data(),
+            },
+        ))
+    }
+}
+
+pub mod devaddr_constraint {
+    use super::*;
+
+    use crate::{client::GetAnchorAccount, error::Error, iot_routing_manager, token::Token};
+
+    pub async fn create<C: GetAnchorAccount>(
+        client: &C,
+        payer: Pubkey,
+        args: InitializeDevaddrConstraintArgsV0,
+        organization_key: Pubkey,
+        authority: Option<Pubkey>,
+    ) -> Result<(Pubkey, Instruction), Error> {
+        let organization = client
+            .anchor_account::<iot_routing_manager::OrganizationV0>(&organization_key)
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
+        let net_id = client
+            .anchor_account::<iot_routing_manager::NetIdV0>(&organization.net_id)
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
+        let devaddr_constarint_key = devaddr_constraint_key(
+            &organization_key,
+            args.start_addr.unwrap_or(net_id.current_addr_offset),
+        );
+
+        Ok((
+            devaddr_constarint_key,
+            Instruction {
+                program_id: iot_routing_manager::ID,
+                accounts: iot_routing_manager::accounts::InitializeDevaddrConstraintV0 {
+                    payer,
+                    authority: authority.unwrap_or(payer.clone()),
+                    net_id: organization.net_id,
+                    routing_manager: organization.routing_manager,
+                    organization: organization_key,
+                    iot_mint: Token::Iot.mint().clone(),
+                    payer_iot_account: get_associated_token_address(&payer, Token::Iot.mint()),
+                    iot_price_oracle: Token::Iot.price_key().unwrap().clone(),
+                    devaddr_constraint: devaddr_constarint_key,
+                    token_program: anchor_spl::token::ID,
+                    system_program: solana_sdk::system_program::ID,
+                }
+                .to_account_metas(None),
+                data: iot_routing_manager::instruction::InitializeDevaddrConstraintV0 {
+                    _args: args,
+                }
+                .data(),
+            },
+        ))
+    }
+
+    pub async fn remove<C: GetAnchorAccount>(
+        client: &C,
+        rent_refund: Pubkey,
+        devaddr_constraint_key: Pubkey,
+        authority: Option<Pubkey>,
+    ) -> Result<Instruction, Error> {
+        let devaddr_constraint = client
+            .anchor_account::<iot_routing_manager::DevaddrConstraintV0>(&devaddr_constraint_key)
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
+        Ok(Instruction {
+            program_id: iot_routing_manager::ID,
+            accounts: iot_routing_manager::accounts::RemoveDevaddrConstraintV0 {
+                rent_refund,
+                authority: authority.unwrap_or(rent_refund.clone()),
+                net_id: devaddr_constraint.net_id,
+                devaddr_constraint: devaddr_constraint_key,
+            }
+            .to_account_metas(None),
+            data: iot_routing_manager::instruction::RemoveDevaddrConstraintV0 {}.data(),
+        })
+    }
+}

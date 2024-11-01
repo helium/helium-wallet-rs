@@ -68,7 +68,9 @@ mod iot {
             .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(
                 &Dao::Hnt.dataonly_config_key(),
             )
-            .await?;
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
         let kta = kta::for_entity_key(hotspot_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
         let mut onboard_accounts =
@@ -154,7 +156,9 @@ mod mobile {
             .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(
                 &Dao::Hnt.dataonly_config_key(),
             )
-            .await?;
+            .await?
+            .ok_or_else(|| Error::account_not_found())?;
+
         let kta = kta::for_entity_key(hotspot_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
         let mut onboard_accounts =
@@ -262,7 +266,9 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
 
     let config_account = client
         .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(&Dao::Hnt.dataonly_config_key())
-        .await?;
+        .await?
+        .ok_or_else(|| Error::account_not_found())?;
+
     let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
     let entity_key = hotspot_key.as_entity_key();
     let accounts = mk_accounts(config_account, owner, &entity_key);

@@ -6,11 +6,15 @@ pub mod boosting;
 pub mod dao;
 pub mod dc;
 pub mod entity_key;
+pub mod epoch;
 pub mod error;
+pub mod helium_entity_manager;
+pub mod helium_sub_daos;
 pub mod hotspot;
 pub mod iot_routing_manager;
 pub mod keypair;
 pub mod kta;
+pub mod metaplex;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;
@@ -21,8 +25,7 @@ pub use anchor_client;
 pub use anchor_client::solana_client;
 pub use anchor_spl;
 pub use helium_anchor_gen::{
-    anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
-    hexboosting, lazy_distributor,
+    anchor_lang, circuit_breaker, data_credits, hexboosting, lazy_distributor,
 };
 pub use solana_sdk;
 pub use solana_sdk::bs58;

@@ -1,6 +1,6 @@
 use crate::{
     data_credits, entity_key::AsEntityKey, helium_entity_manager, helium_sub_daos, keypair::Pubkey,
-    lazy_distributor, programs::TOKEN_METADATA_PROGRAM_ID, token::Token,
+    lazy_distributor, metaplex, token::Token,
 };
 use chrono::Timelike;
 use sha2::{Digest, Sha256};
@@ -24,79 +24,40 @@ impl Dao {
         let mint = match self {
             Self::Hnt => Token::Hnt.mint(),
         };
-        let (dao_key, _) =
-            Pubkey::find_program_address(&[b"dao", mint.as_ref()], &helium_sub_daos::id());
-        dao_key
+        helium_sub_daos::dao_key(mint)
     }
 
     pub fn dataonly_config_key(&self) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[b"data_only_config", self.key().as_ref()],
-            &helium_entity_manager::id(),
-        );
-        key
+        helium_entity_manager::data_only_config_key(&self.key())
     }
 
     pub fn dataonly_escrow_key(&self) -> Pubkey {
-        let (data_only_escrow, _doe_bump) = Pubkey::find_program_address(
-            &[b"data_only_escrow", self.dataonly_config_key().as_ref()],
-            &helium_entity_manager::id(),
-        );
-        data_only_escrow
+        helium_entity_manager::data_only_escrow_key(&self.dataonly_config_key())
     }
 
     pub fn collection_metadata_key(&self, collection_key: &Pubkey) -> Pubkey {
-        let (collection_metadata, _bump) = Pubkey::find_program_address(
-            &[
-                b"metadata",
-                TOKEN_METADATA_PROGRAM_ID.as_ref(),
-                collection_key.as_ref(),
-            ],
-            &TOKEN_METADATA_PROGRAM_ID,
-        );
-        collection_metadata
+        metaplex::collection_metadata_key(collection_key)
     }
 
     pub fn collection_master_edition_key(&self, collection_key: &Pubkey) -> Pubkey {
-        let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
-            &[
-                b"metadata",
-                TOKEN_METADATA_PROGRAM_ID.as_ref(),
-                collection_key.as_ref(),
-                b"edition",
-            ],
-            &TOKEN_METADATA_PROGRAM_ID,
-        );
-        collection_master_edition
+        metaplex::collection_master_edition_key(collection_key)
     }
 
     pub fn merkle_tree_authority(&self, merkle_tree: &Pubkey) -> Pubkey {
-        let (tree_authority, _ta_bump) =
-            Pubkey::find_program_address(&[merkle_tree.as_ref()], &mpl_bubblegum::ID);
-        tree_authority
+        metaplex::merkle_tree_authority_key(merkle_tree)
     }
 
     pub fn bubblegum_signer(&self) -> Pubkey {
-        let (bubblegum_signer, _bs_bump) =
-            Pubkey::find_program_address(&[b"collection_cpi"], &mpl_bubblegum::ID);
-        bubblegum_signer
+        metaplex::bubblegum_signer_key()
     }
 
     pub fn entity_creator_key(&self) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[b"entity_creator", self.key().as_ref()],
-            &helium_entity_manager::id(),
-        );
-        key
+        helium_entity_manager::entity_creator_key(&self.key())
     }
 
     pub fn entity_key_to_kta_key<E: AsEntityKey + ?Sized>(&self, entity_key: &E) -> Pubkey {
         let hash = Sha256::digest(entity_key.as_entity_key());
-        let (key, _) = Pubkey::find_program_address(
-            &[b"key_to_asset", self.key().as_ref(), hash.as_ref()],
-            &helium_entity_manager::id(),
-        );
-        key
+        helium_entity_manager::key_to_asset_key_raw(&self.key(), &hash)
     }
 
     pub fn dc_account_payer() -> Pubkey {
@@ -136,9 +97,7 @@ impl SubDao {
 
     pub fn key(&self) -> Pubkey {
         let mint = self.mint();
-        let (subdao_key, _) =
-            Pubkey::find_program_address(&[b"sub_dao", mint.as_ref()], &helium_sub_daos::id());
-        subdao_key
+        helium_sub_daos::sub_dao_key(mint)
     }
 
     pub fn mint(&self) -> &Pubkey {
@@ -181,29 +140,23 @@ impl SubDao {
     }
 
     pub fn rewardable_entity_config_key(&self) -> Pubkey {
-        let suffix = match self {
-            Self::Iot => b"IOT".as_ref(),
-            Self::Mobile => b"MOBILE".as_ref(),
-        };
-        let (key, _) = Pubkey::find_program_address(
-            &[b"rewardable_entity_config", self.key().as_ref(), suffix],
-            &helium_entity_manager::id(),
-        );
-        key
+        let sub_dao = self.key();
+        match self {
+            Self::Iot => helium_entity_manager::rewardable_entity_config_key(&sub_dao, "IOT"),
+            Self::Mobile => helium_entity_manager::rewardable_entity_config_key(&sub_dao, "MOBILE"),
+        }
     }
 
     pub fn info_key<E: AsEntityKey>(&self, entity_key: &E) -> Pubkey {
-        let hash = Sha256::digest(entity_key.as_entity_key());
         let config_key = self.rewardable_entity_config_key();
-        let prefix = match self {
-            Self::Iot => "iot_info",
-            Self::Mobile => "mobile_info",
-        };
-        let (key, _) = Pubkey::find_program_address(
-            &[prefix.as_bytes(), config_key.as_ref(), &hash],
-            &helium_entity_manager::id(),
-        );
-        key
+        match self {
+            Self::Iot => {
+                helium_entity_manager::iot_info_key(&config_key, &entity_key.as_entity_key())
+            }
+            Self::Mobile => {
+                helium_entity_manager::mobile_info_key(&config_key, &entity_key.as_entity_key())
+            }
+        }
     }
 
     pub fn lazy_distributor_key(&self) -> Pubkey {

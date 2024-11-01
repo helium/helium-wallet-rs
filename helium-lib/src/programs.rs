@@ -1,7 +1,5 @@
 use crate::keypair::{pubkey, Pubkey};
 
-pub const BUBBLEGUM_PROGRAM_ID: Pubkey = pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY");
-
 pub const TOKEN_METADATA_PROGRAM_ID: Pubkey =
     pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 

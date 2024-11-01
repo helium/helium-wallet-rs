@@ -37,7 +37,8 @@ pub async fn lazy_distributor<C: GetAnchorAccount>(
 ) -> Result<lazy_distributor::LazyDistributorV0, Error> {
     client
         .anchor_account::<lazy_distributor::LazyDistributorV0>(&subdao.lazy_distributor())
-        .await
+        .await?
+        .ok_or_else(|| Error::account_not_found())
 }
 
 pub fn lazy_distributor_circuit_breaker(
@@ -327,7 +328,7 @@ pub mod recipient {
         kta: &helium_entity_manager::KeyToAssetV0,
     ) -> Result<Option<lazy_distributor::RecipientV0>, Error> {
         let recipient_key = subdao.receipient_key_from_kta(kta);
-        Ok(client.anchor_account(&recipient_key).await.ok())
+        Ok(client.anchor_account(&recipient_key).await?)
     }
 
     pub async fn init<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(

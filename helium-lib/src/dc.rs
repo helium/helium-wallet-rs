@@ -64,6 +64,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
         .as_ref()
         .anchor_account::<data_credits::DataCreditsV0>(&Dao::dc_key())
         .await?
+        .ok_or_else(|| Error::account_not_found())?
         .hnt_price_oracle;
 
     let mint_ix = Instruction {

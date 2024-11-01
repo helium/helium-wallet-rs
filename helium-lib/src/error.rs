@@ -13,6 +13,8 @@ pub enum Error {
     Anchor(#[from] anchor_client::ClientError),
     #[error("anchor lang: {0}")]
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
+    #[error("Account already exists")]
+    AccountExists,
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
     #[error("grpc: {0}")]
@@ -48,6 +50,10 @@ impl From<solana_client::client_error::ClientError> for Error {
 impl Error {
     pub fn account_not_found() -> Self {
         anchor_client::ClientError::AccountNotFound.into()
+    }
+
+    pub fn account_exists() -> Self {
+        Self::AccountExists.into()
     }
 
     pub fn is_account_not_found(&self) -> bool {

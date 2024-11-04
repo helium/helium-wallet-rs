@@ -36,6 +36,10 @@ pub struct Basic {
     #[arg(long)]
     /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
     seed: bool,
+
+    #[arg(long)]
+    /// Use solana byte array or b58 encoded private key
+    key: bool,
 }
 
 #[derive(Debug, clap::Args)]
@@ -60,6 +64,10 @@ pub struct Sharded {
     #[arg(long)]
     /// Use a BIP39 or mobile app seed phrase to generate the wallet keys
     seed: bool,
+
+    #[arg(long)]
+    /// Use solana byte array or b58 encoded private key
+    key: bool,
 }
 
 #[derive(Debug, clap::Args)]
@@ -83,20 +91,31 @@ impl CreateCommand {
     }
 }
 
+fn get_entropy(seed: bool, key: bool) -> Result<Option<Vec<u8>>> {
+    let key = if key {
+        Some(get_secret_entropy()?)
+    } else {
+        None
+    };
+    let seed = if key.is_none() && seed {
+        Some(get_seed_entropy()?)
+    } else {
+        None
+    };
+
+    Ok(key.or(seed))
+}
+
 impl Basic {
     pub async fn run(&self, _opts: Opts) -> Result {
-        let seed_words = if self.seed {
-            Some(get_seed_words()?)
-        } else {
-            None
-        };
+        let entropy = get_entropy(self.seed, self.key)?;
         let password = get_wallet_password(true)?;
 
         let wallet = Wallet::builder()
             .output(&self.output)
             .password(&password)
             .force(self.force)
-            .seed_phrase(seed_words)
+            .entropy(entropy)
             .create()?;
 
         info::print_wallet(&wallet)
@@ -105,7 +124,7 @@ impl Basic {
 
 impl Sharded {
     pub async fn run(&self, _opts: Opts) -> Result {
-        let seed_words = self.seed.then_some(get_seed_words()?);
+        let entropy = get_entropy(self.seed, self.key)?;
         let password = get_wallet_password(true)?;
 
         let shard_config = ShardConfig {
@@ -118,7 +137,7 @@ impl Sharded {
             .password(&password)
             .force(self.force)
             .shard(Some(shard_config))
-            .seed_phrase(seed_words)
+            .entropy(entropy)
             .create()?;
 
         info::print_wallet(&wallet)
@@ -154,22 +173,43 @@ impl Keypair {
     }
 }
 
-fn get_seed_words() -> Result<Vec<String>> {
+fn get_seed_entropy() -> Result<Vec<u8>> {
+    fn secret_from_phrase(s: &str) -> Result<Vec<u8>> {
+        let entropy = helium_mnemonic::mnemonic_to_entropy(phrase_to_words(s))?.to_vec();
+        Ok(entropy)
+    }
+
     match env::var("HELIUM_WALLET_SEED_WORDS") {
-        Ok(word_string) => Ok(phrase_to_words(&word_string)),
+        Ok(word_string) => secret_from_phrase(&word_string),
         _ => {
             use dialoguer::Input;
             let word_string = Input::<String>::new()
                 .with_prompt("Space separated seed words")
-                .validate_with(|v: &String| {
-                    let word_list = phrase_to_words(v);
-                    match helium_mnemonic::mnemonic_to_entropy(word_list) {
-                        Ok(_) => Ok(()),
-                        Err(err) => Err(err),
-                    }
-                })
+                .validate_with(|v: &String| secret_from_phrase(v.as_str()).map(|_| ()))
                 .interact()?;
-            Ok(phrase_to_words(&word_string))
+            secret_from_phrase(&word_string)
+        }
+    }
+}
+
+fn get_secret_entropy() -> Result<Vec<u8>> {
+    fn secret_from_str(s: &str) -> Result<Vec<u8>> {
+        if s.starts_with('[') {
+            serde_json::from_str::<Vec<u8>>(s).map_err(Error::from)
+        } else {
+            bs58::decode(s).into_vec().map_err(Error::from)
+        }
+    }
+
+    match env::var("HELIUM_WALLET_SECRET") {
+        Ok(secret) => secret_from_str(&secret),
+        _ => {
+            use dialoguer::Input;
+            let secret_string = Input::<String>::new()
+                .with_prompt("Solana secret")
+                .validate_with(|v: &String| secret_from_str(v.as_str()).map(|_| ()))
+                .interact()?;
+            secret_from_str(&secret_string)
         }
     }
 }

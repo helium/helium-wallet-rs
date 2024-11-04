@@ -297,8 +297,8 @@ pub struct Builder {
     /// Overwrite an existing file
     force: bool,
 
-    /// The seed phrase used to create this wallet
-    seed_phrase: Option<Vec<String>>,
+    /// The entropy used to create this wallet
+    entropy: Option<Vec<u8>>,
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
@@ -312,7 +312,7 @@ impl Builder {
             password: Default::default(),
             pwhash: PwHash::argon2id13_default(),
             force: false,
-            seed_phrase: None,
+            entropy: None,
             shard: None,
         }
     }
@@ -345,10 +345,10 @@ impl Builder {
         self
     }
 
-    /// The seed words used to create this wallet
+    /// The entropy used to create this wallet
     /// Defaults to None
-    pub fn seed_phrase(mut self, seed_phrase: Option<Vec<String>>) -> Builder {
-        self.seed_phrase = seed_phrase;
+    pub fn entropy(mut self, entropy: Option<Vec<u8>>) -> Builder {
+        self.entropy = entropy;
         self
     }
 
@@ -361,7 +361,7 @@ impl Builder {
 
     /// Creates a new wallet
     pub fn create(self) -> Result<Wallet> {
-        let keypair = gen_keypair(self.seed_phrase)?;
+        let keypair = gen_keypair(self.entropy)?;
 
         let wallet = if let Some(shard_config) = &self.shard {
             let format = format::Sharded {
@@ -408,11 +408,11 @@ impl Default for Builder {
     }
 }
 
-fn gen_keypair(seed_words: Option<Vec<String>>) -> Result<Arc<Keypair>> {
+fn gen_keypair(entropy: Option<Vec<u8>>) -> Result<Arc<Keypair>> {
     // Callers of this function should either have Some of both or None of both.
     // Anything else is an error.
-    match seed_words {
-        Some(words) => Ok(Keypair::from_words(words)?),
+    match entropy {
+        Some(entropy) => Ok(Keypair::generate_from_entropy(&entropy)?.into()),
         None => Ok(Keypair::generate().into()),
     }
 }
@@ -460,12 +460,15 @@ mod tests {
             "drill toddler tongue laundry access silly few faint glove birth crumble add",
         );
 
-        let from_keypair = gen_keypair(Some(seed_words.clone())).expect("to generate a keypair");
+        let from_keypair = Keypair::from_words(seed_words.clone()).expect("to generate a keypair");
+        let entropy = helium_mnemonic::mnemonic_to_entropy(seed_words)
+            .expect("entropy from mnemonic")
+            .to_vec();
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(&path)
-            .seed_phrase(Some(seed_words.clone()))
+            .entropy(Some(entropy))
             .create()
             .expect("wallet to be created");
 
@@ -492,12 +495,15 @@ mod tests {
 
         let seed_words = phrase_to_words(
             "moment case dirt ski tool dynamic sort ugly pluck drop kiwi knee jar easy verb canal nuclear survey before dwarf prosper cave pottery target");
-        let from_keypair = gen_keypair(Some(seed_words.clone())).expect("to generate a keypair");
+        let from_keypair = Keypair::from_words(seed_words.clone()).expect("to generate a keypair");
+        let entropy = helium_mnemonic::mnemonic_to_entropy(seed_words)
+            .expect("entropy from mnemonic")
+            .to_vec();
 
         let wallet = Wallet::builder()
             .password(&password)
             .output(path)
-            .seed_phrase(Some(seed_words.clone()))
+            .entropy(Some(entropy))
             .shard(Some(shard_config))
             .create()
             .expect("wallet to be created");

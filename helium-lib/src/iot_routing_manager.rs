@@ -103,14 +103,14 @@ pub mod organization {
     use super::*;
 
     use crate::{
-        client::GetAnchorAccount,
+        client::{GetAnchorAccount, SolanaRpcClient},
         error::Error,
         helium_entity_manager, helium_sub_daos, iot_routing_manager, metaplex,
         programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
         token::Token,
     };
 
-    pub async fn create<C: GetAnchorAccount>(
+    pub async fn create<C: AsRef<SolanaRpcClient>>(
         client: &C,
         payer: Pubkey,
         net_id_key: Pubkey,
@@ -124,23 +124,27 @@ pub mod organization {
             helium_entity_manager::program_approval_key(&dao_key, &iot_routing_manager::ID);
 
         client
+            .as_ref()
             .anchor_account::<helium_entity_manager::ProgramApprovalV0>(&program_approval_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
         let shared_merkle_key = helium_entity_manager::shared_merkle_key(3);
         let shared_merkle = client
+            .as_ref()
             .anchor_account::<helium_entity_manager::SharedMerkleV0>(&shared_merkle_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
         let routing_manager_key = routing_manager_key(&sub_dao);
         let routing_manager = client
+            .as_ref()
             .anchor_account::<IotRoutingManagerV0>(&routing_manager_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
         client
+            .as_ref()
             .anchor_account::<NetIdV0>(&net_id_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
@@ -191,7 +195,7 @@ pub mod organization {
         ))
     }
 
-    pub async fn approve<C: GetAnchorAccount>(
+    pub async fn approve<C: AsRef<SolanaRpcClient>>(
         _client: &C,
         authority: Pubkey,
         organizaion_key: Pubkey,
@@ -210,7 +214,7 @@ pub mod organization {
         })
     }
 
-    pub async fn update<C: GetAnchorAccount>(
+    pub async fn update<C: AsRef<SolanaRpcClient>>(
         _client: &C,
         authority: Pubkey,
         organization_key: Pubkey,
@@ -231,9 +235,9 @@ pub mod organization {
 pub mod orgainization_delegate {
     use super::*;
 
-    use crate::{client::GetAnchorAccount, error::Error, iot_routing_manager};
+    use crate::{client::SolanaRpcClient, error::Error, iot_routing_manager};
 
-    pub async fn create<C: GetAnchorAccount>(
+    pub async fn create<C: AsRef<SolanaRpcClient>>(
         _client: &C,
         payer: Pubkey,
         delegate: Pubkey,
@@ -260,7 +264,7 @@ pub mod orgainization_delegate {
         ))
     }
 
-    pub async fn remove<C: GetAnchorAccount>(
+    pub async fn remove<C: AsRef<SolanaRpcClient>>(
         _client: &C,
         rent_refund: Pubkey,
         delegate: Pubkey,
@@ -287,10 +291,13 @@ pub mod net_id {
     use super::*;
 
     use crate::{
-        client::GetAnchorAccount, error::Error, helium_sub_daos, iot_routing_manager, token::Token,
+        client::{GetAnchorAccount, SolanaRpcClient},
+        error::Error,
+        helium_sub_daos, iot_routing_manager,
+        token::Token,
     };
 
-    pub async fn create<C: GetAnchorAccount>(
+    pub async fn create<C: AsRef<SolanaRpcClient>>(
         client: &C,
         payer: Pubkey,
         args: InitializeNetIdArgsV0,
@@ -299,12 +306,14 @@ pub mod net_id {
         let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
         let routing_manager_key = routing_manager_key(&sub_dao);
         let routing_manager = client
+            .as_ref()
             .anchor_account::<IotRoutingManagerV0>(&routing_manager_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
         let net_id_key = net_id_key(&routing_manager_key, args.net_id);
         let net_id_exists = client
+            .as_ref()
             .anchor_account::<NetIdV0>(&net_id_key)
             .await?
             .is_some();
@@ -335,9 +344,14 @@ pub mod net_id {
 pub mod devaddr_constraint {
     use super::*;
 
-    use crate::{client::GetAnchorAccount, error::Error, iot_routing_manager, token::Token};
+    use crate::{
+        client::{GetAnchorAccount, SolanaRpcClient},
+        error::Error,
+        iot_routing_manager,
+        token::Token,
+    };
 
-    pub async fn create<C: GetAnchorAccount>(
+    pub async fn create<C: AsRef<SolanaRpcClient>>(
         client: &C,
         payer: Pubkey,
         args: InitializeDevaddrConstraintArgsV0,
@@ -345,11 +359,13 @@ pub mod devaddr_constraint {
         authority: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
         let organization = client
+            .as_ref()
             .anchor_account::<iot_routing_manager::OrganizationV0>(&organization_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
         let net_id = client
+            .as_ref()
             .anchor_account::<iot_routing_manager::NetIdV0>(&organization.net_id)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
@@ -385,13 +401,14 @@ pub mod devaddr_constraint {
         ))
     }
 
-    pub async fn remove<C: GetAnchorAccount>(
+    pub async fn remove<C: AsRef<SolanaRpcClient>>(
         client: &C,
         rent_refund: Pubkey,
         devaddr_constraint_key: Pubkey,
         authority: Option<Pubkey>,
     ) -> Result<Instruction, Error> {
         let devaddr_constraint = client
+            .as_ref()
             .anchor_account::<iot_routing_manager::DevaddrConstraintV0>(&devaddr_constraint_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;

@@ -2,7 +2,6 @@ use crate::{
     data_credits, entity_key::AsEntityKey, helium_entity_manager, helium_sub_daos, keypair::Pubkey,
     lazy_distributor, metaplex, token::Token,
 };
-use chrono::Timelike;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -180,29 +179,16 @@ impl SubDao {
     }
 
     pub fn config_key(&self) -> Pubkey {
-        let prefix = match self {
-            Self::Iot => "iot_config",
-            Self::Mobile => "mobile_config",
-        };
-        let (key, _) = Pubkey::find_program_address(
-            &[prefix.as_bytes(), self.key().as_ref()],
-            &helium_entity_manager::id(),
-        );
-        key
+        let sub_dao = self.key();
+        match self {
+            Self::Iot => helium_entity_manager::iot_config_key(&sub_dao),
+            Self::Mobile => helium_entity_manager::mobile_config_key(&sub_dao),
+        }
     }
 
     pub fn epoch_info_key(&self) -> Pubkey {
-        const EPOCH_LENGTH: u32 = 60 * 60 * 24;
-        let epoch = chrono::Utc::now().second() / EPOCH_LENGTH;
-
-        let (key, _) = Pubkey::find_program_address(
-            &[
-                "sub_dao_epoch_info".as_bytes(),
-                self.key().as_ref(),
-                &epoch.to_le_bytes(),
-            ],
-            &helium_sub_daos::ID,
-        );
-        key
+        let sub_dao = self.key();
+        let unix_time = chrono::Utc::now().timestamp() as u64;
+        helium_sub_daos::sub_dao_epoch_info_key(&sub_dao, unix_time)
     }
 }

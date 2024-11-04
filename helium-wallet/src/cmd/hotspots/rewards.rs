@@ -1,5 +1,5 @@
 use crate::cmd::*;
-use helium_lib::{dao::SubDao, entity_key::KeySerialization, reward};
+use helium_lib::{dao::SubDao, entity_key::KeySerialization, hotspot, keypair::Pubkey, reward};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -35,13 +35,24 @@ pub struct PendingCmd {
     subdao: SubDao,
 
     /// Hotspot public keys to look up
-    hotspots: Vec<helium_crypto::PublicKey>,
+    wallet: Option<Pubkey>,
 }
 
 impl PendingCmd {
     pub async fn run(&self, opts: Opts) -> Result {
+        let owner = if let Some(walet) = self.wallet {
+            walet
+        } else {
+            let wallet = opts.load_wallet()?;
+            wallet.public_key
+        };
         let client = opts.client()?;
-        let entity_key_strings = hotspots_to_entity_key_strings(&self.hotspots);
+        let hotspots: Vec<helium_crypto::PublicKey> = hotspot::for_owner(&client, &owner)
+            .await?
+            .into_iter()
+            .map(|hotspot| hotspot.key)
+            .collect();
+        let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
         let pending = reward::pending(
             &client,
             &self.subdao,

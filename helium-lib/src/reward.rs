@@ -19,7 +19,7 @@ use futures::{
     stream::{self, StreamExt, TryStreamExt},
     TryFutureExt,
 };
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;
 use std::collections::HashMap;
@@ -307,34 +307,37 @@ pub async fn pending<C: GetAnchorAccount>(
     }
 
     let bulk_rewards = bulk(client, subdao, entity_key_strings).await?;
-    let entity_key_rewards = stream::iter(entity_key_strings)
-        .map(Ok::<&String, Error>)
-        .and_then(|entity_key_string| async {
-            let entity_key = entity_key::from_str(&entity_key_string.clone(), entity_key_encoding)?;
-            let kta = kta::for_entity_key(&entity_key).await?;
-            recipient::for_kta(client, subdao, &kta)
-                .and_then(|maybe_recipient| async move {
-                    maybe_recipient.ok_or_else(Error::account_not_found)
-                })
-                .map_ok(|recipient| {
-                    for_entity_key(&bulk_rewards, entity_key_string).map(|mut oracle_reward| {
-                        oracle_reward.reward.amount = oracle_reward
-                            .reward
-                            .amount
-                            .saturating_sub(recipient.total_rewards);
-                        (entity_key_string.clone(), oracle_reward)
-                    })
-                })
-                .await
+    // collect entity keys to request all ktas at once
+    let entity_keys: Vec<Vec<u8>> = entity_key_strings
+        .iter()
+        .map(|entity_key_string| entity_key::from_str(entity_key_string, entity_key_encoding))
+        .try_collect()?;
+    let ktas = kta::for_entity_keys(&entity_keys).await?;
+    // Collect rewarded entities
+    let (rewarded_entity_key_strings, rewarded_ktas, rewards): (
+        Vec<String>,
+        Vec<helium_entity_manager::KeyToAssetV0>,
+        Vec<OracleReward>,
+    ) = izip!(entity_key_strings, ktas)
+        .map(|(entity_key_string, kta)| {
+            for_entity_key(&bulk_rewards, entity_key_string)
+                .map(|reward| (entity_key_string.to_owned(), kta, reward))
         })
-        // TODO: used buffered after collecting a vec of futures above.
-        // The problem has been the various error responses in the and_then block above
-        .try_collect::<Vec<Option<(String, OracleReward)>>>()
-        .await?
-        .into_iter()
         .flatten()
+        .collect::<Vec<(String, helium_entity_manager::KeyToAssetV0, OracleReward)>>()
+        .into_iter()
+        .multiunzip();
+    // Get all recipients for rewarded assets
+    let recipients = recipient::for_ktas(client, subdao, &rewarded_ktas).await?;
+    // And adjust the oracle reward by the already claimed rewards in the recipient if available
+    let entity_key_rewards = izip!(rewarded_entity_key_strings, rewards, recipients)
+        .map(|(entity_key_string, mut reward, maybe_recipient)| {
+            if let Some(recipient) = maybe_recipient {
+                reward.reward.amount = reward.reward.amount.saturating_sub(recipient.total_rewards);
+            }
+            (entity_key_string, reward)
+        })
         .collect();
-
     Ok(entity_key_rewards)
 }
 
@@ -442,6 +445,18 @@ pub mod recipient {
     ) -> Result<Option<lazy_distributor::RecipientV0>, Error> {
         let recipient_key = subdao.receipient_key_from_kta(kta);
         Ok(client.anchor_account(&recipient_key).await.ok())
+    }
+
+    pub async fn for_ktas<C: GetAnchorAccount>(
+        client: &C,
+        subdao: &SubDao,
+        ktas: &[helium_entity_manager::KeyToAssetV0],
+    ) -> Result<Vec<Option<lazy_distributor::RecipientV0>>, Error> {
+        let recipient_keys: Vec<Pubkey> = ktas
+            .iter()
+            .map(|kta| subdao.receipient_key_from_kta(kta))
+            .collect();
+        client.anchor_accounts(&recipient_keys).await
     }
 
     pub async fn init_instruction<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(

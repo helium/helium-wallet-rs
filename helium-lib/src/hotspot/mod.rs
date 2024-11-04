@@ -19,11 +19,8 @@ use crate::{
 };
 use angry_purple_tiger::AnimalName;
 use chrono::Utc;
-use futures::{
-    stream::{self, StreamExt, TryStreamExt},
-    TryFutureExt,
-};
-use itertools::Itertools;
+use futures::TryFutureExt;
+use itertools::{izip, Itertools};
 use rust_decimal::prelude::*;
 use serde::Serialize;
 use std::{collections::HashMap, hash::Hash, str::FromStr};
@@ -50,14 +47,20 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     owner: &Pubkey,
 ) -> Result<Vec<Hotspot>, Error> {
     let assets = asset::for_owner(client, &HOTSPOT_CREATOR, owner).await?;
-    let hotspot_assets = assets
+    // Get all kta keys for the hotspots in the assets for the given owner
+    let (kta_keys, hotspot_assets): (Vec<Pubkey>, Vec<asset::Asset>) = assets
         .into_iter()
-        .filter(|asset| asset.is_symbol("HOTSPOT"));
-    stream::iter(hotspot_assets)
-        .map(|asset| async move { Hotspot::from_asset(asset).await })
-        .buffered(5)
-        .try_collect::<Vec<Hotspot>>()
-        .await
+        .filter(|asset| asset.is_symbol("HOTSPOT"))
+        .map(|asset| asset.kta_key().map(|kta_key| (kta_key, asset)))
+        .collect::<Result<Vec<(Pubkey, asset::Asset)>, Error>>()?
+        .into_iter()
+        .unzip();
+    // Get all ktas in one go
+    let ktas = kta::get_many(&kta_keys).await?;
+    // Then construct Hotspots from assets and ktas
+    izip!(ktas, hotspot_assets)
+        .map(|(kta, asset)| Hotspot::from_asset_with_kta(kta, asset))
+        .try_collect()
 }
 
 pub async fn search<C: AsRef<DasClient>>(

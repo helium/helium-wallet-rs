@@ -118,13 +118,20 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     owner: &Pubkey,
 ) -> Result<Vec<Asset>, Error> {
     let mut params = DasSearchAssetsParams::for_owner(*owner, *creator);
+    // Set to maximum documented limit
+    params.limit = 1000;
     let mut results = vec![];
     loop {
-        let page = search(client, params.clone()).await.map_err(Error::from)?;
-        if page.items.is_empty() {
+        let page = client
+            .as_ref()
+            .search_assets(params.clone())
+            .await
+            .map_err(Error::from)?;
+        let fetch_count = page.items.len();
+        results.extend(page.items);
+        if fetch_count < params.limit as usize {
             break;
         }
-        results.extend(page.items);
         params.page += 1;
     }
 

@@ -210,11 +210,22 @@ pub mod organization {
         })
     }
 
-    // pub async fn update<C: GetAnchorAccount>(
-    //   client: &C,
-    //   payer: Pubkey,
-    //   organization: Pubkey,
-    // ) -> Result<(Pubkey, Instruction), Error> {}
+    pub async fn update<C: GetAnchorAccount>(
+        _client: &C,
+        authority: Pubkey,
+        organization_key: Pubkey,
+        args: UpdateOrganizationArgsV0,
+    ) -> Result<Instruction, Error> {
+        Ok(Instruction {
+            program_id: iot_routing_manager::ID,
+            accounts: iot_routing_manager::accounts::UpdateOrganizationV0 {
+                authority,
+                organization: organization_key,
+            }
+            .to_account_metas(None),
+            data: iot_routing_manager::instruction::UpdateOrganizationV0 { _args: args }.data(),
+        })
+    }
 }
 
 pub mod orgainization_delegate {
@@ -282,7 +293,7 @@ pub mod net_id {
     pub async fn create<C: GetAnchorAccount>(
         client: &C,
         payer: Pubkey,
-        net_id: u32,
+        args: InitializeNetIdArgsV0,
         authority: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
         let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
@@ -292,7 +303,7 @@ pub mod net_id {
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
-        let net_id_key = net_id_key(&routing_manager_key, net_id);
+        let net_id_key = net_id_key(&routing_manager_key, args.net_id);
         let net_id_exists = client
             .anchor_account::<NetIdV0>(&net_id_key)
             .await?
@@ -315,10 +326,7 @@ pub mod net_id {
                     system_program: solana_sdk::system_program::ID,
                 }
                 .to_account_metas(None),
-                data: iot_routing_manager::instruction::InitializeNetIdV0 {
-                    _args: InitializeNetIdArgsV0 { net_id },
-                }
-                .data(),
+                data: iot_routing_manager::instruction::InitializeNetIdV0 { _args: args }.data(),
             },
         ))
     }

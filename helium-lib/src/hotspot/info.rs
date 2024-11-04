@@ -6,7 +6,7 @@ use crate::{
     client::{GetAnchorAccount, SolanaRpcClient},
     dao::SubDao,
     entity_key::AsEntityKey,
-    error::Error,
+    error::{DecodeError, Error},
     helium_entity_manager::{
         self,
         instruction::{

@@ -1,3 +1,12 @@
+use futures::{
+    stream::{self, StreamExt, TryStreamExt},
+    TryFutureExt,
+};
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use solana_sdk::signer::Signer;
+use std::collections::HashMap;
+
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     asset, circuit_breaker,
@@ -9,19 +18,11 @@ use crate::{
     keypair::{Keypair, Pubkey},
     kta,
     lazy_distributor::{self, OracleConfigV0},
-    priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     solana_sdk::{instruction::Instruction, transaction::Transaction},
+    solana_transaction_utils::priority_fee,
     token::TokenAmount,
 };
-use futures::{
-    stream::{self, StreamExt, TryStreamExt},
-    TryFutureExt,
-};
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use solana_sdk::signer::Signer;
-use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct OracleReward {

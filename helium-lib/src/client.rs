@@ -1,16 +1,33 @@
+use futures::{stream, StreamExt, TryStreamExt};
+use itertools::Itertools;
+use jsonrpc_client::{JsonRpcError, SendRequest};
+use solana_sdk::{
+    commitment_config::CommitmentConfig,
+    instruction::Instruction,
+    message::Message,
+    signature::{Keypair, Signer},
+};
+use std::{marker::Send, sync::Arc};
+use tracing::instrument;
+
 use crate::{
     anchor_lang::AccountDeserialize,
     asset,
     error::{DecodeError, Error},
     is_zero,
     keypair::{self, Pubkey},
-    solana_client,
+    solana_client::{
+        self,
+        nonblocking::tpu_client::TpuClient,
+        send_and_confirm_transactions_in_parallel::{
+            send_and_confirm_transactions_in_parallel, SendAndConfirmConfig,
+        },
+        tpu_client::TpuClientConfig,
+    },
+    solana_transaction_utils::{
+        pack::pack_instructions_into_transactions, priority_fee::auto_compute_limit_and_price,
+    },
 };
-use futures::{stream, StreamExt, TryStreamExt};
-use itertools::Itertools;
-use jsonrpc_client::{JsonRpcError, SendRequest};
-use std::{marker::Send, sync::Arc};
-use tracing::instrument;
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
@@ -98,6 +115,110 @@ impl GetAnchorAccount for Client {
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<T>>, Error> {
         self.solana_client.anchor_accounts(pubkeys).await
+    }
+}
+
+#[async_trait::async_trait]
+pub trait SolanaRpcClientExt {
+    async fn send_instructions(
+        &self,
+        ixs: Vec<Instruction>,
+        wallet: Keypair,
+        extra_signers: &[Keypair],
+        sequentially: bool,
+    ) -> Result<(), Error>;
+
+    fn ws_url(&self) -> String;
+}
+
+#[async_trait::async_trait]
+impl SolanaRpcClientExt for Client {
+    fn ws_url(&self) -> String {
+        self.solana_client
+            .url()
+            .replace("https", "wss")
+            .replace("http", "ws")
+            .replace("127.0.0.1:8899", "127.0.0.1:8900")
+    }
+
+    async fn send_instructions(
+        &self,
+        ixs: Vec<Instruction>,
+        wallet: Keypair,
+        extra_signers: &[Keypair],
+        sequentially: bool,
+    ) -> Result<(), Error> {
+        let (blockhash, _) = self
+            .solana_client
+            .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
+            .await
+            .expect("Failed to get latest blockhash");
+
+        let txs = pack_instructions_into_transactions(vec![ixs], &wallet);
+        let mut with_auto_compute: Vec<Message> = Vec::new();
+        let keys: Vec<&dyn Signer> = std::iter::once(&wallet as &dyn Signer)
+            .chain(extra_signers.iter().map(|k| k as &dyn Signer))
+            .collect();
+
+        for (tx, _) in &txs {
+            // This is just a tx with compute ixs. Skip it
+            if tx.len() == 2 {
+                continue;
+            }
+
+            let computed = auto_compute_limit_and_price(
+                &self.solana_client,
+                tx.clone(),
+                &keys,
+                1.2,
+                Some(&wallet.pubkey()),
+                Some(blockhash),
+            )
+            .await
+            .unwrap();
+
+            with_auto_compute.push(Message::new(&computed, Some(&wallet.pubkey())));
+        }
+
+        if with_auto_compute.is_empty() {
+            return Ok(());
+        }
+
+        let results;
+        let tpu_client = TpuClient::new(
+            "helium-lib",
+            self.solana_client.clone(),
+            &self.ws_url(),
+            TpuClientConfig::default(),
+        )
+        .await?;
+
+        match sequentially {
+            true => {
+                results = tpu_client
+                    .send_and_confirm_messages_with_spinner(&with_auto_compute, &keys)
+                    .await?;
+            }
+            false => {
+                results = send_and_confirm_transactions_in_parallel(
+                    self.solana_client,
+                    Some(tpu_client),
+                    &with_auto_compute,
+                    &keys,
+                    SendAndConfirmConfig {
+                        with_spinner: true,
+                        resign_txs_count: Some(5),
+                    },
+                )
+                .await?;
+            }
+        }
+
+        if let Some(err) = results.into_iter().flatten().next() {
+            return Err(Error::from(err));
+        }
+
+        Ok(())
     }
 }
 

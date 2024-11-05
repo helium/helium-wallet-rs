@@ -47,6 +47,8 @@ angry-purple-tiger = "0"
 sha2 = {workspace = true}
 clap = {workspace = true, optional = true}
 helium-mnemonic = { path = "../helium-mnemonic", optional = true }
+tokio = {workspace = true}
+dirs = "5.0.1"
 
 [dev-dependencies]
 rand = "0.8"

@@ -1,21 +1,3 @@
-use crate::{
-    anchor_lang::{InstructionData, ToAccountMetas},
-    anchor_spl, asset, bs58,
-    client::{DasClient, DasSearchAssetsParams, GetAnchorAccount, SolanaRpcClient},
-    dao::{Dao, SubDao},
-    data_credits,
-    error::{DecodeError, EncodeError, Error},
-    helium_entity_manager, is_zero,
-    keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
-    kta, onboarding,
-    priority_fee::{self, compute_budget_instruction, compute_price_instruction_for_accounts},
-    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
-    solana_sdk::{
-        instruction::AccountMeta, instruction::Instruction, signer::Signer,
-        transaction::Transaction,
-    },
-    token::Token,
-};
 use angry_purple_tiger::AnimalName;
 use chrono::Utc;
 use futures::{
@@ -26,6 +8,27 @@ use itertools::Itertools;
 use rust_decimal::prelude::*;
 use serde::Serialize;
 use std::{collections::HashMap, hash::Hash, str::FromStr};
+
+use crate::{
+    anchor_lang::{InstructionData, ToAccountMetas},
+    anchor_spl, asset, bs58,
+    client::{DasClient, DasSearchAssetsParams, GetAnchorAccount, SolanaRpcClient},
+    dao::{Dao, SubDao},
+    data_credits,
+    error::{DecodeError, EncodeError, Error},
+    helium_entity_manager, is_zero,
+    keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
+    kta, onboarding,
+    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    solana_sdk::{
+        instruction::AccountMeta, instruction::Instruction, signer::Signer,
+        transaction::Transaction,
+    },
+    solana_transaction_utils::priority_fee::{
+        compute_budget_instruction, compute_price_instruction_for_accounts,
+    },
+    token::Token,
+};
 
 pub mod dataonly;
 pub mod info;
@@ -171,8 +174,8 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     };
 
     let ixs = &[
-        priority_fee::compute_budget_instruction(200_000),
-        priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
+        compute_budget_instruction(200_000),
+        compute_price_instruction_for_accounts(client, &accounts).await?,
         update_ix,
     ];
 

@@ -103,7 +103,7 @@ pub mod organization {
     use super::*;
 
     use crate::{
-        client::{GetAnchorAccount, SolanaRpcClient},
+        client::{GetAnchorAccount, SolanaRpcClient, SolanaRpcClientExt},
         error::Error,
         helium_entity_manager, helium_sub_daos, iot_routing_manager, metaplex,
         programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},

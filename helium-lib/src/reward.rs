@@ -233,7 +233,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     ixs_accounts.extend_from_slice(&distribute_ix.accounts);
 
     let ixs = &[
-        priority_fee::compute_budget_instruction(150_000),
+        priority_fee::compute_budget_instruction(200_000),
         priority_fee::compute_price_instruction_for_accounts(client, &ixs_accounts).await?,
         set_current_ix,
         distribute_ix,
@@ -459,12 +459,12 @@ pub mod recipient {
         client.anchor_accounts(&recipient_keys).await
     }
 
-    pub async fn init_instruction<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    pub async fn init_instruction(
+        subdao: &SubDao,
+        kta: &helium_entity_manager::KeyToAssetV0,
         asset: &asset::Asset,
         asset_proof: &asset::AssetProof,
-        subdao: &SubDao,
-        entity_key: &E,
-        keypair: &Keypair,
+        payer: &Pubkey,
     ) -> Result<Instruction, Error> {
         fn mk_accounts(
             payer: Pubkey,
@@ -485,13 +485,12 @@ pub mod recipient {
             }
         }
 
-        let kta = kta::for_entity_key(entity_key).await?;
         let mut accounts = mk_accounts(
-            keypair.pubkey(),
+            *payer,
             asset.ownership.owner,
             asset.compression.tree,
             subdao,
-            &kta,
+            kta,
         )
         .to_account_metas(None);
         accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
@@ -510,6 +509,36 @@ pub mod recipient {
             .data(),
         };
         Ok(ix)
+    }
+
+    pub async fn init<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+        client: &C,
+        subdao: &SubDao,
+        entity_key: &E,
+        keypair: &Keypair,
+    ) -> Result<(Transaction, u64), Error> {
+        let kta = kta::for_entity_key(entity_key).await?;
+        let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
+
+        let init_ix =
+            init_instruction(subdao, &kta, &asset, &asset_proof, &keypair.pubkey()).await?;
+
+        let ixs = &[
+            priority_fee::compute_budget_instruction(150_000),
+            priority_fee::compute_price_instruction_for_accounts(client, &init_ix.accounts).await?,
+            init_ix,
+        ];
+        let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+        let (recent_blockhash, latest_block_height) = solana_client
+            .get_latest_blockhash_with_commitment(solana_client.commitment())
+            .await?;
+        let txn = Transaction::new_signed_with_payer(
+            ixs,
+            Some(&keypair.pubkey()),
+            &[keypair],
+            recent_blockhash,
+        );
+        Ok((txn, latest_block_height))
     }
 }
 

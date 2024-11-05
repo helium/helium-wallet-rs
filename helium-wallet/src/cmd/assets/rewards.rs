@@ -1,4 +1,5 @@
 use crate::cmd::*;
+use anyhow::Context;
 use helium_lib::{dao::SubDao, entity_key, kta, reward, token::TokenAmount};
 
 #[derive(Debug, Clone, clap::Args)]
@@ -42,6 +43,11 @@ pub struct ClaimCmd {
     /// If not specific the full pending amount is claimed, limited by the maximum
     /// claim amount for the subdao
     amount: Option<f64>,
+    /// Do not check and initialize the on chain recipient
+    ///
+    /// For known assets that have been previously initialized this will speed up the claim
+    #[arg(long)]
+    skip_init: bool,
     /// Commit the claim transaction.
     #[command(flatten)]
     commit: CommitOpts,
@@ -53,11 +59,26 @@ impl ClaimCmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
         let hotspot_kta = kta::for_entity_key(&self.entity_key.as_entity_key()?).await?;
-        let recipient = reward::recipient::for_kta(&client, &self.subdao, &hotspot_kta).await?;
 
-        println!("{:?}", recipient.unwrap().destination.to_string());
-        // if recipient.is_some() {
-        //     let tx = reward::recipient::init_instruction(, , , , )
+        let mut init_response = None;
+        if !self.skip_init {
+            let recipient = reward::recipient::for_kta(&client, &self.subdao, &hotspot_kta).await?;
+            if recipient.is_none() {
+                let (tx, _) = reward::recipient::init(
+                    &client,
+                    &self.subdao,
+                    &self.entity_key.as_entity_key()?,
+                    &keypair,
+                )
+                .await?;
+                init_response = Some(
+                    self.commit
+                        .maybe_commit(&tx, &client)
+                        .await
+                        .context("while initializing reward recipient")?,
+                );
+            }
+        }
 
         let token_amount = self
             .amount
@@ -74,7 +95,21 @@ impl ClaimCmd {
             bail!("No rewards to claim")
         };
 
-        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
+        let claim_response = self
+            .commit
+            .maybe_commit(&tx, &client)
+            .await
+            .context("while claiming rewards")?;
+        let json = if let Some(init_response) = init_response {
+            json!({
+                "init": init_response,
+                "claim": claim_response,
+            })
+        } else {
+            claim_response.to_json()
+        };
+
+        print_json(&json)
     }
 }
 

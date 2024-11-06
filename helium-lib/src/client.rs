@@ -1,7 +1,8 @@
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
-use std::{marker::Send, sync::Arc};
+use solana_sdk::signer::EncodableKey;
+use std::{marker::Send, path::PathBuf, sync::Arc};
 use tracing::instrument;
 
 use crate::{
@@ -44,16 +45,17 @@ static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_V
 pub struct SolanaClient {
     pub inner: Arc<SolanaRpcClient>,
     pub base_url: String,
+    pub wallet: Option<Arc<Keypair>>,
 }
 
 impl Default for SolanaClient {
     fn default() -> Self {
-        Self::with_base_url(SOLANA_URL_MAINNET).unwrap()
+        Self::new(SOLANA_URL_MAINNET, None).unwrap()
     }
 }
 
 impl SolanaClient {
-    pub fn with_base_url(url: &str) -> Result<Self, Error> {
+    pub fn new(url: &str, wallet_path: Option<PathBuf>) -> Result<Self, Error> {
         let client = Arc::new(
             solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
                 url.to_string(),
@@ -61,9 +63,18 @@ impl SolanaClient {
             ),
         );
 
+        let wallet = if let Some(path) = wallet_path {
+            Some(Arc::new(
+                Keypair::read_from_file(&path).map_err(Error::from)?,
+            ))
+        } else {
+            None
+        };
+
         Ok(Self {
             inner: client,
             base_url: url.to_string(),
+            wallet,
         })
     }
 
@@ -78,13 +89,25 @@ impl SolanaClient {
             .replace("127.0.0.1:8899", "127.0.0.1:8900")
     }
 
+    pub fn payer(&self) -> Option<Pubkey> {
+        if let Some(ref wallet) = self.wallet {
+            Some(wallet.pubkey())
+        } else {
+            None
+        }
+    }
+
     pub async fn send_instructions(
         &self,
-        wallet: Keypair,
         ixs: Vec<Instruction>,
         extra_signers: &[Keypair],
         sequentially: bool,
     ) -> Result<(), Error> {
+        let wallet = self
+            .wallet
+            .as_ref()
+            .ok_or_else(|| Error::Other("Wallet not configured".to_string()))?;
+
         let (blockhash, _) = self
             .inner
             .as_ref()
@@ -176,7 +199,7 @@ impl TryFrom<&str> for Client {
         };
 
         Ok(Self {
-            solana_client: Arc::new(SolanaClient::with_base_url(url)?),
+            solana_client: Arc::new(SolanaClient::new(url, None)?),
             das_client: Arc::new(DasClient::with_base_url(url)?),
         })
     }

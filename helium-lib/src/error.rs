@@ -45,6 +45,14 @@ pub enum Error {
     Decode(#[from] DecodeError),
     #[error("encode: {0}")]
     Encode(#[from] EncodeError),
+    #[error("other: {0}")]
+    Other(String),
+}
+
+impl From<Box<dyn std::error::Error>> for Error {
+    fn from(err: Box<dyn std::error::Error>) -> Self {
+        Self::Other(err.to_string())
+    }
 }
 
 impl From<solana_client::client_error::ClientError> for Error {

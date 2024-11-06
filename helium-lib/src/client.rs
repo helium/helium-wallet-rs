@@ -147,7 +147,7 @@ impl SolanaClient {
 
         let results;
         let tpu_client = TpuClient::new(
-            "helium-config-service-cli",
+            "helium-lib",
             self.solana_rpc_client(),
             &self.ws_url(),
             TpuClientConfig::default(),

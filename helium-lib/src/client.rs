@@ -42,8 +42,8 @@ static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_V
 
 #[derive(Clone)]
 pub struct SolanaClient {
-    inner: Arc<SolanaRpcClient>,
-    base_url: String,
+    pub inner: Arc<SolanaRpcClient>,
+    pub base_url: String,
 }
 
 impl Default for SolanaClient {
@@ -65,6 +65,10 @@ impl SolanaClient {
             inner: client,
             base_url: url.to_string(),
         })
+    }
+
+    pub fn solana_rpc_client(&self) -> Arc<SolanaRpcClient> {
+        self.inner.clone()
     }
 
     pub fn ws_url(&self) -> String {

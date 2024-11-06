@@ -50,6 +50,6 @@ where
 
 use std::sync::Arc;
 
-pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
-    kta::init(solana_client)
+pub fn init(solana_client: Arc<client::SolanaClient>) -> Result<(), error::Error> {
+    kta::init(solana_client.solana_rpc_client())
 }

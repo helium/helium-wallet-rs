@@ -1,12 +1,6 @@
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
-use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    instruction::Instruction,
-    message::Message,
-    signature::{Keypair, Signer},
-};
 use std::{marker::Send, sync::Arc};
 use tracing::instrument;
 
@@ -24,10 +18,16 @@ use crate::{
         },
         tpu_client::TpuClientConfig,
     },
+    solana_sdk::{
+        commitment_config::CommitmentConfig, instruction::Instruction, message::Message,
+        signature::Keypair, signer::Signer,
+    },
     solana_transaction_utils::{
         pack::pack_instructions_into_transactions, priority_fee::auto_compute_limit_and_price,
     },
 };
+
+pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
@@ -38,12 +38,156 @@ pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com
 pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443?session-key=Pluto";
 pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?session-key=Pluto";
 
-pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
+static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
+#[derive(Clone)]
+pub struct SolanaClient {
+    inner: Arc<SolanaRpcClient>,
+    base_url: String,
+}
+
+impl Default for SolanaClient {
+    fn default() -> Self {
+        Self::with_base_url(SOLANA_URL_MAINNET).unwrap()
+    }
+}
+
+impl SolanaClient {
+    pub fn with_base_url(url: &str) -> Result<Self, Error> {
+        let client = Arc::new(
+            solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
+                url.to_string(),
+                CommitmentConfig::finalized(),
+            ),
+        );
+
+        Ok(Self {
+            inner: client,
+            base_url: url.to_string(),
+        })
+    }
+
+    pub fn ws_url(&self) -> String {
+        self.base_url
+            .replace("https", "wss")
+            .replace("http", "ws")
+            .replace("127.0.0.1:8899", "127.0.0.1:8900")
+    }
+
+    pub async fn send_instructions(
+        &self,
+        wallet: Keypair,
+        ixs: Vec<Instruction>,
+        extra_signers: &[Keypair],
+        sequentially: bool,
+    ) -> Result<(), Error> {
+        let (blockhash, _) = self
+            .inner
+            .as_ref()
+            .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
+            .await
+            .expect("Failed to get latest blockhash");
+
+        let txs = pack_instructions_into_transactions(vec![ixs], &wallet);
+        let mut with_auto_compute: Vec<Message> = Vec::new();
+        let keys: Vec<&dyn Signer> = std::iter::once(&wallet as &dyn Signer)
+            .chain(extra_signers.iter().map(|k| k as &dyn Signer))
+            .collect();
+
+        for (tx, _) in &txs {
+            // This is just a tx with compute ixs. Skip it
+            if tx.len() == 2 {
+                continue;
+            }
+
+            let computed = auto_compute_limit_and_price(
+                &self.inner,
+                tx.clone(),
+                &keys,
+                1.2,
+                Some(&wallet.pubkey()),
+                Some(blockhash),
+            )
+            .await
+            .unwrap();
+
+            with_auto_compute.push(Message::new(&computed, Some(&wallet.pubkey())));
+        }
+
+        if with_auto_compute.is_empty() {
+            return Ok(());
+        }
+
+        let results;
+        let tpu_client = TpuClient::new(
+            "helium-config-service-cli",
+            self.inner.clone(),
+            &self.ws_url(),
+            TpuClientConfig::default(),
+        )
+        .await?;
+
+        match sequentially {
+            true => {
+                results = tpu_client
+                    .send_and_confirm_messages_with_spinner(&with_auto_compute, &keys)
+                    .await?;
+            }
+            false => {
+                results = send_and_confirm_transactions_in_parallel(
+                    self.inner.clone(),
+                    Some(tpu_client),
+                    &with_auto_compute,
+                    &keys,
+                    SendAndConfirmConfig {
+                        with_spinner: true,
+                        resign_txs_count: Some(5),
+                    },
+                )
+                .await?;
+            }
+        }
+
+        if let Some(err) = results.into_iter().flatten().next() {
+            return Err(Error::from(err));
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Clone)]
 pub struct Client {
-    pub solana_client: Arc<SolanaRpcClient>,
+    pub solana_client: Arc<SolanaClient>,
     pub das_client: Arc<DasClient>,
+}
+
+impl TryFrom<&str> for Client {
+    type Error = Error;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let url = match value {
+            "m" | "mainnet-beta" => SOLANA_URL_MAINNET,
+            "d" | "devnet" => SOLANA_URL_DEVNET,
+            url => url,
+        };
+
+        Ok(Self {
+            solana_client: Arc::new(SolanaClient::with_base_url(url)?),
+            das_client: Arc::new(DasClient::with_base_url(url)?),
+        })
+    }
+}
+
+impl AsRef<solana_client::nonblocking::rpc_client::RpcClient> for Client {
+    fn as_ref(&self) -> &solana_client::nonblocking::rpc_client::RpcClient {
+        &self.solana_client.inner
+    }
+}
+
+impl AsRef<DasClient> for Client {
+    fn as_ref(&self) -> &DasClient {
+        &self.das_client
+    }
 }
 
 #[async_trait::async_trait]
@@ -59,7 +203,7 @@ pub trait GetAnchorAccount {
 }
 
 #[async_trait::async_trait]
-impl GetAnchorAccount for SolanaRpcClient {
+impl GetAnchorAccount for solana_client::nonblocking::rpc_client::RpcClient {
     async fn anchor_account<T: AccountDeserialize>(
         &self,
         pubkey: &Pubkey,
@@ -74,7 +218,7 @@ impl GetAnchorAccount for SolanaRpcClient {
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<T>>, Error> {
         async fn get_accounts<A: AccountDeserialize + Send>(
-            client: &SolanaRpcClient,
+            client: &solana_client::nonblocking::rpc_client::RpcClient,
             pubkeys: &[Pubkey],
         ) -> Result<Vec<Option<A>>, Error> {
             let accounts = client.get_multiple_accounts(pubkeys).await?;
@@ -108,182 +252,13 @@ impl GetAnchorAccount for Client {
         &self,
         pubkey: &keypair::Pubkey,
     ) -> Result<Option<T>, Error> {
-        self.solana_client.anchor_account(pubkey).await
+        self.solana_client.inner.anchor_account(pubkey).await
     }
     async fn anchor_accounts<T: AccountDeserialize + Send>(
         &self,
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<T>>, Error> {
-        self.solana_client.anchor_accounts(pubkeys).await
-    }
-}
-
-#[async_trait::async_trait]
-pub trait SolanaRpcClientExt {
-    async fn send_instructions(
-        &self,
-        ixs: Vec<Instruction>,
-        wallet: Keypair,
-        extra_signers: &[Keypair],
-        sequentially: bool,
-    ) -> Result<(), Error>;
-
-    fn ws_url(&self) -> String;
-}
-
-#[async_trait::async_trait]
-impl SolanaRpcClientExt for Client {
-    fn ws_url(&self) -> String {
-        self.solana_client
-            .url()
-            .replace("https", "wss")
-            .replace("http", "ws")
-            .replace("127.0.0.1:8899", "127.0.0.1:8900")
-    }
-
-    async fn send_instructions(
-        &self,
-        ixs: Vec<Instruction>,
-        wallet: Keypair,
-        extra_signers: &[Keypair],
-        sequentially: bool,
-    ) -> Result<(), Error> {
-        let (blockhash, _) = self
-            .solana_client
-            .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
-            .await
-            .expect("Failed to get latest blockhash");
-
-        let txs = pack_instructions_into_transactions(vec![ixs], &wallet);
-        let mut with_auto_compute: Vec<Message> = Vec::new();
-        let keys: Vec<&dyn Signer> = std::iter::once(&wallet as &dyn Signer)
-            .chain(extra_signers.iter().map(|k| k as &dyn Signer))
-            .collect();
-
-        for (tx, _) in &txs {
-            // This is just a tx with compute ixs. Skip it
-            if tx.len() == 2 {
-                continue;
-            }
-
-            let computed = auto_compute_limit_and_price(
-                &self.solana_client,
-                tx.clone(),
-                &keys,
-                1.2,
-                Some(&wallet.pubkey()),
-                Some(blockhash),
-            )
-            .await
-            .unwrap();
-
-            with_auto_compute.push(Message::new(&computed, Some(&wallet.pubkey())));
-        }
-
-        if with_auto_compute.is_empty() {
-            return Ok(());
-        }
-
-        let results;
-        let tpu_client = TpuClient::new(
-            "helium-lib",
-            self.solana_client.clone(),
-            &self.ws_url(),
-            TpuClientConfig::default(),
-        )
-        .await?;
-
-        match sequentially {
-            true => {
-                results = tpu_client
-                    .send_and_confirm_messages_with_spinner(&with_auto_compute, &keys)
-                    .await?;
-            }
-            false => {
-                results = send_and_confirm_transactions_in_parallel(
-                    self.solana_client,
-                    Some(tpu_client),
-                    &with_auto_compute,
-                    &keys,
-                    SendAndConfirmConfig {
-                        with_spinner: true,
-                        resign_txs_count: Some(5),
-                    },
-                )
-                .await?;
-            }
-        }
-
-        if let Some(err) = results.into_iter().flatten().next() {
-            return Err(Error::from(err));
-        }
-
-        Ok(())
-    }
-}
-
-impl TryFrom<&str> for Client {
-    type Error = Error;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let url = match value {
-            "m" | "mainnet-beta" => SOLANA_URL_MAINNET,
-            "d" | "devnet" => SOLANA_URL_DEVNET,
-            url => url,
-        };
-
-        let das_client = Arc::new(DasClient::with_base_url(url)?);
-        let solana_client = Arc::new(SolanaRpcClient::new(url.to_string()));
-        Ok(Self {
-            solana_client,
-            das_client,
-        })
-    }
-}
-
-impl AsRef<SolanaRpcClient> for Client {
-    fn as_ref(&self) -> &SolanaRpcClient {
-        &self.solana_client
-    }
-}
-
-impl AsRef<DasClient> for Client {
-    fn as_ref(&self) -> &DasClient {
-        &self.das_client
-    }
-}
-
-#[derive(
-    serde::Serialize, Default, Debug, Clone, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord,
-)]
-#[serde(rename_all = "camelCase")]
-pub struct DasSearchAssetsParams {
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub creator_verified: bool,
-    #[serde(
-        with = "keypair::serde_opt_pubkey",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub creator_address: Option<Pubkey>,
-    #[serde(
-        with = "keypair::serde_opt_pubkey",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub owner_address: Option<Pubkey>,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub page: u32,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub limit: u32,
-}
-
-impl DasSearchAssetsParams {
-    pub fn for_owner(owner_address: Pubkey, creator_address: Pubkey) -> Self {
-        Self {
-            owner_address: Some(owner_address),
-            creator_address: Some(creator_address),
-            creator_verified: true,
-            page: 1,
-            ..Default::default()
-        }
+        self.solana_client.inner.anchor_accounts(pubkeys).await
     }
 }
 
@@ -322,8 +297,6 @@ impl DasClientError {
 #[jsonrpc_client::api]
 pub trait DAS {}
 
-static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
-
 #[jsonrpc_client::implement(DAS)]
 #[derive(Debug, Clone)]
 pub struct DasClient {
@@ -333,7 +306,6 @@ pub struct DasClient {
 
 impl Default for DasClient {
     fn default() -> Self {
-        // safe to unwrap
         Self::with_base_url(SOLANA_URL_MAINNET).unwrap()
     }
 }
@@ -424,6 +396,41 @@ impl jsonrpc_client::SendRequest for DasClient {
     }
 }
 
+#[derive(
+    serde::Serialize, Default, Debug, Clone, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct DasSearchAssetsParams {
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub creator_verified: bool,
+    #[serde(
+        with = "keypair::serde_opt_pubkey",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub creator_address: Option<Pubkey>,
+    #[serde(
+        with = "keypair::serde_opt_pubkey",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub owner_address: Option<Pubkey>,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub page: u32,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub limit: u32,
+}
+
+impl DasSearchAssetsParams {
+    pub fn for_owner(owner_address: Pubkey, creator_address: Pubkey) -> Self {
+        Self {
+            owner_address: Some(owner_address),
+            creator_address: Some(creator_address),
+            creator_verified: true,
+            page: 1,
+            ..Default::default()
+        }
+    }
+}
+
 pub mod config {
     use super::*;
     use crate::{
@@ -492,12 +499,12 @@ pub mod config {
     }
 
     #[derive(Clone)]
-    pub enum Client {
+    pub enum ClientType {
         Iot(iot::Client),
         Mobile(mobile::Client),
     }
 
-    impl Client {
+    impl ClientType {
         pub fn for_subdao(
             subdao: SubDao,
             config: &str,

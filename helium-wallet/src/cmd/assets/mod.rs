@@ -1,5 +1,6 @@
 use crate::cmd::*;
 
+pub mod info;
 pub mod rewards;
 
 #[derive(Debug, clap::Args)]
@@ -18,12 +19,14 @@ impl Cmd {
 /// Commands on assets
 pub enum AssetCommand {
     Rewards(rewards::Cmd),
+    Info(info::Cmd),
 }
 
 impl AssetCommand {
     pub async fn run(&self, opts: Opts) -> Result {
         match self {
             Self::Rewards(cmd) => cmd.run(opts).await,
+            Self::Info(cmd) => cmd.run(opts).await,
         }
     }
 }

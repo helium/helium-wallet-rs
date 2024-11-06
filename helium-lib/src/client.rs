@@ -105,7 +105,7 @@ impl SolanaClient {
             }
 
             let computed = auto_compute_limit_and_price(
-                &self.inner,
+                &self.solana_rpc_client(),
                 tx.clone(),
                 &keys,
                 1.2,
@@ -125,7 +125,7 @@ impl SolanaClient {
         let results;
         let tpu_client = TpuClient::new(
             "helium-config-service-cli",
-            self.inner.clone(),
+            self.solana_rpc_client(),
             &self.ws_url(),
             TpuClientConfig::default(),
         )
@@ -139,7 +139,7 @@ impl SolanaClient {
             }
             false => {
                 results = send_and_confirm_transactions_in_parallel(
-                    self.inner.clone(),
+                    self.solana_rpc_client(),
                     Some(tpu_client),
                     &with_auto_compute,
                     &keys,

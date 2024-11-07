@@ -205,8 +205,14 @@ impl TryFrom<&str> for Client {
     }
 }
 
-impl AsRef<solana_client::nonblocking::rpc_client::RpcClient> for Client {
-    fn as_ref(&self) -> &solana_client::nonblocking::rpc_client::RpcClient {
+impl AsRef<SolanaClient> for Client {
+    fn as_ref(&self) -> &SolanaClient {
+        &self.solana_client
+    }
+}
+
+impl AsRef<SolanaRpcClient> for Client {
+    fn as_ref(&self) -> &SolanaRpcClient {
         &self.solana_client.inner
     }
 }

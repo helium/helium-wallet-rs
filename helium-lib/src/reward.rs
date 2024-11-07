@@ -15,6 +15,7 @@ use crate::{
     token::TokenAmount,
 };
 use anchor_client::solana_client::rpc_client::SerializableTransaction;
+use chrono::Utc;
 use futures::{
     stream::{self, StreamExt, TryStreamExt},
     TryFutureExt,
@@ -69,6 +70,27 @@ pub fn lazy_distributor_circuit_breaker(
     circuit_breaker
 }
 
+fn time_decay_previous_value(
+    config: &circuit_breaker::WindowedCircuitBreakerConfigV0,
+    window: &circuit_breaker::WindowV0,
+    unix_timestamp: i64,
+) -> Option<u64> {
+    let time_elapsed = unix_timestamp.checked_sub(window.last_unix_timestamp)?;
+    u64::try_from(
+        u128::from(window.last_aggregated_value)
+            .checked_mul(
+                // (window_size_seconds - min(window_size_seconds, time_elapsed)) / window_size_seconds
+                // = (1 -  min((time_elapsed / window_size_seconds), 1))
+                u128::from(config.window_size_seconds.checked_sub(std::cmp::min(
+                    u64::try_from(time_elapsed).ok()?,
+                    config.window_size_seconds,
+                ))?),
+            )?
+            .checked_div(u128::from(config.window_size_seconds))?,
+    )
+    .ok()
+}
+
 pub async fn max_claim<C: GetAnchorAccount>(
     client: &C,
     subdao: &SubDao,
@@ -77,15 +99,21 @@ pub async fn max_claim<C: GetAnchorAccount>(
     let circuit_breaker_account: circuit_breaker::AccountWindowedCircuitBreakerV0 = client
         .anchor_account(&lazy_distributor_circuit_breaker(ld_account))
         .await?;
-    let amount = match circuit_breaker_account.config {
+    let threshold = match circuit_breaker_account.config {
         circuit_breaker::WindowedCircuitBreakerConfigV0 {
             threshold_type: circuit_breaker::ThresholdType::Absolute,
             threshold,
             ..
-        } => subdao.token().amount(threshold),
+        } => threshold,
         _ => return Err(DecodeError::other("percent max claim threshold not supported").into()),
     };
-    Ok(amount)
+    let remaining = time_decay_previous_value(
+        &circuit_breaker_account.config,
+        &circuit_breaker_account.last_window,
+        Utc::now().timestamp(),
+    )
+    .ok_or_else(|| DecodeError::other("failed to calculate decayed rewards"))?;
+    Ok(subdao.token().amount(threshold - remaining))
 }
 
 async fn set_current_rewards_instruction(

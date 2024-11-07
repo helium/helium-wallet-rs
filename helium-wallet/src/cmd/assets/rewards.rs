@@ -114,7 +114,10 @@ impl ClaimCmd {
 }
 
 #[derive(Debug, Clone, clap::Args)]
-/// List the configured maximum claim amount for the given subdao
+/// List the maximum claim amount for the given subdao
+///
+/// The max claim amoount is the configured threshold for the subdao, adjusted down by a time
+/// decayed amount bed on previous claims
 pub struct MaxClaimCmd {
     /// Subdao for command
     subdao: SubDao,

@@ -94,10 +94,10 @@ fn time_decay_previous_value(
 pub async fn max_claim<C: GetAnchorAccount>(
     client: &C,
     subdao: &SubDao,
-    ld_account: &lazy_distributor::LazyDistributorV0,
 ) -> Result<TokenAmount, Error> {
+    let ld_account = lazy_distributor(client, subdao).await?;
     let circuit_breaker_account: circuit_breaker::AccountWindowedCircuitBreakerV0 = client
-        .anchor_account(&lazy_distributor_circuit_breaker(ld_account))
+        .anchor_account(&lazy_distributor_circuit_breaker(&ld_account))
         .await?;
     let threshold = match circuit_breaker_account.config {
         circuit_breaker::WindowedCircuitBreakerConfigV0 {
@@ -240,8 +240,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     let Some(pending_reward) = pending.get(&encoded_entity_key.entity_key) else {
         return Ok(None);
     };
-    let ld_account = lazy_distributor(client, subdao).await?;
-    let max_claim = max_claim(client, subdao, &ld_account).await?;
+    let max_claim = max_claim(client, subdao).await?;
 
     let mut current_reward = current(client, subdao, &entity_key).await?;
 

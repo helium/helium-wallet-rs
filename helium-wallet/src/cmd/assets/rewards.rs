@@ -126,8 +126,7 @@ pub struct MaxClaimCmd {
 impl MaxClaimCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let ld_account = reward::lazy_distributor(&client, &self.subdao).await?;
-        let max_claim = reward::max_claim(&client, &self.subdao, &ld_account).await?;
+        let max_claim = reward::max_claim(&client, &self.subdao).await?;
 
         print_json(&max_claim)
     }

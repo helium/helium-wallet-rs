@@ -151,30 +151,55 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
 
     let kta = kta::for_entity_key(hotspot).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
+
+    macro_rules! mk_update_data {
+        ($ix_struct:ident, $arg_struct:ident, $($manual_fields:tt)*) => {
+            $ix_struct {
+                _args: $arg_struct {
+                    root: asset_proof.root.to_bytes(),
+                    data_hash: asset.compression.data_hash,
+                    creator_hash: asset.compression.creator_hash,
+                    index: asset.compression.leaf_id()?,
+                    $($manual_fields)*
+                },
+            }
+            .data()
+        };
+    }
+
     let mut accounts = mk_accounts(update.subdao(), &kta, &asset, owner);
     accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
-    let update_ix = Instruction {
-        program_id: helium_entity_manager::id(),
-        accounts: accounts.to_account_metas(None),
-        data: helium_entity_manager::instruction::UpdateIotInfoV0 {
-            _args: helium_entity_manager::UpdateIotInfoArgsV0 {
-                root: asset_proof.root.to_bytes(),
-                data_hash: asset.compression.data_hash,
-                creator_hash: asset.compression.creator_hash,
-                index: asset.compression.leaf_id()?,
+    use helium_entity_manager::{
+        instruction::{
+            UpdateIotInfoV0 as IxUpdateIotInfo, UpdateMobileInfoV0 as IxUpdateMobileInfo,
+        },
+        UpdateIotInfoArgsV0 as ArgsUpdateIotInfo, UpdateMobileInfoArgsV0 as ArgsUpdateMobileInfo,
+    };
+    let data = match update.subdao() {
+        SubDao::Iot => {
+            mk_update_data!(IxUpdateIotInfo , ArgsUpdateIotInfo,
                 elevation: *update.elevation(),
                 gain: update.gain_i32(),
-                location: update.location_u64(),
-            },
+                location: update.location_u64())
         }
-        .data(),
+        SubDao::Mobile => {
+            mk_update_data!(IxUpdateMobileInfo, ArgsUpdateMobileInfo,
+            location: update.location_u64(),
+            deployment_info: None,
+            )
+        }
+    };
+    let ix = Instruction {
+        program_id: helium_entity_manager::id(),
+        accounts: accounts.to_account_metas(None),
+        data,
     };
 
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
         priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
-        update_ix,
+        ix,
     ];
 
     let mut txn = Transaction::new_with_payer(ixs, Some(owner));

@@ -191,7 +191,9 @@ impl Wallet {
                 let helium_pubkey = helium_crypto::PublicKey::read(reader)?;
                 Pubkey::try_from(helium_pubkey).map_err(Error::from)
             }
-            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => Pubkey::read(reader),
+            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => {
+                Pubkey::read(reader).map_err(anyhow::Error::from)
+            }
             _ => bail!("Invalid wallet kind {kind}"),
         }
     }
@@ -205,11 +207,13 @@ impl Wallet {
             | WALLET_KIND_SHARDED_V2 => {
                 let tag = reader.read_u8()?;
                 match KeyType::try_from(tag)? {
-                    KeyType::Ed25519 => Keypair::read(reader),
+                    KeyType::Ed25519 => Keypair::read(reader).map_err(anyhow::Error::from),
                     _ => bail!("Unsupported key type: {tag}"),
                 }
             }
-            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => Keypair::read(reader),
+            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => {
+                Keypair::read(reader).map_err(anyhow::Error::from)
+            }
             _ => bail!("Invalid wallet kind {kind}"),
         }
     }

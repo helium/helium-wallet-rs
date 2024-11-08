@@ -136,7 +136,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
                     dao: Dao::Hnt.key(),
                     sub_dao: subdao.key(),
                     dc_mint: *Token::Dc.mint(),
-                    dc: SubDao::dc_key(),
+                    dc: Dao::dc_key(),
                     compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
                     data_credits_program: data_credits::id(),
                     token_program: anchor_spl::token::ID,

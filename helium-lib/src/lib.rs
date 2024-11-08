@@ -2,6 +2,7 @@ pub mod asset;
 pub mod b64;
 pub mod client;
 
+pub mod boosting;
 pub mod dao;
 pub mod dc;
 pub mod entity_key;
@@ -20,7 +21,7 @@ pub use anchor_client::solana_client;
 pub use anchor_spl;
 pub use helium_anchor_gen::{
     anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
-    lazy_distributor, rewards_oracle,
+    hexboosting, lazy_distributor, rewards_oracle,
 };
 pub use solana_sdk;
 pub use solana_sdk::bs58;

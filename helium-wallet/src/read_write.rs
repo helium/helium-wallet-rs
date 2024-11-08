@@ -1,4 +1,4 @@
-use crate::result::{bail, Result};
+use anyhow::{bail, Result};
 use helium_crypto::{ecc_compact, ed25519, multisig, KeyType};
 use io::{Read, Write};
 use std::io;
@@ -7,11 +7,11 @@ pub trait ReadWrite {
     fn read(reader: &mut dyn Read) -> Result<Self>
     where
         Self: std::marker::Sized;
-    fn write(&self, writer: &mut dyn Write) -> Result;
+    fn write(&self, writer: &mut dyn Write) -> Result<()>;
 }
 
 impl ReadWrite for helium_crypto::PublicKey {
-    fn write(&self, writer: &mut dyn io::Write) -> Result {
+    fn write(&self, writer: &mut dyn io::Write) -> Result<()> {
         Ok(writer.write_all(&self.to_vec())?)
     }
 
@@ -22,7 +22,7 @@ impl ReadWrite for helium_crypto::PublicKey {
             KeyType::Ed25519 => ed25519::PUBLIC_KEY_LENGTH,
             KeyType::EccCompact => ecc_compact::PUBLIC_KEY_LENGTH,
             KeyType::MultiSig => multisig::PUBLIC_KEY_LENGTH,
-            KeyType::Secp256k1 => bail!("Secp256k1 key type unsupported for read."),
+            KeyType::Secp256k1 => bail!("Secp256k1 key type unsupported for read.",),
             KeyType::Rsa => bail!("RSA key type unsupported for read."),
         };
         data.resize(key_size, 0);
@@ -32,7 +32,7 @@ impl ReadWrite for helium_crypto::PublicKey {
 }
 
 impl ReadWrite for helium_lib::keypair::Pubkey {
-    fn write(&self, writer: &mut dyn io::Write) -> Result {
+    fn write(&self, writer: &mut dyn io::Write) -> Result<()> {
         writer.write_all(&self.to_bytes())?;
         Ok(())
     }
@@ -45,7 +45,7 @@ impl ReadWrite for helium_lib::keypair::Pubkey {
 }
 
 impl ReadWrite for helium_lib::keypair::Keypair {
-    fn write(&self, writer: &mut dyn io::Write) -> Result {
+    fn write(&self, writer: &mut dyn io::Write) -> Result<()> {
         writer.write_all(&self.to_bytes())?;
         Ok(())
     }

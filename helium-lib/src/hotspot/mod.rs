@@ -529,7 +529,43 @@ pub enum HotspotInfo {
         #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,
         device_type: MobileDeviceType,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        deployment_info: Option<MobileDeploymentInfo>,
     },
+}
+
+#[derive(Debug, Serialize, Clone, Hash)]
+#[serde(rename_all = "lowercase", untagged)]
+pub enum MobileDeploymentInfo {
+    WifiInfo {
+        #[serde(skip_serializing_if = "is_zero")]
+        antenna: u32,
+        // the height of the hotspot above ground level in whole meters
+        #[serde(skip_serializing_if = "is_zero")]
+        elevation: i32,
+        // integer representation of a 2-point precision decimal
+        #[serde(skip_serializing_if = "is_zero")]
+        azimuth: u16,
+        // integer representation of a 2-point precision decimal
+        #[serde(skip_serializing_if = "is_zero")]
+        mechanical_down_tilt: u16,
+        // integer representation of a 2-point precision decimal
+        #[serde(skip_serializing_if = "is_zero")]
+        electrical_down_tilt: u16,
+    },
+    CbrsInfo {
+        radio_infos: Vec<CbrsRadioInfo>,
+    },
+}
+
+#[derive(Debug, Serialize, Clone, Hash)]
+#[serde(rename_all = "lowercase")]
+pub struct CbrsRadioInfo {
+    // CBSD_ID or radio
+    pub radio_id: String,
+    // The asserted elevation of the gateway above ground level in whole meters
+    #[serde(skip_serializing_if = "is_zero")]
+    pub elevation: i32,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -782,6 +818,41 @@ impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
             location: HotspotLocation::from_maybe(value.location),
             location_asserts: value.num_location_asserts,
             device_type: value.device_type.into(),
+            deployment_info: value.deployment_info.map(MobileDeploymentInfo::from),
+        }
+    }
+}
+
+impl From<helium_entity_manager::MobileDeploymentInfoV0> for MobileDeploymentInfo {
+    fn from(value: helium_entity_manager::MobileDeploymentInfoV0) -> Self {
+        match value {
+            helium_entity_manager::MobileDeploymentInfoV0::WifiInfoV0 {
+                antenna,
+                elevation,
+                azimuth,
+                mechanical_down_tilt,
+                electrical_down_tilt,
+            } => Self::WifiInfo {
+                antenna,
+                elevation,
+                azimuth,
+                mechanical_down_tilt,
+                electrical_down_tilt,
+            },
+            helium_entity_manager::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
+                Self::CbrsInfo {
+                    radio_infos: radio_infos.into_iter().map(CbrsRadioInfo::from),
+                }
+            }
+        }
+    }
+}
+
+impl From<helium_entity_manager::RadioInfoV0> for CbrsRadioInfo {
+    fn from(value: helium_entity_manager::RadioInfoV0) -> Self {
+        Self {
+            radio_id: value.radio_id,
+            elevation: value.elevation,
         }
     }
 }

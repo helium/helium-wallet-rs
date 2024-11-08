@@ -702,6 +702,7 @@ pub mod config {
                     mode,
                     location: metadata.location.parse().ok(),
                     location_asserts: 0,
+                    deployment_info: None,
                 }),
             ))
         }

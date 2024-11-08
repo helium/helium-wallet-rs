@@ -72,8 +72,6 @@ impl Error {
 
 #[derive(Debug, Error)]
 pub enum EncodeError {
-    #[error("io: {0}")]
-    Io(#[from] std::io::Error),
     #[error("proto: {0}")]
     Proto(#[from] helium_proto::EncodeError),
     #[error("bincode: {0}")]

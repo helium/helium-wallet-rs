@@ -15,7 +15,7 @@ anchor-spl = { version = "0.29.0", features = ["mint", "token"] }
 solana-sdk = "1.18"
 solana-program = ">=1.18,<2"
 solana-transaction-status = "*"
-mpl-bubblegum = { version = "1.4.0" }
+mpl-bubblegum = "1"
 spl-associated-token-account = { version = "*", features = ["no-entrypoint"] }
 spl-account-compression = { version = "0.3", features = ["no-entrypoint"] }
 pyth-solana-receiver-sdk = { git = "https://github.com/madninja/pyth-crosschain.git", branch = "madninja/cap_solana_dep" }

@@ -110,6 +110,24 @@ pub mod organization {
         token::Token,
     };
 
+    pub async fn ensure_exists<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        oui: u64,
+    ) -> Result<(Pubkey, OrganizationV0), Error> {
+        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let routing_manager_key = routing_manager_key(&sub_dao);
+        let organization_key = organization_key(&routing_manager_key, oui);
+
+        match client
+            .as_ref()
+            .anchor_account::<OrganizationV0>(&organization_key)
+            .await?
+        {
+            Some(organization) => Ok((organization_key, organization)),
+            None => Err(Error::account_not_found()),
+        }
+    }
+
     pub async fn create<C: AsRef<SolanaRpcClient>>(
         client: &C,
         payer: Pubkey,
@@ -198,14 +216,14 @@ pub mod organization {
     pub async fn approve<C: AsRef<SolanaRpcClient>>(
         _client: &C,
         authority: Pubkey,
-        organizaion_key: Pubkey,
+        organization_key: Pubkey,
         net_id_key: Pubkey,
     ) -> Result<Instruction, Error> {
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
             accounts: iot_routing_manager::accounts::ApproveOrganizationV0 {
                 authority,
-                organization: organizaion_key,
+                organization: organization_key,
                 net_id: net_id_key,
                 system_program: solana_sdk::system_program::ID,
             }
@@ -266,18 +284,17 @@ pub mod orgainization_delegate {
 
     pub async fn remove<C: AsRef<SolanaRpcClient>>(
         _client: &C,
-        rent_refund: Pubkey,
+        authority: Pubkey,
         delegate: Pubkey,
         organization_key: Pubkey,
-        authority: Option<Pubkey>,
     ) -> Result<Instruction, Error> {
         let orgainization_delegate_key = organization_delegate_key(&organization_key, &delegate);
 
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
             accounts: iot_routing_manager::accounts::RemoveOrganizationDelegateV0 {
-                rent_refund,
-                authority: authority.unwrap_or(rent_refund.clone()),
+                authority,
+                rent_refund: authority,
                 organization: organization_key,
                 organization_delegate: orgainization_delegate_key,
             }
@@ -296,6 +313,24 @@ pub mod net_id {
         helium_sub_daos, iot_routing_manager,
         token::Token,
     };
+
+    pub async fn ensure_exists<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        net_id: u32,
+    ) -> Result<(Pubkey, NetIdV0), Error> {
+        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let routing_manager_key = routing_manager_key(&sub_dao);
+        let net_id_key = net_id_key(&routing_manager_key, net_id);
+
+        match client
+            .as_ref()
+            .anchor_account::<NetIdV0>(&net_id_key)
+            .await?
+        {
+            Some(net_id) => Ok((net_id_key, net_id)),
+            None => Err(Error::account_not_found()),
+        }
+    }
 
     pub async fn create<C: AsRef<SolanaRpcClient>>(
         client: &C,
@@ -342,6 +377,8 @@ pub mod net_id {
 }
 
 pub mod devaddr_constraint {
+    use helium_anchor_gen::helium_entity_manager::MobileDeploymentInfoV0;
+
     use super::*;
 
     use crate::{
@@ -403,9 +440,8 @@ pub mod devaddr_constraint {
 
     pub async fn remove<C: AsRef<SolanaRpcClient>>(
         client: &C,
-        rent_refund: Pubkey,
+        authority: Pubkey,
         devaddr_constraint_key: Pubkey,
-        authority: Option<Pubkey>,
     ) -> Result<Instruction, Error> {
         let devaddr_constraint = client
             .as_ref()
@@ -416,8 +452,8 @@ pub mod devaddr_constraint {
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
             accounts: iot_routing_manager::accounts::RemoveDevaddrConstraintV0 {
-                rent_refund,
-                authority: authority.unwrap_or(rent_refund.clone()),
+                authority,
+                rent_refund: authority,
                 net_id: devaddr_constraint.net_id,
                 devaddr_constraint: devaddr_constraint_key,
             }

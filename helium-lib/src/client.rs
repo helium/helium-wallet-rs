@@ -89,12 +89,11 @@ impl SolanaClient {
             .replace("127.0.0.1:8899", "127.0.0.1:8900")
     }
 
-    pub fn payer(&self) -> Option<Pubkey> {
-        if let Some(ref wallet) = self.wallet {
-            Some(wallet.pubkey())
-        } else {
-            None
-        }
+    pub fn wallet(&self) -> Result<Pubkey, Error> {
+        self.wallet
+            .as_ref()
+            .map(|wallet| wallet.pubkey())
+            .ok_or_else(|| Error::Other("Wallet not configured".to_string()))
     }
 
     pub async fn send_instructions(
@@ -205,9 +204,9 @@ impl TryFrom<&str> for Client {
     }
 }
 
-impl AsRef<SolanaClient> for Client {
-    fn as_ref(&self) -> &SolanaClient {
-        &self.solana_client
+impl AsRef<SolanaRpcClient> for SolanaClient {
+    fn as_ref(&self) -> &SolanaRpcClient {
+        &self.inner
     }
 }
 
@@ -236,7 +235,7 @@ pub trait GetAnchorAccount {
 }
 
 #[async_trait::async_trait]
-impl GetAnchorAccount for solana_client::nonblocking::rpc_client::RpcClient {
+impl GetAnchorAccount for SolanaRpcClient {
     async fn anchor_account<T: AccountDeserialize>(
         &self,
         pubkey: &Pubkey,

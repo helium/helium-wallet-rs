@@ -23,7 +23,7 @@ helium-proto = { git = "https://github.com/helium/proto", branch = "master", fea
     "services",
 ] }
 clap = { version = "4", features = ["derive"] }
-tokio = {version = "1.0", features = ["full"]}
+tokio = { version = "1.0", features = ["full"] }
 
 [patch.'https://github.com/helium/helium-anchor-gen.git']
 helium-anchor-gen = { path = "../helium-anchor-gen" }

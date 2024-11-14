@@ -42,6 +42,10 @@ impl Zero for u16 {
     const ZERO: Self = 0;
 }
 
+impl Zero for rust_decimal::Decimal {
+    const ZERO: Self = rust_decimal::Decimal::ZERO;
+}
+
 pub(crate) fn is_zero<T>(value: &T) -> bool
 where
     T: PartialEq + Zero,

@@ -543,15 +543,12 @@ pub enum MobileDeploymentInfo {
         // the height of the hotspot above ground level in whole meters
         #[serde(skip_serializing_if = "is_zero")]
         elevation: i32,
-        // integer representation of a 2-point precision decimal
         #[serde(skip_serializing_if = "is_zero")]
-        azimuth: u16,
-        // integer representation of a 2-point precision decimal
+        azimuth: Decimal,
         #[serde(skip_serializing_if = "is_zero")]
-        mechanical_down_tilt: u16,
-        // integer representation of a 2-point precision decimal
+        mechanical_down_tilt: Decimal,
         #[serde(skip_serializing_if = "is_zero")]
-        electrical_down_tilt: u16,
+        electrical_down_tilt: Decimal,
     },
     CbrsInfo {
         radio_infos: Vec<CbrsRadioInfo>,
@@ -835,9 +832,9 @@ impl From<helium_entity_manager::MobileDeploymentInfoV0> for MobileDeploymentInf
             } => Self::WifiInfo {
                 antenna,
                 elevation,
-                azimuth,
-                mechanical_down_tilt,
-                electrical_down_tilt,
+                azimuth: Decimal::new(azimuth as i64, 2),
+                mechanical_down_tilt: Decimal::new(mechanical_down_tilt as i64, 2),
+                electrical_down_tilt: Decimal::new(electrical_down_tilt as i64, 2),
             },
             helium_entity_manager::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
                 Self::CbrsInfo {

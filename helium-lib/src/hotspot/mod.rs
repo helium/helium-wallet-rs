@@ -841,7 +841,7 @@ impl From<helium_entity_manager::MobileDeploymentInfoV0> for MobileDeploymentInf
             },
             helium_entity_manager::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
                 Self::CbrsInfo {
-                    radio_infos: radio_infos.into_iter().map(CbrsRadioInfo::from),
+                    radio_infos: radio_infos.into_iter().map(CbrsRadioInfo::from).collect(),
                 }
             }
         }

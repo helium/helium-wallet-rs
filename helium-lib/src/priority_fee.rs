@@ -11,8 +11,9 @@ pub const MIN_PRIORITY_FEE: u64 = 1;
 pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
+    min_priority_fee: u64,
 ) -> Result<u64, Error> {
-    get_estimate_with_min(client, accounts, MIN_PRIORITY_FEE).await
+    get_estimate_with_min(client, accounts, min_priority_fee).await
 }
 
 pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
@@ -74,8 +75,9 @@ pub fn compute_price_instruction(priority_fee: u64) -> solana_sdk::instruction::
 pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
+    min_priority_fee: u64,
 ) -> Result<solana_sdk::instruction::Instruction, Error> {
-    let priority_fee = get_estimate(client, accounts).await?;
+    let priority_fee = get_estimate(client, accounts, min_priority_fee).await?;
     Ok(compute_price_instruction(priority_fee))
 }
 

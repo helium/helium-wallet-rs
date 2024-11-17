@@ -59,6 +59,7 @@ impl ClaimCmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
         let hotspot_kta = kta::for_entity_key(&self.entity_key.as_entity_key()?).await?;
+        let transaction_opts = self.commit.transaction_opts();
 
         let mut init_response = None;
         if !self.skip_init {
@@ -69,6 +70,7 @@ impl ClaimCmd {
                     &self.subdao,
                     &self.entity_key.as_entity_key()?,
                     &keypair,
+                    &transaction_opts,
                 )
                 .await?;
                 init_response = Some(
@@ -89,6 +91,7 @@ impl ClaimCmd {
             token_amount,
             &self.entity_key,
             &keypair,
+            &transaction_opts,
         )
         .await?
         else {

@@ -5,10 +5,12 @@ use crate::{
 use helium_lib::{
     b64, client,
     keypair::Keypair,
+    priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
     },
+    TransactionOpts,
 };
 use serde_json::json;
 use std::{
@@ -84,6 +86,9 @@ pub struct CommitOpts {
     /// Skip pre-flight
     #[arg(long)]
     skip_preflight: bool,
+    /// Minimum priority fee in micro lamports
+    #[arg(long, default_value_t = priority_fee::MIN_PRIORITY_FEE)]
+    min_priority_fee: u64,
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
@@ -143,6 +148,12 @@ impl CommitOpts {
                 .map_err(context_err)?
                 .value
                 .try_into()
+        }
+    }
+
+    pub fn transaction_opts(&self) -> TransactionOpts {
+        TransactionOpts {
+            min_priority_fee: self.min_priority_fee,
         }
     }
 }

@@ -1,9 +1,3 @@
-use anchor_client::anchor_lang::AccountDeserialize;
-use helium_anchor_gen::{
-    data_credits::accounts::BurnDelegatedDataCreditsV0,
-    helium_sub_daos::{self, DaoV0, SubDaoV0},
-};
-
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     anchor_spl, circuit_breaker,
@@ -15,6 +9,12 @@ use crate::{
     priority_fee,
     solana_sdk::{instruction::Instruction, signer::Signer, transaction::Transaction},
     token::{Token, TokenAmount},
+    TransactionOpts,
+};
+use anchor_client::anchor_lang::AccountDeserialize;
+use helium_anchor_gen::{
+    data_credits::accounts::BurnDelegatedDataCreditsV0,
+    helium_sub_daos::{self, DaoV0, SubDaoV0},
 };
 
 pub async fn mint<C: AsRef<SolanaRpcClient>>(
@@ -176,6 +176,7 @@ pub async fn burn_delegated<C: AsRef<SolanaRpcClient>>(
     keypair: &Keypair,
     amount: u64,
     router_key: Pubkey,
+    opts: &TransactionOpts,
 ) -> Result<solana_sdk::transaction::Transaction, Error> {
     fn mk_accounts(
         sub_dao: SubDao,
@@ -228,7 +229,12 @@ pub async fn burn_delegated<C: AsRef<SolanaRpcClient>>(
 
     let ixs = [
         priority_fee::compute_price_instruction(300_000),
-        priority_fee::compute_price_instruction_for_accounts(client, &burn_ix.accounts).await?,
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &burn_ix.accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
         burn_ix,
     ];
 

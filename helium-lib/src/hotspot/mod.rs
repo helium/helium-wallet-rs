@@ -12,10 +12,12 @@ use crate::{
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
     solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
-        instruction::AccountMeta, instruction::Instruction, signer::Signer,
+        instruction::{AccountMeta, Instruction},
+        signer::Signer,
         transaction::Transaction,
     },
     token::Token,
+    TransactionOpts,
 };
 use angry_purple_tiger::AnimalName;
 use chrono::Utc;
@@ -113,6 +115,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
     owner: &Pubkey,
+    opts: &TransactionOpts,
 ) -> Result<(Transaction, u64), Error> {
     fn mk_accounts(
         subdao: SubDao,
@@ -201,7 +204,12 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
 
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
-        priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
         ix,
     ];
 
@@ -219,9 +227,10 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
     keypair: &Keypair,
+    opts: &TransactionOpts,
 ) -> Result<(Transaction, u64), Error> {
     let (mut txn, latest_block_height) =
-        direct_update_transaction(client, hotspot, update, &keypair.pubkey()).await?;
+        direct_update_transaction(client, hotspot, update, &keypair.pubkey(), opts).await?;
     txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
     Ok((txn, latest_block_height))
 }
@@ -232,6 +241,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
     keypair: &Keypair,
+    opts: &TransactionOpts,
 ) -> Result<Transaction, Error> {
     let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
@@ -242,7 +252,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         tx.try_partial_sign(&[keypair], tx.message.recent_blockhash)?;
         return Ok(tx);
     };
-    let (tx, _) = direct_update(client, hotspot, update, keypair).await?;
+    let (tx, _) = direct_update(client, hotspot, update, keypair, opts).await?;
     Ok(tx)
 }
 
@@ -255,6 +265,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
+    opts: &TransactionOpts,
 ) -> Result<Transaction, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
@@ -287,7 +298,12 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let ixs = &[
         compute_budget_instruction(200_000),
-        compute_price_instruction_for_accounts(client, &priority_fee_accounts).await?,
+        compute_price_instruction_for_accounts(
+            client,
+            &priority_fee_accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
         transfer_ix,
     ];
 
@@ -300,8 +316,9 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
     keypair: &Keypair,
+    opts: &TransactionOpts,
 ) -> Result<Transaction, Error> {
-    let mut tx = transfer_transaction(client, hotspot_key, recipient).await?;
+    let mut tx = transfer_transaction(client, hotspot_key, recipient, opts).await?;
     let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
         .get_latest_blockhash()
         .await?;

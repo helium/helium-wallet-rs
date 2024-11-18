@@ -4,8 +4,7 @@ use crate::{
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     entity_key::{self, AsEntityKey, KeySerialization},
-    error::EncodeError,
-    error::{DecodeError, Error},
+    error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
     keypair::{Keypair, Pubkey},
     kta, lazy_distributor, priority_fee,
@@ -13,6 +12,7 @@ use crate::{
     rewards_oracle,
     solana_sdk::{instruction::Instruction, transaction::Transaction},
     token::TokenAmount,
+    TransactionOpts,
 };
 use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use chrono::Utc;
@@ -201,6 +201,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     amount: Option<u64>,
     encoded_entity_key: &entity_key::EncodedEntityKey,
     keypair: &Keypair,
+    opts: &TransactionOpts,
 ) -> Result<Option<(Transaction, u64)>, Error> {
     let Some((mut txn, block_height)) = claim_transaction(
         client,
@@ -208,6 +209,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
         amount,
         encoded_entity_key,
         &keypair.pubkey(),
+        opts,
     )
     .await?
     else {
@@ -224,6 +226,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     amount: Option<u64>,
     encoded_entity_key: &entity_key::EncodedEntityKey,
     payer: &Pubkey,
+    opts: &TransactionOpts,
 ) -> Result<Option<(Transaction, u64)>, Error> {
     let entity_key = encoded_entity_key.as_entity_key()?;
     let pending = pending(
@@ -261,7 +264,12 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
 
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
-        priority_fee::compute_price_instruction_for_accounts(client, &ixs_accounts).await?,
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &ixs_accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
         set_current_ix,
         distribute_ix,
     ];
@@ -543,6 +551,7 @@ pub mod recipient {
         subdao: &SubDao,
         entity_key: &E,
         keypair: &Keypair,
+        opts: &TransactionOpts,
     ) -> Result<(Transaction, u64), Error> {
         let kta = kta::for_entity_key(entity_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
@@ -552,7 +561,12 @@ pub mod recipient {
 
         let ixs = &[
             priority_fee::compute_budget_instruction(150_000),
-            priority_fee::compute_price_instruction_for_accounts(client, &init_ix.accounts).await?,
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &init_ix.accounts,
+                opts.min_priority_fee,
+            )
+            .await?,
             init_ix,
         ];
         let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);

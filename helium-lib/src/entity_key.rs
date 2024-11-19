@@ -81,7 +81,7 @@ impl From<EntityKeyEncoding> for KeySerialization {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct EncodedEntityKey {
-    #[clap(long, default_value_t = EntityKeyEncoding::UTF8)]
+    #[cfg_attr(feature="clap", clap(long, default_value_t = EntityKeyEncoding::UTF8))]
     pub encoding: EntityKeyEncoding,
     pub entity_key: String,
 }

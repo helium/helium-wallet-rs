@@ -51,7 +51,8 @@ pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, Decode
     Ok(entity_key)
 }
 
-#[derive(Debug, Clone, clap::ValueEnum, serde::Serialize, Copy, Default)]
+#[derive(Debug, Clone, serde::Serialize, Copy, Default)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum EntityKeyEncoding {
     #[default]
@@ -77,7 +78,8 @@ impl From<EntityKeyEncoding> for KeySerialization {
     }
 }
 
-#[derive(Debug, clap::Args, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct EncodedEntityKey {
     #[clap(long, default_value_t = EntityKeyEncoding::UTF8)]
     pub encoding: EntityKeyEncoding,

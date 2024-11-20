@@ -250,7 +250,7 @@ pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     priority_fee_accounts.extend_from_slice(&remaining_accounts);
 
     let ixs = &[
-        compute_budget_instruction(200_000),
+        compute_budget_instruction(100_000),
         compute_price_instruction_for_accounts(
             client,
             &priority_fee_accounts,

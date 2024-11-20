@@ -25,7 +25,7 @@ impl Cmd {
         }
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts();
-        let tx = hotspot::transfer(
+        let (tx, _) = hotspot::transfer(
             &client,
             &self.address,
             &self.recipient,

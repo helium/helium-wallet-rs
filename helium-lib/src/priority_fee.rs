@@ -1,67 +1,106 @@
 use crate::{
-    anchor_client::RequestBuilder, anchor_lang::ToAccountMetas, client::SolanaRpcClient,
-    error::Error, solana_sdk::signer::Signer,
+    anchor_lang::ToAccountMetas, client::SolanaRpcClient, error::Error, keypair::Pubkey,
+    solana_client,
 };
 use itertools::Itertools;
-use std::ops::Deref;
 
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
 pub const MIN_PRIORITY_FEE: u64 = 1;
-
-pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
-    client: &C,
-    accounts: &impl ToAccountMetas,
-    min_priority_fee: u64,
-) -> Result<u64, Error> {
-    get_estimate_with_min(client, accounts, min_priority_fee).await
-}
 
 pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
     min_priority_fee: u64,
 ) -> Result<u64, Error> {
-    let account_keys: Vec<_> = accounts
+    let client_url = client.as_ref().url();
+    if client_url.contains("helius") {
+        helius::get_estimate_with_min(client, accounts, min_priority_fee).await
+    } else {
+        base::get_estimate_with_min(client, accounts, min_priority_fee).await
+    }
+}
+
+fn account_keys(accounts: &impl ToAccountMetas) -> impl Iterator<Item = Pubkey> {
+    accounts
         .to_account_metas(None)
         .into_iter()
         .filter(|account_meta| account_meta.is_writable)
         .map(|x| x.pubkey)
         .unique()
         .take(MAX_RECENT_PRIORITY_FEE_ACCOUNTS)
-        .collect();
-    let recent_fees = client
-        .as_ref()
-        .get_recent_prioritization_fees(&account_keys)
-        .await?;
-    let mut max_per_slot = Vec::new();
-    for (slot, fees) in &recent_fees.into_iter().group_by(|x| x.slot) {
-        let Some(maximum) = fees.map(|x| x.prioritization_fee).max() else {
-            continue;
-        };
-        max_per_slot.push((slot, maximum));
-    }
-    // Only take the most recent 20 maximum fees:
-    max_per_slot.sort_by(|a, b| a.0.cmp(&b.0).reverse());
-    let mut max_per_slot: Vec<_> = max_per_slot.into_iter().take(20).map(|x| x.1).collect();
-    max_per_slot.sort();
-    // Get the median:
-    let num_recent_fees = max_per_slot.len();
-    let mid = num_recent_fees / 2;
-    let estimate = if num_recent_fees == 0 {
-        min_priority_fee
-    } else if num_recent_fees % 2 == 0 {
-        // If the number of samples is even, taken the mean of the two median fees
-        (max_per_slot[mid - 1] + max_per_slot[mid]) / 2
-    } else {
-        max_per_slot[mid]
-    }
-    .max(min_priority_fee);
-    Ok(estimate)
 }
 
-pub trait SetPriorityFees {
-    fn compute_budget(self, limit: u32) -> Self;
-    fn compute_price(self, priority_fee: u64) -> Self;
+mod helius {
+    use super::*;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        accounts: &impl ToAccountMetas,
+        min_priority_fee: u64,
+    ) -> Result<u64, Error> {
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Response {
+            priority_fee_estimate: f64,
+        }
+        let request = solana_client::rpc_request::RpcRequest::Custom {
+            method: "getPriorityFeeEstimate",
+        };
+        let account_keys: Vec<_> = account_keys(accounts).map(|v| v.to_string()).collect();
+        let params = json!([
+            {
+                "accountKeys": account_keys,
+                "options": {
+                    "recommended": true,
+                }
+            }
+        ]);
+
+        let response: Response = client.as_ref().send(request, params).await?;
+        Ok((response.priority_fee_estimate.ceil() as u64).max(min_priority_fee))
+    }
+}
+
+mod base {
+    use super::*;
+
+    pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        accounts: &impl ToAccountMetas,
+        min_priority_fee: u64,
+    ) -> Result<u64, Error> {
+        let account_keys: Vec<_> = account_keys(accounts).collect();
+        let recent_fees = client
+            .as_ref()
+            .get_recent_prioritization_fees(&account_keys)
+            .await?;
+        let mut max_per_slot = Vec::new();
+        for (slot, fees) in &recent_fees.into_iter().group_by(|x| x.slot) {
+            let Some(maximum) = fees.map(|x| x.prioritization_fee).max() else {
+                continue;
+            };
+            max_per_slot.push((slot, maximum));
+        }
+        // Only take the most recent 20 maximum fees:
+        max_per_slot.sort_by(|a, b| a.0.cmp(&b.0).reverse());
+        let mut max_per_slot: Vec<_> = max_per_slot.into_iter().take(20).map(|x| x.1).collect();
+        max_per_slot.sort();
+        // Get the median:
+        let num_recent_fees = max_per_slot.len();
+        let mid = num_recent_fees / 2;
+        let estimate = if num_recent_fees == 0 {
+            min_priority_fee
+        } else if num_recent_fees % 2 == 0 {
+            // If the number of samples is even, taken the mean of the two median fees
+            (max_per_slot[mid - 1] + max_per_slot[mid]) / 2
+        } else {
+            max_per_slot[mid]
+        }
+        .max(min_priority_fee);
+        Ok(estimate)
+    }
 }
 
 pub fn compute_budget_instruction(compute_limit: u32) -> solana_sdk::instruction::Instruction {
@@ -77,16 +116,6 @@ pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     accounts: &impl ToAccountMetas,
     min_priority_fee: u64,
 ) -> Result<solana_sdk::instruction::Instruction, Error> {
-    let priority_fee = get_estimate(client, accounts, min_priority_fee).await?;
+    let priority_fee = get_estimate_with_min(client, accounts, min_priority_fee).await?;
     Ok(compute_price_instruction(priority_fee))
-}
-
-impl<C: Deref<Target = impl Signer> + Clone> SetPriorityFees for RequestBuilder<'_, C> {
-    fn compute_budget(self, compute_limit: u32) -> Self {
-        self.instruction(compute_budget_instruction(compute_limit))
-    }
-
-    fn compute_price(self, priority_fee: u64) -> Self {
-        self.instruction(compute_price_instruction(priority_fee))
-    }
 }

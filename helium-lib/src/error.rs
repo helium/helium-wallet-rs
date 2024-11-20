@@ -20,7 +20,7 @@ pub enum Error {
     #[error("grpc: {0}")]
     Grpc(#[from] tonic::Status),
     #[error("service: {0}")]
-    Servcice(#[from] helium_proto::services::Error),
+    Service(#[from] helium_proto::services::Error),
     #[error("price client: {0}")]
     Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]

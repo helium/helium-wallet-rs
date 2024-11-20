@@ -110,13 +110,21 @@ pub mod organization {
         token::Token,
     };
 
+    pub enum OrgIdentifier {
+        Oui(u64),
+        Pubkey(Pubkey),
+    }
+
     pub async fn ensure_exists<C: AsRef<SolanaRpcClient>>(
         client: &C,
-        oui: u64,
+        identifier: OrgIdentifier,
     ) -> Result<(Pubkey, OrganizationV0), Error> {
         let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
         let routing_manager_key = routing_manager_key(&sub_dao);
-        let organization_key = organization_key(&routing_manager_key, oui);
+        let organization_key = match identifier {
+            OrgIdentifier::Oui(oui) => organization_key(&routing_manager_key, oui),
+            OrgIdentifier::Pubkey(pubkey) => pubkey,
+        };
 
         match client
             .as_ref()
@@ -135,11 +143,18 @@ pub mod organization {
         authority: Option<Pubkey>,
         recipient: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
+        let payer_iot_ata_key = get_associated_token_address(&payer, Token::Iot.mint());
         let dao_key = helium_sub_daos::dao_key(Token::Hnt.mint());
         let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
 
         let program_approval_key =
             helium_entity_manager::program_approval_key(&dao_key, &iot_routing_manager::ID);
+
+        client
+            .as_ref()
+            .get_account(&payer_iot_ata_key)
+            .await
+            .map_err(|_| Error::Other("Payer IOT token account non existent.".to_string()))?;
 
         client
             .as_ref()
@@ -181,7 +196,7 @@ pub mod organization {
                     routing_manager: routing_manager_key,
                     net_id: net_id_key,
                     iot_mint: Token::Iot.mint().clone(),
-                    payer_iot_account: get_associated_token_address(&payer, Token::Iot.mint()),
+                    payer_iot_account: payer_iot_ata_key,
                     iot_price_oracle: Token::Iot.price_key().unwrap().clone(),
                     authority: authority.unwrap_or(payer.clone()),
                     bubblegum_signer: metaplex::bubblegum_signer_key(),
@@ -314,13 +329,21 @@ pub mod net_id {
         token::Token,
     };
 
+    pub enum NetIdIdentifier {
+        Id(u32),
+        Pubkey(Pubkey),
+    }
+
     pub async fn ensure_exists<C: AsRef<SolanaRpcClient>>(
         client: &C,
-        net_id: u32,
+        identifier: NetIdIdentifier,
     ) -> Result<(Pubkey, NetIdV0), Error> {
         let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
         let routing_manager_key = routing_manager_key(&sub_dao);
-        let net_id_key = net_id_key(&routing_manager_key, net_id);
+        let net_id_key = match identifier {
+            NetIdIdentifier::Id(id) => net_id_key(&routing_manager_key, id),
+            NetIdIdentifier::Pubkey(pubkey) => pubkey,
+        };
 
         match client
             .as_ref()
@@ -350,8 +373,8 @@ pub mod net_id {
         let net_id_exists = client
             .as_ref()
             .anchor_account::<NetIdV0>(&net_id_key)
-            .await?
-            .is_some();
+            .await
+            .is_ok();
 
         if net_id_exists {
             return Err(Error::account_exists());
@@ -377,14 +400,12 @@ pub mod net_id {
 }
 
 pub mod devaddr_constraint {
-    use helium_anchor_gen::helium_entity_manager::MobileDeploymentInfoV0;
-
     use super::*;
 
     use crate::{
         client::{GetAnchorAccount, SolanaRpcClient},
         error::Error,
-        iot_routing_manager,
+        helium_sub_daos, iot_routing_manager,
         token::Token,
     };
 
@@ -393,17 +414,22 @@ pub mod devaddr_constraint {
         payer: Pubkey,
         args: InitializeDevaddrConstraintArgsV0,
         organization_key: Pubkey,
+        net_id_key: Pubkey,
         authority: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
-        let organization = client
+        let payer_iot_ata_key = get_associated_token_address(&payer, Token::Iot.mint());
+        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let routing_manager_key = routing_manager_key(&sub_dao);
+
+        client
             .as_ref()
-            .anchor_account::<iot_routing_manager::OrganizationV0>(&organization_key)
-            .await?
-            .ok_or_else(|| Error::account_not_found())?;
+            .get_account(&payer_iot_ata_key)
+            .await
+            .map_err(|_| Error::Other("Payer IOT token account non existent.".to_string()))?;
 
         let net_id = client
             .as_ref()
-            .anchor_account::<iot_routing_manager::NetIdV0>(&organization.net_id)
+            .anchor_account::<iot_routing_manager::NetIdV0>(&&net_id_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
@@ -419,11 +445,11 @@ pub mod devaddr_constraint {
                 accounts: iot_routing_manager::accounts::InitializeDevaddrConstraintV0 {
                     payer,
                     authority: authority.unwrap_or(payer.clone()),
-                    net_id: organization.net_id,
-                    routing_manager: organization.routing_manager,
+                    net_id: net_id_key,
+                    routing_manager: routing_manager_key,
                     organization: organization_key,
                     iot_mint: Token::Iot.mint().clone(),
-                    payer_iot_account: get_associated_token_address(&payer, Token::Iot.mint()),
+                    payer_iot_account: payer_iot_ata_key,
                     iot_price_oracle: Token::Iot.price_key().unwrap().clone(),
                     devaddr_constraint: devaddr_constarint_key,
                     token_program: anchor_spl::token::ID,

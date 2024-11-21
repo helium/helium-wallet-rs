@@ -43,9 +43,9 @@ impl From<lazy_distributor::OracleConfigV0> for Oracle {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct OracleReward {
-    oracle: Oracle,
-    index: u16,
-    reward: TokenAmount,
+    pub oracle: Oracle,
+    pub index: u16,
+    pub reward: TokenAmount,
 }
 
 pub async fn lazy_distributor<C: GetAnchorAccount>(

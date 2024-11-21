@@ -297,6 +297,8 @@ pub struct Asset {
     pub ownership: AssetOwnership,
     pub content: AssetContent,
     pub grouping: Vec<AssetGroup>,
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub burnt: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

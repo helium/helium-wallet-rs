@@ -378,6 +378,8 @@ pub struct Hotspot {
     pub name: String,
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub burnt: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
@@ -399,6 +401,7 @@ impl Hotspot {
             key: entity_key,
             owner: asset.ownership.owner,
             info: None,
+            burnt: asset.burnt,
         })
     }
 }

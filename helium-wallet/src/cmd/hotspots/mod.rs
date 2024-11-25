@@ -1,6 +1,7 @@
 use crate::cmd::*;
 
 mod add;
+mod burn;
 mod info;
 mod list;
 mod rewards;
@@ -30,6 +31,7 @@ pub enum HotspotCommand {
     Updates(updates::Cmd),
     Rewards(rewards::Cmd),
     Transfer(transfer::Cmd),
+    Burn(burn::Cmd),
 }
 
 impl HotspotCommand {
@@ -42,6 +44,7 @@ impl HotspotCommand {
             Self::Updates(cmd) => cmd.run(opts).await,
             Self::Rewards(cmd) => cmd.run(opts).await,
             Self::Transfer(cmd) => cmd.run(opts).await,
+            Self::Burn(cmd) => cmd.run(opts).await,
         }
     }
 }

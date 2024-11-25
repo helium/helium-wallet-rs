@@ -20,6 +20,8 @@ pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com
 
 pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443?session-key=Pluto";
 pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?session-key=Pluto";
+pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
+pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
 pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 
@@ -98,12 +100,14 @@ impl GetAnchorAccount for Client {
 impl TryFrom<&str> for Client {
     type Error = Error;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
+        fn env_or(key: &str, default: &str) -> String {
+            std::env::var(key).unwrap_or_else(|_| default.to_string())
+        }
         let url = match value {
-            "m" | "mainnet-beta" => SOLANA_URL_MAINNET,
-            "d" | "devnet" => SOLANA_URL_DEVNET,
+            "m" | "mainnet-beta" => &env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
+            "d" | "devnet" => &env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
             url => url,
         };
-
         let das_client = Arc::new(DasClient::with_base_url(url)?);
         let solana_client = Arc::new(SolanaRpcClient::new(url.to_string()));
         Ok(Self {

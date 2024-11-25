@@ -7,9 +7,8 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
-    kta, onboarding,
-    priority_fee::{self, compute_budget_instruction, compute_price_instruction_for_accounts},
-    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    kta, onboarding, priority_fee,
+    programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
@@ -266,49 +265,9 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<(Transaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
-
-    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-    let merkle_tree = asset_proof.tree_id;
-    let remaining_accounts = asset_proof.proof_for_tree(client, &merkle_tree).await?;
-
-    let transfer = mpl_bubblegum::instructions::Transfer {
-        leaf_owner: (asset.ownership.owner, false),
-        leaf_delegate: (leaf_delegate, false),
-        new_leaf_owner: *recipient,
-        tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
-        merkle_tree,
-        log_wrapper: SPL_NOOP_PROGRAM_ID,
-        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-        system_program: solana_sdk::system_program::id(),
-    };
-    let args = mpl_bubblegum::instructions::TransferInstructionArgs {
-        creator_hash: asset.compression.creator_hash,
-        root: asset_proof.root.to_bytes(),
-        data_hash: asset.compression.data_hash,
-        index: asset.compression.leaf_id()?,
-        nonce: asset.compression.leaf_id,
-    };
-
-    let transfer_ix = transfer.instruction_with_remaining_accounts(args, &remaining_accounts);
-    let mut priority_fee_accounts = transfer_ix.accounts.clone();
-    priority_fee_accounts.extend_from_slice(&remaining_accounts);
-
-    let ixs = &[
-        compute_budget_instruction(200_000),
-        compute_price_instruction_for_accounts(
-            client,
-            &priority_fee_accounts,
-            opts.min_priority_fee,
-        )
-        .await?,
-        transfer_ix,
-    ];
-
-    let tx = Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
-    Ok(tx)
+    asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -317,14 +276,28 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     recipient: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
-    let mut tx = transfer_transaction(client, hotspot_key, recipient, opts).await?;
-    let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-        .get_latest_blockhash()
-        .await?;
-    tx.try_sign(&[keypair], blockhash)?;
+) -> Result<(Transaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::transfer(client, &kta.asset, recipient, keypair, opts).await
+}
 
-    Ok(tx)
+pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::burn_transaction(client, &kta.asset, opts).await
+}
+
+pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::burn(client, &kta.asset, keypair, opts).await
 }
 
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -405,6 +378,8 @@ pub struct Hotspot {
     pub name: String,
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub burnt: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
@@ -426,6 +401,7 @@ impl Hotspot {
             key: entity_key,
             owner: asset.ownership.owner,
             info: None,
+            burnt: asset.burnt,
         })
     }
 }

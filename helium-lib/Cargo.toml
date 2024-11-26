@@ -31,6 +31,7 @@ reqwest = { version = "0", default-features = false, features = [
 helium-anchor-gen = {git = "https://github.com/helium/helium-anchor-gen.git" }
 spl-associated-token-account = { version = "*", features = ["no-entrypoint"] }
 spl-account-compression = { version = "0.3", features = ["no-entrypoint"] }
+spl-memo = "4"
 tonic = { version = "0", features = ["tls", "tls-roots"] }
 mpl-bubblegum = "1"
 solana-program = ">=1.18,<2"

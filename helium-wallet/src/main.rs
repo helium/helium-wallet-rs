@@ -1,8 +1,8 @@
 use clap::Parser;
 use helium_wallet::{
     cmd::{
-        assets, balance, burn, create, dc, export, hotspots, info, price, router, sign, transfer,
-        upgrade, Opts,
+        assets, balance, burn, create, dc, export, hotspots, info, memo, price, router, sign,
+        transfer, upgrade, Opts,
     },
     result::Result,
 };
@@ -38,6 +38,7 @@ pub enum Cmd {
     Burn(burn::Cmd),
     Export(export::Cmd),
     Sign(sign::Cmd),
+    Memo(memo::Cmd),
     Assets(assets::Cmd),
 }
 
@@ -66,6 +67,7 @@ impl Cli {
             Cmd::Burn(cmd) => cmd.run(self.opts).await,
             Cmd::Export(cmd) => cmd.run(self.opts).await,
             Cmd::Sign(cmd) => cmd.run(self.opts).await,
+            Cmd::Memo(cmd) => cmd.run(self.opts).await,
             Cmd::Assets(cmd) => cmd.run(self.opts).await,
         }
     }

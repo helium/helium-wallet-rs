@@ -10,6 +10,7 @@ pub mod error;
 pub mod hotspot;
 pub mod keypair;
 pub mod kta;
+pub mod memo;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;

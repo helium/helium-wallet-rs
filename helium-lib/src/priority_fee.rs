@@ -13,7 +13,7 @@ pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
     min_priority_fee: u64,
 ) -> Result<u64, Error> {
     let client_url = client.as_ref().url();
-    if client_url.contains("helius") {
+    if client_url.contains("mainnet.helius") {
         helius::get_estimate_with_min(client, accounts, min_priority_fee).await
     } else {
         base::get_estimate_with_min(client, accounts, min_priority_fee).await

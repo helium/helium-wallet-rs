@@ -4,6 +4,8 @@ use crate::{
     client::SolanaRpcClient,
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
+    mk_transaction_with_blockhash,
+    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
         commitment_config::CommitmentConfig, signer::Signer, system_instruction,
         transaction::Transaction,
@@ -41,7 +43,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
     keypair: &Keypair,
-) -> Result<Transaction, Error> {
+) -> Result<(Transaction, u64), Error> {
     let wallet_pubkey = keypair.pubkey();
     let ix = match token_amount.token.mint() {
         spl_mint if spl_mint == Token::Sol.mint() => {
@@ -61,16 +63,17 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
         }
     };
 
-    let blockhash = client.as_ref().get_latest_blockhash().await?;
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&wallet_pubkey), &[keypair], blockhash);
-    Ok(tx)
+    let (mut txn, latest_block_height) =
+        mk_transaction_with_blockhash(client, &[ix], &wallet_pubkey).await?;
+    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+    Ok((txn, latest_block_height))
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
     keypair: &Keypair,
-) -> Result<Transaction, Error> {
+) -> Result<(Transaction, u64), Error> {
     let wallet_public_key = keypair.pubkey();
 
     let mut ixs = vec![];
@@ -109,10 +112,10 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
         }
     }
 
-    let blockhash = client.as_ref().get_latest_blockhash().await?;
-    let tx =
-        Transaction::new_signed_with_payer(&ixs, Some(&wallet_public_key), &[keypair], blockhash);
-    Ok(tx)
+    let (mut txn, latest_block_height) =
+        mk_transaction_with_blockhash(client, &ixs, &wallet_public_key).await?;
+    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+    Ok((txn, latest_block_height))
 }
 
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(

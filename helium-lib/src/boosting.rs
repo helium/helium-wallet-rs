@@ -1,14 +1,16 @@
-use chrono::{DateTime, Utc};
-use helium_anchor_gen::hexboosting::accounts::StartBoostV0;
-
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     client::SolanaRpcClient,
     error::Error,
     hexboosting,
+    hexboosting::accounts::StartBoostV0,
     keypair::{Keypair, Pubkey},
-    solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
+    mk_transaction_with_blockhash, priority_fee,
+    solana_client::rpc_client::SerializableTransaction,
+    solana_sdk::{instruction::Instruction, signer::Signer, transaction::Transaction},
+    TransactionOpts,
 };
+use chrono::{DateTime, Utc};
 
 pub trait StartBoostingHex {
     fn start_authority(&self) -> Pubkey;
@@ -17,16 +19,17 @@ pub trait StartBoostingHex {
     fn activation_ts(&self) -> DateTime<Utc>;
 }
 
-pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
+pub async fn start_boost_transaction<C: AsRef<SolanaRpcClient>>(
     client: &C,
     keypair: &Keypair,
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
-) -> Result<Transaction, Error> {
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
     fn mk_accounts(
         start_authority: Pubkey,
         boost_config: Pubkey,
         boosted_hex: Pubkey,
-    ) -> StartBoostV0 {
+    ) -> impl ToAccountMetas {
         StartBoostV0 {
             start_authority,
             boost_config,
@@ -34,16 +37,19 @@ pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
         }
     }
 
-    let mut ixs = vec![];
+    let mut ix_accounts = vec![];
+    let mut start_ixs = vec![];
     for update in updates {
         let accounts = mk_accounts(
             update.start_authority(),
             update.boost_config(),
             update.boosted_hex(),
         );
+        let accounts = accounts.to_account_metas(None);
+        ix_accounts.extend_from_slice(&accounts);
         let ix = Instruction {
             program_id: hexboosting::id(),
-            accounts: accounts.to_account_metas(None),
+            accounts,
             data: hexboosting::instruction::StartBoostV0 {
                 _args: hexboosting::StartBoostArgsV0 {
                     start_ts: update.activation_ts().timestamp(),
@@ -51,16 +57,31 @@ pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
             }
             .data(),
         };
-        ixs.push(ix);
+        start_ixs.push(ix);
     }
-
-    let recent_blockhash = client.as_ref().get_latest_blockhash().await?;
-    let tx = Transaction::new_signed_with_payer(
-        &ixs,
-        Some(&keypair.pubkey()),
-        &[keypair],
-        recent_blockhash,
-    );
-
-    Ok(tx)
+    let ixs = [
+        &[
+            priority_fee::compute_budget_instruction(150_000),
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &ix_accounts,
+                opts.min_priority_fee,
+            )
+            .await?,
+        ],
+        start_ixs.as_slice(),
+    ]
+    .concat();
+    mk_transaction_with_blockhash(client, &ixs, &keypair.pubkey()).await
+}
+pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    updates: impl IntoIterator<Item = impl StartBoostingHex>,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let (mut txn, latest_block_height) =
+        start_boost_transaction(client, keypair, updates, opts).await?;
+    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+    Ok((txn, latest_block_height))
 }

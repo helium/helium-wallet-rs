@@ -2,7 +2,7 @@ use crate::{
     client::SolanaRpcClient,
     error::Error,
     keypair::{Keypair, Pubkey},
-    priority_fee,
+    mk_transaction_with_blockhash, priority_fee,
     solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{signer::Signer, transaction::Transaction},
     TransactionOpts,
@@ -25,13 +25,8 @@ pub async fn memo_transaction<C: AsRef<SolanaRpcClient>>(
         .await?,
         ix,
     ];
-    let mut txn = Transaction::new_with_payer(ixs, Some(pubkey));
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    txn.message.recent_blockhash = latest_blockhash;
-    Ok((txn, latest_block_height))
+
+    mk_transaction_with_blockhash(client, ixs, pubkey).await
 }
 
 pub async fn memo<C: AsRef<SolanaRpcClient>>(

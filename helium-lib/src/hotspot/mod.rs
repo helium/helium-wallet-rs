@@ -7,7 +7,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
-    kta, onboarding, priority_fee,
+    kta, mk_transaction_with_blockhash, onboarding, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
@@ -212,13 +212,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
         ix,
     ];
 
-    let mut txn = Transaction::new_with_payer(ixs, Some(owner));
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    txn.message.recent_blockhash = latest_blockhash;
-    Ok((txn, latest_block_height))
+    mk_transaction_with_blockhash(client, ixs, owner).await
 }
 
 pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(

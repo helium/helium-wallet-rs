@@ -1,7 +1,8 @@
 use crate::{
     data_credits, entity_key::AsEntityKey, helium_entity_manager, helium_sub_daos, keypair::Pubkey,
-    lazy_distributor, metaplex, token::Token,
+    lazy_distributor, metaplex, rewards_oracle, token::Token,
 };
+use chrono::Timelike;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -57,6 +58,22 @@ impl Dao {
     pub fn entity_key_to_kta_key<E: AsEntityKey + ?Sized>(&self, entity_key: &E) -> Pubkey {
         let hash = Sha256::digest(entity_key.as_entity_key());
         helium_entity_manager::key_to_asset_key_raw(&self.key(), &hash)
+    }
+
+    pub fn dc_account_payer() -> Pubkey {
+        let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::id());
+        key
+    }
+
+    pub fn dc_key() -> Pubkey {
+        let (key, _) =
+            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::id());
+        key
+    }
+
+    pub fn oracle_signer_key() -> Pubkey {
+        let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::id());
+        key
     }
 
     pub fn dc_account_payer() -> Pubkey {
@@ -190,5 +207,20 @@ impl SubDao {
         let sub_dao = self.key();
         let unix_time = chrono::Utc::now().timestamp() as u64;
         helium_sub_daos::sub_dao_epoch_info_key(&sub_dao, unix_time)
+    }
+
+    pub fn epoch_info_key(&self) -> Pubkey {
+        const EPOCH_LENGTH: u32 = 60 * 60 * 24;
+        let epoch = chrono::Utc::now().second() / EPOCH_LENGTH;
+
+        let (key, _) = Pubkey::find_program_address(
+            &[
+                "sub_dao_epoch_info".as_bytes(),
+                self.key().as_ref(),
+                &epoch.to_le_bytes(),
+            ],
+            &helium_sub_daos::ID,
+        );
+        key
     }
 }

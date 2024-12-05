@@ -1,14 +1,3 @@
-use angry_purple_tiger::AnimalName;
-use chrono::Utc;
-use futures::{
-    stream::{self, StreamExt, TryStreamExt},
-    TryFutureExt,
-};
-use itertools::Itertools;
-use rust_decimal::prelude::*;
-use serde::Serialize;
-use std::{collections::HashMap, hash::Hash, str::FromStr};
-
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     anchor_spl, asset, bs58,
@@ -19,16 +8,26 @@ use crate::{
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
     kta, onboarding,
-    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
-        instruction::AccountMeta, instruction::Instruction, signer::Signer,
+        instruction::{AccountMeta, Instruction},
+        signer::Signer,
         transaction::Transaction,
     },
     solana_transaction_utils::priority_fee::{
         compute_budget_instruction, compute_price_instruction_for_accounts,
     },
     token::Token,
+    TransactionOpts,
 };
+use angry_purple_tiger::AnimalName;
+use chrono::Utc;
+use futures::TryFutureExt;
+use itertools::{izip, Itertools};
+use rust_decimal::prelude::*;
+use serde::Serialize;
+use std::{collections::HashMap, hash::Hash, str::FromStr};
 
 pub mod dataonly;
 pub mod info;
@@ -52,14 +51,20 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     owner: &Pubkey,
 ) -> Result<Vec<Hotspot>, Error> {
     let assets = asset::for_owner(client, &HOTSPOT_CREATOR, owner).await?;
-    let hotspot_assets = assets
+    // Get all kta keys for the hotspots in the assets for the given owner
+    let (kta_keys, hotspot_assets): (Vec<Pubkey>, Vec<asset::Asset>) = assets
         .into_iter()
-        .filter(|asset| asset.is_symbol("HOTSPOT"));
-    stream::iter(hotspot_assets)
-        .map(|asset| async move { Hotspot::from_asset(asset).await })
-        .buffered(5)
-        .try_collect::<Vec<Hotspot>>()
-        .await
+        .filter(|asset| asset.is_symbol("HOTSPOT"))
+        .map(|asset| asset.kta_key().map(|kta_key| (kta_key, asset)))
+        .collect::<Result<Vec<(Pubkey, asset::Asset)>, Error>>()?
+        .into_iter()
+        .unzip();
+    // Get all ktas in one go
+    let ktas = kta::get_many(&kta_keys).await?;
+    // Then construct Hotspots from assets and ktas
+    izip!(ktas, hotspot_assets)
+        .map(|(kta, asset)| Hotspot::from_asset_with_kta(kta, asset))
+        .try_collect()
 }
 
 pub async fn search<C: AsRef<DasClient>>(
@@ -107,12 +112,13 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
     Ok(hotspot)
 }
 
-pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
-    keypair: &Keypair,
-) -> Result<Transaction, Error> {
+    owner: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
     fn mk_accounts(
         subdao: SubDao,
         kta: &helium_entity_manager::KeyToAssetV0,
@@ -153,42 +159,82 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let kta = kta::for_entity_key(hotspot).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
-    let mut accounts = mk_accounts(update.subdao(), &kta, &asset, &keypair.pubkey());
+
+    macro_rules! mk_update_data {
+        ($ix_struct:ident, $arg_struct:ident, $($manual_fields:tt)*) => {
+            $ix_struct {
+                _args: $arg_struct {
+                    root: asset_proof.root.to_bytes(),
+                    data_hash: asset.compression.data_hash,
+                    creator_hash: asset.compression.creator_hash,
+                    index: asset.compression.leaf_id()?,
+                    $($manual_fields)*
+                },
+            }
+            .data()
+        };
+    }
+
+    let mut accounts = mk_accounts(update.subdao(), &kta, &asset, owner);
     accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
-    let update_ix = Instruction {
-        program_id: helium_entity_manager::id(),
-        accounts: accounts.to_account_metas(None),
-        data: helium_entity_manager::instruction::UpdateIotInfoV0 {
-            _args: helium_entity_manager::UpdateIotInfoArgsV0 {
-                root: asset_proof.root.to_bytes(),
-                data_hash: asset.compression.data_hash,
-                creator_hash: asset.compression.creator_hash,
-                index: asset.compression.leaf_id()?,
+    use helium_entity_manager::{
+        instruction::{
+            UpdateIotInfoV0 as IxUpdateIotInfo, UpdateMobileInfoV0 as IxUpdateMobileInfo,
+        },
+        UpdateIotInfoArgsV0 as ArgsUpdateIotInfo, UpdateMobileInfoArgsV0 as ArgsUpdateMobileInfo,
+    };
+    let data = match update.subdao() {
+        SubDao::Iot => {
+            mk_update_data!(IxUpdateIotInfo , ArgsUpdateIotInfo,
                 elevation: *update.elevation(),
                 gain: update.gain_i32(),
-                location: update.location_u64(),
-            },
+                location: update.location_u64())
         }
-        .data(),
+        SubDao::Mobile => {
+            mk_update_data!(IxUpdateMobileInfo, ArgsUpdateMobileInfo,
+            location: update.location_u64(),
+            deployment_info: None,
+            )
+        }
+    };
+    let ix = Instruction {
+        program_id: helium_entity_manager::id(),
+        accounts: accounts.to_account_metas(None),
+        data,
     };
 
     let ixs = &[
-        compute_budget_instruction(200_000),
-        compute_price_instruction_for_accounts(client, &accounts).await?,
-        update_ix,
+        priority_fee::compute_budget_instruction(200_000),
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
+        ix,
     ];
 
-    let recent_blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-        .get_latest_blockhash()
+    let mut txn = Transaction::new_with_payer(ixs, Some(owner));
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let (latest_blockhash, latest_block_height) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
         .await?;
-    let tx = Transaction::new_signed_with_payer(
-        ixs,
-        Some(&keypair.pubkey()),
-        &[keypair],
-        recent_blockhash,
-    );
-    Ok(tx)
+    txn.message.recent_blockhash = latest_blockhash;
+    Ok((txn, latest_block_height))
+}
+
+pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot: &helium_crypto::PublicKey,
+    update: HotspotInfoUpdate,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let (mut txn, latest_block_height) =
+        direct_update_transaction(client, hotspot, update, &keypair.pubkey(), opts).await?;
+    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+    Ok((txn, latest_block_height))
 }
 
 pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -197,6 +243,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot: &helium_crypto::PublicKey,
     update: HotspotInfoUpdate,
     keypair: &Keypair,
+    opts: &TransactionOpts,
 ) -> Result<Transaction, Error> {
     let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
@@ -207,7 +254,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         tx.try_partial_sign(&[keypair], tx.message.recent_blockhash)?;
         return Ok(tx);
     };
-    let tx = direct_update(client, hotspot, update, keypair).await?;
+    let (tx, _) = direct_update(client, hotspot, update, keypair, opts).await?;
     Ok(tx)
 }
 
@@ -220,44 +267,10 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
-) -> Result<Transaction, Error> {
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
-
-    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-    let merkle_tree = asset_proof.tree_id;
-    let remaining_accounts = asset_proof.proof_for_tree(client, &merkle_tree).await?;
-
-    let transfer = mpl_bubblegum::instructions::Transfer {
-        leaf_owner: (asset.ownership.owner, false),
-        leaf_delegate: (leaf_delegate, false),
-        new_leaf_owner: *recipient,
-        tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
-        merkle_tree,
-        log_wrapper: SPL_NOOP_PROGRAM_ID,
-        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-        system_program: solana_sdk::system_program::id(),
-    };
-    let args = mpl_bubblegum::instructions::TransferInstructionArgs {
-        creator_hash: asset.compression.creator_hash,
-        root: asset_proof.root.to_bytes(),
-        data_hash: asset.compression.data_hash,
-        index: asset.compression.leaf_id()?,
-        nonce: asset.compression.leaf_id,
-    };
-
-    let transfer_ix = transfer.instruction_with_remaining_accounts(args, &remaining_accounts);
-    let mut priority_fee_accounts = transfer_ix.accounts.clone();
-    priority_fee_accounts.extend_from_slice(&remaining_accounts);
-
-    let ixs = &[
-        compute_budget_instruction(200_000),
-        compute_price_instruction_for_accounts(client, &priority_fee_accounts).await?,
-        transfer_ix,
-    ];
-
-    let tx = Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
-    Ok(tx)
+    asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -265,14 +278,29 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
     keypair: &Keypair,
-) -> Result<Transaction, Error> {
-    let mut tx = transfer_transaction(client, hotspot_key, recipient).await?;
-    let blockhash = AsRef::<SolanaRpcClient>::as_ref(client)
-        .get_latest_blockhash()
-        .await?;
-    tx.try_sign(&[keypair], blockhash)?;
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::transfer(client, &kta.asset, recipient, keypair, opts).await
+}
 
-    Ok(tx)
+pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::burn_transaction(client, &kta.asset, opts).await
+}
+
+pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::burn(client, &kta.asset, keypair, opts).await
 }
 
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -353,6 +381,8 @@ pub struct Hotspot {
     pub name: String,
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub burnt: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
@@ -374,6 +404,7 @@ impl Hotspot {
             key: entity_key,
             owner: asset.ownership.owner,
             info: None,
+            burnt: asset.burnt,
         })
     }
 }
@@ -494,7 +525,40 @@ pub enum HotspotInfo {
         #[serde(skip_serializing_if = "is_zero")]
         location_asserts: u16,
         device_type: MobileDeviceType,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        deployment_info: Option<MobileDeploymentInfo>,
     },
+}
+
+#[derive(Debug, Serialize, Clone, Hash)]
+#[serde(rename_all = "lowercase", untagged)]
+pub enum MobileDeploymentInfo {
+    WifiInfo {
+        #[serde(skip_serializing_if = "is_zero")]
+        antenna: u32,
+        // the height of the hotspot above ground level in whole meters
+        #[serde(skip_serializing_if = "is_zero")]
+        elevation: i32,
+        #[serde(skip_serializing_if = "is_zero")]
+        azimuth: Decimal,
+        #[serde(skip_serializing_if = "is_zero")]
+        mechanical_down_tilt: Decimal,
+        #[serde(skip_serializing_if = "is_zero")]
+        electrical_down_tilt: Decimal,
+    },
+    CbrsInfo {
+        radio_infos: Vec<CbrsRadioInfo>,
+    },
+}
+
+#[derive(Debug, Serialize, Clone, Hash)]
+#[serde(rename_all = "lowercase")]
+pub struct CbrsRadioInfo {
+    // CBSD_ID or radio
+    pub radio_id: String,
+    // The asserted elevation of the gateway above ground level in whole meters
+    #[serde(skip_serializing_if = "is_zero")]
+    pub elevation: i32,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -747,6 +811,41 @@ impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
             location: HotspotLocation::from_maybe(value.location),
             location_asserts: value.num_location_asserts,
             device_type: value.device_type.into(),
+            deployment_info: value.deployment_info.map(MobileDeploymentInfo::from),
+        }
+    }
+}
+
+impl From<helium_entity_manager::MobileDeploymentInfoV0> for MobileDeploymentInfo {
+    fn from(value: helium_entity_manager::MobileDeploymentInfoV0) -> Self {
+        match value {
+            helium_entity_manager::MobileDeploymentInfoV0::WifiInfoV0 {
+                antenna,
+                elevation,
+                azimuth,
+                mechanical_down_tilt,
+                electrical_down_tilt,
+            } => Self::WifiInfo {
+                antenna,
+                elevation,
+                azimuth: Decimal::new(azimuth as i64, 2),
+                mechanical_down_tilt: Decimal::new(mechanical_down_tilt as i64, 2),
+                electrical_down_tilt: Decimal::new(electrical_down_tilt as i64, 2),
+            },
+            helium_entity_manager::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
+                Self::CbrsInfo {
+                    radio_infos: radio_infos.into_iter().map(CbrsRadioInfo::from).collect(),
+                }
+            }
+        }
+    }
+}
+
+impl From<helium_entity_manager::RadioInfoV0> for CbrsRadioInfo {
+    fn from(value: helium_entity_manager::RadioInfoV0) -> Self {
+        Self {
+            radio_id: value.radio_id,
+            elevation: value.elevation,
         }
     }
 }

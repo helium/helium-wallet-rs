@@ -9,44 +9,43 @@ clap = ["dep:clap"]
 mnemonic = ["helium-mnemonic"]
 
 [dependencies]
-anchor-lang = "=0.29"
-anchor-client = { version = "0.29.0", features = ["async"] }
-anchor-spl = { version = "0.29.0", features = ["mint", "token"] }
-solana-sdk = "1.18"
-solana-program = ">=1.18,<2"
-solana-transaction-status = "*"
-mpl-bubblegum = "1"
-spl-associated-token-account = { version = "*", features = ["no-entrypoint"] }
-spl-account-compression = { version = "0.3", features = ["no-entrypoint"] }
-pyth-solana-receiver-sdk = { git = "https://github.com/madninja/pyth-crosschain.git", branch = "madninja/cap_solana_dep" }
-helium-crypto = { workspace = true }
-helium-proto = { workspace = true }
-helium-anchor-gen = { git = "https://github.com/helium/helium-anchor-gen.git" }
-helium-mnemonic = { path = "../helium-mnemonic", optional = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-bincode = "1.3.3"
-base64 = { workspace = true }
 hex = "0.4"
-hex-literal = "0"
-tokio = { workspace = true }
-futures = "*"
-tonic = { version = "0", features = ["tls", "tls-roots"] }
-reqwest = { version = "0", default-features = false, features = ["rustls-tls"] }
-jsonrpc_client = { version = "0.7", features = ["reqwest"] }
-chrono = { version = "0", features = ["serde"] }
-url = { version = "2", features = ["serde"] }
-h3o = { version = "0", features = ["serde"] }
-rust_decimal = { workspace = true }
-itertools = "0.10.5"
+chrono = {version = "0", features = ["serde"]}
 thiserror = "1"
 async-trait = "0"
-sha2 = { workspace = true }
-angry-purple-tiger = "0"
-lazy_static = "1"
-dirs = "5.0.1"
+anchor-client = {version = "0.29.0", features = ["async"] }
+anchor-spl = { version = "0.29.0", features = ["mint", "token"] }
+url = {version = "2", features = ["serde"]}
+h3o = {version = "0", features = ["serde"]}
+helium-crypto = {workspace = true}
+itertools = "0.10"
+jsonrpc_client = {version = "0.7", features = ["reqwest"]}
+futures = "*"
 tracing = "0"
-clap = { workspace = true, optional = true }
+base64 = {workspace = true}
+solana-sdk = "1.18"
+bincode = "1.3.3"
+reqwest = { version = "0", default-features = false, features = [
+    "rustls-tls",
+] }
+helium-anchor-gen = {git = "https://github.com/helium/helium-anchor-gen.git" }
+spl-associated-token-account = { version = "*", features = ["no-entrypoint"] }
+spl-account-compression = { version = "0.3", features = ["no-entrypoint"] }
+spl-memo = "4"
+tonic = { version = "0", features = ["tls", "tls-roots"] }
+mpl-bubblegum = "1"
+solana-program = ">=1.18,<2"
+pyth-solana-receiver-sdk = { git = "https://github.com/madninja/pyth-crosschain.git", branch = "madninja/cap_solana_dep" }
+solana-transaction-status = "*"
+serde = {workspace = true}
+serde_json = {workspace = true}
+lazy_static = "1"
+rust_decimal = {workspace = true}
+helium-proto = {workspace= true}
+angry-purple-tiger = "0"
+sha2 = {workspace = true}
+clap = {workspace = true, optional = true}
+helium-mnemonic = { path = "../helium-mnemonic", optional = true }
 
 [dev-dependencies]
 rand = "0.8"

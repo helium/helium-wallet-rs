@@ -79,7 +79,16 @@ impl Cmd {
             .set_geo(self.lat, self.lon)?;
 
         let client = opts.client()?;
-        let tx = hotspot::update(&client, server, &self.gateway, update, &keypair).await?;
+        let transaction_opts = self.commit.transaction_opts();
+        let tx = hotspot::update(
+            &client,
+            server,
+            &self.gateway,
+            update,
+            &keypair,
+            &transaction_opts,
+        )
+        .await?;
 
         print_json(&self.commit.maybe_commit(&tx, &client).await.to_json())
     }

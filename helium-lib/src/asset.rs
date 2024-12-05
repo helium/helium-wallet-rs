@@ -9,9 +9,12 @@ use crate::{
     entity_key::{self, AsEntityKey},
     error::{DecodeError, Error},
     helium_entity_manager,
-    keypair::{serde_opt_pubkey, serde_pubkey, Pubkey},
+    keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
     kta,
-    solana_sdk::instruction::AccountMeta,
+    priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
+    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    solana_sdk::{instruction::AccountMeta, transaction::Transaction},
+    TransactionOpts,
 };
 
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
@@ -29,18 +32,28 @@ pub async fn for_kta<C: AsRef<DasClient>>(
     client: &C,
     kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<Asset, Error> {
-    let asset_responase: Asset = client.as_ref().get_asset(&kta.asset).await?;
-    Ok(asset_responase)
+    get(client, &kta.asset).await
 }
 
 pub async fn for_kta_with_proof<C: AsRef<DasClient>>(
     client: &C,
     kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<(Asset, AssetProof), Error> {
-    let (asset, asset_proof) = futures::try_join!(for_kta(client, kta), proof::get(client, kta))?;
-    Ok((asset, asset_proof))
+    get_with_proof(client, &kta.asset).await
 }
 
+pub async fn get<C: AsRef<DasClient>>(client: &C, pubkey: &Pubkey) -> Result<Asset, Error> {
+    let asset_response: Asset = client.as_ref().get_asset(pubkey).await?;
+    Ok(asset_response)
+}
+
+pub async fn get_with_proof<C: AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+) -> Result<(Asset, AssetProof), Error> {
+    let (asset, asset_proof) = futures::try_join!(get(client, pubkey), proof::get(client, pubkey))?;
+    Ok((asset, asset_proof))
+}
 pub mod canopy {
     use super::*;
     use spl_account_compression::state::{merkle_tree_get_size, ConcurrentMerkleTreeHeader};
@@ -91,18 +104,10 @@ pub mod proof {
 
     pub async fn get<C: AsRef<DasClient>>(
         client: &C,
-        kta: &helium_entity_manager::KeyToAssetV0,
+        pubkey: &Pubkey,
     ) -> Result<AssetProof, Error> {
-        let asset_proof_response: AssetProof = client.as_ref().get_asset_proof(&kta.asset).await?;
+        let asset_proof_response: AssetProof = client.as_ref().get_asset_proof(pubkey).await?;
         Ok(asset_proof_response)
-    }
-
-    pub async fn for_entity_key<E: AsEntityKey, C: AsRef<DasClient>>(
-        client: &C,
-        entity_key: &E,
-    ) -> Result<AssetProof, Error> {
-        let kta = kta::for_entity_key(entity_key).await?;
-        get(client, &kta).await
     }
 }
 
@@ -119,17 +124,161 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     owner: &Pubkey,
 ) -> Result<Vec<Asset>, Error> {
     let mut params = DasSearchAssetsParams::for_owner(*owner, *creator);
+    // Set to maximum documented limit
+    params.limit = 1000;
     let mut results = vec![];
     loop {
-        let page = search(client, params.clone()).await.map_err(Error::from)?;
-        if page.items.is_empty() {
+        let page = client
+            .as_ref()
+            .search_assets(params.clone())
+            .await
+            .map_err(Error::from)?;
+        let fetch_count = page.items.len();
+        results.extend(page.items);
+        if fetch_count < params.limit as usize {
             break;
         }
-        results.extend(page.items);
         params.page += 1;
     }
 
     Ok(results)
+}
+
+/// Get an unsigned transaction for an asset transfer
+///
+/// The asset is transferred from the owner to the given recipient
+/// Note that the owner is currently expected to sign this transaction and pay for
+/// transaction fees.
+pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+
+    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
+    let merkle_tree = asset_proof.tree_id;
+    let remaining_accounts = asset_proof.proof_for_tree(client, &merkle_tree).await?;
+
+    let transfer = mpl_bubblegum::instructions::Transfer {
+        leaf_owner: (asset.ownership.owner, false),
+        leaf_delegate: (leaf_delegate, false),
+        new_leaf_owner: *recipient,
+        tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
+        merkle_tree,
+        log_wrapper: SPL_NOOP_PROGRAM_ID,
+        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+        system_program: solana_sdk::system_program::id(),
+    };
+    let args = mpl_bubblegum::instructions::TransferInstructionArgs {
+        creator_hash: asset.compression.creator_hash,
+        root: asset_proof.root.to_bytes(),
+        data_hash: asset.compression.data_hash,
+        index: asset.compression.leaf_id()?,
+        nonce: asset.compression.leaf_id,
+    };
+
+    let transfer_ix = transfer.instruction_with_remaining_accounts(args, &remaining_accounts);
+    let mut priority_fee_accounts = transfer_ix.accounts.clone();
+    priority_fee_accounts.extend_from_slice(&remaining_accounts);
+
+    let ixs = &[
+        compute_budget_instruction(200_000),
+        compute_price_instruction_for_accounts(
+            client,
+            &priority_fee_accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
+        transfer_ix,
+    ];
+
+    let mut tx = Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let (latest_blockhash, latest_block_height) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
+        .await?;
+    tx.message.recent_blockhash = latest_blockhash;
+    Ok((tx, latest_block_height))
+}
+
+pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let (mut tx, latest_block_height) =
+        transfer_transaction(client, pubkey, recipient, opts).await?;
+    tx.try_sign(&[keypair], tx.message.recent_blockhash)?;
+    Ok((tx, latest_block_height))
+}
+
+/// Get an unsigned burn transaction for an asset
+pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+
+    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
+    let merkle_tree = asset_proof.tree_id;
+    let remaining_accounts = asset_proof.proof_for_tree(client, &merkle_tree).await?;
+
+    let burn = mpl_bubblegum::instructions::Burn {
+        leaf_owner: (asset.ownership.owner, false),
+        leaf_delegate: (leaf_delegate, false),
+        tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
+        merkle_tree,
+        log_wrapper: SPL_NOOP_PROGRAM_ID,
+        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+        system_program: solana_sdk::system_program::id(),
+    };
+
+    let args = mpl_bubblegum::instructions::BurnInstructionArgs {
+        creator_hash: asset.compression.creator_hash,
+        root: asset_proof.root.to_bytes(),
+        data_hash: asset.compression.data_hash,
+        index: asset.compression.leaf_id()?,
+        nonce: asset.compression.leaf_id,
+    };
+
+    let ix = burn.instruction_with_remaining_accounts(args, &remaining_accounts);
+    let mut priority_fee_accounts = ix.accounts.clone();
+    priority_fee_accounts.extend_from_slice(&remaining_accounts);
+
+    let ixs = &[
+        compute_budget_instruction(100_000),
+        compute_price_instruction_for_accounts(
+            client,
+            &priority_fee_accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
+        ix,
+    ];
+
+    let mut tx = Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let (latest_blockhash, latest_block_height) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
+        .await?;
+    tx.message.recent_blockhash = latest_blockhash;
+    Ok((tx, latest_block_height))
+}
+
+pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(Transaction, u64), Error> {
+    let (mut tx, latest_block_height) = burn_transaction(client, pubkey, opts).await?;
+    tx.try_sign(&[keypair], tx.message.recent_blockhash)?;
+    Ok((tx, latest_block_height))
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -149,6 +298,8 @@ pub struct Asset {
     pub ownership: AssetOwnership,
     pub content: AssetContent,
     pub grouping: Vec<AssetGroup>,
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub burnt: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

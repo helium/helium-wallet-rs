@@ -18,10 +18,15 @@ use crate::{
     programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     },
+    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
     solana_transaction_utils::priority_fee,
     token::Token,
+    TransactionOpts,
 };
+use helium_crypto::{PublicKey, Sign};
+use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
+use serde::{Deserialize, Serialize};
 
 mod iot {
     use super::*;
@@ -33,6 +38,7 @@ mod iot {
         hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
+        opts: &TransactionOpts,
     ) -> Result<Transaction, Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
@@ -98,8 +104,12 @@ mod iot {
 
         let ixs = &[
             priority_fee::compute_budget_instruction(300_000),
-            priority_fee::compute_price_instruction_for_accounts(client, &onboard_ix.accounts)
-                .await?,
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &onboard_ix.accounts,
+                opts.min_priority_fee,
+            )
+            .await?,
             onboard_ix,
         ];
 
@@ -118,6 +128,7 @@ mod mobile {
         hotspot_key: &helium_crypto::PublicKey,
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
+        opts: &TransactionOpts,
     ) -> Result<Transaction, Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
@@ -184,8 +195,12 @@ mod mobile {
 
         let ixs = &[
             priority_fee::compute_budget_instruction(300_000),
-            priority_fee::compute_price_instruction_for_accounts(client, &onboard_ix.accounts)
-                .await?,
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &onboard_ix.accounts,
+                opts.min_priority_fee,
+            )
+            .await?,
             onboard_ix,
         ];
 
@@ -202,10 +217,13 @@ pub async fn onboard_transaction<
     hotspot_key: &helium_crypto::PublicKey,
     assertion: HotspotInfoUpdate,
     owner: &Pubkey,
+    opts: &TransactionOpts,
 ) -> Result<(Transaction, u64), Error> {
     let mut tx = match subdao {
-        SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner).await,
-        SubDao::Mobile => mobile::onboard_transaction(client, hotspot_key, assertion, owner).await,
+        SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner, opts).await,
+        SubDao::Mobile => {
+            mobile::onboard_transaction(client, hotspot_key, assertion, owner, opts).await
+        }
     }?;
     let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
     let (latest_blockhash, latest_block_height) = solana_client
@@ -221,9 +239,17 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     hotspot_key: &helium_crypto::PublicKey,
     assertion: HotspotInfoUpdate,
     keypair: &Keypair,
+    opts: &TransactionOpts,
 ) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
-        onboard_transaction(client, subdao, hotspot_key, assertion, &keypair.pubkey()).await?;
+    let (mut txn, latest_block_height) = onboard_transaction(
+        client,
+        subdao,
+        hotspot_key,
+        assertion,
+        &keypair.pubkey(),
+        opts,
+    )
+    .await?;
     txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
     Ok((txn, latest_block_height))
 }
@@ -233,6 +259,7 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     verifier: &str,
     add_tx: &mut BlockchainTxnAddGatewayV1,
     owner: Pubkey,
+    opts: &TransactionOpts,
 ) -> Result<(Transaction, u64), Error> {
     fn mk_accounts(
         config_account: helium_entity_manager::DataOnlyConfigV0,
@@ -286,7 +313,12 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
 
     let ixs = &[
         priority_fee::compute_budget_instruction(300_000),
-        priority_fee::compute_price_instruction_for_accounts(client, &accounts).await?,
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &accounts,
+            opts.min_priority_fee,
+        )
+        .await?,
         issue_ix,
     ];
     let mut txn = Transaction::new_with_payer(ixs, Some(&owner));
@@ -360,9 +392,10 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     verifier: &str,
     add_tx: &mut BlockchainTxnAddGatewayV1,
     keypair: &Keypair,
+    opts: &TransactionOpts,
 ) -> Result<(Transaction, u64), Error> {
     let (mut txn, block_height) =
-        issue_transaction(client, verifier, add_tx, keypair.pubkey()).await?;
+        issue_transaction(client, verifier, add_tx, keypair.pubkey(), opts).await?;
     let blockhash = txn.message.recent_blockhash;
     txn.try_partial_sign(&[keypair], blockhash)?;
     Ok((txn, block_height))

@@ -37,6 +37,35 @@ lazy_static::lazy_static! {
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
 
+pub async fn burn<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    token_amount: &TokenAmount,
+    keypair: &Keypair,
+) -> Result<Transaction, Error> {
+    let wallet_pubkey = keypair.pubkey();
+    let ix = match token_amount.token.mint() {
+        spl_mint if spl_mint == Token::Sol.mint() => {
+            return Err(DecodeError::other("native token burn not supported").into());
+        }
+        spl_mint => {
+            let token_account = token_amount.token.associated_token_adress(&wallet_pubkey);
+            anchor_spl::token::spl_token::instruction::burn_checked(
+                &anchor_spl::token::spl_token::id(),
+                &token_account,
+                spl_mint,
+                &wallet_pubkey,
+                &[&wallet_pubkey],
+                token_amount.amount,
+                token_amount.token.decimals(),
+            )?
+        }
+    };
+
+    let blockhash = client.as_ref().get_latest_blockhash().await?;
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&wallet_pubkey), &[keypair], blockhash);
+    Ok(tx)
+}
+
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],

@@ -24,7 +24,15 @@ impl Cmd {
             bail!("recipient already owner of hotspot");
         }
         let client = opts.client()?;
-        let tx = hotspot::transfer(&client, &self.address, &self.recipient, &keypair).await?;
+        let transaction_opts = self.commit.transaction_opts();
+        let (tx, _) = hotspot::transfer(
+            &client,
+            &self.address,
+            &self.recipient,
+            &keypair,
+            &transaction_opts,
+        )
+        .await?;
         print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

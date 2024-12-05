@@ -193,15 +193,20 @@ pub struct Client {
 impl TryFrom<&str> for Client {
     type Error = Error;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
+        fn env_or(key: &str, default: &str) -> String {
+            std::env::var(key).unwrap_or_else(|_| default.to_string())
+        }
         let url = match value {
-            "m" | "mainnet-beta" => SOLANA_URL_MAINNET,
-            "d" | "devnet" => SOLANA_URL_DEVNET,
+            "m" | "mainnet-beta" => &env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
+            "d" | "devnet" => &env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
             url => url,
         };
+        let das_client = Arc::new(DasClient::with_base_url(url)?);
+        let solana_client = Arc::new(SolanaClient::new(url, None)?);
 
         Ok(Self {
-            solana_client: Arc::new(SolanaClient::new(url, None)?),
-            das_client: Arc::new(DasClient::with_base_url(url)?),
+            solana_client,
+            das_client,
         })
     }
 }
@@ -293,38 +298,6 @@ impl GetAnchorAccount for Client {
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<T>>, Error> {
         self.solana_client.inner.anchor_accounts(pubkeys).await
-    }
-}
-
-impl TryFrom<&str> for Client {
-    type Error = Error;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        fn env_or(key: &str, default: &str) -> String {
-            std::env::var(key).unwrap_or_else(|_| default.to_string())
-        }
-        let url = match value {
-            "m" | "mainnet-beta" => &env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
-            "d" | "devnet" => &env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
-            url => url,
-        };
-        let das_client = Arc::new(DasClient::with_base_url(url)?);
-        let solana_client = Arc::new(SolanaRpcClient::new(url.to_string()));
-        Ok(Self {
-            solana_client,
-            das_client,
-        })
-    }
-}
-
-impl AsRef<SolanaRpcClient> for Client {
-    fn as_ref(&self) -> &SolanaRpcClient {
-        &self.solana_client
-    }
-}
-
-impl AsRef<DasClient> for Client {
-    fn as_ref(&self) -> &DasClient {
-        &self.das_client
     }
 }
 
@@ -494,41 +467,6 @@ impl jsonrpc_client::SendRequest for DasClient {
             .await?
             .json()
             .await
-    }
-}
-
-#[derive(
-    serde::Serialize, Default, Debug, Clone, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord,
-)]
-#[serde(rename_all = "camelCase")]
-pub struct DasSearchAssetsParams {
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub creator_verified: bool,
-    #[serde(
-        with = "keypair::serde_opt_pubkey",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub creator_address: Option<Pubkey>,
-    #[serde(
-        with = "keypair::serde_opt_pubkey",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub owner_address: Option<Pubkey>,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub page: u32,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub limit: u32,
-}
-
-impl DasSearchAssetsParams {
-    pub fn for_owner(owner_address: Pubkey, creator_address: Pubkey) -> Self {
-        Self {
-            owner_address: Some(owner_address),
-            creator_address: Some(creator_address),
-            creator_verified: true,
-            page: 1,
-            ..Default::default()
-        }
     }
 }
 

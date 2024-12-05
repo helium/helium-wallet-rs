@@ -1,12 +1,3 @@
-use futures::{
-    stream::{self, StreamExt, TryStreamExt},
-    TryFutureExt,
-};
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use solana_sdk::signer::Signer;
-use std::collections::HashMap;
-
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     asset, circuit_breaker,
@@ -16,8 +7,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
     keypair::{Keypair, Pubkey},
-    kta,
-    lazy_distributor::{self, OracleConfigV0},
+    kta, lazy_distributor,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
     solana_sdk::{instruction::Instruction, transaction::Transaction},
@@ -110,7 +100,8 @@ pub async fn max_claim<C: GetAnchorAccount>(
     let ld_account = lazy_distributor(client, subdao).await?;
     let circuit_breaker_account: circuit_breaker::AccountWindowedCircuitBreakerV0 = client
         .anchor_account(&lazy_distributor_circuit_breaker(&ld_account))
-        .await?;
+        .await?
+        .ok_or_else(|| Error::account_not_found())?;
     let threshold = match circuit_breaker_account.config {
         circuit_breaker::WindowedCircuitBreakerConfigV0 {
             threshold_type: circuit_breaker::ThresholdType::Absolute,

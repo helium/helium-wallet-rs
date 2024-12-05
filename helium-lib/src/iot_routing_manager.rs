@@ -1,4 +1,7 @@
-use anchor_lang::{prelude::*, InstructionData};
+use crate::{
+    anchor_lang::{InstructionData, ToAccountMetas},
+    keypair::Pubkey,
+};
 use sha2::{Digest, Sha256};
 use solana_sdk::instruction::Instruction;
 use spl_associated_token_account::get_associated_token_address;

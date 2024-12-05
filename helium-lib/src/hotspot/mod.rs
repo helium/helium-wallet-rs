@@ -15,9 +15,7 @@ use crate::{
         signer::Signer,
         transaction::Transaction,
     },
-    solana_transaction_utils::priority_fee::{
-        compute_budget_instruction, compute_price_instruction_for_accounts,
-    },
+    solana_transaction_utils::priority_fee,
     token::Token,
     TransactionOpts,
 };

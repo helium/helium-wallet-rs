@@ -1,6 +1,4 @@
-use anchor_lang::prelude::*;
-
-use crate::programs::TOKEN_METADATA_PROGRAM_ID;
+use crate::{keypair::Pubkey, programs::TOKEN_METADATA_PROGRAM_ID};
 
 pub fn bubblegum_signer_key() -> Pubkey {
     Pubkey::find_program_address(&[b"collection_cpi"], &mpl_bubblegum::ID).0

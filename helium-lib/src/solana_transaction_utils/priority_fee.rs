@@ -1,14 +1,18 @@
-use anchor_lang::prelude::AccountMeta;
 use itertools::Itertools;
-use solana_sdk::{
-    instruction::Instruction, message::Message, pubkey::Pubkey, signers::Signers,
-    transaction::Transaction,
-};
-use std::ops::Deref;
 
 use crate::{
-    anchor_client::RequestBuilder, anchor_lang::ToAccountMetas, client::SolanaRpcClient,
-    error::Error, solana_sdk::signer::Signer, utils::replace_or_insert_instruction,
+    anchor_lang::ToAccountMetas,
+    client::SolanaRpcClient,
+    error::Error,
+    keypair::Pubkey,
+    solana_client,
+    solana_sdk::{
+        instruction::{AccountMeta, Instruction},
+        message::Message,
+        signers::Signers,
+        transaction::Transaction,
+    },
+    utils::replace_or_insert_instruction,
 };
 
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;

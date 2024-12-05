@@ -1,6 +1,4 @@
-use anchor_lang::prelude::*;
-
-use crate::utils::get_current_epoch;
+use crate::{keypair::Pubkey, utils::get_current_epoch};
 
 pub use helium_anchor_gen::helium_sub_daos::*;
 

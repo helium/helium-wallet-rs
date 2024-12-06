@@ -13,6 +13,8 @@ pub enum Error {
     Anchor(#[from] anchor_client::ClientError),
     #[error("anchor lang: {0}")]
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
+    #[error("Account already exists")]
+    AccountExists,
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
     #[error("grpc: {0}")]
@@ -29,6 +31,12 @@ pub enum Error {
     Program(#[from] solana_program::program_error::ProgramError),
     #[error("solana: {0}")]
     Solana(Box<solana_client::client_error::ClientError>),
+    #[error("solana transaction: {0}")]
+    SolanaTransaction(#[from] solana_sdk::transaction::TransactionError),
+    #[error("solana pubsub: {0}")]
+    SolanaPubsub(#[from] solana_client::pubsub_client::PubsubClientError),
+    #[error("tpu sender: {0}")]
+    TPUSender(#[from] solana_client::tpu_client::TpuSenderError),
     #[error("signing: {0}")]
     Signing(#[from] solana_sdk::signer::SignerError),
     #[error("crypto: {0}")]
@@ -37,6 +45,14 @@ pub enum Error {
     Decode(#[from] DecodeError),
     #[error("encode: {0}")]
     Encode(#[from] EncodeError),
+    #[error("other: {0}")]
+    Other(String),
+}
+
+impl From<Box<dyn std::error::Error>> for Error {
+    fn from(err: Box<dyn std::error::Error>) -> Self {
+        Self::Other(err.to_string())
+    }
 }
 
 impl From<solana_client::client_error::ClientError> for Error {
@@ -48,6 +64,10 @@ impl From<solana_client::client_error::ClientError> for Error {
 impl Error {
     pub fn account_not_found() -> Self {
         anchor_client::ClientError::AccountNotFound.into()
+    }
+
+    pub fn account_exists() -> Self {
+        Self::AccountExists.into()
     }
 
     pub fn is_account_not_found(&self) -> bool {
@@ -72,6 +92,8 @@ impl Error {
 
 #[derive(Debug, Error)]
 pub enum EncodeError {
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
     #[error("proto: {0}")]
     Proto(#[from] helium_proto::EncodeError),
     #[error("bincode: {0}")]

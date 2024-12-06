@@ -59,6 +59,11 @@ impl Dao {
         helium_entity_manager::key_to_asset_key_raw(&self.key(), &hash)
     }
 
+    pub fn oracle_signer_key() -> Pubkey {
+        let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::id());
+        key
+    }
+
     pub fn dc_account_payer() -> Pubkey {
         let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::id());
         key
@@ -67,11 +72,6 @@ impl Dao {
     pub fn dc_key() -> Pubkey {
         let (key, _) =
             Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::id());
-        key
-    }
-
-    pub fn oracle_signer_key() -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::id());
         key
     }
 }

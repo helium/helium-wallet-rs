@@ -123,11 +123,6 @@ impl SolanaClient {
             .collect();
 
         for (tx, _) in &txs {
-            // This is just a tx with compute ixs. Skip it
-            if tx.len() == 2 {
-                continue;
-            }
-
             let computed = auto_compute_limit_and_price(
                 &self.solana_rpc_client(),
                 tx.clone(),

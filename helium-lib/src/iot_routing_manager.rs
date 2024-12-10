@@ -268,7 +268,7 @@ pub mod organization {
     }
 }
 
-pub mod orgainization_delegate {
+pub mod organization_delegate {
     use super::*;
 
     use crate::{client::SolanaRpcClient, error::Error, iot_routing_manager};
@@ -280,10 +280,10 @@ pub mod orgainization_delegate {
         organization_key: Pubkey,
         authority: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
-        let orgainization_delegate_key = organization_delegate_key(&organization_key, &delegate);
+        let organization_delegate_key = organization_delegate_key(&organization_key, &delegate);
 
         Ok((
-            orgainization_delegate_key,
+            organization_delegate_key,
             Instruction {
                 program_id: iot_routing_manager::ID,
                 accounts: iot_routing_manager::accounts::InitializeOrganizationDelegateV0 {
@@ -291,7 +291,7 @@ pub mod orgainization_delegate {
                     authority: authority.unwrap_or(payer.clone()),
                     delegate,
                     organization: organization_key,
-                    organization_delegate: orgainization_delegate_key,
+                    organization_delegate: organization_delegate_key,
                     system_program: solana_sdk::system_program::ID,
                 }
                 .to_account_metas(None),
@@ -306,7 +306,7 @@ pub mod orgainization_delegate {
         delegate: Pubkey,
         organization_key: Pubkey,
     ) -> Result<Instruction, Error> {
-        let orgainization_delegate_key = organization_delegate_key(&organization_key, &delegate);
+        let organization_delegate_key = organization_delegate_key(&organization_key, &delegate);
 
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
@@ -314,7 +314,7 @@ pub mod orgainization_delegate {
                 authority,
                 rent_refund: authority,
                 organization: organization_key,
-                organization_delegate: orgainization_delegate_key,
+                organization_delegate: organization_delegate_key,
             }
             .to_account_metas(None),
             data: iot_routing_manager::instruction::RemoveOrganizationDelegateV0 {}.data(),

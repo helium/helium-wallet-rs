@@ -168,15 +168,6 @@ pub async fn compute_budget_for_instructions<C: AsRef<SolanaRpcClient>, T: Signe
 
     // Simulate the transaction to get the actual compute used
     let simulation_result = client.as_ref().simulate_transaction(&snub_tx).await?;
-    if let Some(err) = simulation_result.value.err {
-        println!("Error: {}", err);
-        if let Some(logs) = simulation_result.value.logs {
-            for log in logs {
-                println!("Log: {}", log);
-            }
-        }
-    }
-
     let actual_compute_used = simulation_result.value.units_consumed.unwrap_or(200000);
     let final_compute_budget = (actual_compute_used as f32 * compute_multiplier) as u32;
     Ok(compute_budget_instruction(final_compute_budget))

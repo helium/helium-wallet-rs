@@ -18,7 +18,7 @@ pub struct Cmd {
     /// Helium address of Hotspot to assert
     gateway: helium_crypto::PublicKey,
 
-    /// Lattitude of Hotspot location to assert.
+    /// Latitude of Hotspot location to assert.
     ///
     /// Defaults to the last asserted value. For negative values use '=', for
     /// example: "--lat=-xx.xxxxxxx".

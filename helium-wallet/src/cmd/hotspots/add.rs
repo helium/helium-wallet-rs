@@ -114,7 +114,7 @@ async fn perform_add(
         let response = commit.maybe_commit(&tx, &client).await?;
         print_json(&response.to_json())?;
     }
-    // Only assert the hotspot if either (a) it has already been issued before this cli
+    // Only assert the Hotspot if either (a) it has already been issued before this cli
     // was run or (b) `commit` is enabled which means the previous command should have created it.
     // Without this, the command will always fail for brand new hotspots when --commit is not
     // enabled, as it cannot find the key_to_asset account or asset account.

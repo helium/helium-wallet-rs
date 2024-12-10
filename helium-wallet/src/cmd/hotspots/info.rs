@@ -2,7 +2,7 @@ use crate::cmd::*;
 use helium_lib::{dao::SubDao, hotspot};
 
 #[derive(Clone, Debug, clap::Args)]
-/// Get details for a given hotspot
+/// Get details for a given Hotspot
 pub struct Cmd {
     address: helium_crypto::PublicKey,
 }

@@ -533,7 +533,7 @@ pub enum MobileDeploymentInfo {
     WifiInfo {
         #[serde(skip_serializing_if = "is_zero")]
         antenna: u32,
-        // the height of the hotspot above ground level in whole meters
+        // the height of the Hotspot above ground level in whole meters
         #[serde(skip_serializing_if = "is_zero")]
         elevation: i32,
         #[serde(skip_serializing_if = "is_zero")]

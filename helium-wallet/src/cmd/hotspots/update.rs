@@ -12,7 +12,7 @@ use helium_lib::{
 /// created by the Hotspot miner and supplied here for owner signing. Use an
 /// onboarding key to get the transaction signed by the DeWi staking server.
 pub struct Cmd {
-    /// The subdao to assert the hotspot on
+    /// The subdao to assert the Hotspot on
     subdao: SubDao,
 
     /// Helium address of Hotspot to assert
@@ -40,7 +40,7 @@ pub struct Cmd {
     #[arg(long)]
     gain: Option<f64>,
 
-    /// The elevation for the asserted hotspot in meters above ground level.
+    /// The elevation for the asserted Hotspot in meters above ground level.
     ///
     /// Defaults to the last assserted value. For negative values use '=', for
     /// example: "--elevation=-xx".

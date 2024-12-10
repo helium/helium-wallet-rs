@@ -14,7 +14,7 @@ pub struct Cmd {
     /// The signature to start looking backwards from
     #[arg(long)]
     before: Option<Signature>,
-    /// The signathre to look backwards up to
+    /// The signature to look backwards up to
     #[arg(long)]
     until: Option<Signature>,
 }

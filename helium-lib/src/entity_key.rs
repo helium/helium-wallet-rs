@@ -39,7 +39,7 @@ impl AsEntityKey for helium_crypto::PublicKey {
     }
 }
 
-pub use helium_anchor_gen::helium_entity_manager::KeySerialization;
+pub use crate::helium_entity_manager::KeySerialization;
 
 pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, DecodeError> {
     let entity_key = match encoding {

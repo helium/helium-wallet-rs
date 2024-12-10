@@ -7,10 +7,11 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
     keypair::{Keypair, Pubkey},
-    kta, lazy_distributor, priority_fee,
+    kta, lazy_distributor,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
     solana_sdk::{instruction::Instruction, transaction::Transaction},
+    solana_transaction_utils::priority_fee,
     token::TokenAmount,
     TransactionOpts,
 };
@@ -54,7 +55,8 @@ pub async fn lazy_distributor<C: GetAnchorAccount>(
 ) -> Result<lazy_distributor::LazyDistributorV0, Error> {
     client
         .anchor_account::<lazy_distributor::LazyDistributorV0>(&subdao.lazy_distributor())
-        .await
+        .await?
+        .ok_or_else(|| Error::account_not_found())
 }
 
 pub fn lazy_distributor_circuit_breaker(
@@ -98,7 +100,8 @@ pub async fn max_claim<C: GetAnchorAccount>(
     let ld_account = lazy_distributor(client, subdao).await?;
     let circuit_breaker_account: circuit_breaker::AccountWindowedCircuitBreakerV0 = client
         .anchor_account(&lazy_distributor_circuit_breaker(&ld_account))
-        .await?;
+        .await?
+        .ok_or_else(|| Error::account_not_found())?;
     let threshold = match circuit_breaker_account.config {
         circuit_breaker::WindowedCircuitBreakerConfigV0 {
             threshold_type: circuit_breaker::ThresholdType::Absolute,
@@ -479,7 +482,7 @@ pub mod recipient {
         kta: &helium_entity_manager::KeyToAssetV0,
     ) -> Result<Option<lazy_distributor::RecipientV0>, Error> {
         let recipient_key = subdao.receipient_key_from_kta(kta);
-        Ok(client.anchor_account(&recipient_key).await.ok())
+        Ok(client.anchor_account(&recipient_key).await?)
     }
 
     pub async fn for_ktas<C: GetAnchorAccount>(

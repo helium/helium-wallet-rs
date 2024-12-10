@@ -56,7 +56,7 @@ struct IotCmd {
     #[arg(long)]
     lon: Option<f64>,
 
-    /// The antenna gain for the asserted IoT Hotspotin dBi, with one digit of
+    /// The antenna gain for the asserted IoT Hotspot in dBi, with one digit of
     /// accuracy.
     ///
     /// Defaults to the last asserted value. Note that the gain is truncated to

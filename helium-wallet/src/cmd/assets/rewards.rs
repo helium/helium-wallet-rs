@@ -32,7 +32,7 @@ impl RewardsCommand {
 }
 
 #[derive(Debug, Clone, clap::Args)]
-/// List current (totel lifetime) rewards issued for a given entity key
+/// List current (total lifetime) rewards issued for a given entity key
 pub struct ClaimCmd {
     /// Subdao for command
     subdao: SubDao,

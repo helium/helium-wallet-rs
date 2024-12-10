@@ -48,7 +48,7 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     owner: &Pubkey,
 ) -> Result<Vec<Hotspot>, Error> {
     let assets = asset::for_owner(client, &HOTSPOT_CREATOR, owner).await?;
-    // Get all kta keys for the hotspots in the assets for the given owner
+    // Get all kta keys for the Hotspots in the assets for the given owner
     let (kta_keys, hotspot_assets): (Vec<Pubkey>, Vec<asset::Asset>) = assets
         .into_iter()
         .filter(|asset| asset.is_symbol("HOTSPOT"))
@@ -255,9 +255,9 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok(tx)
 }
 
-/// Get an unsigned transaction for a hotspot transfer.
+/// Get an unsigned transaction for a Hotspot transfer.
 ///
-/// The hotspot is transferred from the owner of the hotspot to the given recipient
+/// The Hotspot is transferred from the owner of the Hotspot to the given recipient
 /// Note that the owner is currently expected to sign this transaction and pay for
 /// transaction fees.
 pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(

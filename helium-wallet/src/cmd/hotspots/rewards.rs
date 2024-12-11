@@ -29,7 +29,7 @@ impl RewardsCommand {
 }
 
 #[derive(Clone, Debug, clap::Args)]
-/// List pending rewards for given hotspots
+/// List pending rewards for given Hotspots
 pub struct PendingCmd {
     /// Subdao for command
     subdao: SubDao,
@@ -66,7 +66,7 @@ impl PendingCmd {
 }
 
 #[derive(Clone, Debug, clap::Args)]
-/// Claim rewards for one or all hotspots in a wallet
+/// Claim rewards for one or all Hotspots in a wallet
 pub struct ClaimCmd {
     /// Subdao for command
     subdao: SubDao,

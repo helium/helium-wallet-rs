@@ -6,33 +6,33 @@ use helium_lib::{
 };
 
 #[derive(Debug, Clone, clap::Args)]
-/// Assert a hotspot location on the blockchain.
+/// Assert a Hotspot location on the blockchain.
 ///
 /// The original transaction is
-/// created by the hotspot miner and supplied here for owner signing. Use an
+/// created by the Hotspot miner and supplied here for owner signing. Use an
 /// onboarding key to get the transaction signed by the DeWi staking server.
 pub struct Cmd {
-    /// The subdao to assert the hotspot on
+    /// The subdao to assert the Hotspot on
     subdao: SubDao,
 
-    /// Helium address of hotspot to assert
+    /// Helium address of Hotspot to assert
     gateway: helium_crypto::PublicKey,
 
-    /// Lattitude of hotspot location to assert.
+    /// Latitude of Hotspot location to assert.
     ///
     /// Defaults to the last asserted value. For negative values use '=', for
     /// example: "--lat=-xx.xxxxxxx".
     #[arg(long)]
     lat: Option<f64>,
 
-    /// Longitude of hotspot location to assert.
+    /// Longitude of Hotspot location to assert.
     ///
     /// Defaults to the last asserted value. For negative values use '=', for
     /// example: "--lon=-xx.xxxxxxx".
     #[arg(long)]
     lon: Option<f64>,
 
-    /// The antenna gain for the asserted hotspotin dBi, with one digit of
+    /// The antenna gain for the asserted Hotspot in dBi, with one digit of
     /// accuracy.
     ///
     /// Defaults to the last asserted value. Note that the gain is truncated to
@@ -40,7 +40,7 @@ pub struct Cmd {
     #[arg(long)]
     gain: Option<f64>,
 
-    /// The elevation for the asserted hotspot in meters above ground level.
+    /// The elevation for the asserted Hotspot in meters above ground level.
     ///
     /// Defaults to the last assserted value. For negative values use '=', for
     /// example: "--elevation=-xx".

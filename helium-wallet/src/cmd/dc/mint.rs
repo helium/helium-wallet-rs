@@ -6,9 +6,9 @@ use helium_lib::{
 };
 
 #[derive(Debug, Clone, clap::Args)]
-/// Mint HNT to Data Credits (DC) from this wallet to given payees wallet.
+/// Mint HNT to Data Credits (DC) from this wallet to a given payee's wallet.
 ///
-/// One of the amount of HNT to burn or the amount of DC expected after the burn
+/// Either the amount of HNT to burn or the amount of DC expected after the burn
 /// can be specified.
 pub struct Cmd {
     /// Account address to send the resulting DC to. Defaults to the active
@@ -16,7 +16,7 @@ pub struct Cmd {
     #[arg(long)]
     payee: Option<Pubkey>,
 
-    /// Amount of HNT to convert to dc
+    /// Amount of HNT to convert to DC
     #[arg(long, conflicts_with = "dc")]
     hnt: Option<f64>,
 

@@ -22,7 +22,7 @@ impl Cmd {
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
-/// Commands on hotspots
+/// Commands on Hotspots
 pub enum HotspotCommand {
     Update(update::Cmd),
     Add(Box<add::Cmd>),

@@ -7,7 +7,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
     keypair::{Keypair, Pubkey},
-    kta, lazy_distributor, priority_fee,
+    kta, lazy_distributor, mk_transaction_with_blockhash, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
     solana_sdk::{instruction::Instruction, transaction::Transaction},
@@ -274,13 +274,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
         distribute_ix,
     ];
 
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    let mut txn = Transaction::new_with_payer(ixs, Some(payer));
-    txn.message.recent_blockhash = latest_blockhash;
-
+    let (txn, latest_block_height) = mk_transaction_with_blockhash(client, ixs, payer).await?;
     let signed_txn = oracle_sign(&current_reward.oracle.url, txn).await?;
     Ok(Some((signed_txn, latest_block_height)))
 }
@@ -556,30 +550,19 @@ pub mod recipient {
         let kta = kta::for_entity_key(entity_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 
-        let init_ix =
-            init_instruction(subdao, &kta, &asset, &asset_proof, &keypair.pubkey()).await?;
+        let ix = init_instruction(subdao, &kta, &asset, &asset_proof, &keypair.pubkey()).await?;
 
         let ixs = &[
             priority_fee::compute_budget_instruction(150_000),
             priority_fee::compute_price_instruction_for_accounts(
                 client,
-                &init_ix.accounts,
+                &ix.accounts,
                 opts.min_priority_fee,
             )
             .await?,
-            init_ix,
+            ix,
         ];
-        let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-        let (recent_blockhash, latest_block_height) = solana_client
-            .get_latest_blockhash_with_commitment(solana_client.commitment())
-            .await?;
-        let txn = Transaction::new_signed_with_payer(
-            ixs,
-            Some(&keypair.pubkey()),
-            &[keypair],
-            recent_blockhash,
-        );
-        Ok((txn, latest_block_height))
+        mk_transaction_with_blockhash(client, ixs, &keypair.pubkey()).await
     }
 }
 

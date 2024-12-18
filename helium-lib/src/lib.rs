@@ -54,17 +54,22 @@ where
     value == &T::ZERO
 }
 
-use anchor_client::solana_client::rpc_client::SerializableTransaction;
+use anchor_client::solana_client::{
+    rpc_client::SerializableTransaction, rpc_config::RpcSendTransactionConfig,
+};
 use client::SolanaRpcClient;
 use error::Error;
 use keypair::Pubkey;
-use solana_sdk::instruction::Instruction;
+use solana_sdk::{
+    commitment_config::CommitmentConfig, instruction::Instruction, signature::Signature,
+};
 use std::sync::Arc;
 
 pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
     kta::init(solana_client)
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct TransactionOpts {
     pub min_priority_fee: u64,
 }
@@ -124,4 +129,73 @@ pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(
         inner: txn,
         block_height: latest_block_height,
     })
+}
+
+pub struct TrackedTransaction<'a> {
+    pub txn: &'a TransactionWithBlockhash,
+    pub signature: Signature,
+    pub sent_block_height: u64,
+}
+
+#[async_trait::async_trait]
+pub trait TrackSendTransaction: AsRef<SolanaRpcClient> {
+    async fn send_txn<'a>(
+        &self,
+        txn: &'a TransactionWithBlockhash,
+        config: RpcSendTransactionConfig,
+    ) -> Result<TrackedTransaction<'a>, solana_client::client_error::ClientError>;
+
+    async fn finalize_txn<T: FinalizeTransactionExt>(
+        &self,
+        txn: &T,
+    ) -> Result<(), solana_client::client_error::ClientError>;
+}
+
+#[async_trait::async_trait]
+impl<T: AsRef<SolanaRpcClient> + Sync> TrackSendTransaction for T {
+    async fn send_txn<'a>(
+        &self,
+        txn: &'a TransactionWithBlockhash,
+        config: RpcSendTransactionConfig,
+    ) -> Result<TrackedTransaction<'a>, solana_client::client_error::ClientError> {
+        let client = self.as_ref();
+
+        let sent_block_height = client.get_block_height().await?;
+        let signature = client
+            .send_transaction_with_config(&txn.inner, config)
+            .await?;
+
+        Ok(TrackedTransaction {
+            txn,
+            signature,
+            sent_block_height,
+        })
+    }
+
+    async fn finalize_txn<Txn: FinalizeTransactionExt>(
+        &self,
+        txn: &Txn,
+    ) -> Result<(), solana_client::client_error::ClientError> {
+        let client = self.as_ref();
+        let signature = txn.signature();
+
+        client
+            .poll_for_signature_with_commitment(signature, CommitmentConfig::finalized())
+            .await
+    }
+}
+
+pub trait FinalizeTransactionExt: Send + Sync {
+    fn signature(&self) -> &Signature;
+    fn sent_block_height(&self) -> u64;
+}
+
+impl FinalizeTransactionExt for TrackedTransaction<'_> {
+    fn signature(&self) -> &Signature {
+        &self.signature
+    }
+
+    fn sent_block_height(&self) -> u64 {
+        self.sent_block_height
+    }
 }

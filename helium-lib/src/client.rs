@@ -91,7 +91,7 @@ impl SolanaClient {
             .replace("127.0.0.1:8899", "127.0.0.1:8900")
     }
 
-    pub fn wallet(&self) -> Result<Pubkey, Error> {
+    pub fn pubkey(&self) -> Result<Pubkey, Error> {
         self.wallet
             .as_ref()
             .map(|wallet| wallet.pubkey())
@@ -533,12 +533,12 @@ pub mod config {
     }
 
     #[derive(Clone)]
-    pub enum ClientType {
+    pub enum Client {
         Iot(iot::Client),
         Mobile(mobile::Client),
     }
 
-    impl ClientType {
+    impl Client {
         pub fn for_subdao(
             subdao: SubDao,
             config: &str,

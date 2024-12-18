@@ -1,5 +1,7 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
+    dao::Dao,
+    iot_routing_manager,
     keypair::Pubkey,
 };
 use sha2::{Digest, Sha256};
@@ -9,12 +11,10 @@ use std::result::Result;
 
 use crate::{helium_entity_manager, programs::TOKEN_METADATA_PROGRAM_ID};
 
-pub use helium_anchor_gen::iot_routing_manager::*;
-
 pub fn routing_manager_key(sub_dao: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[b"routing_manager", sub_dao.as_ref()],
-        &helium_anchor_gen::iot_routing_manager::ID,
+        &iot_routing_manager::ID,
     )
     .0
 }
@@ -26,7 +26,7 @@ pub fn organization_key(routing_manager: &Pubkey, oui: u64) -> Pubkey {
             routing_manager.as_ref(),
             &oui.to_le_bytes(),
         ],
-        &helium_anchor_gen::iot_routing_manager::ID,
+        &iot_routing_manager::ID,
     )
     .0
 }
@@ -38,7 +38,7 @@ pub fn devaddr_constraint_key(organization: &Pubkey, start_addr: u64) -> Pubkey 
             organization.as_ref(),
             &start_addr.to_le_bytes(),
         ],
-        &helium_anchor_gen::iot_routing_manager::ID,
+        &iot_routing_manager::ID,
     )
     .0
 }
@@ -46,7 +46,7 @@ pub fn devaddr_constraint_key(organization: &Pubkey, start_addr: u64) -> Pubkey 
 pub fn net_id_key(routing_manager: &Pubkey, net_id: u32) -> Pubkey {
     Pubkey::find_program_address(
         &[b"net_id", routing_manager.as_ref(), &net_id.to_le_bytes()],
-        &helium_anchor_gen::iot_routing_manager::ID,
+        &iot_routing_manager::ID,
     )
     .0
 }
@@ -58,7 +58,7 @@ pub fn organization_delegate_key(organization: &Pubkey, delegate: &Pubkey) -> Pu
             organization.as_ref(),
             delegate.as_ref(),
         ],
-        &helium_anchor_gen::iot_routing_manager::ID,
+        &iot_routing_manager::ID,
     )
     .0
 }
@@ -66,7 +66,7 @@ pub fn organization_delegate_key(organization: &Pubkey, delegate: &Pubkey) -> Pu
 pub fn organization_collection_key(routing_manager: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[b"collection", routing_manager.as_ref()],
-        &helium_anchor_gen::iot_routing_manager::ID,
+        &iot_routing_manager::ID,
     )
     .0
 }
@@ -99,7 +99,11 @@ pub fn organization_collection_master_edition_key(collection: &Pubkey) -> Pubkey
 pub fn organization_key_to_asset(dao: &Pubkey, oui: u64) -> Pubkey {
     let seed_str = format!("OUI_{}", oui);
     let hash = Sha256::digest(seed_str.as_bytes());
-    helium_entity_manager::key_to_asset_key_raw(dao, &hash)
+    Pubkey::find_program_address(
+        &[b"key_to_asset", dao.as_ref(), &hash],
+        &helium_entity_manager::ID,
+    )
+    .0
 }
 
 pub mod organization {

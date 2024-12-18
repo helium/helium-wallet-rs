@@ -2613,6 +2613,7 @@ dependencies = [
  "byteorder",
  "clap 4.5.23",
  "dialoguer 0.8.0",
+ "futures",
  "helium-crypto",
  "helium-lib",
  "helium-mnemonic",

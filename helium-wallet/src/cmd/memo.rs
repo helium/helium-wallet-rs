@@ -19,7 +19,7 @@ impl Cmd {
         let keypair = wallet.decrypt(password.as_bytes())?;
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts();
-        let (tx, _) =
+        let tx =
             helium_lib::memo::memo(&client, &self.message, &keypair, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }

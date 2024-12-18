@@ -88,7 +88,7 @@ impl PayCmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
 
         let client = opts.client()?;
-        let (tx, _) = token::transfer(&client, &payments, &keypair).await?;
+        let tx = token::transfer(&client, &payments, &keypair).await?;
 
         print_json(&self.commit().maybe_commit(&tx, &client).await?.to_json())
     }

@@ -19,7 +19,7 @@ impl Cmd {
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts();
 
-        let (tx, _) = dc::burn(&client, self.dc, &keypair, &transaction_opts).await?;
+        let tx = dc::burn(&client, self.dc, &keypair, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

@@ -2,6 +2,7 @@ use crate::{
     result::{anyhow, bail, Error, Result},
     wallet::Wallet,
 };
+use futures::TryFutureExt;
 use helium_lib::{
     b64, client,
     keypair::Keypair,
@@ -10,7 +11,7 @@ use helium_lib::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
     },
-    TransactionOpts,
+    FinalizeTransactionExt, TrackSendTransaction, TransactionOpts,
 };
 use serde_json::json;
 use std::{
@@ -93,14 +94,20 @@ pub struct CommitOpts {
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
+    /// Wait until the transaction has been finalized
+    #[arg(long)]
+    finalize: bool,
 }
 
 impl CommitOpts {
-    pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>>(
+    pub async fn maybe_commit<C>(
         &self,
         tx: &helium_lib::TransactionWithBlockhash,
         client: &C,
-    ) -> Result<CommitResponse> {
+    ) -> Result<CommitResponse>
+    where
+        C: TrackSendTransaction,
+    {
         fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
             let mut captured_logs: Option<Vec<String>> = None;
             let mut error_message: Option<String> = None;
@@ -135,12 +142,18 @@ impl CommitOpts {
                 skip_preflight: self.skip_preflight,
                 ..Default::default()
             };
-            client
-                .as_ref()
-                .send_transaction_with_config(&tx.inner, config)
+
+            let res = client
+                .send_txn(tx, config)
                 .await
-                .map(Into::into)
-                .map_err(context_err)
+                .map(CommitResponse::from)
+                .map_err(context_err)?;
+
+            if self.finalize {
+                client.finalize_txn(&res).map_err(context_err).await?;
+            }
+
+            Ok(res)
         } else {
             client
                 .as_ref()
@@ -220,13 +233,41 @@ pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
 
 #[derive(Debug, serde::Serialize)]
 pub enum CommitResponse {
-    Signature(helium_lib::keypair::Signature),
+    Signature {
+        signature: helium_lib::keypair::Signature,
+        sent_block_height: u64,
+    },
     None,
 }
 
-impl From<helium_lib::keypair::Signature> for CommitResponse {
-    fn from(value: helium_lib::keypair::Signature) -> Self {
-        Self::Signature(value)
+impl FinalizeTransactionExt for CommitResponse {
+    fn signature(&self) -> &helium_lib::keypair::Signature {
+        match self {
+            Self::Signature {
+                signature,
+                sent_block_height: _,
+            } => signature,
+            Self::None => panic!("No signature"),
+        }
+    }
+
+    fn sent_block_height(&self) -> u64 {
+        match self {
+            Self::Signature {
+                signature: _,
+                sent_block_height: height,
+            } => *height,
+            Self::None => panic!("No block height"),
+        }
+    }
+}
+
+impl From<helium_lib::TrackedTransaction<'_>> for CommitResponse {
+    fn from(value: helium_lib::TrackedTransaction<'_>) -> Self {
+        Self::Signature {
+            signature: value.signature,
+            sent_block_height: value.sent_block_height,
+        }
     }
 }
 
@@ -246,9 +287,13 @@ impl TryFrom<solana_client::rpc_response::RpcSimulateTransactionResult> for Comm
 impl ToJson for CommitResponse {
     fn to_json(&self) -> serde_json::Value {
         match self {
-            Self::Signature(signature) => json!({
+            Self::Signature {
+                signature,
+                sent_block_height,
+            } => json!({
                 "result": "ok",
                 "txid": signature.to_string(),
+                "sent_block_height": sent_block_height
             }),
             Self::None => json!({"result": "ok"}),
         }

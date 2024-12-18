@@ -14,7 +14,7 @@ use crate::{
         signer::Signer,
     },
     token::Token,
-    Transaction, TransactionOpts,
+    TransactionOpts, TransactionWithBlockhash,
 };
 use angry_purple_tiger::AnimalName;
 use chrono::Utc;
@@ -113,7 +113,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     update: HotspotInfoUpdate,
     owner: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     fn mk_accounts(
         subdao: SubDao,
         kta: &helium_entity_manager::KeyToAssetV0,
@@ -219,7 +219,7 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     update: HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let mut txn =
         direct_update_transaction(client, hotspot, update, &keypair.pubkey(), opts).await?;
     txn.try_sign(&[keypair])?;
@@ -233,7 +233,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     update: HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
         let onboarding_client = onboarding::Client::new(&server);
@@ -258,7 +258,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
@@ -269,7 +269,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     recipient: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::transfer(client, &kta.asset, recipient, keypair, opts).await
 }
@@ -278,7 +278,7 @@ pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::burn_transaction(client, &kta.asset, opts).await
 }
@@ -288,7 +288,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::burn(client, &kta.asset, keypair, opts).await
 }

@@ -98,7 +98,7 @@ pub struct CommitOpts {
 impl CommitOpts {
     pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>>(
         &self,
-        tx: &helium_lib::Transaction,
+        tx: &helium_lib::TransactionWithBlockhash,
         client: &C,
     ) -> Result<CommitResponse> {
         fn context_err(client_err: solana_client::client_error::ClientError) -> Error {

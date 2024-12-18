@@ -72,7 +72,6 @@ impl ClaimCmd {
         else {
             bail!("No rewards to claim")
         };
-
         let claim_response = self
             .commit
             .maybe_commit(&tx, &client)

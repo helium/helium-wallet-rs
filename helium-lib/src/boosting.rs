@@ -6,7 +6,7 @@ use crate::{
     keypair::{Keypair, Pubkey},
     mk_transaction_with_blockhash, priority_fee,
     solana_sdk::{instruction::Instruction, signer::Signer},
-    Transaction, TransactionOpts,
+    TransactionOpts, TransactionWithBlockhash,
 };
 use chrono::{DateTime, Utc};
 
@@ -22,7 +22,7 @@ pub async fn start_boost_transaction<C: AsRef<SolanaRpcClient>>(
     keypair: &Keypair,
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     fn mk_accounts(
         start_authority: Pubkey,
         boost_config: Pubkey,
@@ -77,7 +77,7 @@ pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let mut txn = start_boost_transaction(client, keypair, updates, opts).await?;
     txn.try_sign(&[keypair])?;
     Ok(txn)

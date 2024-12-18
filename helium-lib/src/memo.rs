@@ -4,7 +4,7 @@ use crate::{
     keypair::{Keypair, Pubkey},
     mk_transaction_with_blockhash, priority_fee,
     solana_sdk::signer::Signer,
-    Transaction, TransactionOpts,
+    TransactionOpts, TransactionWithBlockhash,
 };
 
 pub async fn memo_transaction<C: AsRef<SolanaRpcClient>>(
@@ -12,7 +12,7 @@ pub async fn memo_transaction<C: AsRef<SolanaRpcClient>>(
     data: &str,
     pubkey: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let ix = spl_memo::build_memo(data.as_bytes(), &[pubkey]);
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
@@ -33,7 +33,7 @@ pub async fn memo<C: AsRef<SolanaRpcClient>>(
     data: &str,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let mut txn = memo_transaction(client, data, &keypair.pubkey(), opts).await?;
     txn.try_sign(&[keypair])?;
     Ok(txn)

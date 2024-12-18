@@ -12,7 +12,7 @@ use crate::{
     rewards_oracle,
     solana_sdk::instruction::Instruction,
     token::TokenAmount,
-    Transaction, TransactionOpts,
+    TransactionOpts, TransactionWithBlockhash,
 };
 use chrono::Utc;
 use futures::{
@@ -201,7 +201,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     encoded_entity_key: &entity_key::EncodedEntityKey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Option<Transaction>, Error> {
+) -> Result<Option<TransactionWithBlockhash>, Error> {
     let Some(mut txn) = claim_transaction(
         client,
         subdao,
@@ -226,8 +226,8 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     encoded_entity_key: &entity_key::EncodedEntityKey,
     payer: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Option<Transaction>, Error> {
-    let entity_key = encoded_entity_key.as_entity_key()?;
+) -> Result<Option<TransactionWithBlockhash>, Error> {
+    let entity_key_string = encoded_entity_key.to_string();
     let pending = pending(
         client,
         subdao,
@@ -368,7 +368,10 @@ pub async fn lifetime<C: GetAnchorAccount>(
         .await
 }
 
-async fn oracle_sign(oracle: &str, txn: Transaction) -> Result<Transaction, Error> {
+async fn oracle_sign(
+    oracle: &str,
+    txn: TransactionWithBlockhash,
+) -> Result<TransactionWithBlockhash, Error> {
     #[derive(Debug, Serialize, Deserialize)]
     struct Data {
         data: Vec<u8>,
@@ -514,7 +517,7 @@ pub mod recipient {
         entity_key: &E,
         keypair: &Keypair,
         opts: &TransactionOpts,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<TransactionWithBlockhash, Error> {
         let kta = kta::for_entity_key(entity_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 

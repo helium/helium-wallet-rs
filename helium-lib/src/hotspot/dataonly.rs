@@ -15,14 +15,13 @@ use crate::{
     },
     solana_sdk::{instruction::Instruction, signature::Signer},
     token::Token,
-    Transaction, TransactionOpts,
+    TransactionOpts, TransactionWithBlockhash,
 };
 use helium_crypto::{PublicKey, Sign};
 use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use serde::{Deserialize, Serialize};
 
 mod iot {
-    use crate::Transaction;
 
     use super::*;
 
@@ -34,7 +33,7 @@ mod iot {
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
         opts: &TransactionOpts,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<TransactionWithBlockhash, Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
@@ -111,7 +110,6 @@ mod iot {
 }
 
 mod mobile {
-    use crate::Transaction;
 
     use super::*;
 
@@ -123,7 +121,7 @@ mod mobile {
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
         opts: &TransactionOpts,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<TransactionWithBlockhash, Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
@@ -209,7 +207,7 @@ pub async fn onboard_transaction<
     assertion: HotspotInfoUpdate,
     owner: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     match subdao {
         SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner, opts).await,
         SubDao::Mobile => {
@@ -225,7 +223,7 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     assertion: HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let mut txn = onboard_transaction(
         client,
         subdao,
@@ -245,7 +243,7 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     add_tx: &mut BlockchainTxnAddGatewayV1,
     owner: Pubkey,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     fn mk_accounts(
         config_account: helium_entity_manager::DataOnlyConfigV0,
         owner: Pubkey,
@@ -372,7 +370,7 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     add_tx: &mut BlockchainTxnAddGatewayV1,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let mut txn = issue_transaction(client, verifier, add_tx, keypair.pubkey(), opts).await?;
     txn.try_partial_sign(&[keypair])?;
     Ok(txn)
@@ -382,8 +380,8 @@ async fn verify_helium_key(
     verifier: &str,
     msg: &[u8],
     signature: &[u8],
-    tx: Transaction,
-) -> Result<Transaction, Error> {
+    tx: TransactionWithBlockhash,
+) -> Result<TransactionWithBlockhash, Error> {
     #[derive(Deserialize, Serialize, Default)]
     struct VerifyRequest<'a> {
         // hex encoded solana transaction

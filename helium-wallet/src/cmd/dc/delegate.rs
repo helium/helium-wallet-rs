@@ -25,7 +25,7 @@ impl Cmd {
 
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts();
-        let (tx, _) = dc::delegate(
+        let tx = dc::delegate(
             &client,
             self.subdao,
             &self.payer,

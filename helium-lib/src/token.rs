@@ -6,7 +6,7 @@ use crate::{
     keypair::{serde_pubkey, Keypair, Pubkey},
     mk_transaction_with_blockhash,
     solana_sdk::{commitment_config::CommitmentConfig, signer::Signer, system_instruction},
-    Transaction,
+    TransactionWithBlockhash,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -40,7 +40,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
     keypair: &Keypair,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let wallet_pubkey = keypair.pubkey();
     let ix = match token_amount.token.mint() {
         spl_mint if spl_mint == Token::Sol.mint() => {
@@ -69,7 +69,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
     keypair: &Keypair,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let wallet_public_key = keypair.pubkey();
 
     let mut ixs = vec![];

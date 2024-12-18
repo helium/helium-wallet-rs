@@ -67,7 +67,7 @@ impl ClaimCmd {
         if !self.skip_init {
             let recipient = reward::recipient::for_kta(&client, &self.subdao, &hotspot_kta).await?;
             if recipient.is_none() {
-                let (tx, _) = reward::recipient::init(
+                let tx = reward::recipient::init(
                     &client,
                     &self.subdao,
                     &self.entity_key.as_entity_key()?,
@@ -87,7 +87,7 @@ impl ClaimCmd {
         let token_amount = self
             .amount
             .map(|amount| TokenAmount::from_f64(self.subdao.token(), amount).amount);
-        let Some((tx, _)) = reward::claim(
+        let Some(tx) = reward::claim(
             &client,
             &self.subdao,
             token_amount,

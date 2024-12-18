@@ -20,7 +20,7 @@ impl Cmd {
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
         let asset = asset::for_entity_key(&client, &self.entity_key.as_entity_key()?).await?;
-        let (tx, _) = asset::burn(
+        let tx = asset::burn(
             &client,
             &asset.id,
             &keypair,

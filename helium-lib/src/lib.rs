@@ -19,7 +19,6 @@ pub mod token;
 
 pub use anchor_client;
 pub use anchor_client::solana_client;
-use anchor_client::solana_client::rpc_client::SerializableTransaction;
 pub use anchor_spl;
 pub use helium_anchor_gen::{
     anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
@@ -55,6 +54,7 @@ where
     value == &T::ZERO
 }
 
+use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use client::SolanaRpcClient;
 use error::Error;
 use keypair::Pubkey;
@@ -77,12 +77,12 @@ impl Default for TransactionOpts {
     }
 }
 
-pub struct Transaction {
+pub struct TransactionWithBlockhash {
     pub inner: solana_sdk::transaction::Transaction,
     pub block_height: u64,
 }
 
-impl Transaction {
+impl TransactionWithBlockhash {
     pub fn try_sign<T: solana_sdk::signers::Signers + ?Sized>(
         &mut self,
         keypairs: &T,
@@ -113,14 +113,14 @@ pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(
     client: &C,
     ixs: &[Instruction],
     payer: &Pubkey,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let mut txn = solana_sdk::transaction::Transaction::new_with_payer(ixs, Some(payer));
     let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
     let (latest_blockhash, latest_block_height) = solana_client
         .get_latest_blockhash_with_commitment(solana_client.commitment())
         .await?;
     txn.message.recent_blockhash = latest_blockhash;
-    Ok(Transaction {
+    Ok(TransactionWithBlockhash {
         inner: txn,
         block_height: latest_block_height,
     })

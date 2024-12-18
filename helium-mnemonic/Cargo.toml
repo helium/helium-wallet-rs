@@ -5,10 +5,10 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-bitvec = "*" # inherits from elliptic-curve crate
+bitvec = "*"                # inherits from elliptic-curve crate
 thiserror = "1"
 lazy_static = "1"
-sha2 = {workspace = true}
+sha2 = { workspace = true }
 
 [dev-dependencies]
 bs58 = "0"

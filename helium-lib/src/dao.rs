@@ -28,6 +28,14 @@ impl Dao {
         Pubkey::find_program_address(&[b"dao", mint.as_ref()], &helium_sub_daos::ID).0
     }
 
+    pub fn program_approval_key(&self, program: &Pubkey) -> Pubkey {
+        Pubkey::find_program_address(
+            &[b"program_approval", &self.key().as_ref(), program.as_ref()],
+            &helium_entity_manager::ID,
+        )
+        .0
+    }
+
     pub fn dataonly_config_key(&self) -> Pubkey {
         Pubkey::find_program_address(
             &[b"data_only_config", &self.key().as_ref()],

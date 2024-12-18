@@ -1,15 +1,17 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
-    dao::Dao,
+    dao::{Dao, SubDao},
     iot_routing_manager,
+    helium_entity_manager,
+    programs::TOKEN_METADATA_PROGRAM_ID,
     keypair::Pubkey,
 };
+
 use sha2::{Digest, Sha256};
 use solana_sdk::instruction::Instruction;
 use spl_associated_token_account::get_associated_token_address;
 use std::result::Result;
 
-use crate::{helium_entity_manager, programs::TOKEN_METADATA_PROGRAM_ID};
 
 pub fn routing_manager_key(sub_dao: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
@@ -110,11 +112,7 @@ pub mod organization {
     use super::*;
 
     use crate::{
-        client::{GetAnchorAccount, SolanaRpcClient},
-        error::Error,
-        helium_entity_manager, helium_sub_daos, iot_routing_manager, metaplex,
-        programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
-        token::Token,
+        asset, client::{GetAnchorAccount, SolanaRpcClient}, error::Error, helium_entity_manager, helium_sub_daos, iot_routing_manager, metaplex, programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID}, token::Token
     };
 
     pub enum OrgIdentifier {
@@ -126,7 +124,7 @@ pub mod organization {
         client: &C,
         identifier: OrgIdentifier,
     ) -> Result<(Pubkey, OrganizationV0), Error> {
-        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let sub_dao = SubDao::Iot.key();
         let routing_manager_key = routing_manager_key(&sub_dao);
         let organization_key = match identifier {
             OrgIdentifier::Oui(oui) => organization_key(&routing_manager_key, oui),
@@ -151,11 +149,9 @@ pub mod organization {
         recipient: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
         let payer_iot_ata_key = get_associated_token_address(&payer, Token::Iot.mint());
-        let dao_key = helium_sub_daos::dao_key(Token::Hnt.mint());
-        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
-
-        let program_approval_key =
-            helium_entity_manager::program_approval_key(&dao_key, &iot_routing_manager::ID);
+        let dao_key = Dao::Hnt.key();
+        let sub_dao = SubDao::Iot.key();
+        let program_approval_key = Dao::Hnt.program_approval_key(&iot_routing_manager::ID)
 
         client
             .as_ref()
@@ -169,7 +165,7 @@ pub mod organization {
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
-        let shared_merkle_key = helium_entity_manager::shared_merkle_key(3);
+        let shared_merkle_key = asset::shared_merkle_key(3);
         let shared_merkle = client
             .as_ref()
             .anchor_account::<helium_entity_manager::SharedMerkleV0>(&shared_merkle_key)

@@ -112,7 +112,7 @@ pub mod organization {
     use super::*;
 
     use crate::{
-        asset, client::{GetAnchorAccount, SolanaRpcClient}, error::Error, helium_entity_manager, helium_sub_daos, iot_routing_manager, metaplex, programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID}, token::Token
+        asset, client::{GetAnchorAccount, SolanaRpcClient}, error::Error, helium_entity_manager, dao, iot_routing_manager, metaplex, programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID}, token::Token
     };
 
     pub enum OrgIdentifier {
@@ -161,7 +161,7 @@ pub mod organization {
 
         client
             .as_ref()
-            .anchor_account::<helium_entity_manager::ProgramApprovalV0>(&program_approval_key)
+            .anchor_account::<helium_entity_manager::ApproveProgramArgsV0>(&program_approval_key)
             .await?
             .ok_or_else(|| Error::account_not_found())?;
 
@@ -213,7 +213,7 @@ pub mod organization {
                     collection_master_edition: organization_collection_master_edition_key(
                         &collection_key,
                     ),
-                    entity_creator: helium_entity_manager::entity_creator_key(&dao_key),
+                    entity_creator: Dao::Hnt.entity_creator_key(),
                     key_to_asset: organization_key_to_asset(&dao_key, oui),
                     tree_authority: metaplex::merkle_tree_authority_key(&shared_merkle.merkle_tree),
                     recipient: recipient.unwrap_or(payer.clone()),
@@ -364,7 +364,7 @@ pub mod net_id {
         args: InitializeNetIdArgsV0,
         authority: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
-        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let sub_dao = SubDao::Iot.key();
         let routing_manager_key = routing_manager_key(&sub_dao);
         let routing_manager = client
             .as_ref()
@@ -421,7 +421,7 @@ pub mod devaddr_constraint {
         authority: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
         let payer_iot_ata_key = get_associated_token_address(&payer, Token::Iot.mint());
-        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let sub_dao = SubDao::Iot.key();
         let routing_manager_key = routing_manager_key(&sub_dao);
 
         client

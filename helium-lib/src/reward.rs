@@ -10,11 +10,10 @@ use crate::{
     kta, lazy_distributor, mk_transaction_with_blockhash, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
-    solana_sdk::{instruction::Instruction, transaction::Transaction},
+    solana_sdk::instruction::Instruction,
     token::TokenAmount,
-    TransactionOpts,
+    Transaction, TransactionOpts,
 };
-use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use chrono::Utc;
 use futures::{
     stream::{self, StreamExt, TryStreamExt},
@@ -202,8 +201,8 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     encoded_entity_key: &entity_key::EncodedEntityKey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Option<(Transaction, u64)>, Error> {
-    let Some((mut txn, block_height)) = claim_transaction(
+) -> Result<Option<Transaction>, Error> {
+    let Some(mut txn) = claim_transaction(
         client,
         subdao,
         amount,
@@ -216,8 +215,8 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
         return Ok(None);
     };
 
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok(Some((txn, block_height)))
+    txn.try_sign(&[keypair])?;
+    Ok(Some(txn))
 }
 
 pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
@@ -227,8 +226,8 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     encoded_entity_key: &entity_key::EncodedEntityKey,
     payer: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Option<(Transaction, u64)>, Error> {
-    let entity_key_string = encoded_entity_key.to_string();
+) -> Result<Option<Transaction>, Error> {
+    let entity_key = encoded_entity_key.as_entity_key()?;
     let pending = pending(
         client,
         subdao,
@@ -282,9 +281,9 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
         distribute_ix,
     ];
 
-    let (txn, latest_block_height) = mk_transaction_with_blockhash(client, ixs, payer).await?;
+    let txn = mk_transaction_with_blockhash(client, ixs, payer).await?;
     let signed_txn = oracle_sign(&lifetime_rewards.oracle.url, txn).await?;
-    Ok(Some((signed_txn, latest_block_height)))
+    Ok(Some(signed_txn))
 }
 
 pub async fn pending<C: GetAnchorAccount>(
@@ -384,7 +383,7 @@ async fn oracle_sign(oracle: &str, txn: Transaction) -> Result<Transaction, Erro
     }
     let client = reqwest::Client::new();
     let transaction = Data {
-        data: bincode::serialize(&txn).map_err(EncodeError::from)?,
+        data: bincode::serialize(&txn.inner).map_err(EncodeError::from)?,
     };
     let response = client
         .post(oracle.to_string())
@@ -394,7 +393,7 @@ async fn oracle_sign(oracle: &str, txn: Transaction) -> Result<Transaction, Erro
         .json::<OracleSignResponse>()
         .await?;
     let signed_tx = bincode::deserialize(&response.transaction.data).map_err(DecodeError::from)?;
-    Ok(signed_tx)
+    Ok(txn.with_signed_transaction(signed_tx))
 }
 
 async fn bulk_from_oracle(
@@ -515,7 +514,7 @@ pub mod recipient {
         entity_key: &E,
         keypair: &Keypair,
         opts: &TransactionOpts,
-    ) -> Result<(Transaction, u64), Error> {
+    ) -> Result<Transaction, Error> {
         let kta = kta::for_entity_key(entity_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 

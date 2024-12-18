@@ -192,11 +192,11 @@ The following environment variables are supported:
 
 * `SOLANA_MAINNET_URL` - The Solana RPC URL to use for mainnet. 
   This will get used by default or when `--url m` is passed in.
-  The default mainnet URL is a rate limited API served by the Helium Foundation 
-  which is rate limited. Use a custom provider for repeated or large requests.  
+  The default mainnet URL is a rate limited API served by the Helium 
+  Foundation. Use a custom provider for repeated or large requests.  
 
 * `SOLANA_DEVNET_URL` - The Solana RPC URL to use for devnet. 
-  This will get used `--url d` is passed in
+  This will get used when `--url d` is passed in.
 
 * `HELIUM_WALLET_PASSWORD` - The password to use to decrypt the
   wallet. Useful for scripting or other non-interactive commands, but

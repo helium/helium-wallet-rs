@@ -1,5 +1,12 @@
 use crate::cmd::*;
-use helium_lib::{dao::SubDao, entity_key::KeySerialization, hotspot, keypair::Pubkey, reward};
+use client::DasClient;
+use helium_lib::{
+    dao::SubDao,
+    entity_key::{EncodedEntityKey, KeySerialization},
+    hotspot,
+    keypair::Pubkey,
+    reward,
+};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -16,6 +23,7 @@ impl Cmd {
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum RewardsCommand {
     Pending(PendingCmd),
+    Lifetime(LifetimeCmd),
     Claim(ClaimCmd),
 }
 
@@ -23,8 +31,28 @@ impl RewardsCommand {
     pub async fn run(&self, opts: Opts) -> Result {
         match self {
             Self::Pending(cmd) => cmd.run(opts).await,
+            Self::Lifetime(cmd) => cmd.run(opts).await,
             Self::Claim(cmd) => cmd.run(opts).await,
         }
+    }
+}
+
+async fn collect_hotspots<C: AsRef<DasClient>>(
+    client: &C,
+    hotspots: Option<Vec<helium_crypto::PublicKey>>,
+    owner: Option<Pubkey>,
+) -> Result<Vec<helium_crypto::PublicKey>> {
+    if let Some(list) = hotspots {
+        Ok(list)
+    } else if let Some(owner) = owner {
+        let hotspots = hotspot::for_owner(&client, &owner)
+            .await?
+            .into_iter()
+            .map(|hotspot| hotspot.key)
+            .collect::<Vec<helium_crypto::PublicKey>>();
+        Ok(hotspots)
+    } else {
+        Ok(vec![])
     }
 }
 
@@ -33,25 +61,23 @@ impl RewardsCommand {
 pub struct PendingCmd {
     /// Subdao for command
     subdao: SubDao,
-
-    /// Hotspot public keys to look up
-    wallet: Option<Pubkey>,
+    /// Hotspots to lookup
+    hotspots: Option<Vec<helium_crypto::PublicKey>>,
+    /// Wallet to look up hotspots for
+    #[arg(long)]
+    owner: Option<Pubkey>,
 }
 
 impl PendingCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let owner = if let Some(walet) = self.wallet {
-            walet
-        } else {
-            let wallet = opts.load_wallet()?;
-            wallet.public_key
-        };
         let client = opts.client()?;
-        let hotspots: Vec<helium_crypto::PublicKey> = hotspot::for_owner(&client, &owner)
-            .await?
-            .into_iter()
-            .map(|hotspot| hotspot.key)
-            .collect();
+        let wallet = opts.load_wallet()?;
+        let hotspots = collect_hotspots(
+            &client,
+            self.hotspots.clone(),
+            self.owner.or(Some(wallet.public_key)),
+        )
+        .await?;
         let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
         let pending = reward::pending(
             &client,
@@ -66,27 +92,74 @@ impl PendingCmd {
 }
 
 #[derive(Clone, Debug, clap::Args)]
+/// List lifetime total rewards for a hotspot
+///
+/// This includes both claimed and unclaimed rewards
+pub struct LifetimeCmd {
+    /// Subdao for command
+    subdao: SubDao,
+    /// Hotspots to lookup
+    hotspots: Option<Vec<helium_crypto::PublicKey>>,
+    /// Wallet to look up hotspots for
+    #[arg(long)]
+    owner: Option<Pubkey>,
+}
+
+impl LifetimeCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let client = opts.client()?;
+        let wallet = opts.load_wallet()?;
+        let hotspots = collect_hotspots(
+            &client,
+            self.hotspots.clone(),
+            self.owner.or(Some(wallet.public_key)),
+        )
+        .await?;
+        let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
+        let rewards = reward::lifetime(&client, &self.subdao, &entity_key_strings).await?;
+
+        print_json(&rewards)
+    }
+}
+
+#[derive(Clone, Debug, clap::Args)]
 /// Claim rewards for one or all Hotspots in a wallet
 pub struct ClaimCmd {
     /// Subdao for command
     subdao: SubDao,
-
-    /// Hotspot public keys to claim rewawrds for
-    hotspots: Vec<helium_crypto::PublicKey>,
+    /// Hotspot public key to send claim for
+    hotspot: helium_crypto::PublicKey,
+    /// The optional amount to claim
+    ///
+    /// If not specific the full pending amount is claimed, limited by the maximum
+    /// claim amount for the subdao
+    pub amount: Option<f64>,
+    /// Do not check and initialize the on chain recipient
+    ///
+    /// For known assets that have been previously initialized this will speed up the claim
+    #[arg(long)]
+    skip_init: bool,
+    /// Commit the claim transaction.
     #[command(flatten)]
     commit: CommitOpts,
 }
 
+impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
+    fn from(value: &ClaimCmd) -> Self {
+        Self {
+            subdao: value.subdao,
+            entity_key: EncodedEntityKey::from(&value.hotspot),
+            amount: value.amount,
+            skip_init: value.skip_init,
+            commit: value.commit.clone(),
+        }
+    }
+}
+
 impl ClaimCmd {
-    pub async fn run(&self, _opts: Opts) -> Result {
-        // let password = get_wallet_password(false)?;
-        // let wallet = load_wallet(&opts.files)?;
-        // let keypair = wallet.decrypt(password.as_bytes())?;
-        // let settings = opts.try_into()?;
-        // let entity_key = hotspot::key_to_entity(&self.hotspot)?;
-        // asset::get_bulk_rewards(&settings, &SubDao::Iot, &entity_key)?;
-        unimplemented!();
-        // Ok(())
+    pub async fn run(&self, opts: Opts) -> Result {
+        let cmd = crate::cmd::assets::rewards::ClaimCmd::from(self);
+        cmd.run(opts).await
     }
 }
 

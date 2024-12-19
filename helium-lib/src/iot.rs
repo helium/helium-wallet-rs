@@ -1,6 +1,5 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
-    dao::{Dao, SubDao},
     iot_routing_manager,
     helium_entity_manager,
     programs::TOKEN_METADATA_PROGRAM_ID,
@@ -112,7 +111,11 @@ pub mod organization {
     use super::*;
 
     use crate::{
-        asset, client::{GetAnchorAccount, SolanaRpcClient}, error::Error, helium_entity_manager, dao, iot_routing_manager, metaplex, programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID}, token::Token
+        asset, client::{GetAnchorAccount, SolanaRpcClient},
+        error::Error, helium_entity_manager, dao::{Dao, SubDao},
+        iot_routing_manager, metaplex,
+        programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+        token::Token
     };
 
     pub enum OrgIdentifier {
@@ -271,7 +274,9 @@ pub mod organization {
 pub mod organization_delegate {
     use super::*;
 
-    use crate::{client::SolanaRpcClient, error::Error, iot_routing_manager};
+    use crate::{
+      client::SolanaRpcClient, error::Error, iot_routing_manager
+    };
 
     pub async fn create<C: AsRef<SolanaRpcClient>>(
         _client: &C,
@@ -328,8 +333,8 @@ pub mod net_id {
     use crate::{
         client::{GetAnchorAccount, SolanaRpcClient},
         error::Error,
-        helium_sub_daos, iot_routing_manager,
-        token::Token,
+        dao::SubDao,
+        iot_routing_manager,
     };
 
     pub enum NetIdIdentifier {
@@ -341,7 +346,7 @@ pub mod net_id {
         client: &C,
         identifier: NetIdIdentifier,
     ) -> Result<(Pubkey, NetIdV0), Error> {
-        let sub_dao = helium_sub_daos::sub_dao_key(Token::Iot.mint());
+        let sub_dao = SubDao::Iot.key();
         let routing_manager_key = routing_manager_key(&sub_dao);
         let net_id_key = match identifier {
             NetIdIdentifier::Id(id) => net_id_key(&routing_manager_key, id),
@@ -408,7 +413,8 @@ pub mod devaddr_constraint {
     use crate::{
         client::{GetAnchorAccount, SolanaRpcClient},
         error::Error,
-        helium_sub_daos, iot_routing_manager,
+        dao::SubDao,
+        iot_routing_manager,
         token::Token,
     };
 

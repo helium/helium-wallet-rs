@@ -160,7 +160,7 @@ pub mod organization {
             .as_ref()
             .get_account(&payer_iot_ata_key)
             .await
-            .map_err(|_| Error::Other("Payer IOT token account non existent.".to_string()))?;
+            .map_err(|_| Error::AccountAbsent(format!("Payer IOT token account.")))?;
 
         client
             .as_ref()
@@ -434,7 +434,7 @@ pub mod devaddr_constraint {
             .as_ref()
             .get_account(&payer_iot_ata_key)
             .await
-            .map_err(|_| Error::Other("Payer IOT token account non existent.".to_string()))?;
+            .map_err(|_| Error::AccountAbsent(format!("Payer IOT token account.")))?;
 
         let net_id = client
             .as_ref()

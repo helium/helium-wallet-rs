@@ -6,8 +6,8 @@ use crate::{
     data_credits,
     error::{DecodeError, Error},
     keypair::{Keypair, Pubkey},
+    priority_fee,
     solana_sdk::{instruction::Instruction, signer::Signer, transaction::Transaction},
-    solana_transaction_utils::priority_fee,
     token::{Token, TokenAmount},
     TransactionOpts,
 };

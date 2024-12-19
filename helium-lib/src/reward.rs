@@ -7,11 +7,10 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
     keypair::{Keypair, Pubkey},
-    kta, lazy_distributor,
+    kta, lazy_distributor, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
     solana_sdk::{instruction::Instruction, transaction::Transaction},
-    solana_transaction_utils::priority_fee,
     token::TokenAmount,
     TransactionOpts,
 };

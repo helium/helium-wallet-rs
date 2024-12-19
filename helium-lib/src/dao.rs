@@ -1,6 +1,6 @@
 use crate::{
-    data_credits, entity_key::AsEntityKey, helium_entity_manager, helium_sub_daos, keypair::Pubkey,
-    lazy_distributor, metaplex, rewards_oracle, token::Token, utils::get_current_epoch,
+    data_credits, entity_key::AsEntityKey, get_current_epoch, helium_entity_manager,
+    helium_sub_daos, keypair::Pubkey, lazy_distributor, metaplex, rewards_oracle, token::Token,
 };
 
 use sha2::{Digest, Sha256};

@@ -15,6 +15,8 @@ pub enum Error {
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
     #[error("Account already exists")]
     AccountExists,
+    #[error("Account non existent: {0}")]
+    AccountAbsent(String),
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
     #[error("grpc: {0}")]
@@ -45,13 +47,15 @@ pub enum Error {
     Decode(#[from] DecodeError),
     #[error("encode: {0}")]
     Encode(#[from] EncodeError),
-    #[error("other: {0}")]
-    Other(String),
+    #[error("Wallet is not configured")]
+    WalletUnconfigured,
+    #[error("error: {0}")]
+    Error(String),
 }
 
 impl From<Box<dyn std::error::Error>> for Error {
     fn from(err: Box<dyn std::error::Error>) -> Self {
-        Self::Other(err.to_string())
+        Self::other(err.to_string())
     }
 }
 
@@ -88,12 +92,14 @@ impl Error {
             _ => false,
         }
     }
+
+    pub fn other<S: ToString>(reason: S) -> Self {
+        Self::Error(reason.to_string())
+    }
 }
 
 #[derive(Debug, Error)]
 pub enum EncodeError {
-    #[error("io: {0}")]
-    Io(#[from] std::io::Error),
     #[error("proto: {0}")]
     Proto(#[from] helium_proto::EncodeError),
     #[error("bincode: {0}")]

@@ -14,11 +14,11 @@ pub mod kta;
 pub mod memo;
 pub mod metaplex;
 pub mod onboarding;
+pub mod priority_fee;
 pub mod programs;
 pub mod reward;
-pub mod solana_transaction_utils;
 pub mod token;
-pub mod utils;
+pub mod transaction;
 
 pub use anchor_client;
 pub use anchor_client::solana_client;
@@ -29,7 +29,6 @@ pub use helium_anchor_gen::{
 };
 pub use solana_sdk;
 pub use solana_sdk::bs58;
-pub use solana_transaction_utils::priority_fee;
 
 pub(crate) trait Zero {
     const ZERO: Self;
@@ -74,4 +73,9 @@ impl Default for TransactionOpts {
             min_priority_fee: priority_fee::MIN_PRIORITY_FEE,
         }
     }
+}
+
+const EPOCH_LENGTH: u64 = 60 * 60 * 24;
+pub fn get_current_epoch(unix_time: u64) -> u64 {
+    unix_time / EPOCH_LENGTH
 }

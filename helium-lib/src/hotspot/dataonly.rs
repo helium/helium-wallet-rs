@@ -9,13 +9,12 @@ use crate::{
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::{Keypair, Pubkey},
-    kta,
+    kta, priority_fee,
     programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     },
     solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
-    solana_transaction_utils::priority_fee,
     token::Token,
     TransactionOpts,
 };

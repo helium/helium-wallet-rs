@@ -7,7 +7,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
-    kta, onboarding,
+    kta, onboarding, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
@@ -15,7 +15,6 @@ use crate::{
         signer::Signer,
         transaction::Transaction,
     },
-    solana_transaction_utils::priority_fee,
     token::Token,
     TransactionOpts,
 };

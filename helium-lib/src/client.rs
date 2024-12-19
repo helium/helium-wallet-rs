@@ -3,29 +3,15 @@ use crate::{
     asset,
     error::{DecodeError, Error},
     is_zero,
-    keypair::{self, Pubkey},
-    solana_client::{
-        self,
-        nonblocking::tpu_client::TpuClient,
-        send_and_confirm_transactions_in_parallel::{
-            send_and_confirm_transactions_in_parallel, SendAndConfirmConfig,
-        },
-        tpu_client::TpuClientConfig,
-    },
-    solana_sdk::{
-        commitment_config::CommitmentConfig, instruction::Instruction, message::Message,
-        signature::Keypair, signer::Signer,
-    },
-    solana_transaction_utils::{
-        pack::pack_instructions_into_transactions, priority_fee::auto_compute_limit_and_price,
-    },
+    keypair::{self, Keypair, Pubkey},
+    solana_client,
+    solana_sdk::{commitment_config::CommitmentConfig, signer::Signer},
 };
 
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
-use solana_sdk::signer::EncodableKey;
-use std::{marker::Send, path::PathBuf, sync::Arc};
+use std::{marker::Send, sync::Arc};
 use tracing::instrument;
 
 pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
@@ -52,12 +38,13 @@ pub struct SolanaClient {
 
 impl Default for SolanaClient {
     fn default() -> Self {
+        // safe to unwrap
         Self::new(SOLANA_URL_MAINNET, None).unwrap()
     }
 }
 
 impl SolanaClient {
-    pub fn new(url: &str, wallet_path: Option<PathBuf>) -> Result<Self, Error> {
+    pub fn new(url: &str, wallet: Option<Arc<Keypair>>) -> Result<Self, Error> {
         let client = Arc::new(
             solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
                 url.to_string(),
@@ -65,23 +52,11 @@ impl SolanaClient {
             ),
         );
 
-        let wallet = if let Some(path) = wallet_path {
-            Some(Arc::new(
-                Keypair::read_from_file(&path).map_err(Error::from)?,
-            ))
-        } else {
-            None
-        };
-
         Ok(Self {
             inner: client,
             base_url: url.to_string(),
             wallet,
         })
-    }
-
-    pub fn solana_rpc_client(&self) -> Arc<SolanaRpcClient> {
-        self.inner.clone()
     }
 
     pub fn ws_url(&self) -> String {
@@ -95,87 +70,7 @@ impl SolanaClient {
         self.wallet
             .as_ref()
             .map(|wallet| wallet.pubkey())
-            .ok_or_else(|| Error::Other("Wallet not configured".to_string()))
-    }
-
-    pub async fn send_instructions(
-        &self,
-        ixs: Vec<Instruction>,
-        extra_signers: &[Keypair],
-        sequentially: bool,
-    ) -> Result<(), Error> {
-        let wallet = self
-            .wallet
-            .as_ref()
-            .ok_or_else(|| Error::Other("Wallet not configured".to_string()))?;
-
-        let (blockhash, _) = self
-            .inner
-            .as_ref()
-            .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
-            .await
-            .expect("Failed to get latest blockhash");
-
-        let txs = pack_instructions_into_transactions(vec![ixs], &wallet);
-        let mut with_auto_compute: Vec<Message> = Vec::new();
-        let keys: Vec<&dyn Signer> = std::iter::once(&wallet as &dyn Signer)
-            .chain(extra_signers.iter().map(|k| k as &dyn Signer))
-            .collect();
-
-        for (tx, _) in &txs {
-            let computed = auto_compute_limit_and_price(
-                &self.solana_rpc_client(),
-                tx.clone(),
-                &keys,
-                1.2,
-                Some(&wallet.pubkey()),
-                Some(blockhash),
-            )
-            .await
-            .unwrap();
-
-            with_auto_compute.push(Message::new(&computed, Some(&wallet.pubkey())));
-        }
-
-        if with_auto_compute.is_empty() {
-            return Ok(());
-        }
-
-        let results;
-        let tpu_client = TpuClient::new(
-            "helium-lib",
-            self.solana_rpc_client(),
-            &self.ws_url(),
-            TpuClientConfig::default(),
-        )
-        .await?;
-
-        match sequentially {
-            true => {
-                results = tpu_client
-                    .send_and_confirm_messages_with_spinner(&with_auto_compute, &keys)
-                    .await?;
-            }
-            false => {
-                results = send_and_confirm_transactions_in_parallel(
-                    self.solana_rpc_client(),
-                    Some(tpu_client),
-                    &with_auto_compute,
-                    &keys,
-                    SendAndConfirmConfig {
-                        with_spinner: true,
-                        resign_txs_count: Some(5),
-                    },
-                )
-                .await?;
-            }
-        }
-
-        if let Some(err) = results.into_iter().flatten().next() {
-            return Err(Error::from(err));
-        }
-
-        Ok(())
+            .ok_or_else(|| Error::WalletUnconfigured)
     }
 }
 
@@ -375,6 +270,7 @@ pub struct DasClient {
 
 impl Default for DasClient {
     fn default() -> Self {
+        // safe to unwrap
         Self::with_base_url(SOLANA_URL_MAINNET).unwrap()
     }
 }

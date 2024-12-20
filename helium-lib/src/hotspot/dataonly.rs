@@ -9,7 +9,7 @@ use crate::{
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::{Keypair, Pubkey},
-    kta, priority_fee,
+    kta, mk_transaction_with_blockhash, priority_fee,
     programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     },
@@ -33,7 +33,7 @@ mod iot {
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
         opts: &TransactionOpts,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<(Transaction, u64), Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
@@ -107,8 +107,7 @@ mod iot {
             onboard_ix,
         ];
 
-        let tx = Transaction::new_with_payer(ixs, Some(owner));
-        Ok(tx)
+        mk_transaction_with_blockhash(client, ixs, owner).await
     }
 }
 
@@ -123,7 +122,7 @@ mod mobile {
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
         opts: &TransactionOpts,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<(Transaction, u64), Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
@@ -198,8 +197,7 @@ mod mobile {
             onboard_ix,
         ];
 
-        let tx = Transaction::new_with_payer(ixs, Some(owner));
-        Ok(tx)
+        mk_transaction_with_blockhash(client, ixs, owner).await
     }
 }
 
@@ -213,18 +211,12 @@ pub async fn onboard_transaction<
     owner: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(Transaction, u64), Error> {
-    let mut tx = match subdao {
+    match subdao {
         SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner, opts).await,
         SubDao::Mobile => {
             mobile::onboard_transaction(client, hotspot_key, assertion, owner, opts).await
         }
-    }?;
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    tx.message.recent_blockhash = latest_blockhash;
-    Ok((tx, latest_block_height))
+    }
 }
 
 pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
@@ -315,12 +307,8 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
         .await?,
         issue_ix,
     ];
-    let mut txn = Transaction::new_with_payer(ixs, Some(&owner));
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    txn.message.recent_blockhash = latest_blockhash;
+
+    let (txn, latest_block_height) = mk_transaction_with_blockhash(client, ixs, &owner).await?;
 
     let sig = add_tx.gateway_signature.clone();
     add_tx.gateway_signature = vec![];

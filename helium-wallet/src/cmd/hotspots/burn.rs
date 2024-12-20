@@ -2,11 +2,11 @@ use crate::cmd::*;
 use helium_lib::{dao, hotspot};
 
 #[derive(Clone, Debug, clap::Args)]
-/// Burn a given hotspot NFT
+/// Burn a given Hotspot NFT
 pub struct Cmd {
     /// Subdao for command
     subdao: dao::SubDao,
-    /// Key for the hotspot NFT to burn
+    /// Key for the Hotspot NFT to burn
     address: helium_crypto::PublicKey,
     /// Commit the transaction
     #[command(flatten)]

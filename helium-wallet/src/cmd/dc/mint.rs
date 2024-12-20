@@ -6,9 +6,9 @@ use helium_lib::{
 };
 
 #[derive(Debug, Clone, clap::Args)]
-/// Mint HNT to Data Credits (DC) from this wallet to given payees wallet.
+/// Mint HNT to Data Credits (DC) from this wallet to a given payee's wallet.
 ///
-/// One of the amount of HNT to burn or the amount of DC expected after the burn
+/// Either the amount of HNT to burn or the amount of DC expected after the burn
 /// can be specified.
 pub struct Cmd {
     /// Account address to send the resulting DC to. Defaults to the active
@@ -16,7 +16,7 @@ pub struct Cmd {
     #[arg(long)]
     payee: Option<Pubkey>,
 
-    /// Amount of HNT to convert to dc
+    /// Amount of HNT to convert to DC
     #[arg(long, conflicts_with = "dc")]
     hnt: Option<f64>,
 
@@ -41,9 +41,10 @@ impl Cmd {
             (None, Some(dc)) => TokenAmount::from_u64(Token::Dc, dc),
             _ => return Err(anyhow!("Must specify either HNT or DC")),
         };
+        let transaction_opts = self.commit.transaction_opts();
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let tx = dc::mint(&client, amount, payee, &keypair).await?;
+        let (tx, _) = dc::mint(&client, amount, payee, &keypair, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

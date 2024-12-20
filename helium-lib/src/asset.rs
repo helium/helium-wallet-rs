@@ -6,7 +6,7 @@ use crate::{
     error::{DecodeError, Error},
     helium_entity_manager,
     keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
-    kta,
+    kta, mk_transaction_with_blockhash,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
     solana_sdk::{instruction::AccountMeta, transaction::Transaction},
@@ -202,13 +202,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         transfer_ix,
     ];
 
-    let mut tx = Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    tx.message.recent_blockhash = latest_blockhash;
-    Ok((tx, latest_block_height))
+    mk_transaction_with_blockhash(client, ixs, &asset.ownership.owner).await
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -269,13 +263,7 @@ pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         ix,
     ];
 
-    let mut tx = Transaction::new_with_payer(ixs, Some(&asset.ownership.owner));
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    tx.message.recent_blockhash = latest_blockhash;
-    Ok((tx, latest_block_height))
+    mk_transaction_with_blockhash(client, ixs, &asset.ownership.owner).await
 }
 
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(

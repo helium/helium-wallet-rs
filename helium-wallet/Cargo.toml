@@ -1,9 +1,10 @@
 [package]
 name = "helium-wallet"
 description = "A Helium Wallet CLI"
-version = "2.0.0-rc.10"
-readme = "README.md"
+version = "2.0.1"
+readme = "../README.md"
 keywords = ["helium", "blockchain", "wallet"]
+publish = false
 authors.workspace = true
 license.workspace = true
 edition.workspace = true

@@ -24,7 +24,16 @@ impl Cmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
 
         let client = opts.client()?;
-        let tx = dc::delegate(&client, self.subdao, &self.payer, self.dc, &keypair).await?;
+        let transaction_opts = self.commit.transaction_opts();
+        let (tx, _) = dc::delegate(
+            &client,
+            self.subdao,
+            &self.payer,
+            self.dc,
+            &keypair,
+            &transaction_opts,
+        )
+        .await?;
         print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

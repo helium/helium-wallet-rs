@@ -57,6 +57,10 @@ where
     value == &T::ZERO
 }
 
+use client::SolanaRpcClient;
+use error::Error;
+use keypair::Pubkey;
+use solana_sdk::{instruction::Instruction, transaction::Transaction};
 use std::sync::Arc;
 
 pub fn init(solana_client: Arc<client::SolanaClient>) -> Result<(), error::Error> {
@@ -78,4 +82,17 @@ impl Default for TransactionOpts {
 const EPOCH_LENGTH: u64 = 60 * 60 * 24;
 pub fn get_current_epoch(unix_time: u64) -> u64 {
     unix_time / EPOCH_LENGTH
+
+pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    ixs: &[Instruction],
+    payer: &Pubkey,
+) -> Result<(Transaction, u64), Error> {
+    let mut txn = Transaction::new_with_payer(ixs, Some(payer));
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let (latest_blockhash, latest_block_height) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
+        .await?;
+    txn.message.recent_blockhash = latest_blockhash;
+    Ok((txn, latest_block_height))
 }

@@ -18,6 +18,7 @@ impl Cmd {
 pub enum RewardsCommand {
     Claim(ClaimCmd),
     Pending(PendingCmd),
+    Lifetime(LifetimeCmd),
     MaxClaim(MaxClaimCmd),
 }
 
@@ -27,30 +28,31 @@ impl RewardsCommand {
             Self::Claim(cmd) => cmd.run(opts).await,
             Self::MaxClaim(cmd) => cmd.run(opts).await,
             Self::Pending(cmd) => cmd.run(opts).await,
+            Self::Lifetime(cmd) => cmd.run(opts).await,
         }
     }
 }
 
 #[derive(Debug, Clone, clap::Args)]
-/// List current (totel lifetime) rewards issued for a given entity key
+/// List current (total lifetime) rewards issued for a given entity key
 pub struct ClaimCmd {
     /// Subdao for command
-    subdao: SubDao,
+    pub subdao: SubDao,
     #[clap(flatten)]
-    entity_key: entity_key::EncodedEntityKey,
+    pub entity_key: entity_key::EncodedEntityKey,
     /// The optional amount to claim
     ///
     /// If not specific the full pending amount is claimed, limited by the maximum
     /// claim amount for the subdao
-    amount: Option<f64>,
+    pub amount: Option<f64>,
     /// Do not check and initialize the on chain recipient
     ///
     /// For known assets that have been previously initialized this will speed up the claim
     #[arg(long)]
-    skip_init: bool,
+    pub skip_init: bool,
     /// Commit the claim transaction.
     #[command(flatten)]
-    commit: CommitOpts,
+    pub commit: CommitOpts,
 }
 
 impl ClaimCmd {
@@ -157,5 +159,27 @@ impl PendingCmd {
         .await?;
 
         print_json(&pending)
+    }
+}
+
+#[derive(Debug, Clone, clap::Args)]
+/// List lifetime rewards for an asset
+///
+/// This includes both claimed and unclaimed rewards
+pub struct LifetimeCmd {
+    /// Subdao for command
+    subdao: SubDao,
+
+    #[clap(flatten)]
+    entity_key: entity_key::EncodedEntityKey,
+}
+
+impl LifetimeCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let client = opts.client()?;
+        let rewards =
+            reward::lifetime(&client, &self.subdao, &[self.entity_key.entity_key.clone()]).await?;
+
+        print_json(&rewards)
     }
 }

@@ -18,7 +18,7 @@ impl Cmd {
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
-/// Commands on data credits
+/// Commands on Data Credits
 pub enum DcCommand {
     Price(price::Cmd),
     Mint(mint::Cmd),

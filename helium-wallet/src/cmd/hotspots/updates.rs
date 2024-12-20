@@ -2,19 +2,19 @@ use crate::cmd::*;
 use helium_lib::{dao::SubDao, hotspot, keypair::Signature};
 
 #[derive(Clone, Debug, clap::Args)]
-/// Get metadata updates for a given hotspot
+/// Get metadata updates for a given Hotspot
 ///
 /// NOTE: Hotspots that were onboarded before the Solana transition will
 /// not include the metadata at transition time as part of the update list.
 pub struct Cmd {
     /// Subdao to fetch updates for
     subdao: SubDao,
-    /// The hotspot to fetch updates for
+    /// The Hotspot to fetch updates for
     address: helium_crypto::PublicKey,
     /// The signature to start looking backwards from
     #[arg(long)]
     before: Option<Signature>,
-    /// The signathre to look backwards up to
+    /// The signature to look backwards up to
     #[arg(long)]
     until: Option<Signature>,
 }

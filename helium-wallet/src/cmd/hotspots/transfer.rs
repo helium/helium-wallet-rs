@@ -5,11 +5,11 @@ use helium_lib::{
 };
 
 #[derive(Clone, Debug, clap::Args)]
-/// Transfer a hotspot to another owner
+/// Transfer a Hotspot to another owner
 pub struct Cmd {
-    /// Key of hotspot
+    /// Key of Hotspot
     address: helium_crypto::PublicKey,
-    /// Solana address of Recipient of hotspot
+    /// Solana address of Recipient of Hotspot
     recipient: Pubkey,
     /// Commit the transfer
     #[command(flatten)]

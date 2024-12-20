@@ -91,3 +91,18 @@ impl EncodedEntityKey {
         from_str(&self.entity_key, self.encoding.into())
     }
 }
+
+impl Display for EncodedEntityKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.entity_key)
+    }
+}
+
+impl From<&helium_crypto::PublicKey> for EncodedEntityKey {
+    fn from(value: &helium_crypto::PublicKey) -> Self {
+        Self {
+            encoding: EntityKeyEncoding::B58,
+            entity_key: value.to_string(),
+        }
+    }
+}

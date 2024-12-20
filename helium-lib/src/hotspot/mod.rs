@@ -7,7 +7,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
-    kta, onboarding, priority_fee,
+    kta, mk_transaction_with_blockhash, onboarding, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
@@ -48,7 +48,7 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     owner: &Pubkey,
 ) -> Result<Vec<Hotspot>, Error> {
     let assets = asset::for_owner(client, &HOTSPOT_CREATOR, owner).await?;
-    // Get all kta keys for the hotspots in the assets for the given owner
+    // Get all kta keys for the Hotspots in the assets for the given owner
     let (kta_keys, hotspot_assets): (Vec<Pubkey>, Vec<asset::Asset>) = assets
         .into_iter()
         .filter(|asset| asset.is_symbol("HOTSPOT"))
@@ -212,13 +212,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
         ix,
     ];
 
-    let mut txn = Transaction::new_with_payer(ixs, Some(owner));
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    txn.message.recent_blockhash = latest_blockhash;
-    Ok((txn, latest_block_height))
+    mk_transaction_with_blockhash(client, ixs, owner).await
 }
 
 pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -255,9 +249,9 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok(tx)
 }
 
-/// Get an unsigned transaction for a hotspot transfer.
+/// Get an unsigned transaction for a Hotspot transfer.
 ///
-/// The hotspot is transferred from the owner of the hotspot to the given recipient
+/// The Hotspot is transferred from the owner of the Hotspot to the given recipient
 /// Note that the owner is currently expected to sign this transaction and pay for
 /// transaction fees.
 pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -533,7 +527,7 @@ pub enum MobileDeploymentInfo {
     WifiInfo {
         #[serde(skip_serializing_if = "is_zero")]
         antenna: u32,
-        // the height of the hotspot above ground level in whole meters
+        // the height of the Hotspot above ground level in whole meters
         #[serde(skip_serializing_if = "is_zero")]
         elevation: i32,
         #[serde(skip_serializing_if = "is_zero")]

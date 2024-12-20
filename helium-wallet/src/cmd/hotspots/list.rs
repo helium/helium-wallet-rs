@@ -2,9 +2,9 @@ use crate::cmd::*;
 use helium_lib::{hotspot, keypair::Pubkey};
 
 #[derive(Clone, Debug, clap::Args)]
-/// Get the list of hotspots for the active or a given wallet
+/// Get the list of Hotspots for the active or a given wallet
 pub struct Cmd {
-    /// The alternate wallet to get the list of hotspots for
+    /// The alternate wallet to get the list of Hotspots for
     wallet: Option<Pubkey>,
 }
 

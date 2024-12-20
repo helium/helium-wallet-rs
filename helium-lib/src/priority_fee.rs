@@ -1,6 +1,16 @@
 use crate::{
-    anchor_lang::ToAccountMetas, client::SolanaRpcClient, error::Error, keypair::Pubkey,
+    anchor_lang::ToAccountMetas,
+    client::SolanaRpcClient,
+    error::Error,
+    keypair::Pubkey,
     solana_client,
+    solana_sdk::{
+        instruction::{AccountMeta, Instruction},
+        message::Message,
+        signers::Signers,
+        transaction::Transaction,
+    },
+    transaction::replace_or_insert_instruction,
 };
 use itertools::Itertools;
 
@@ -118,4 +128,83 @@ pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
 ) -> Result<solana_sdk::instruction::Instruction, Error> {
     let priority_fee = get_estimate_with_min(client, accounts, min_priority_fee).await?;
     Ok(compute_price_instruction(priority_fee))
+}
+
+pub async fn compute_budget_for_instructions<C: AsRef<SolanaRpcClient>, T: Signers + ?Sized>(
+    client: &C,
+    instructions: Vec<Instruction>,
+    signers: &T,
+    compute_multiplier: f32,
+    payer: Option<&Pubkey>,
+    blockhash: Option<solana_program::hash::Hash>,
+) -> Result<solana_sdk::instruction::Instruction, crate::error::Error> {
+    // Check for existing compute unit limit instruction and replace it if found
+    let mut updated_instructions = instructions.clone();
+    for ix in &mut updated_instructions {
+        if ix.program_id == solana_sdk::compute_budget::id()
+            && ix.data.first()
+                == solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(0)
+                    .data
+                    .first()
+        {
+            ix.data = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                1900000,
+            )
+            .data; // Replace limit
+        }
+    }
+
+    let blockhash_actual = match blockhash {
+        Some(hash) => hash,
+        None => client.as_ref().get_latest_blockhash().await?,
+    };
+
+    let snub_tx = Transaction::new(
+        signers,
+        Message::new(&updated_instructions, payer),
+        blockhash_actual,
+    );
+
+    // Simulate the transaction to get the actual compute used
+    let simulation_result = client.as_ref().simulate_transaction(&snub_tx).await?;
+    let actual_compute_used = simulation_result.value.units_consumed.unwrap_or(200000);
+    let final_compute_budget = (actual_compute_used as f32 * compute_multiplier) as u32;
+    Ok(compute_budget_instruction(final_compute_budget))
+}
+
+pub async fn auto_compute_limit_and_price<C: AsRef<SolanaRpcClient>, T: Signers + ?Sized>(
+    client: &C,
+    instructions: Vec<Instruction>,
+    signers: &T,
+    compute_multiplier: f32,
+    payer: Option<&Pubkey>,
+    blockhash: Option<solana_program::hash::Hash>,
+) -> Result<Vec<Instruction>, Error> {
+    let mut updated_instructions = instructions.clone();
+
+    // Compute budget instruction
+    let compute_budget_ix = compute_budget_for_instructions(
+        client,
+        instructions.clone(),
+        signers,
+        compute_multiplier,
+        payer,
+        blockhash,
+    )
+    .await?;
+
+    // Compute price instruction
+    let accounts: Vec<AccountMeta> = instructions
+        .iter()
+        .flat_map(|i| i.accounts.iter().map(|a| a.pubkey))
+        .unique()
+        .map(|pk| AccountMeta::new(pk, false))
+        .collect();
+
+    let compute_price_ix =
+        compute_price_instruction_for_accounts(client, &accounts, MIN_PRIORITY_FEE).await?;
+
+    replace_or_insert_instruction(&mut updated_instructions, compute_budget_ix, 0);
+    replace_or_insert_instruction(&mut updated_instructions, compute_price_ix, 1);
+    Ok(updated_instructions)
 }

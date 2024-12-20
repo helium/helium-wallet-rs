@@ -16,6 +16,14 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
+pub fn shared_merkle_key(proof_size: u8) -> Pubkey {
+    Pubkey::find_program_address(
+        &[b"shared_merkle", &[proof_size]],
+        &helium_entity_manager::ID,
+    )
+    .0
+}
+
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
     client: &C,
     entity_key: &E,
@@ -53,6 +61,7 @@ pub async fn get_with_proof<C: AsRef<DasClient>>(
     let (asset, asset_proof) = futures::try_join!(get(client, pubkey), proof::get(client, pubkey))?;
     Ok((asset, asset_proof))
 }
+
 pub mod canopy {
     use super::*;
     use spl_account_compression::state::{merkle_tree_get_size, ConcurrentMerkleTreeHeader};

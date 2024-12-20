@@ -60,7 +60,7 @@ where
 use std::sync::Arc;
 
 pub fn init(solana_client: Arc<client::SolanaClient>) -> Result<(), error::Error> {
-    kta::init(solana_client.solana_rpc_client())
+    kta::init(solana_client.inner.clone())
 }
 
 pub struct TransactionOpts {

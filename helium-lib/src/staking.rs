@@ -28,14 +28,14 @@ impl Default for Client {
 
 impl Client {
     /// Create a new client using a given base URL and a default
-    /// timeout. The library will use absoluate paths based on this
+    /// timeout. The library will use absolute paths based on this
     /// base_url.
     pub fn new_with_base_url(base_url: String) -> Self {
         Self::new_with_timeout(base_url, DEFAULT_TIMEOUT)
     }
 
     /// Create a new client using a given base URL, and request
-    /// timeout value.  The library will use absoluate paths based on
+    /// timeout value.  The library will use absolute paths based on
     /// the given base_url.
     pub fn new_with_timeout(base_url: String, timeout: u64) -> Self {
         let client = reqwest::Client::builder()

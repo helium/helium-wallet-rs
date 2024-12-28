@@ -84,7 +84,7 @@ impl KtaCache {
             .await?;
         // NOTE: Holding lock across an await will not work with std::sync
         // Since sync::RwLock is much faster than sync options we take the hit
-        // of multipl requests for the same kta_key before the key is found
+        // of multiple requests for the same kta_key before the key is found
         self.cache_write().insert(*kta_key, kta.clone());
         Ok(kta)
     }

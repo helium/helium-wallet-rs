@@ -464,8 +464,8 @@ mod tests {
             "drill toddler tongue laundry access silly few faint glove birth crumble add",
         );
 
-        let from_keypair = Keypair::from_words(seed_words.clone()).expect("to generate a keypair");
-        let entropy = helium_mnemonic::mnemonic_to_entropy(seed_words)
+        let from_keypair = Keypair::from_words(&seed_words).expect("to generate a keypair");
+        let entropy = helium_mnemonic::mnemonic_to_entropy(&seed_words)
             .expect("entropy from mnemonic")
             .to_vec();
 
@@ -499,8 +499,8 @@ mod tests {
 
         let seed_words = phrase_to_words(
             "moment case dirt ski tool dynamic sort ugly pluck drop kiwi knee jar easy verb canal nuclear survey before dwarf prosper cave pottery target");
-        let from_keypair = Keypair::from_words(seed_words.clone()).expect("to generate a keypair");
-        let entropy = helium_mnemonic::mnemonic_to_entropy(seed_words)
+        let from_keypair = Keypair::from_words(&seed_words).expect("to generate a keypair");
+        let entropy = helium_mnemonic::mnemonic_to_entropy(&seed_words)
             .expect("entropy from mnemonic")
             .to_vec();
 

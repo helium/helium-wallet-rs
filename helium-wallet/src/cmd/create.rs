@@ -175,7 +175,7 @@ impl Keypair {
 
 fn get_seed_entropy() -> Result<Vec<u8>> {
     fn secret_from_phrase(s: &str) -> Result<Vec<u8>> {
-        let entropy = helium_mnemonic::mnemonic_to_entropy(phrase_to_words(s))?.to_vec();
+        let entropy = helium_mnemonic::mnemonic_to_entropy(&phrase_to_words(s))?.to_vec();
         Ok(entropy)
     }
 

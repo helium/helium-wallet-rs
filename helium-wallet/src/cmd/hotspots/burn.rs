@@ -18,7 +18,7 @@ impl Cmd {
         let client = opts.client()?;
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
-        let (tx, _) = hotspot::burn(
+        let tx = hotspot::burn(
             &client,
             &self.address,
             &keypair,

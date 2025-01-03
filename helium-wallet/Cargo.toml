@@ -16,7 +16,7 @@ doc = false
 
 [dependencies]
 anyhow = "1"
-sha2 = {workspace = true}
+sha2 = { workspace = true }
 byteorder = "1.3.2"
 rand = "0.8"
 dialoguer = "0.8"
@@ -24,13 +24,13 @@ pbkdf2 = "0.12"
 sodiumoxide = "~0.2"
 aes-gcm = "0"
 shamirsecretsharing = { version = "0.1.5", features = ["have_libsodium"] }
-serde = {workspace = true}
-serde_json = {workspace = true}
+serde = { workspace = true }
+serde_json = { workspace = true }
 clap = { workspace = true }
 qr2term = "0.2"
-rust_decimal = {workspace = true}
-tokio = {version = "1.0", features = ["full"]}
+rust_decimal = { workspace = true }
+tokio = { version = "1.0", features = ["full"] }
 helium-lib = { path = "../helium-lib", features = ["clap", "mnemonic"] }
 helium-mnemonic = { path = "../helium-mnemonic" }
-helium-proto = {workspace = true}
-helium-crypto = {workspace = true, features = ["multisig", "solana"] }
+helium-proto = { workspace = true }
+helium-crypto = { workspace = true, features = ["multisig", "solana"] }

@@ -20,7 +20,7 @@ impl Cmd {
         let client = opts.client()?;
 
         let token_amount = token::TokenAmount::from_f64(self.subdao.token(), self.amount);
-        let (tx, _) = token::burn(&client, &token_amount, &keypair).await?;
+        let tx = token::burn(&client, &token_amount, &keypair).await?;
         print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

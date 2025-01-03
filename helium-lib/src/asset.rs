@@ -9,8 +9,8 @@ use crate::{
     kta, mk_transaction_with_blockhash,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
-    solana_sdk::{instruction::AccountMeta, transaction::Transaction},
-    TransactionOpts,
+    solana_sdk::instruction::AccountMeta,
+    TransactionOpts, TransactionWithBlockhash,
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -153,7 +153,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     pubkey: &Pubkey,
     recipient: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
@@ -202,11 +202,10 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     recipient: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut tx, latest_block_height) =
-        transfer_transaction(client, pubkey, recipient, opts).await?;
-    tx.try_sign(&[keypair], tx.message.recent_blockhash)?;
-    Ok((tx, latest_block_height))
+) -> Result<TransactionWithBlockhash, Error> {
+    let mut tx = transfer_transaction(client, pubkey, recipient, opts).await?;
+    tx.try_sign(&[keypair])?;
+    Ok(tx)
 }
 
 /// Get an unsigned burn transaction for an asset
@@ -214,7 +213,7 @@ pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
@@ -262,10 +261,10 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     pubkey: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut tx, latest_block_height) = burn_transaction(client, pubkey, opts).await?;
-    tx.try_sign(&[keypair], tx.message.recent_blockhash)?;
-    Ok((tx, latest_block_height))
+) -> Result<TransactionWithBlockhash, Error> {
+    let mut tx = burn_transaction(client, pubkey, opts).await?;
+    tx.try_sign(&[keypair])?;
+    Ok(tx)
 }
 
 #[derive(Deserialize, Serialize, Clone)]

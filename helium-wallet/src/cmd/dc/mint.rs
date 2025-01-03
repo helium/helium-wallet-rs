@@ -44,7 +44,7 @@ impl Cmd {
         let transaction_opts = self.commit.transaction_opts();
 
         let keypair = wallet.decrypt(password.as_bytes())?;
-        let (tx, _) = dc::mint(&client, amount, payee, &keypair, &transaction_opts).await?;
+        let tx = dc::mint(&client, amount, payee, &keypair, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
     }
 }

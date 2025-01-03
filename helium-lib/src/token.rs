@@ -5,11 +5,8 @@ use crate::{
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
     mk_transaction_with_blockhash,
-    solana_client::rpc_client::SerializableTransaction,
-    solana_sdk::{
-        commitment_config::CommitmentConfig, signer::Signer, system_instruction,
-        transaction::Transaction,
-    },
+    solana_sdk::{commitment_config::CommitmentConfig, signer::Signer, system_instruction},
+    TransactionWithBlockhash,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -43,7 +40,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
     keypair: &Keypair,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let wallet_pubkey = keypair.pubkey();
     let ix = match token_amount.token.mint() {
         spl_mint if spl_mint == Token::Sol.mint() => {
@@ -63,17 +60,16 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
         }
     };
 
-    let (mut txn, latest_block_height) =
-        mk_transaction_with_blockhash(client, &[ix], &wallet_pubkey).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    let mut txn = mk_transaction_with_blockhash(client, &[ix], &wallet_pubkey).await?;
+    txn.try_sign(&[keypair])?;
+    Ok(txn)
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
     keypair: &Keypair,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let wallet_public_key = keypair.pubkey();
 
     let mut ixs = vec![];
@@ -112,10 +108,9 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
         }
     }
 
-    let (mut txn, latest_block_height) =
-        mk_transaction_with_blockhash(client, &ixs, &wallet_public_key).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    let mut txn = mk_transaction_with_blockhash(client, &ixs, &wallet_public_key).await?;
+    txn.try_sign(&[keypair])?;
+    Ok(txn)
 }
 
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(

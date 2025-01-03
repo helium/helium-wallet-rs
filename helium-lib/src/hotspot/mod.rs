@@ -9,14 +9,12 @@ use crate::{
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
     kta, mk_transaction_with_blockhash, onboarding, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
         signer::Signer,
-        transaction::Transaction,
     },
     token::Token,
-    TransactionOpts,
+    TransactionOpts, TransactionWithBlockhash,
 };
 use angry_purple_tiger::AnimalName;
 use chrono::Utc;
@@ -115,7 +113,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     update: HotspotInfoUpdate,
     owner: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     fn mk_accounts(
         subdao: SubDao,
         kta: &helium_entity_manager::KeyToAssetV0,
@@ -221,11 +219,11 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     update: HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
+) -> Result<TransactionWithBlockhash, Error> {
+    let mut txn =
         direct_update_transaction(client, hotspot, update, &keypair.pubkey(), opts).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    txn.try_sign(&[keypair])?;
+    Ok(txn)
 }
 
 pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -235,7 +233,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     update: HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
         let onboarding_client = onboarding::Client::new(&server);
@@ -243,9 +241,10 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
             .get_update_txn(hotspot, &public_key, update)
             .await?;
         tx.try_partial_sign(&[keypair], tx.message.recent_blockhash)?;
-        return Ok(tx);
+        todo!("thread through helium-lib Transaction")
+        // return Ok(tx);
     };
-    let (tx, _) = direct_update(client, hotspot, update, keypair, opts).await?;
+    let tx = direct_update(client, hotspot, update, keypair, opts).await?;
     Ok(tx)
 }
 
@@ -259,7 +258,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
@@ -270,7 +269,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     recipient: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::transfer(client, &kta.asset, recipient, keypair, opts).await
 }
@@ -279,7 +278,7 @@ pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::burn_transaction(client, &kta.asset, opts).await
 }
@@ -289,7 +288,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<TransactionWithBlockhash, Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::burn(client, &kta.asset, keypair, opts).await
 }

@@ -108,9 +108,8 @@ async fn perform_add(
     let transaction_opts = &commit.transaction_opts();
 
     if !hotspot_issued {
-        let (tx, _) =
-            hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair, transaction_opts)
-                .await?;
+        let tx = hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair, transaction_opts)
+            .await?;
         let response = commit.maybe_commit(&tx, &client).await?;
         print_json(&response.to_json())?;
     }
@@ -119,7 +118,7 @@ async fn perform_add(
     // Without this, the command will always fail for brand new hotspots when --commit is not
     // enabled, as it cannot find the key_to_asset account or asset account.
     if hotspot_issued || commit.commit {
-        let (tx, _) = hotspot::dataonly::onboard(
+        let tx = hotspot::dataonly::onboard(
             &client,
             subdao,
             &gateway,

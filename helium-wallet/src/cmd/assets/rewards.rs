@@ -1,6 +1,10 @@
 use crate::cmd::*;
 use anyhow::Context;
-use helium_lib::{dao::SubDao, entity_key, kta, reward, token::TokenAmount};
+use helium_lib::{
+    dao::{RewardableDao, SubDao},
+    entity_key, reward,
+    token::TokenAmount,
+};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -37,7 +41,8 @@ impl RewardsCommand {
 /// List current (total lifetime) rewards issued for a given entity key
 pub struct ClaimCmd {
     /// Subdao for command
-    pub subdao: SubDao,
+    #[arg(long)]
+    pub subdao: Option<SubDao>,
     #[clap(flatten)]
     pub entity_key: entity_key::EncodedEntityKey,
     /// The optional amount to claim
@@ -45,11 +50,6 @@ pub struct ClaimCmd {
     /// If not specific the full pending amount is claimed, limited by the maximum
     /// claim amount for the subdao
     pub amount: Option<f64>,
-    /// Do not check and initialize the on chain recipient
-    ///
-    /// For known assets that have been previously initialized this will speed up the claim
-    #[arg(long)]
-    pub skip_init: bool,
     /// Commit the claim transaction.
     #[command(flatten)]
     pub commit: CommitOpts,
@@ -60,29 +60,7 @@ impl ClaimCmd {
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
-        let hotspot_kta = kta::for_entity_key(&self.entity_key.as_entity_key()?).await?;
         let transaction_opts = self.commit.transaction_opts();
-
-        let mut init_response = None;
-        if !self.skip_init {
-            let recipient = reward::recipient::for_kta(&client, &self.subdao, &hotspot_kta).await?;
-            if recipient.is_none() {
-                let (tx, _) = reward::recipient::init(
-                    &client,
-                    &self.subdao,
-                    &self.entity_key.as_entity_key()?,
-                    &keypair,
-                    &transaction_opts,
-                )
-                .await?;
-                init_response = Some(
-                    self.commit
-                        .maybe_commit(&tx, &client)
-                        .await
-                        .context("while initializing reward recipient")?,
-                );
-            }
-        }
 
         let token_amount = self
             .amount
@@ -105,16 +83,7 @@ impl ClaimCmd {
             .maybe_commit(&tx, &client)
             .await
             .context("while claiming rewards")?;
-        let json = if let Some(init_response) = init_response {
-            json!({
-                "init": init_response,
-                "claim": claim_response,
-            })
-        } else {
-            claim_response.to_json()
-        };
-
-        print_json(&json)
+        print_json(&claim_response.to_json())
     }
 }
 
@@ -125,7 +94,8 @@ impl ClaimCmd {
 /// decayed amount bed on previous claims
 pub struct MaxClaimCmd {
     /// Subdao for command
-    subdao: SubDao,
+    #[arg(long)]
+    subdao: Option<SubDao>,
 }
 
 impl MaxClaimCmd {
@@ -141,7 +111,8 @@ impl MaxClaimCmd {
 /// List claimable pending rewards for a given asset
 pub struct PendingCmd {
     /// Subdao for command
-    subdao: SubDao,
+    #[arg(long)]
+    subdao: Option<SubDao>,
 
     #[clap(flatten)]
     entity_key: entity_key::EncodedEntityKey,
@@ -168,7 +139,8 @@ impl PendingCmd {
 /// This includes both claimed and unclaimed rewards
 pub struct LifetimeCmd {
     /// Subdao for command
-    subdao: SubDao,
+    #[arg(long)]
+    subdao: Option<SubDao>,
 
     #[clap(flatten)]
     entity_key: entity_key::EncodedEntityKey,

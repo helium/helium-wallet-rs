@@ -2,7 +2,7 @@ use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     asset, circuit_breaker,
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
-    dao::{Dao, SubDao},
+    dao::{Dao, RewardableDao},
     entity_key::{self, AsEntityKey, KeySerialization},
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
@@ -48,12 +48,12 @@ pub struct OracleReward {
     pub reward: TokenAmount,
 }
 
-pub async fn lazy_distributor<C: GetAnchorAccount>(
+pub async fn lazy_distributor<C: GetAnchorAccount, D: RewardableDao>(
     client: &C,
-    subdao: &SubDao,
+    dao: &D,
 ) -> Result<lazy_distributor::LazyDistributorV0, Error> {
     client
-        .anchor_account::<lazy_distributor::LazyDistributorV0>(&subdao.lazy_distributor())
+        .anchor_account::<lazy_distributor::LazyDistributorV0>(&dao.lazy_distributor_key())
         .await
 }
 
@@ -91,11 +91,11 @@ fn time_decay_previous_value(
     .ok()
 }
 
-pub async fn max_claim<C: GetAnchorAccount>(
+pub async fn max_claim<C: GetAnchorAccount, D: RewardableDao>(
     client: &C,
-    subdao: &SubDao,
+    dao: &D,
 ) -> Result<TokenAmount, Error> {
-    let ld_account = lazy_distributor(client, subdao).await?;
+    let ld_account = lazy_distributor(client, dao).await?;
     let circuit_breaker_account: circuit_breaker::AccountWindowedCircuitBreakerV0 = client
         .anchor_account(&lazy_distributor_circuit_breaker(&ld_account))
         .await?;
@@ -113,19 +113,19 @@ pub async fn max_claim<C: GetAnchorAccount>(
         Utc::now().timestamp(),
     )
     .ok_or_else(|| DecodeError::other("failed to calculate decayed rewards"))?;
-    Ok(subdao.token().amount(threshold - remaining))
+    Ok(dao.token().amount(threshold - remaining))
 }
 
-async fn set_current_rewards_instruction(
-    subdao: &SubDao,
+async fn set_current_rewards_instruction<D: RewardableDao>(
+    dao: &D,
     kta_key: Pubkey,
     kta: &helium_entity_manager::KeyToAssetV0,
     reward: &OracleReward,
 ) -> Result<Instruction, Error> {
     let accounts = rewards_oracle::accounts::SetCurrentRewardsWrapperV1 {
         oracle: reward.oracle.key,
-        lazy_distributor: subdao.lazy_distributor(),
-        recipient: subdao.receipient_key_from_kta(kta),
+        lazy_distributor: dao.lazy_distributor_key(),
+        recipient: dao.receipient_key_from_kta(kta),
         lazy_distributor_program: lazy_distributor::id(),
         system_program: solana_sdk::system_program::id(),
         key_to_asset: kta_key,
@@ -147,31 +147,33 @@ async fn set_current_rewards_instruction(
     Ok(ix)
 }
 
-pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccount>(
+pub async fn distribute_rewards_instruction<
+    C: AsRef<DasClient> + GetAnchorAccount,
+    D: RewardableDao,
+>(
     client: &C,
-    subdao: &SubDao,
+    dao: &D,
     kta: &helium_entity_manager::KeyToAssetV0,
+    asset: &asset::Asset,
+    asset_proof: &asset::AssetProof,
     payer: Pubkey,
 ) -> Result<Instruction, Error> {
-    let ld_account = lazy_distributor(client, subdao).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(client, kta).await?;
+    let ld_account = lazy_distributor(client, dao).await?;
     let accounts = lazy_distributor::accounts::DistributeCompressionRewardsV0 {
         DistributeCompressionRewardsV0common:
             lazy_distributor::accounts::DistributeCompressionRewardsV0Common {
                 payer,
-                lazy_distributor: subdao.lazy_distributor(),
+                lazy_distributor: dao.lazy_distributor_key(),
                 associated_token_program: spl_associated_token_account::id(),
-                rewards_mint: *subdao.mint(),
+                rewards_mint: *dao.token().mint(),
                 rewards_escrow: ld_account.rewards_escrow,
                 system_program: solana_sdk::system_program::ID,
                 token_program: anchor_spl::token::ID,
                 circuit_breaker_program: circuit_breaker::id(),
                 owner: asset.ownership.owner,
                 circuit_breaker: lazy_distributor_circuit_breaker(&ld_account),
-                recipient: subdao.receipient_key_from_kta(kta),
-                destination_account: subdao
-                    .token()
-                    .associated_token_adress(&asset.ownership.owner),
+                recipient: dao.receipient_key_from_kta(kta),
+                destination_account: dao.token().associated_token_adress(&asset.ownership.owner),
             },
         compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
         merkle_tree: asset.compression.tree,
@@ -195,9 +197,12 @@ pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccou
     Ok(ix)
 }
 
-pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+pub async fn claim<
+    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
+    D: RewardableDao,
+>(
     client: &C,
-    subdao: &SubDao,
+    dao: &D,
     amount: Option<u64>,
     encoded_entity_key: &entity_key::EncodedEntityKey,
     keypair: &Keypair,
@@ -205,7 +210,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
 ) -> Result<Option<(Transaction, u64)>, Error> {
     let Some((mut txn, block_height)) = claim_transaction(
         client,
-        subdao,
+        dao,
         amount,
         encoded_entity_key,
         &keypair.pubkey(),
@@ -220,9 +225,12 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     Ok(Some((txn, block_height)))
 }
 
-pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+pub async fn claim_transaction<
+    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
+    D: RewardableDao,
+>(
     client: &C,
-    subdao: &SubDao,
+    dao: &D,
     amount: Option<u64>,
     encoded_entity_key: &entity_key::EncodedEntityKey,
     payer: &Pubkey,
@@ -231,7 +239,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     let entity_key_string = encoded_entity_key.to_string();
     let pending = pending(
         client,
-        subdao,
+        dao,
         &[encoded_entity_key.to_string()],
         encoded_entity_key.encoding.into(),
     )
@@ -243,9 +251,9 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     let Some(pending_reward) = pending.get(&entity_key_string) else {
         return Ok(None);
     };
-    let max_claim = max_claim(client, subdao).await?;
+    let max_claim = max_claim(client, dao).await?;
 
-    let mut lifetime_rewards = lifetime(client, subdao, &[entity_key_string.clone()])
+    let mut lifetime_rewards = lifetime(client, dao, &[entity_key_string.clone()])
         .and_then(|mut lifetime_map| async move {
             lifetime_map
                 .remove(&entity_key_string)
@@ -263,33 +271,47 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     let entity_key = encoded_entity_key.as_entity_key()?;
     let kta_key = Dao::Hnt.entity_key_to_kta_key(&entity_key);
     let kta = kta::for_entity_key(&entity_key).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 
+    let (init_ix, init_budget) = if recipient::for_kta(client, dao, &kta).await?.is_none() {
+        let ix = recipient::init_instruction(dao, &kta, &asset, &asset_proof, payer).await?;
+        (Some(ix), recipient::INIT_INSTRUCTION_BUDGET)
+    } else {
+        (None, 1)
+    };
     let set_current_ix =
-        set_current_rewards_instruction(subdao, kta_key, &kta, &lifetime_rewards).await?;
-    let distribute_ix = distribute_rewards_instruction(client, subdao, &kta, *payer).await?;
-    let mut ixs_accounts = set_current_ix.accounts.clone();
+        set_current_rewards_instruction(dao, kta_key, &kta, &lifetime_rewards).await?;
+    let distribute_ix =
+        distribute_rewards_instruction(client, dao, &kta, &asset, &asset_proof, *payer).await?;
+    let mut ixs_accounts = vec![];
+    if let Some(ix) = &init_ix {
+        ixs_accounts.extend_from_slice(&ix.accounts);
+    }
+    ixs_accounts.extend_from_slice(&set_current_ix.accounts);
     ixs_accounts.extend_from_slice(&distribute_ix.accounts);
 
-    let ixs = &[
-        priority_fee::compute_budget_instruction(200_000),
+    let mut ixs = vec![
+        priority_fee::compute_budget_instruction(init_budget + 200_000),
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ixs_accounts,
             opts.min_priority_fee,
         )
         .await?,
-        set_current_ix,
-        distribute_ix,
     ];
+    if let Some(ix) = init_ix {
+        ixs.push(ix);
+    }
+    ixs.extend_from_slice(&[set_current_ix, distribute_ix]);
 
-    let (txn, latest_block_height) = mk_transaction_with_blockhash(client, ixs, payer).await?;
+    let (txn, latest_block_height) = mk_transaction_with_blockhash(client, &ixs, payer).await?;
     let signed_txn = oracle_sign(&lifetime_rewards.oracle.url, txn).await?;
     Ok(Some((signed_txn, latest_block_height)))
 }
 
-pub async fn pending<C: GetAnchorAccount>(
+pub async fn pending<C: GetAnchorAccount, D: RewardableDao>(
     client: &C,
-    subdao: &SubDao,
+    dao: &D,
     entity_key_strings: &[String],
     entity_key_encoding: KeySerialization,
 ) -> Result<HashMap<String, OracleReward>, Error> {
@@ -303,7 +325,7 @@ pub async fn pending<C: GetAnchorAccount>(
         Some(sorted_oracle_rewards.remove(sorted_oracle_rewards.len() / 2))
     }
 
-    let bulk_rewards = lifetime(client, subdao, entity_key_strings).await?;
+    let bulk_rewards = lifetime(client, dao, entity_key_strings).await?;
     // collect entity keys to request all ktas at once
     let entity_keys: Vec<Vec<u8>> = entity_key_strings
         .iter()
@@ -325,33 +347,37 @@ pub async fn pending<C: GetAnchorAccount>(
         .into_iter()
         .multiunzip();
     // Get all recipients for rewarded assets
-    let recipients = recipient::for_ktas(client, subdao, &rewarded_ktas).await?;
+    let recipients = recipient::for_ktas(client, dao, &rewarded_ktas).await?;
     // And adjust the oracle reward by the already claimed rewards in the recipient if available
     let entity_key_rewards = izip!(rewarded_entity_key_strings, rewards, recipients)
-        .map(|(entity_key_string, mut reward, maybe_recipient)| {
+        .filter_map(|(entity_key_string, mut reward, maybe_recipient)| {
             if let Some(recipient) = maybe_recipient {
                 reward.reward.amount = reward.reward.amount.saturating_sub(recipient.total_rewards);
             }
-            (entity_key_string, reward)
+            // Filter out 0 rewards
+            if reward.reward.amount == 0 {
+                None
+            } else {
+                Some((entity_key_string, reward))
+            }
         })
         .collect();
     Ok(entity_key_rewards)
 }
 
-pub async fn lifetime<C: GetAnchorAccount>(
+pub async fn lifetime<C: GetAnchorAccount, D: RewardableDao>(
     client: &C,
-    subdao: &SubDao,
+    dao: &D,
     entity_key_strings: &[String],
 ) -> Result<HashMap<String, Vec<OracleReward>>, Error> {
-    let ld_account = lazy_distributor(client, subdao).await?;
+    let ld_account = lazy_distributor(client, dao).await?;
     stream::iter(ld_account.oracles)
         .enumerate()
         .map(Ok)
         .try_fold(
             HashMap::new(),
             |mut result, (index, oracle): (usize, lazy_distributor::OracleConfigV0)| async move {
-                let bulk_rewards =
-                    bulk_from_oracle(subdao, &oracle.url, entity_key_strings).await?;
+                let bulk_rewards = bulk_from_oracle(dao, &oracle.url, entity_key_strings).await?;
                 bulk_rewards
                     .into_iter()
                     .for_each(|(entity_key, token_amount)| {
@@ -397,8 +423,8 @@ async fn oracle_sign(oracle: &str, txn: Transaction) -> Result<Transaction, Erro
     Ok(signed_tx)
 }
 
-async fn bulk_from_oracle(
-    subdao: &SubDao,
+async fn bulk_from_oracle<D: RewardableDao>(
+    dao: &D,
     oracle: &str,
     entity_keys: &[String],
 ) -> Result<HashMap<String, TokenAmount>, Error> {
@@ -428,7 +454,7 @@ async fn bulk_from_oracle(
         .current_rewards
         .into_iter()
         .map(|(entity_key_string, value)| {
-            value_to_token_amount(subdao, value).map(|amount| (entity_key_string, amount))
+            value_to_token_amount(dao, value).map(|amount| (entity_key_string, amount))
         })
         .try_collect()
 }
@@ -436,45 +462,45 @@ async fn bulk_from_oracle(
 pub mod recipient {
     use super::*;
 
-    pub async fn for_kta<C: GetAnchorAccount>(
+    pub async fn for_kta<C: GetAnchorAccount, D: RewardableDao>(
         client: &C,
-        subdao: &SubDao,
+        dao: &D,
         kta: &helium_entity_manager::KeyToAssetV0,
     ) -> Result<Option<lazy_distributor::RecipientV0>, Error> {
-        let recipient_key = subdao.receipient_key_from_kta(kta);
+        let recipient_key = dao.receipient_key_from_kta(kta);
         Ok(client.anchor_account(&recipient_key).await.ok())
     }
 
-    pub async fn for_ktas<C: GetAnchorAccount>(
+    pub async fn for_ktas<C: GetAnchorAccount, D: RewardableDao>(
         client: &C,
-        subdao: &SubDao,
+        dao: &D,
         ktas: &[helium_entity_manager::KeyToAssetV0],
     ) -> Result<Vec<Option<lazy_distributor::RecipientV0>>, Error> {
         let recipient_keys: Vec<Pubkey> = ktas
             .iter()
-            .map(|kta| subdao.receipient_key_from_kta(kta))
+            .map(|kta| dao.receipient_key_from_kta(kta))
             .collect();
         client.anchor_accounts(&recipient_keys).await
     }
 
-    pub async fn init_instruction(
-        subdao: &SubDao,
+    pub async fn init_instruction<D: RewardableDao>(
+        dao: &D,
         kta: &helium_entity_manager::KeyToAssetV0,
         asset: &asset::Asset,
         asset_proof: &asset::AssetProof,
         payer: &Pubkey,
     ) -> Result<Instruction, Error> {
-        fn mk_accounts(
+        fn mk_accounts<D: RewardableDao>(
             payer: Pubkey,
             owner: Pubkey,
             tree: Pubkey,
-            subdao: &SubDao,
+            dao: &D,
             kta: &helium_entity_manager::KeyToAssetV0,
         ) -> impl ToAccountMetas {
             lazy_distributor::accounts::InitializeCompressionRecipientV0 {
                 payer,
-                lazy_distributor: subdao.lazy_distributor(),
-                recipient: subdao.receipient_key_from_kta(kta),
+                lazy_distributor: dao.lazy_distributor_key(),
+                recipient: dao.receipient_key_from_kta(kta),
                 merkle_tree: tree,
                 owner,
                 delegate: owner,
@@ -487,7 +513,7 @@ pub mod recipient {
             *payer,
             asset.ownership.owner,
             asset.compression.tree,
-            subdao,
+            dao,
             kta,
         )
         .to_account_metas(None);
@@ -509,9 +535,15 @@ pub mod recipient {
         Ok(ix)
     }
 
-    pub async fn init<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    pub const INIT_INSTRUCTION_BUDGET: u32 = 150_000;
+
+    pub async fn init<
+        E: AsEntityKey,
+        C: AsRef<SolanaRpcClient> + AsRef<DasClient>,
+        D: RewardableDao,
+    >(
         client: &C,
-        subdao: &SubDao,
+        dao: &D,
         entity_key: &E,
         keypair: &Keypair,
         opts: &TransactionOpts,
@@ -519,10 +551,9 @@ pub mod recipient {
         let kta = kta::for_entity_key(entity_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 
-        let ix = init_instruction(subdao, &kta, &asset, &asset_proof, &keypair.pubkey()).await?;
-
+        let ix = init_instruction(dao, &kta, &asset, &asset_proof, &keypair.pubkey()).await?;
         let ixs = &[
-            priority_fee::compute_budget_instruction(150_000),
+            priority_fee::compute_budget_instruction(INIT_INSTRUCTION_BUDGET),
             priority_fee::compute_price_instruction_for_accounts(
                 client,
                 &ix.accounts,
@@ -531,11 +562,17 @@ pub mod recipient {
             .await?,
             ix,
         ];
-        mk_transaction_with_blockhash(client, ixs, &keypair.pubkey()).await
+        let (mut txn, block_height) =
+            mk_transaction_with_blockhash(client, ixs, &keypair.pubkey()).await?;
+        txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+        Ok((txn, block_height))
     }
 }
 
-fn value_to_token_amount(subdao: &SubDao, value: serde_json::Value) -> Result<TokenAmount, Error> {
+fn value_to_token_amount<D: RewardableDao>(
+    dao: &D,
+    value: serde_json::Value,
+) -> Result<TokenAmount, Error> {
     let value = match value {
         serde_json::Value::String(s) => s
             .parse::<u64>()
@@ -546,5 +583,5 @@ fn value_to_token_amount(subdao: &SubDao, value: serde_json::Value) -> Result<To
         _ => return Err(DecodeError::other(format!("invalid reward value {value}")).into()),
     };
 
-    Ok(TokenAmount::from_u64(subdao.token(), value))
+    Ok(TokenAmount::from_u64(dao.token(), value))
 }

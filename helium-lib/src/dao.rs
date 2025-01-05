@@ -5,10 +5,35 @@ use crate::{
 use chrono::Timelike;
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub trait RewardableDao {
+    fn token(&self) -> Token;
+    fn lazy_distributor_key(&self) -> Pubkey {
+        let (key, _) = Pubkey::find_program_address(
+            &[b"lazy_distributor", self.token().mint().as_ref()],
+            &lazy_distributor::id(),
+        );
+        key
+    }
+    fn receipient_key_from_kta(&self, kta: &helium_entity_manager::KeyToAssetV0) -> Pubkey {
+        let (key, _) = Pubkey::find_program_address(
+            &[
+                b"recipient",
+                self.lazy_distributor_key().as_ref(),
+                kta.asset.as_ref(),
+            ],
+            &lazy_distributor::id(),
+        );
+        key
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, Default,
+)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum Dao {
+    #[default]
     Hnt,
 }
 
@@ -116,6 +141,12 @@ impl Dao {
     }
 }
 
+impl RewardableDao for Dao {
+    fn token(&self) -> Token {
+        Token::Hnt
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
@@ -140,32 +171,11 @@ impl SubDao {
     }
 
     pub fn key(&self) -> Pubkey {
-        let mint = self.mint();
-        let (subdao_key, _) =
-            Pubkey::find_program_address(&[b"sub_dao", mint.as_ref()], &helium_sub_daos::id());
-        subdao_key
-    }
-
-    pub fn mint(&self) -> &Pubkey {
-        match self {
-            Self::Iot => Token::Iot.mint(),
-            Self::Mobile => Token::Mobile.mint(),
-        }
-    }
-
-    pub fn token(&self) -> Token {
-        match self {
-            Self::Iot => Token::Iot,
-            Self::Mobile => Token::Mobile,
-        }
-    }
-
-    pub fn lazy_distributor(&self) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[b"lazy_distributor", self.mint().as_ref()],
-            &lazy_distributor::id(),
+        let (subdao_key, _) = Pubkey::find_program_address(
+            &[b"sub_dao", self.token().mint().as_ref()],
+            &helium_sub_daos::id(),
         );
-        key
+        subdao_key
     }
 
     pub fn delegated_dc_key(&self, router_key: &str) -> Pubkey {
@@ -211,26 +221,6 @@ impl SubDao {
         key
     }
 
-    pub fn lazy_distributor_key(&self) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[b"lazy_distributor", self.mint().as_ref()],
-            &lazy_distributor::id(),
-        );
-        key
-    }
-
-    pub fn receipient_key_from_kta(&self, kta: &helium_entity_manager::KeyToAssetV0) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[
-                b"recipient",
-                self.lazy_distributor_key().as_ref(),
-                kta.asset.as_ref(),
-            ],
-            &lazy_distributor::id(),
-        );
-        key
-    }
-
     pub fn config_key(&self) -> Pubkey {
         let prefix = match self {
             Self::Iot => "iot_config",
@@ -256,5 +246,20 @@ impl SubDao {
             &helium_sub_daos::ID,
         );
         key
+    }
+}
+
+impl RewardableDao for SubDao {
+    fn token(&self) -> Token {
+        match self {
+            Self::Iot => Token::Iot,
+            Self::Mobile => Token::Mobile,
+        }
+    }
+}
+
+impl RewardableDao for Option<SubDao> {
+    fn token(&self) -> Token {
+        self.map(|subdao| subdao.token()).unwrap_or(Token::Hnt)
     }
 }

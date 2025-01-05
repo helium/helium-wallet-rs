@@ -60,7 +60,8 @@ async fn collect_hotspots<C: AsRef<DasClient>>(
 /// List pending rewards for given Hotspots
 pub struct PendingCmd {
     /// Subdao for command
-    subdao: SubDao,
+    #[arg(long)]
+    subdao: Option<SubDao>,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
     /// Wallet to look up hotspots for
@@ -97,7 +98,8 @@ impl PendingCmd {
 /// This includes both claimed and unclaimed rewards
 pub struct LifetimeCmd {
     /// Subdao for command
-    subdao: SubDao,
+    #[arg(long)]
+    subdao: Option<SubDao>,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
     /// Wallet to look up hotspots for
@@ -126,7 +128,8 @@ impl LifetimeCmd {
 /// Claim rewards for one or all Hotspots in a wallet
 pub struct ClaimCmd {
     /// Subdao for command
-    subdao: SubDao,
+    #[arg(long)]
+    subdao: Option<SubDao>,
     /// Hotspot public key to send claim for
     hotspot: helium_crypto::PublicKey,
     /// The optional amount to claim
@@ -134,11 +137,6 @@ pub struct ClaimCmd {
     /// If not specific the full pending amount is claimed, limited by the maximum
     /// claim amount for the subdao
     pub amount: Option<f64>,
-    /// Do not check and initialize the on chain recipient
-    ///
-    /// For known assets that have been previously initialized this will speed up the claim
-    #[arg(long)]
-    skip_init: bool,
     /// Commit the claim transaction.
     #[command(flatten)]
     commit: CommitOpts,
@@ -150,7 +148,6 @@ impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
             subdao: value.subdao,
             entity_key: EncodedEntityKey::from(&value.hotspot),
             amount: value.amount,
-            skip_init: value.skip_init,
             commit: value.commit.clone(),
         }
     }

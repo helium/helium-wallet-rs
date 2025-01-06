@@ -17,8 +17,7 @@ pub enum Dao {
 
 impl std::fmt::Display for Dao {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        f.write_str(&str)
+        f.write_str("hnt")
     }
 }
 

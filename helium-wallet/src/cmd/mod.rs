@@ -4,14 +4,15 @@ use crate::{
 };
 use futures::TryFutureExt;
 use helium_lib::{
-    b64, client,
+    b64,
+    client::{self, SolanaRpcClient},
     keypair::Keypair,
     priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
     },
-    FinalizeTransactionExt, TrackSendTransaction, TransactionOpts,
+    TransactionOpts,
 };
 use serde_json::json;
 use std::{
@@ -106,7 +107,7 @@ impl CommitOpts {
         client: &C,
     ) -> Result<CommitResponse>
     where
-        C: TrackSendTransaction,
+        C: helium_lib::WithTransactionSender + AsRef<SolanaRpcClient>,
     {
         fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
             let mut captured_logs: Option<Vec<String>> = None;
@@ -143,23 +144,19 @@ impl CommitOpts {
                 ..Default::default()
             };
 
-            let res = client
-                .send_txn(tx, config)
+            client
+                .with_transaction(tx)
+                .with_finalize(self.finalize)
+                .send(config)
+                .map_ok(CommitResponse::from)
+                .map_err(context_err)
                 .await
-                .map(CommitResponse::from)
-                .map_err(context_err)?;
-
-            if self.finalize {
-                client.finalize_txn(&res).map_err(context_err).await?;
-            }
-
-            Ok(res)
         } else {
             client
                 .as_ref()
-                .simulate_transaction(&tx.inner)
-                .await
-                .map_err(context_err)?
+                .simulate_transaction(tx.inner_txn())
+                .map_err(context_err)
+                .await?
                 .value
                 .try_into()
         }
@@ -240,30 +237,8 @@ pub enum CommitResponse {
     None,
 }
 
-impl FinalizeTransactionExt for CommitResponse {
-    fn signature(&self) -> &helium_lib::keypair::Signature {
-        match self {
-            Self::Signature {
-                signature,
-                sent_block_height: _,
-            } => signature,
-            Self::None => panic!("No signature"),
-        }
-    }
-
-    fn sent_block_height(&self) -> u64 {
-        match self {
-            Self::Signature {
-                signature: _,
-                sent_block_height: height,
-            } => *height,
-            Self::None => panic!("No block height"),
-        }
-    }
-}
-
-impl From<helium_lib::TrackedTransaction<'_>> for CommitResponse {
-    fn from(value: helium_lib::TrackedTransaction<'_>) -> Self {
+impl From<helium_lib::TrackedTransaction> for CommitResponse {
+    fn from(value: helium_lib::TrackedTransaction) -> Self {
         Self::Signature {
             signature: value.signature,
             sent_block_height: value.sent_block_height,

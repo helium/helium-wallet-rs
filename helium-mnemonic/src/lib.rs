@@ -54,7 +54,7 @@ impl Index<usize> for Language {
 
 /// Converts a 12 or 24 word mnemonic to entropy that can be used to
 /// generate a keypair
-pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32], MnmemonicError> {
+pub fn mnemonic_to_entropy(words: &[&str]) -> Result<[u8; 32], MnmemonicError> {
     const MAX_ENTROPY_BITS: usize = 256;
     const BITS_PER_WORD: usize = 11;
     const CHECKSUM_BITS_PER_WORD: usize = 3;
@@ -70,11 +70,11 @@ pub fn mnemonic_to_entropy(words: Vec<String>) -> Result<[u8; 32], MnmemonicErro
     let language = Language::English;
     let word_bits =
         words
-            .into_iter()
+            .iter()
             .try_fold(BitVec::with_capacity(MAX_ENTROPY_BITS), |mut acc, w| {
                 language
-                    .find_word(&w)
-                    .ok_or(MnmemonicError::NoSuchWord(w))
+                    .find_word(w)
+                    .ok_or(MnmemonicError::NoSuchWord(w.to_string()))
                     .map(|idx| {
                         let idx_bits = &idx.view_bits::<Msb0>();
                         acc.extend_from_bitslice(&idx_bits[idx_bits.len() - BITS_PER_WORD..]);
@@ -184,8 +184,8 @@ mod tests {
             .into_vec()
             .expect("decoded entropy");
 
-        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let entropy = mnemonic_to_entropy(&word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -197,8 +197,8 @@ mod tests {
             .into_vec()
             .expect("decoded entropy");
 
-        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let entropy = mnemonic_to_entropy(&word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -206,20 +206,18 @@ mod tests {
     fn encode_mobile_12_words() {
         // This test starts with zero-checksum 12 word phrase from the helium-hotspot-app, turns it into
         // entropy, then decodes that entropy back into a 12 word phrase with a proper checksum.
-        let hotspot_app_word_list =
+        let hotspot_app_word_list: Vec<&str> =
             "catch poet clog intact scare jacket throw palm illegal buyer allow figure"
                 .split_whitespace()
-                .map(|w| w.to_string())
                 .collect();
-        let bip39_words_list: Vec<String> =
+        let bip39_words_list: Vec<&str> =
             "catch poet clog intact scare jacket throw palm illegal buyer allow firm"
                 .split_whitespace()
-                .map(|w| w.to_string())
                 .collect();
 
         let hotspot_app_entropy =
-            mnemonic_to_entropy(hotspot_app_word_list).expect("hotspot_app_entropy");
-        let bip39_entropy = mnemonic_to_entropy(bip39_words_list.to_vec()).expect("bip39_entropy");
+            mnemonic_to_entropy(&hotspot_app_word_list).expect("hotspot_app_entropy");
+        let bip39_entropy = mnemonic_to_entropy(&bip39_words_list).expect("bip39_entropy");
 
         let expected_entropy = bs58::decode("3RrA1FDa6mdw5JwKbUxEbZbMcJgSyWjhNwxsbX5pSos8")
             .into_vec()
@@ -248,8 +246,8 @@ mod tests {
             .into_vec()
             .expect("decoded entropy");
 
-        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let entropy = mnemonic_to_entropy(&word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -267,8 +265,8 @@ mod tests {
             .into_vec()
             .expect("decoded entropy");
 
-        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let entropy = mnemonic_to_entropy(&word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -298,8 +296,8 @@ mod tests {
             .into_vec()
             .expect("decoded entropy");
 
-        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let entropy = mnemonic_to_entropy(&word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 
@@ -316,8 +314,8 @@ mod tests {
             .into_vec()
             .expect("decoded entropy");
 
-        let word_list = words.split_whitespace().map(|w| w.to_string()).collect();
-        let entropy = mnemonic_to_entropy(word_list).expect("entropy");
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let entropy = mnemonic_to_entropy(&word_list).expect("entropy");
         assert_eq!(expected_entropy, entropy);
     }
 

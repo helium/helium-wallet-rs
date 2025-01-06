@@ -135,7 +135,7 @@ impl Keypair {
     }
 
     #[cfg(feature = "mnemonic")]
-    pub fn from_words(words: Vec<String>) -> Result<Arc<Self>, Error> {
+    pub fn from_words(words: &[&str]) -> Result<Arc<Self>, Error> {
         let entropy_bytes = helium_mnemonic::mnemonic_to_entropy(words)?;
         let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
             .map_err(|_| DecodeError::other("invalid words"))?;

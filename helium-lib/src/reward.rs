@@ -12,7 +12,7 @@ use crate::{
     rewards_oracle,
     solana_sdk::instruction::Instruction,
     token::{Token, TokenAmount},
-    TransactionOpts, TransactionWithBlockhash,
+    TransactionWithBlockhash, TransactionOpts,
 };
 use chrono::Utc;
 use futures::{
@@ -273,7 +273,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     encoded_entity_key: &entity_key::EncodedEntityKey,
     payer: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Option<Transaction>, Error> {
+) -> Result<Option<TransactionWithBlockhash>, Error> {
     let entity_key_string = encoded_entity_key.to_string();
     let pending = pending(
         client,
@@ -433,10 +433,7 @@ pub async fn lifetime<C: GetAnchorAccount>(
         .await
 }
 
-async fn oracle_sign(
-    oracle: &str,
-    txn: TransactionWithBlockhash,
-) -> Result<TransactionWithBlockhash, Error> {
+async fn oracle_sign(oracle: &str, txn: TransactionWithBlockhash) -> Result<TransactionWithBlockhash, Error> {
     #[derive(Debug, Serialize, Deserialize)]
     struct Data {
         data: Vec<u8>,

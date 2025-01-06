@@ -20,10 +20,12 @@ pub mod token;
 pub use anchor_client;
 pub use anchor_client::solana_client;
 pub use anchor_spl;
+pub use client::SolanaRpcClient;
 pub use helium_anchor_gen::{
     anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
     hexboosting, lazy_distributor, rewards_oracle,
 };
+pub use send_txn::WithTransactionSender;
 pub use solana_sdk;
 pub use solana_sdk::bs58;
 
@@ -54,16 +56,11 @@ where
     value == &T::ZERO
 }
 
-use anchor_client::solana_client::{
-    rpc_client::SerializableTransaction, rpc_config::RpcSendTransactionConfig,
-};
-use client::SolanaRpcClient;
+use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use error::Error;
 use keypair::Pubkey;
-use solana_sdk::{
-    commitment_config::CommitmentConfig, instruction::Instruction, signature::Signature,
-};
-use std::sync::Arc;
+use solana_sdk::{instruction::Instruction, signature::Signature};
+use std::{sync::Arc, thread};
 
 pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
     kta::init(solana_client)
@@ -82,12 +79,25 @@ impl Default for TransactionOpts {
     }
 }
 
+#[derive(Clone)]
 pub struct TransactionWithBlockhash {
     pub inner: solana_sdk::transaction::Transaction,
     pub block_height: u64,
 }
 
+/// A sent `TransactionWithBlockhash`
+#[derive(Clone)]
+pub struct TrackedTransaction {
+    pub txn: TransactionWithBlockhash,
+    pub signature: Signature,
+    pub sent_block_height: u64,
+}
+
 impl TransactionWithBlockhash {
+    pub fn inner_txn(&self) -> &solana_sdk::transaction::Transaction {
+        &self.inner
+    }
+
     pub fn try_sign<T: solana_sdk::signers::Signers + ?Sized>(
         &mut self,
         keypairs: &T,
@@ -131,71 +141,149 @@ pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(
     })
 }
 
-pub struct TrackedTransaction<'a> {
-    pub txn: &'a TransactionWithBlockhash,
-    pub signature: Signature,
-    pub sent_block_height: u64,
-}
+pub mod send_txn {
+    use super::*;
 
-#[async_trait::async_trait]
-pub trait TrackSendTransaction: AsRef<SolanaRpcClient> {
-    async fn send_txn<'a>(
-        &self,
+    use solana_client::rpc_config::RpcSendTransactionConfig;
+    use solana_sdk::commitment_config::CommitmentConfig;
+    use std::time::Duration;
+
+    type LibError = solana_client::client_error::ClientError;
+
+    pub struct Sender<'a, C> {
+        client: &'a C,
         txn: &'a TransactionWithBlockhash,
-        config: RpcSendTransactionConfig,
-    ) -> Result<TrackedTransaction<'a>, solana_client::client_error::ClientError>;
-
-    async fn finalize_txn<T: FinalizeTransactionExt>(
-        &self,
-        txn: &T,
-    ) -> Result<(), solana_client::client_error::ClientError>;
-}
-
-#[async_trait::async_trait]
-impl<T: AsRef<SolanaRpcClient> + Sync> TrackSendTransaction for T {
-    async fn send_txn<'a>(
-        &self,
-        txn: &'a TransactionWithBlockhash,
-        config: RpcSendTransactionConfig,
-    ) -> Result<TrackedTransaction<'a>, solana_client::client_error::ClientError> {
-        let client = self.as_ref();
-
-        let sent_block_height = client.get_block_height().await?;
-        let signature = client
-            .send_transaction_with_config(&txn.inner, config)
-            .await?;
-
-        Ok(TrackedTransaction {
-            txn,
-            signature,
-            sent_block_height,
-        })
+        finalize: bool,
+        retry: Option<(usize, Duration)>,
     }
 
-    async fn finalize_txn<Txn: FinalizeTransactionExt>(
-        &self,
-        txn: &Txn,
-    ) -> Result<(), solana_client::client_error::ClientError> {
-        let client = self.as_ref();
-        let signature = txn.signature();
+    #[async_trait::async_trait]
+    pub trait SenderExt: Sized + Send + Sync {
+        async fn send_txn(
+            &self,
+            txn: &TransactionWithBlockhash,
+            config: RpcSendTransactionConfig,
+        ) -> Result<Signature, LibError>;
+        async fn finalize_signature(&self, signature: &Signature) -> Result<(), LibError>;
+        async fn get_block_height(&self) -> Result<u64, LibError>;
 
-        client
-            .poll_for_signature_with_commitment(signature, CommitmentConfig::finalized())
-            .await
-    }
-}
-
-pub trait FinalizeTransactionExt: Send + Sync {
-    fn signature(&self) -> &Signature;
-    fn sent_block_height(&self) -> u64;
-}
-
-impl FinalizeTransactionExt for TrackedTransaction<'_> {
-    fn signature(&self) -> &Signature {
-        &self.signature
+        // Override if you need a tokio sleep
+        async fn sleep(&self, delay: Duration) {
+            thread::sleep(delay);
+        }
     }
 
-    fn sent_block_height(&self) -> u64 {
-        self.sent_block_height
+    pub trait WithTransactionSender: Sized + Send + Sync {
+        fn with_transaction<'a>(&'a self, txn: &'a TransactionWithBlockhash) -> Sender<'a, Self>;
+
+        fn with_finalized_transaction<'a>(
+            &'a self,
+            txn: &'a TransactionWithBlockhash,
+        ) -> Sender<'a, Self>;
+    }
+
+    impl<C: SenderExt> Sender<'_, C> {
+        pub fn finalized(&mut self) -> &mut Self {
+            self.finalize = true;
+            self
+        }
+
+        pub fn with_finalize(&mut self, finalize: bool) -> &mut Self {
+            self.finalize = finalize;
+            self
+        }
+
+        pub fn with_retry(&mut self, max_attempts: usize, retry_delay: Duration) -> &mut Self {
+            self.retry = Some((max_attempts, retry_delay));
+            self
+        }
+
+        pub async fn send(
+            &self,
+            config: RpcSendTransactionConfig,
+        ) -> Result<TrackedTransaction, LibError> {
+            let sent_block_height = self.client.get_block_height().await?;
+            let signature = self.send_with_retry(config).await?;
+
+            if self.finalize {
+                self.client.finalize_signature(&signature).await?;
+            }
+
+            Ok(TrackedTransaction {
+                txn: self.txn.clone(),
+                signature,
+                sent_block_height,
+            })
+        }
+
+        async fn send_with_retry(
+            &self,
+            config: RpcSendTransactionConfig,
+        ) -> Result<Signature, LibError> {
+            let (max_retry, retry_delay) = self.retry.unwrap_or((1, Duration::from_millis(0)));
+            let mut attempt = 0;
+
+            loop {
+                match self.client.send_txn(self.txn, config).await {
+                    Ok(sig) => return Ok(sig),
+                    Err(err) => {
+                        attempt += 1;
+                        if attempt == max_retry {
+                            return Err(err);
+                        }
+                        self.client.sleep(retry_delay).await;
+                    }
+                }
+            }
+        }
+    }
+
+    // Default impl for anything that can send transactions
+    impl<T: SenderExt> WithTransactionSender for T {
+        fn with_transaction<'a>(&'a self, txn: &'a TransactionWithBlockhash) -> Sender<'a, T> {
+            Sender {
+                client: self,
+                txn,
+                finalize: false,
+                retry: None,
+            }
+        }
+        fn with_finalized_transaction<'a>(
+            &'a self,
+            txn: &'a TransactionWithBlockhash,
+        ) -> Sender<'a, Self> {
+            Sender {
+                client: self,
+                txn,
+                finalize: true,
+                retry: None,
+            }
+        }
+    }
+
+    // Default impl for anything that can be turned into a `SolanaRpcClient`
+    #[async_trait::async_trait]
+    impl<T: AsRef<SolanaRpcClient> + Send + Sync> SenderExt for T {
+        async fn send_txn(
+            &self,
+            txn: &TransactionWithBlockhash,
+            config: RpcSendTransactionConfig,
+        ) -> Result<Signature, LibError> {
+            Ok(self
+                .as_ref()
+                .send_transaction_with_config(txn.inner_txn(), config)
+                .await?)
+        }
+
+        async fn finalize_signature(&self, signature: &Signature) -> Result<(), LibError> {
+            Ok(self
+                .as_ref()
+                .poll_for_signature_with_commitment(signature, CommitmentConfig::finalized())
+                .await?)
+        }
+
+        async fn get_block_height(&self) -> Result<u64, LibError> {
+            Ok(self.as_ref().get_block_height().await?)
+        }
     }
 }

@@ -1,8 +1,5 @@
 use crate::cmd::*;
-use helium_lib::{
-    dao::{RewardableDao, SubDao},
-    token,
-};
+use helium_lib::{dao::SubDao, token};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Burn tokens

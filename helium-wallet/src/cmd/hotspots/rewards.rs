@@ -1,7 +1,6 @@
 use crate::cmd::*;
 use client::DasClient;
 use helium_lib::{
-    dao::SubDao,
     entity_key::{EncodedEntityKey, KeySerialization},
     hotspot,
     keypair::Pubkey,
@@ -59,9 +58,8 @@ async fn collect_hotspots<C: AsRef<DasClient>>(
 #[derive(Clone, Debug, clap::Args)]
 /// List pending rewards for given Hotspots
 pub struct PendingCmd {
-    /// Subdao for command
-    #[arg(long)]
-    subdao: Option<SubDao>,
+    /// Token for command
+    token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
     /// Wallet to look up hotspots for
@@ -82,7 +80,7 @@ impl PendingCmd {
         let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
         let pending = reward::pending(
             &client,
-            &self.subdao,
+            self.token,
             &entity_key_strings,
             KeySerialization::B58,
         )
@@ -97,9 +95,8 @@ impl PendingCmd {
 ///
 /// This includes both claimed and unclaimed rewards
 pub struct LifetimeCmd {
-    /// Subdao for command
-    #[arg(long)]
-    subdao: Option<SubDao>,
+    /// Token for command
+    token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
     /// Wallet to look up hotspots for
@@ -118,7 +115,7 @@ impl LifetimeCmd {
         )
         .await?;
         let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
-        let rewards = reward::lifetime(&client, &self.subdao, &entity_key_strings).await?;
+        let rewards = reward::lifetime(&client, self.token, &entity_key_strings).await?;
 
         print_json(&rewards)
     }
@@ -127,9 +124,8 @@ impl LifetimeCmd {
 #[derive(Clone, Debug, clap::Args)]
 /// Claim rewards for one or all Hotspots in a wallet
 pub struct ClaimCmd {
-    /// Subdao for command
-    #[arg(long)]
-    subdao: Option<SubDao>,
+    /// Token for command
+    token: reward::ClaimableToken,
     /// Hotspot public key to send claim for
     hotspot: helium_crypto::PublicKey,
     /// The optional amount to claim
@@ -145,7 +141,7 @@ pub struct ClaimCmd {
 impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
     fn from(value: &ClaimCmd) -> Self {
         Self {
-            subdao: value.subdao,
+            token: value.token,
             entity_key: EncodedEntityKey::from(&value.hotspot),
             amount: value.amount,
             commit: value.commit.clone(),

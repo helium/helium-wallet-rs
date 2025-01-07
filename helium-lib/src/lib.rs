@@ -150,6 +150,7 @@ pub mod send_txn {
     use solana_client::rpc_config::RpcSendTransactionConfig;
     use solana_sdk::commitment_config::CommitmentConfig;
     use std::time::Duration;
+    use tracing::Instrument;
 
     #[derive(Debug, thiserror::Error)]
     pub enum LibError {
@@ -181,9 +182,10 @@ pub mod send_txn {
 
     #[async_trait::async_trait]
     pub trait TxnStore: Send + Sync {
+        fn make_span(&self) -> tracing::Span;
         async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStoreError>;
         async fn on_sent(&self, signature: &Signature);
-        async fn on_sent_retry(&self, signature: &Signature);
+        async fn on_sent_retry(&self, signature: &Signature, attempt: usize);
         async fn on_finalized(&self, signature: &Signature);
         async fn on_error(&self, signature: &Signature, err: TxnSenderError);
     }
@@ -192,11 +194,14 @@ pub mod send_txn {
 
     #[async_trait::async_trait]
     impl TxnStore for NoopStore {
+        fn make_span(&self) -> tracing::Span {
+            tracing::info_span!("NoopStore")
+        }
         async fn on_prepared(&self, _signature: &Signature) -> Result<(), TxnStoreError> {
             Ok(())
         }
         async fn on_sent(&self, _signature: &Signature) {}
-        async fn on_sent_retry(&self, _signature: &Signature) {}
+        async fn on_sent_retry(&self, _signature: &Signature, _attempt: usize) {}
         async fn on_finalized(&self, _signature: &Signature) {}
         async fn on_error(&self, _signature: &Signature, _err: TxnSenderError) {}
     }
@@ -287,15 +292,23 @@ pub mod send_txn {
             &self,
             config: RpcSendTransactionConfig,
         ) -> Result<TrackedTransaction, LibError> {
-            let sent_block_height = self.client.get_block_height().await?;
-            self.store.on_prepared(self.txn.get_signature()).await?;
+            let span = self.store.make_span();
+            let _enter = span.enter();
 
-            let signature = self.send_with_retry_store(config).await?;
-            self.store.on_sent(&signature).await;
+            let sent_block_height = self.client.get_block_height().await?;
+            self.store
+                .on_prepared(self.txn.get_signature())
+                .in_current_span()
+                .await?;
+
+            let signature = self.send_with_retry_store(config).in_current_span().await?;
+            self.store.on_sent(&signature).in_current_span().await;
 
             if self.finalize {
-                self.finalize_with_store(&signature).await?;
-                self.store.on_finalized(&signature).await;
+                self.finalize_with_store(&signature)
+                    .in_current_span()
+                    .await?;
+                self.store.on_finalized(&signature).in_current_span().await;
             }
 
             Ok(TrackedTransaction {
@@ -321,11 +334,15 @@ pub mod send_txn {
                         if attempt == max_retry {
                             self.store
                                 .on_error(sig, TxnSenderError::Submission { attempts: attempt })
+                                .in_current_span()
                                 .await;
                             return Err(err.into());
                         }
                         self.sleeper.sleep(retry_delay).await;
-                        self.store.on_sent_retry(&sig).await;
+                        self.store
+                            .on_sent_retry(&sig, attempt)
+                            .in_current_span()
+                            .await;
                     }
                 }
             }
@@ -335,6 +352,7 @@ pub mod send_txn {
             if let Err(err) = self.client.finalize_signature(signature).await {
                 self.store
                     .on_error(signature, TxnSenderError::Finalization)
+                    .in_current_span()
                     .await;
 
                 return Err(err.into());
@@ -398,6 +416,9 @@ pub mod send_txn {
 
         #[async_trait::async_trait]
         impl TxnStore for MockTxnStore {
+            fn make_span(&self) -> tracing::Span {
+                tracing::info_span!("mock store")
+            }
             async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStoreError> {
                 if self.fail_prepared {
                     return Err(TxnStoreError::new("mock failure"));
@@ -408,8 +429,8 @@ pub mod send_txn {
             async fn on_sent(&self, signature: &Signature) {
                 self.record_call(format!("on_sent: {signature}"));
             }
-            async fn on_sent_retry(&self, signature: &Signature) {
-                self.record_call(format!("on_sent_retry: {signature}"));
+            async fn on_sent_retry(&self, signature: &Signature, attempt: usize) {
+                self.record_call(format!("on_sent_retry: {attempt} {signature}"));
             }
             async fn on_finalized(&self, signature: &Signature) {
                 self.record_call(format!("on_finalized: {signature}"))
@@ -545,10 +566,10 @@ pub mod send_txn {
                 *calls,
                 vec![
                     format!("on_prepared: {signature}"),
-                    format!("on_sent_retry: {signature}"),
-                    format!("on_sent_retry: {signature}"),
-                    format!("on_sent_retry: {signature}"),
-                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: 1 {signature}"),
+                    format!("on_sent_retry: 2 {signature}"),
+                    format!("on_sent_retry: 3 {signature}"),
+                    format!("on_sent_retry: 4 {signature}"),
                     format!("on_sent: {signature}"),
                     format!("on_finalized: {signature}")
                 ]
@@ -576,10 +597,10 @@ pub mod send_txn {
                 *calls,
                 vec![
                     format!("on_prepared: {signature}"),
-                    format!("on_sent_retry: {signature}"),
-                    format!("on_sent_retry: {signature}"),
-                    format!("on_sent_retry: {signature}"),
-                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: 1 {signature}"),
+                    format!("on_sent_retry: 2 {signature}"),
+                    format!("on_sent_retry: 3 {signature}"),
+                    format!("on_sent_retry: 4 {signature}"),
                     format!("on_error: {signature} could not submit 5 times")
                 ]
             );

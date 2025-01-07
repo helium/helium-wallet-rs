@@ -21,6 +21,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 pub mod assets;
@@ -147,6 +148,7 @@ impl CommitOpts {
 
             TxnSender::new(client, tx)
                 .finalized(self.finalize)
+                .with_sleeper(AsyncSleeper)
                 .send(config)
                 .map_ok(CommitResponse::from)
                 .map_err(|err| match err {
@@ -169,6 +171,15 @@ impl CommitOpts {
         TransactionOpts {
             min_priority_fee: self.min_priority_fee,
         }
+    }
+}
+
+struct AsyncSleeper;
+
+#[async_trait::async_trait]
+impl helium_lib::send_txn::TxnSleeper for AsyncSleeper {
+    async fn sleep(&self, duration: Duration) {
+        tokio::time::sleep(duration).await;
     }
 }
 

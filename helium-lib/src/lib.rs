@@ -201,12 +201,27 @@ pub mod send_txn {
         async fn on_error(&self, _signature: &Signature, _err: TxnSenderError) {}
     }
 
-    pub struct TxnSender<'a, C, S = NoopStore> {
-        client: &'a C,
+    #[async_trait::async_trait]
+    pub trait TxnSleeper {
+        async fn sleep(&self, duration: Duration);
+    }
+
+    pub struct BlockingSleeper;
+
+    #[async_trait::async_trait]
+    impl TxnSleeper for BlockingSleeper {
+        async fn sleep(&self, duration: Duration) {
+            thread::sleep(duration);
+        }
+    }
+
+    pub struct TxnSender<'a, Client, Store = NoopStore, Sleeper = BlockingSleeper> {
+        client: &'a Client,
         txn: &'a TransactionWithBlockhash,
         finalize: bool,
         retry: Option<(usize, Duration)>,
-        store: &'a S,
+        store: &'a Store,
+        sleeper: Sleeper,
     }
 
     #[async_trait::async_trait]
@@ -218,11 +233,6 @@ pub mod send_txn {
         ) -> Result<Signature, SolanaClientError>;
         async fn finalize_signature(&self, signature: &Signature) -> Result<(), SolanaClientError>;
         async fn get_block_height(&self) -> Result<u64, SolanaClientError>;
-
-        // Override if you need a tokio sleep
-        async fn sleep(&self, delay: Duration) {
-            thread::sleep(delay);
-        }
     }
 
     impl<'a, C: SenderExt> TxnSender<'a, C> {
@@ -233,11 +243,14 @@ pub mod send_txn {
                 finalize: false,
                 retry: None,
                 store: &NoopStore,
+                sleeper: BlockingSleeper,
             }
         }
     }
 
-    impl<'a, C: SenderExt, S: TxnStore> TxnSender<'a, C, S> {
+    impl<'a, Client: SenderExt, Store: TxnStore, Sleeper: TxnSleeper>
+        TxnSender<'a, Client, Store, Sleeper>
+    {
         pub fn finalized(mut self, finalize: bool) -> Self {
             self.finalize = finalize;
             self
@@ -248,13 +261,25 @@ pub mod send_txn {
             self
         }
 
-        pub fn with_store<S2: TxnStore>(self, store: &'a S2) -> TxnSender<'a, C, S2> {
+        pub fn with_store<S2: TxnStore>(self, store: &'a S2) -> TxnSender<'a, Client, S2, Sleeper> {
             TxnSender {
                 client: self.client,
                 txn: self.txn,
                 finalize: self.finalize,
                 retry: self.retry,
+                sleeper: self.sleeper,
                 store,
+            }
+        }
+
+        pub fn with_sleeper<S2: TxnSleeper>(self, sleeper: S2) -> TxnSender<'a, Client, Store, S2> {
+            TxnSender {
+                client: self.client,
+                txn: self.txn,
+                finalize: self.finalize,
+                retry: self.retry,
+                store: self.store,
+                sleeper,
             }
         }
 
@@ -299,7 +324,7 @@ pub mod send_txn {
                                 .await;
                             return Err(err.into());
                         }
-                        self.client.sleep(retry_delay).await;
+                        self.sleeper.sleep(retry_delay).await;
                         self.store.on_sent_retry(&sig).await;
                     }
                 }

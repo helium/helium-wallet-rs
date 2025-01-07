@@ -293,22 +293,22 @@ pub mod send_txn {
             config: RpcSendTransactionConfig,
         ) -> Result<TrackedTransaction, LibError> {
             let span = self.store.make_span();
-            let _enter = span.enter();
+            self.do_send(config).instrument(span).await
+        }
 
+        pub async fn do_send(
+            &self,
+            config: RpcSendTransactionConfig,
+        ) -> Result<TrackedTransaction, LibError> {
             let sent_block_height = self.client.get_block_height().await?;
-            self.store
-                .on_prepared(self.txn.get_signature())
-                .in_current_span()
-                .await?;
+            self.store.on_prepared(self.txn.get_signature()).await?;
 
-            let signature = self.send_with_retry_store(config).in_current_span().await?;
-            self.store.on_sent(&signature).in_current_span().await;
+            let signature = self.send_with_retry(config).await?;
+            self.store.on_sent(&signature).await;
 
             if self.finalize {
-                self.finalize_with_store(&signature)
-                    .in_current_span()
-                    .await?;
-                self.store.on_finalized(&signature).in_current_span().await;
+                self.finalize(&signature).await?;
+                self.store.on_finalized(&signature).await;
             }
 
             Ok(TrackedTransaction {
@@ -318,7 +318,7 @@ pub mod send_txn {
             })
         }
 
-        async fn send_with_retry_store(
+        async fn send_with_retry(
             &self,
             config: RpcSendTransactionConfig,
         ) -> Result<Signature, LibError> {
@@ -334,25 +334,20 @@ pub mod send_txn {
                         if attempt == max_retry {
                             self.store
                                 .on_error(sig, TxnSenderError::Submission { attempts: attempt })
-                                .in_current_span()
                                 .await;
                             return Err(err.into());
                         }
                         self.sleeper.sleep(retry_delay).await;
-                        self.store
-                            .on_sent_retry(&sig, attempt)
-                            .in_current_span()
-                            .await;
+                        self.store.on_sent_retry(&sig, attempt).await;
                     }
                 }
             }
         }
 
-        async fn finalize_with_store(&self, signature: &Signature) -> Result<(), LibError> {
+        async fn finalize(&self, signature: &Signature) -> Result<(), LibError> {
             if let Err(err) = self.client.finalize_signature(signature).await {
                 self.store
                     .on_error(signature, TxnSenderError::Finalization)
-                    .in_current_span()
                     .await;
 
                 return Err(err.into());

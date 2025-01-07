@@ -151,10 +151,25 @@ pub mod send_txn {
     use solana_sdk::commitment_config::CommitmentConfig;
     use std::time::Duration;
 
-    type LibError = solana_client::client_error::ClientError;
+    #[derive(Debug, thiserror::Error)]
+    pub enum LibError {
+        #[error("store callback failed: {0}")]
+        Store(#[from] TxnStoreError),
+        #[error("solana client failed: {0}")]
+        Client(#[from] solana_client::client_error::ClientError),
+    }
+
+    pub type SolanaClientError = solana_client::client_error::ClientError;
 
     #[derive(Debug, thiserror::Error)]
-    pub enum TxnStoreError {}
+    #[error("TxnStore failed: {0}")]
+    pub struct TxnStoreError(String);
+
+    impl TxnStoreError {
+        pub fn new<T: std::fmt::Display>(err_msg: T) -> Self {
+            Self(err_msg.to_string())
+        }
+    }
 
     #[derive(Debug, thiserror::Error)]
     pub enum TxnSenderError {
@@ -166,7 +181,7 @@ pub mod send_txn {
 
     #[async_trait::async_trait]
     pub trait TxnStore: Send + Sync {
-        async fn on_prepared(&self, signature: &Signature);
+        async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStoreError>;
         async fn on_sent(&self, signature: &Signature);
         async fn on_sent_retry(&self, signature: &Signature);
         async fn on_finalized(&self, signature: &Signature);
@@ -177,7 +192,9 @@ pub mod send_txn {
 
     #[async_trait::async_trait]
     impl TxnStore for NoopStore {
-        async fn on_prepared(&self, _signature: &Signature) {}
+        async fn on_prepared(&self, _signature: &Signature) -> Result<(), TxnStoreError> {
+            Ok(())
+        }
         async fn on_sent(&self, _signature: &Signature) {}
         async fn on_sent_retry(&self, _signature: &Signature) {}
         async fn on_finalized(&self, _signature: &Signature) {}
@@ -198,9 +215,9 @@ pub mod send_txn {
             &self,
             txn: &TransactionWithBlockhash,
             config: RpcSendTransactionConfig,
-        ) -> Result<Signature, LibError>;
-        async fn finalize_signature(&self, signature: &Signature) -> Result<(), LibError>;
-        async fn get_block_height(&self) -> Result<u64, LibError>;
+        ) -> Result<Signature, SolanaClientError>;
+        async fn finalize_signature(&self, signature: &Signature) -> Result<(), SolanaClientError>;
+        async fn get_block_height(&self) -> Result<u64, SolanaClientError>;
 
         // Override if you need a tokio sleep
         async fn sleep(&self, delay: Duration) {
@@ -246,7 +263,7 @@ pub mod send_txn {
             config: RpcSendTransactionConfig,
         ) -> Result<TrackedTransaction, LibError> {
             let sent_block_height = self.client.get_block_height().await?;
-            self.store.on_prepared(self.txn.get_signature()).await;
+            self.store.on_prepared(self.txn.get_signature()).await?;
 
             let signature = self.send_with_retry_store(config).await?;
             self.store.on_sent(&signature).await;
@@ -280,7 +297,7 @@ pub mod send_txn {
                             self.store
                                 .on_error(sig, TxnSenderError::Submission { attempts: attempt })
                                 .await;
-                            return Err(err);
+                            return Err(err.into());
                         }
                         self.client.sleep(retry_delay).await;
                         self.store.on_sent_retry(&sig).await;
@@ -295,7 +312,7 @@ pub mod send_txn {
                     .on_error(signature, TxnSenderError::Finalization)
                     .await;
 
-                return Err(err);
+                return Err(err.into());
             }
             Ok(())
         }
@@ -308,21 +325,21 @@ pub mod send_txn {
             &self,
             txn: &TransactionWithBlockhash,
             config: RpcSendTransactionConfig,
-        ) -> Result<Signature, LibError> {
+        ) -> Result<Signature, SolanaClientError> {
             Ok(self
                 .as_ref()
                 .send_transaction_with_config(txn.inner_txn(), config)
                 .await?)
         }
 
-        async fn finalize_signature(&self, signature: &Signature) -> Result<(), LibError> {
+        async fn finalize_signature(&self, signature: &Signature) -> Result<(), SolanaClientError> {
             Ok(self
                 .as_ref()
                 .poll_for_signature_with_commitment(signature, CommitmentConfig::finalized())
                 .await?)
         }
 
-        async fn get_block_height(&self) -> Result<u64, LibError> {
+        async fn get_block_height(&self) -> Result<u64, SolanaClientError> {
             Ok(self.as_ref().get_block_height().await?)
         }
     }
@@ -338,10 +355,17 @@ pub mod send_txn {
 
         #[derive(Default)]
         struct MockTxnStore {
+            pub fail_prepared: bool,
             pub calls: Arc<Mutex<Vec<String>>>,
         }
 
         impl MockTxnStore {
+            fn fail_prepared() -> Self {
+                Self {
+                    fail_prepared: true,
+                    ..Default::default()
+                }
+            }
             fn record_call(&self, method: String) {
                 self.calls.lock().unwrap().push(method);
             }
@@ -349,8 +373,12 @@ pub mod send_txn {
 
         #[async_trait::async_trait]
         impl TxnStore for MockTxnStore {
-            async fn on_prepared(&self, signature: &Signature) {
+            async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStoreError> {
+                if self.fail_prepared {
+                    return Err(TxnStoreError::new("mock failure"));
+                }
                 self.record_call(format!("on_prepared: {signature}"));
+                Ok(())
             }
             async fn on_sent(&self, signature: &Signature) {
                 self.record_call(format!("on_sent: {signature}"));
@@ -400,7 +428,7 @@ pub mod send_txn {
                 &self,
                 txn: &TransactionWithBlockhash,
                 _config: RpcSendTransactionConfig,
-            ) -> Result<Signature, LibError> {
+            ) -> Result<Signature, SolanaClientError> {
                 let mut attempts = self.sent_attempts.lock().unwrap();
                 *attempts += 1;
 
@@ -412,7 +440,10 @@ pub mod send_txn {
                 Err(SignerError::KeypairPubkeyMismatch.into())
             }
 
-            async fn finalize_signature(&self, _signature: &Signature) -> Result<(), LibError> {
+            async fn finalize_signature(
+                &self,
+                _signature: &Signature,
+            ) -> Result<(), SolanaClientError> {
                 if self.finalize_success {
                     return Ok(());
                 }
@@ -420,7 +451,7 @@ pub mod send_txn {
                 Err(SignerError::KeypairPubkeyMismatch.into())
             }
 
-            async fn get_block_height(&self) -> Result<u64, LibError> {
+            async fn get_block_height(&self) -> Result<u64, SolanaClientError> {
                 Ok(self.block_height)
             }
         }
@@ -435,7 +466,7 @@ pub mod send_txn {
         }
 
         #[test]
-        fn test_send_success() {
+        fn send_finalized_success() {
             let tx = mk_test_transaction();
             let store = MockTxnStore::default();
             let client = MockClient::succeed();
@@ -465,7 +496,7 @@ pub mod send_txn {
         }
 
         #[test]
-        fn test_send_success_retry() {
+        fn send_finalized_success_after_retry() {
             let tx = mk_test_transaction();
             let store = MockTxnStore::default();
             let client = MockClient::succeed_after(5);
@@ -500,7 +531,7 @@ pub mod send_txn {
         }
 
         #[test]
-        fn test_send_retry_error() {
+        fn send_error_with_retry() {
             let tx = mk_test_transaction();
             let store = MockTxnStore::default();
             let client = MockClient::succeed_after(999);
@@ -530,7 +561,7 @@ pub mod send_txn {
         }
 
         #[test]
-        fn test_send_success_finalize_error() {
+        fn send_success_finalize_error() {
             let tx = mk_test_transaction();
             let store = MockTxnStore::default();
             let mut client = MockClient::succeed();
@@ -555,6 +586,25 @@ pub mod send_txn {
                     format!("on_error: {signature} could not finalize")
                 ]
             );
+        }
+
+        #[test]
+        fn failed_preparation() {
+            let tx = mk_test_transaction();
+            let store = MockTxnStore::fail_prepared();
+            let client = MockClient::succeed();
+
+            let tracked = block_on(
+                TxnSender::new(&client, &tx)
+                    .finalized(true)
+                    .with_store(&store)
+                    .send(RpcSendTransactionConfig::default()),
+            );
+
+            assert!(tracked.is_err());
+
+            let calls = store.calls.lock().unwrap();
+            assert_eq!(*calls, Vec::<String>::new())
         }
     }
 }

@@ -97,6 +97,10 @@ impl TransactionWithBlockhash {
         &self.inner
     }
 
+    pub fn get_signature(&self) -> &Signature {
+        self.inner.get_signature()
+    }
+
     pub fn try_sign<T: solana_sdk::signers::Signers + ?Sized>(
         &mut self,
         keypairs: &T,
@@ -242,6 +246,8 @@ pub mod send_txn {
             config: RpcSendTransactionConfig,
         ) -> Result<TrackedTransaction, LibError> {
             let sent_block_height = self.client.get_block_height().await?;
+            self.store.on_prepared(self.txn.get_signature()).await;
+
             let signature = self.send_with_retry_store(config).await?;
             self.store.on_sent(&signature).await;
 
@@ -344,7 +350,7 @@ pub mod send_txn {
         #[async_trait::async_trait]
         impl TxnStore for MockTxnStore {
             async fn on_prepared(&self, signature: &Signature) {
-                self.record_call(format!("on_submit: {signature}"));
+                self.record_call(format!("on_prepared: {signature}"));
             }
             async fn on_sent(&self, signature: &Signature) {
                 self.record_call(format!("on_sent: {signature}"));
@@ -443,14 +449,15 @@ pub mod send_txn {
             .unwrap();
 
             assert_eq!(tracked.sent_block_height, 1);
-            assert_eq!(tracked.signature, *tx.inner.get_signature());
+            assert_eq!(tracked.signature, *tx.get_signature());
             assert_eq!(tracked.txn, tx);
 
-            let signature = tx.inner.get_signature();
+            let signature = tx.get_signature();
             let calls = store.calls.lock().unwrap();
             assert_eq!(
                 *calls,
                 vec![
+                    format!("on_prepared: {signature}"),
                     format!("on_sent: {signature}"),
                     format!("on_finalized: {signature}")
                 ]
@@ -473,14 +480,15 @@ pub mod send_txn {
             .unwrap();
 
             assert_eq!(tracked.sent_block_height, 1);
-            assert_eq!(tracked.signature, *tx.inner.get_signature());
+            assert_eq!(tracked.signature, *tx.get_signature());
             assert_eq!(tracked.txn, tx);
 
-            let signature = tx.inner.get_signature();
+            let signature = tx.get_signature();
             let calls = store.calls.lock().unwrap();
             assert_eq!(
                 *calls,
                 vec![
+                    format!("on_prepared: {signature}"),
                     format!("on_sent_retry: {signature}"),
                     format!("on_sent_retry: {signature}"),
                     format!("on_sent_retry: {signature}"),
@@ -506,11 +514,12 @@ pub mod send_txn {
 
             assert!(tracked.is_err());
 
-            let signature = tx.inner.get_signature();
+            let signature = tx.get_signature();
             let calls = store.calls.lock().unwrap();
             assert_eq!(
                 *calls,
                 vec![
+                    format!("on_prepared: {signature}"),
                     format!("on_sent_retry: {signature}"),
                     format!("on_sent_retry: {signature}"),
                     format!("on_sent_retry: {signature}"),
@@ -536,11 +545,12 @@ pub mod send_txn {
 
             assert!(tracked.is_err());
 
-            let signature = tx.inner.get_signature();
+            let signature = tx.get_signature();
             let calls = store.calls.lock().unwrap();
             assert_eq!(
                 *calls,
                 vec![
+                    format!("on_prepared: {signature}"),
                     format!("on_sent: {signature}"),
                     format!("on_error: {signature} could not finalize")
                 ]

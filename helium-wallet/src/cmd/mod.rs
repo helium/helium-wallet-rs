@@ -8,6 +8,7 @@ use helium_lib::{
     client::{self, SolanaRpcClient},
     keypair::Keypair,
     priority_fee,
+    send_txn::TxnSender,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
@@ -107,7 +108,7 @@ impl CommitOpts {
         client: &C,
     ) -> Result<CommitResponse>
     where
-        C: helium_lib::WithTransactionSender + AsRef<SolanaRpcClient>,
+        C: helium_lib::send_txn::SenderExt + AsRef<SolanaRpcClient>,
     {
         fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
             let mut captured_logs: Option<Vec<String>> = None;
@@ -144,9 +145,8 @@ impl CommitOpts {
                 ..Default::default()
             };
 
-            client
-                .with_transaction(tx)
-                .with_finalize(self.finalize)
+            TxnSender::new(client, tx)
+                .finalized(self.finalize)
                 .send(config)
                 .map_ok(CommitResponse::from)
                 .map_err(context_err)

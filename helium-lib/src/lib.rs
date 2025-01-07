@@ -25,7 +25,6 @@ pub use helium_anchor_gen::{
     anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
     hexboosting, lazy_distributor, rewards_oracle,
 };
-pub use send_txn::WithTransactionSender;
 pub use solana_sdk;
 pub use solana_sdk::bs58;
 
@@ -79,14 +78,14 @@ impl Default for TransactionOpts {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionWithBlockhash {
     pub inner: solana_sdk::transaction::Transaction,
     pub block_height: u64,
 }
 
 /// A sent `TransactionWithBlockhash`
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrackedTransaction {
     pub txn: TransactionWithBlockhash,
     pub signature: Signature,
@@ -150,11 +149,43 @@ pub mod send_txn {
 
     type LibError = solana_client::client_error::ClientError;
 
-    pub struct Sender<'a, C> {
+    #[derive(Debug, thiserror::Error)]
+    pub enum TxnStoreError {}
+
+    #[derive(Debug, thiserror::Error)]
+    pub enum TxnSenderError {
+        #[error("could not submit {attempts} times")]
+        Submission { attempts: usize },
+        #[error("could not finalize")]
+        Finalization,
+    }
+
+    #[async_trait::async_trait]
+    pub trait TxnStore: Send + Sync {
+        async fn on_prepared(&self, signature: &Signature);
+        async fn on_sent(&self, signature: &Signature);
+        async fn on_sent_retry(&self, signature: &Signature);
+        async fn on_finalized(&self, signature: &Signature);
+        async fn on_error(&self, signature: &Signature, err: TxnSenderError);
+    }
+
+    pub struct NoopStore;
+
+    #[async_trait::async_trait]
+    impl TxnStore for NoopStore {
+        async fn on_prepared(&self, _signature: &Signature) {}
+        async fn on_sent(&self, _signature: &Signature) {}
+        async fn on_sent_retry(&self, _signature: &Signature) {}
+        async fn on_finalized(&self, _signature: &Signature) {}
+        async fn on_error(&self, _signature: &Signature, _err: TxnSenderError) {}
+    }
+
+    pub struct TxnSender<'a, C, S = NoopStore> {
         client: &'a C,
         txn: &'a TransactionWithBlockhash,
         finalize: bool,
         retry: Option<(usize, Duration)>,
+        store: &'a S,
     }
 
     #[async_trait::async_trait]
@@ -173,22 +204,20 @@ pub mod send_txn {
         }
     }
 
-    pub trait WithTransactionSender: Sized + Send + Sync {
-        fn with_transaction<'a>(&'a self, txn: &'a TransactionWithBlockhash) -> Sender<'a, Self>;
-
-        fn with_finalized_transaction<'a>(
-            &'a self,
-            txn: &'a TransactionWithBlockhash,
-        ) -> Sender<'a, Self>;
+    impl<'a, C: SenderExt> TxnSender<'a, C> {
+        pub fn new(client: &'a C, txn: &'a TransactionWithBlockhash) -> TxnSender<'a, C> {
+            TxnSender::<'a, C> {
+                client,
+                txn,
+                finalize: false,
+                retry: None,
+                store: &NoopStore,
+            }
+        }
     }
 
-    impl<C: SenderExt> Sender<'_, C> {
-        pub fn finalized(&mut self) -> &mut Self {
-            self.finalize = true;
-            self
-        }
-
-        pub fn with_finalize(&mut self, finalize: bool) -> &mut Self {
+    impl<'a, C: SenderExt, S: TxnStore> TxnSender<'a, C, S> {
+        pub fn finalized(mut self, finalize: bool) -> Self {
             self.finalize = finalize;
             self
         }
@@ -198,15 +227,27 @@ pub mod send_txn {
             self
         }
 
+        pub fn with_store<S2: TxnStore>(self, store: &'a S2) -> TxnSender<'a, C, S2> {
+            TxnSender {
+                client: self.client,
+                txn: self.txn,
+                finalize: self.finalize,
+                retry: self.retry,
+                store,
+            }
+        }
+
         pub async fn send(
             &self,
             config: RpcSendTransactionConfig,
         ) -> Result<TrackedTransaction, LibError> {
             let sent_block_height = self.client.get_block_height().await?;
-            let signature = self.send_with_retry(config).await?;
+            let signature = self.send_with_retry_store(config).await?;
+            self.store.on_sent(&signature).await;
 
             if self.finalize {
-                self.client.finalize_signature(&signature).await?;
+                self.finalize_with_store(&signature).await?;
+                self.store.on_finalized(&signature).await;
             }
 
             Ok(TrackedTransaction {
@@ -216,7 +257,7 @@ pub mod send_txn {
             })
         }
 
-        async fn send_with_retry(
+        async fn send_with_retry_store(
             &self,
             config: RpcSendTransactionConfig,
         ) -> Result<Signature, LibError> {
@@ -227,37 +268,30 @@ pub mod send_txn {
                 match self.client.send_txn(self.txn, config).await {
                     Ok(sig) => return Ok(sig),
                     Err(err) => {
+                        let sig = self.txn.inner_txn().get_signature();
                         attempt += 1;
                         if attempt == max_retry {
+                            self.store
+                                .on_error(sig, TxnSenderError::Submission { attempts: attempt })
+                                .await;
                             return Err(err);
                         }
                         self.client.sleep(retry_delay).await;
+                        self.store.on_sent_retry(&sig).await;
                     }
                 }
             }
         }
-    }
 
-    // Default impl for anything that can send transactions
-    impl<T: SenderExt> WithTransactionSender for T {
-        fn with_transaction<'a>(&'a self, txn: &'a TransactionWithBlockhash) -> Sender<'a, T> {
-            Sender {
-                client: self,
-                txn,
-                finalize: false,
-                retry: None,
+        async fn finalize_with_store(&self, signature: &Signature) -> Result<(), LibError> {
+            if let Err(err) = self.client.finalize_signature(signature).await {
+                self.store
+                    .on_error(signature, TxnSenderError::Finalization)
+                    .await;
+
+                return Err(err);
             }
-        }
-        fn with_finalized_transaction<'a>(
-            &'a self,
-            txn: &'a TransactionWithBlockhash,
-        ) -> Sender<'a, Self> {
-            Sender {
-                client: self,
-                txn,
-                finalize: true,
-                retry: None,
-            }
+            Ok(())
         }
     }
 
@@ -284,6 +318,233 @@ pub mod send_txn {
 
         async fn get_block_height(&self) -> Result<u64, LibError> {
             Ok(self.as_ref().get_block_height().await?)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::sync::Mutex;
+
+        use futures::executor::block_on;
+        use solana_sdk::signer::SignerError;
+
+        use super::*;
+
+        #[derive(Default)]
+        struct MockTxnStore {
+            pub calls: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl MockTxnStore {
+            fn record_call(&self, method: String) {
+                self.calls.lock().unwrap().push(method);
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl TxnStore for MockTxnStore {
+            async fn on_prepared(&self, signature: &Signature) {
+                self.record_call(format!("on_submit: {signature}"));
+            }
+            async fn on_sent(&self, signature: &Signature) {
+                self.record_call(format!("on_sent: {signature}"));
+            }
+            async fn on_sent_retry(&self, signature: &Signature) {
+                self.record_call(format!("on_sent_retry: {signature}"));
+            }
+            async fn on_finalized(&self, signature: &Signature) {
+                self.record_call(format!("on_finalized: {signature}"))
+            }
+            async fn on_error(&self, signature: &Signature, err: TxnSenderError) {
+                self.record_call(format!("on_error: {signature} {err}"))
+            }
+        }
+
+        #[derive(Default)]
+        struct MockClient {
+            pub sent_attempts: Mutex<usize>,
+            pub succeed_after_sent_attempts: usize,
+            pub finalize_success: bool,
+            pub block_height: u64,
+        }
+
+        impl MockClient {
+            fn succeed() -> Self {
+                Self {
+                    sent_attempts: Mutex::new(0),
+                    succeed_after_sent_attempts: 0,
+                    finalize_success: true,
+                    block_height: 1,
+                }
+            }
+
+            fn succeed_after(succeed_after_sent_attempts: usize) -> Self {
+                Self {
+                    sent_attempts: Mutex::new(0),
+                    succeed_after_sent_attempts,
+                    finalize_success: true,
+                    block_height: 1,
+                }
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl SenderExt for MockClient {
+            async fn send_txn(
+                &self,
+                txn: &TransactionWithBlockhash,
+                _config: RpcSendTransactionConfig,
+            ) -> Result<Signature, LibError> {
+                let mut attempts = self.sent_attempts.lock().unwrap();
+                *attempts += 1;
+
+                if *attempts >= self.succeed_after_sent_attempts {
+                    return Ok(txn.inner_txn().get_signature().clone());
+                }
+
+                // Fake Error
+                Err(SignerError::KeypairPubkeyMismatch.into())
+            }
+
+            async fn finalize_signature(&self, _signature: &Signature) -> Result<(), LibError> {
+                if self.finalize_success {
+                    return Ok(());
+                }
+                // Fake Error
+                Err(SignerError::KeypairPubkeyMismatch.into())
+            }
+
+            async fn get_block_height(&self) -> Result<u64, LibError> {
+                Ok(self.block_height)
+            }
+        }
+
+        fn mk_test_transaction() -> TransactionWithBlockhash {
+            let mut inner = solana_sdk::transaction::Transaction::default();
+            inner.signatures.push(Signature::new_unique());
+            TransactionWithBlockhash {
+                inner,
+                block_height: 1,
+            }
+        }
+
+        #[test]
+        fn test_send_success() {
+            let tx = mk_test_transaction();
+            let store = MockTxnStore::default();
+            let client = MockClient::succeed();
+
+            let tracked = block_on(
+                TxnSender::new(&client, &tx)
+                    .finalized(true)
+                    .with_store(&store)
+                    .send(RpcSendTransactionConfig::default()),
+            )
+            .unwrap();
+
+            assert_eq!(tracked.sent_block_height, 1);
+            assert_eq!(tracked.signature, *tx.inner.get_signature());
+            assert_eq!(tracked.txn, tx);
+
+            let signature = tx.inner.get_signature();
+            let calls = store.calls.lock().unwrap();
+            assert_eq!(
+                *calls,
+                vec![
+                    format!("on_sent: {signature}"),
+                    format!("on_finalized: {signature}")
+                ]
+            )
+        }
+
+        #[test]
+        fn test_send_success_retry() {
+            let tx = mk_test_transaction();
+            let store = MockTxnStore::default();
+            let client = MockClient::succeed_after(5);
+
+            let tracked = block_on(
+                TxnSender::new(&client, &tx)
+                    .finalized(true)
+                    .with_store(&store)
+                    .with_retry(5, Duration::from_millis(5))
+                    .send(RpcSendTransactionConfig::default()),
+            )
+            .unwrap();
+
+            assert_eq!(tracked.sent_block_height, 1);
+            assert_eq!(tracked.signature, *tx.inner.get_signature());
+            assert_eq!(tracked.txn, tx);
+
+            let signature = tx.inner.get_signature();
+            let calls = store.calls.lock().unwrap();
+            assert_eq!(
+                *calls,
+                vec![
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent: {signature}"),
+                    format!("on_finalized: {signature}")
+                ]
+            );
+        }
+
+        #[test]
+        fn test_send_retry_error() {
+            let tx = mk_test_transaction();
+            let store = MockTxnStore::default();
+            let client = MockClient::succeed_after(999);
+
+            let tracked = block_on(
+                TxnSender::new(&client, &tx)
+                    .with_store(&store)
+                    .with_retry(5, Duration::from_millis(5))
+                    .send(RpcSendTransactionConfig::default()),
+            );
+
+            assert!(tracked.is_err());
+
+            let signature = tx.inner.get_signature();
+            let calls = store.calls.lock().unwrap();
+            assert_eq!(
+                *calls,
+                vec![
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_sent_retry: {signature}"),
+                    format!("on_error: {signature} could not submit 5 times")
+                ]
+            );
+        }
+
+        #[test]
+        fn test_send_success_finalize_error() {
+            let tx = mk_test_transaction();
+            let store = MockTxnStore::default();
+            let mut client = MockClient::succeed();
+            client.finalize_success = false;
+
+            let tracked = block_on(
+                TxnSender::new(&client, &tx)
+                    .finalized(true)
+                    .with_store(&store)
+                    .send(RpcSendTransactionConfig::default()),
+            );
+
+            assert!(tracked.is_err());
+
+            let signature = tx.inner.get_signature();
+            let calls = store.calls.lock().unwrap();
+            assert_eq!(
+                *calls,
+                vec![
+                    format!("on_sent: {signature}"),
+                    format!("on_error: {signature} could not finalize")
+                ]
+            );
         }
     }
 }

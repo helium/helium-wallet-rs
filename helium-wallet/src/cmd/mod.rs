@@ -8,7 +8,7 @@ use helium_lib::{
     client::{self, SolanaRpcClient},
     keypair::Keypair,
     priority_fee,
-    send_txn::TxnSender,
+    send_txn::{LibError, TxnSender},
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
@@ -149,7 +149,10 @@ impl CommitOpts {
                 .finalized(self.finalize)
                 .send(config)
                 .map_ok(CommitResponse::from)
-                .map_err(context_err)
+                .map_err(|err| match err {
+                    err @ LibError::Store(_) => err.into(),
+                    LibError::Client(error) => context_err(error),
+                })
                 .await
         } else {
             client

@@ -149,7 +149,7 @@ pub mod send_txn {
 
     use solana_client::rpc_config::RpcSendTransactionConfig;
     use solana_sdk::commitment_config::CommitmentConfig;
-    use std::time::Duration;
+    use std::{borrow::Cow, time::Duration};
     use tracing::Instrument;
 
     /// Top Level Error for TxnSender.
@@ -184,11 +184,15 @@ pub mod send_txn {
     #[async_trait::async_trait]
     pub trait TxnStore: Send + Sync {
         fn make_span(&self) -> tracing::Span;
-        async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStorePrepareError>;
-        async fn on_sent(&self, signature: &Signature);
-        async fn on_sent_retry(&self, signature: &Signature, attempt: usize);
-        async fn on_finalized(&self, signature: &Signature);
-        async fn on_error(&self, signature: &Signature, err: TxnSenderError);
+        async fn on_prepared(
+            &self,
+            name: Option<String>,
+            txn: &TransactionWithBlockhash,
+        ) -> Result<(), TxnStorePrepareError>;
+        async fn on_sent(&self, txn: &TransactionWithBlockhash);
+        async fn on_sent_retry(&self, txn: &TransactionWithBlockhash, attempt: usize);
+        async fn on_finalized(&self, txn: &TransactionWithBlockhash);
+        async fn on_error(&self, txn: &TransactionWithBlockhash, err: TxnSenderError);
     }
 
     /// A trait for sleeping in between `send_txn` attempts.
@@ -213,6 +217,7 @@ pub mod send_txn {
 
     /// TxnSender wraps all the needed information to send and finalize a Solana Transaction.
     pub struct TxnSender<'a, Client, Store = NoopStore, Sleeper = BlockingSleeper> {
+        name: Option<Cow<'static, str>>,
         client: &'a Client,
         txn: &'a TransactionWithBlockhash,
         finalize: bool,
@@ -237,6 +242,7 @@ pub mod send_txn {
     impl<'a, C: TxnSenderClientExt> TxnSender<'a, C> {
         pub fn new(client: &'a C, txn: &'a TransactionWithBlockhash) -> TxnSender<'a, C> {
             TxnSender::<'a, C> {
+                name: None,
                 client,
                 txn,
                 finalize: false,
@@ -251,18 +257,24 @@ pub mod send_txn {
     impl<'a, Client: TxnSenderClientExt, Store: TxnStore, Sleeper: TxnSleeper>
         TxnSender<'a, Client, Store, Sleeper>
     {
+        pub fn name(mut self, name: impl Into<Cow<'static, str>>) -> Self {
+            self.name = Some(name.into());
+            self
+        }
+
         pub fn finalized(mut self, finalize: bool) -> Self {
             self.finalize = finalize;
             self
         }
 
-        pub fn with_retry(&mut self, max_attempts: usize, retry_delay: Duration) -> &mut Self {
+        pub fn with_retry(mut self, max_attempts: usize, retry_delay: Duration) -> Self {
             self.retry = Some((max_attempts, retry_delay));
             self
         }
 
         pub fn with_store<S2: TxnStore>(self, store: &'a S2) -> TxnSender<'a, Client, S2, Sleeper> {
             TxnSender {
+                name: self.name,
                 client: self.client,
                 txn: self.txn,
                 finalize: self.finalize,
@@ -274,6 +286,7 @@ pub mod send_txn {
 
         pub fn with_sleeper<S2: TxnSleeper>(self, sleeper: S2) -> TxnSender<'a, Client, Store, S2> {
             TxnSender {
+                name: self.name,
                 client: self.client,
                 txn: self.txn,
                 finalize: self.finalize,
@@ -289,26 +302,30 @@ pub mod send_txn {
         TxnSender<'a, Client, Store, Sleeper>
     {
         pub async fn send(
-            &self,
+            self,
             config: RpcSendTransactionConfig,
         ) -> Result<TrackedTransaction, TxnSenderError> {
             let span = self.store.make_span();
+            let maybe_name = self.name.as_ref().map(|n| n.to_string());
+            self.store
+                .on_prepared(maybe_name, self.txn)
+                .instrument(span.clone())
+                .await?;
             self.do_send(config).instrument(span).await
         }
 
         pub async fn do_send(
-            &self,
+            self,
             config: RpcSendTransactionConfig,
         ) -> Result<TrackedTransaction, TxnSenderError> {
             let sent_block_height = self.client.get_block_height().await?;
-            self.store.on_prepared(self.txn.get_signature()).await?;
 
             let signature = self.send_with_retry(config).await?;
-            self.store.on_sent(&signature).await;
+            self.store.on_sent(&self.txn).await;
 
             if self.finalize {
                 self.finalize(&signature).await?;
-                self.store.on_finalized(&signature).await;
+                self.store.on_finalized(&self.txn).await;
             }
 
             Ok(TrackedTransaction {
@@ -329,16 +346,18 @@ pub mod send_txn {
                 match self.client.send_txn(self.txn, config).await {
                     Ok(sig) => return Ok(sig),
                     Err(err) => {
-                        let sig = self.txn.inner_txn().get_signature();
                         attempt += 1;
                         if attempt == max_retry {
                             self.store
-                                .on_error(sig, TxnSenderError::Submission { attempts: attempt })
+                                .on_error(
+                                    &self.txn,
+                                    TxnSenderError::Submission { attempts: attempt },
+                                )
                                 .await;
                             return Err(err.into());
                         }
                         self.sleeper.sleep(retry_delay).await;
-                        self.store.on_sent_retry(&sig, attempt).await;
+                        self.store.on_sent_retry(&self.txn, attempt).await;
                     }
                 }
             }
@@ -347,7 +366,7 @@ pub mod send_txn {
         async fn finalize(&self, signature: &Signature) -> Result<(), TxnSenderError> {
             if let Err(err) = self.client.finalize_signature(signature).await {
                 self.store
-                    .on_error(signature, TxnSenderError::Finalization)
+                    .on_error(&self.txn, TxnSenderError::Finalization)
                     .await;
 
                 return Err(err.into());
@@ -392,13 +411,17 @@ pub mod send_txn {
         fn make_span(&self) -> tracing::Span {
             tracing::info_span!("NoopStore")
         }
-        async fn on_prepared(&self, _signature: &Signature) -> Result<(), TxnStorePrepareError> {
+        async fn on_prepared(
+            &self,
+            _name: Option<String>,
+            _txn: &TransactionWithBlockhash,
+        ) -> Result<(), TxnStorePrepareError> {
             Ok(())
         }
-        async fn on_sent(&self, _signature: &Signature) {}
-        async fn on_sent_retry(&self, _signature: &Signature, _attempt: usize) {}
-        async fn on_finalized(&self, _signature: &Signature) {}
-        async fn on_error(&self, _signature: &Signature, _err: TxnSenderError) {}
+        async fn on_sent(&self, _txn: &TransactionWithBlockhash) {}
+        async fn on_sent_retry(&self, _txn: &TransactionWithBlockhash, _attempt: usize) {}
+        async fn on_finalized(&self, _txn: &TransactionWithBlockhash) {}
+        async fn on_error(&self, _txn: &TransactionWithBlockhash, _err: TxnSenderError) {}
     }
 
     /// Default Sleeper for `TxnSender`.
@@ -443,23 +466,33 @@ pub mod send_txn {
             fn make_span(&self) -> tracing::Span {
                 tracing::info_span!("mock store")
             }
-            async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStorePrepareError> {
+            async fn on_prepared(
+                &self,
+                _name: Option<String>,
+                txn: &TransactionWithBlockhash,
+            ) -> Result<(), TxnStorePrepareError> {
+                println!("name: {_name:?}");
                 if self.fail_prepared {
                     return Err(TxnStorePrepareError::new("mock failure"));
                 }
+                let signature = txn.get_signature();
                 self.record_call(format!("on_prepared: {signature}"));
                 Ok(())
             }
-            async fn on_sent(&self, signature: &Signature) {
+            async fn on_sent(&self, txn: &TransactionWithBlockhash) {
+                let signature = txn.get_signature();
                 self.record_call(format!("on_sent: {signature}"));
             }
-            async fn on_sent_retry(&self, signature: &Signature, attempt: usize) {
+            async fn on_sent_retry(&self, txn: &TransactionWithBlockhash, attempt: usize) {
+                let signature = txn.get_signature();
                 self.record_call(format!("on_sent_retry: {attempt} {signature}"));
             }
-            async fn on_finalized(&self, signature: &Signature) {
+            async fn on_finalized(&self, txn: &TransactionWithBlockhash) {
+                let signature = txn.get_signature();
                 self.record_call(format!("on_finalized: {signature}"))
             }
-            async fn on_error(&self, signature: &Signature, err: TxnSenderError) {
+            async fn on_error(&self, txn: &TransactionWithBlockhash, err: TxnSenderError) {
+                let signature = txn.get_signature();
                 self.record_call(format!("on_error: {signature} {err}"))
             }
         }

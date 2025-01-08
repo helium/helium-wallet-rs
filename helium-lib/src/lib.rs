@@ -25,8 +25,8 @@ pub use helium_anchor_gen::{
     anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
     hexboosting, lazy_distributor, rewards_oracle,
 };
-pub use solana_sdk;
 pub use solana_sdk::bs58;
+pub use solana_sdk::{self, signature::Signature};
 
 pub(crate) trait Zero {
     const ZERO: Self;
@@ -58,7 +58,7 @@ where
 use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use error::Error;
 use keypair::Pubkey;
-use solana_sdk::{instruction::Instruction, signature::Signature};
+use solana_sdk::instruction::Instruction;
 use std::{sync::Arc, thread};
 
 pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
@@ -152,74 +152,66 @@ pub mod send_txn {
     use std::time::Duration;
     use tracing::Instrument;
 
-    #[derive(Debug, thiserror::Error)]
-    pub enum LibError {
-        #[error("store callback failed: {0}")]
-        Store(#[from] TxnStoreError),
-        #[error("solana client failed: {0}")]
-        Client(#[from] solana_client::client_error::ClientError),
-    }
-
-    pub type SolanaClientError = solana_client::client_error::ClientError;
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("TxnStore failed: {0}")]
-    pub struct TxnStoreError(String);
-
-    impl TxnStoreError {
-        pub fn new<T: std::fmt::Display>(err_msg: T) -> Self {
-            Self(err_msg.to_string())
-        }
-    }
-
+    /// Top Level Error for TxnSender.
     #[derive(Debug, thiserror::Error)]
     pub enum TxnSenderError {
+        #[error("store callback failed: {0}")]
+        Store(#[from] TxnStorePrepareError),
+        #[error("solana client failed: {0}")]
+        Client(#[from] solana_client::client_error::ClientError),
         #[error("could not submit {attempts} times")]
         Submission { attempts: usize },
         #[error("could not finalize")]
         Finalization,
     }
 
+    pub type SolanaClientError = solana_client::client_error::ClientError;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("TxnStore failed on_prepare: {0}")]
+    pub struct TxnStorePrepareError(String);
+
+    impl TxnStorePrepareError {
+        pub fn new<T: std::fmt::Display>(err_msg: T) -> Self {
+            Self(err_msg.to_string())
+        }
+    }
+
+    /// A trait for dealing with in flight transactions.
+    ///
+    /// Default implementation `NoopStore` provided with `TxnSender::new()`
+    /// Returning an error from `on_prepare` will stop a Txn from being submitted.
     #[async_trait::async_trait]
     pub trait TxnStore: Send + Sync {
         fn make_span(&self) -> tracing::Span;
-        async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStoreError>;
+        async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStorePrepareError>;
         async fn on_sent(&self, signature: &Signature);
         async fn on_sent_retry(&self, signature: &Signature, attempt: usize);
         async fn on_finalized(&self, signature: &Signature);
         async fn on_error(&self, signature: &Signature, err: TxnSenderError);
     }
 
-    pub struct NoopStore;
-
-    #[async_trait::async_trait]
-    impl TxnStore for NoopStore {
-        fn make_span(&self) -> tracing::Span {
-            tracing::info_span!("NoopStore")
-        }
-        async fn on_prepared(&self, _signature: &Signature) -> Result<(), TxnStoreError> {
-            Ok(())
-        }
-        async fn on_sent(&self, _signature: &Signature) {}
-        async fn on_sent_retry(&self, _signature: &Signature, _attempt: usize) {}
-        async fn on_finalized(&self, _signature: &Signature) {}
-        async fn on_error(&self, _signature: &Signature, _err: TxnSenderError) {}
-    }
-
+    /// A trait for sleeping in between `send_txn` attempts.
+    ///
+    /// Default implementation `BlockingSleeper` provided with `TxnSender::new()`.
+    ///
+    /// If you have tokio available, a non-blocking sleeper can be implemented.
+    /// ```no_compile
+    /// struct AsyncSleeper;
+    ///
+    /// #[async_trait::async_trait]
+    /// impl helium_lib::send_txn::TxnSleeper for AsyncSleeper {
+    ///     async fn sleep(&self, duration: Duration) {
+    ///         tokio::time::sleep(duration).await;
+    ///     }
+    /// }
+    /// ```
     #[async_trait::async_trait]
     pub trait TxnSleeper {
         async fn sleep(&self, duration: Duration);
     }
 
-    pub struct BlockingSleeper;
-
-    #[async_trait::async_trait]
-    impl TxnSleeper for BlockingSleeper {
-        async fn sleep(&self, duration: Duration) {
-            thread::sleep(duration);
-        }
-    }
-
+    /// TxnSender wraps all the needed information to send and finalize a Solana Transaction.
     pub struct TxnSender<'a, Client, Store = NoopStore, Sleeper = BlockingSleeper> {
         client: &'a Client,
         txn: &'a TransactionWithBlockhash,
@@ -229,8 +221,9 @@ pub mod send_txn {
         sleeper: Sleeper,
     }
 
+    /// A trait for Solana Clients to implement for sending transactions.
     #[async_trait::async_trait]
-    pub trait SenderExt: Sized + Send + Sync {
+    pub trait TxnSenderClientExt: Sized + Send + Sync {
         async fn send_txn(
             &self,
             txn: &TransactionWithBlockhash,
@@ -240,7 +233,8 @@ pub mod send_txn {
         async fn get_block_height(&self) -> Result<u64, SolanaClientError>;
     }
 
-    impl<'a, C: SenderExt> TxnSender<'a, C> {
+    /// Constructor methods for `TxnSender` providing the default Store and Sleeper implementations.
+    impl<'a, C: TxnSenderClientExt> TxnSender<'a, C> {
         pub fn new(client: &'a C, txn: &'a TransactionWithBlockhash) -> TxnSender<'a, C> {
             TxnSender::<'a, C> {
                 client,
@@ -253,7 +247,8 @@ pub mod send_txn {
         }
     }
 
-    impl<'a, Client: SenderExt, Store: TxnStore, Sleeper: TxnSleeper>
+    /// Builder methods API for updating TxnSender with options.
+    impl<'a, Client: TxnSenderClientExt, Store: TxnStore, Sleeper: TxnSleeper>
         TxnSender<'a, Client, Store, Sleeper>
     {
         pub fn finalized(mut self, finalize: bool) -> Self {
@@ -287,11 +282,16 @@ pub mod send_txn {
                 sleeper,
             }
         }
+    }
 
+    /// Functionality for TxnSender to sending and finalizing txns.
+    impl<'a, Client: TxnSenderClientExt, Store: TxnStore, Sleeper: TxnSleeper>
+        TxnSender<'a, Client, Store, Sleeper>
+    {
         pub async fn send(
             &self,
             config: RpcSendTransactionConfig,
-        ) -> Result<TrackedTransaction, LibError> {
+        ) -> Result<TrackedTransaction, TxnSenderError> {
             let span = self.store.make_span();
             self.do_send(config).instrument(span).await
         }
@@ -299,7 +299,7 @@ pub mod send_txn {
         pub async fn do_send(
             &self,
             config: RpcSendTransactionConfig,
-        ) -> Result<TrackedTransaction, LibError> {
+        ) -> Result<TrackedTransaction, TxnSenderError> {
             let sent_block_height = self.client.get_block_height().await?;
             self.store.on_prepared(self.txn.get_signature()).await?;
 
@@ -321,7 +321,7 @@ pub mod send_txn {
         async fn send_with_retry(
             &self,
             config: RpcSendTransactionConfig,
-        ) -> Result<Signature, LibError> {
+        ) -> Result<Signature, TxnSenderError> {
             let (max_retry, retry_delay) = self.retry.unwrap_or((1, Duration::from_millis(0)));
             let mut attempt = 0;
 
@@ -344,7 +344,7 @@ pub mod send_txn {
             }
         }
 
-        async fn finalize(&self, signature: &Signature) -> Result<(), LibError> {
+        async fn finalize(&self, signature: &Signature) -> Result<(), TxnSenderError> {
             if let Err(err) = self.client.finalize_signature(signature).await {
                 self.store
                     .on_error(signature, TxnSenderError::Finalization)
@@ -356,9 +356,9 @@ pub mod send_txn {
         }
     }
 
-    // Default impl for anything that can be turned into a `SolanaRpcClient`
+    /// Default impl for anything that can be turned into a `SolanaRpcClient`
     #[async_trait::async_trait]
-    impl<T: AsRef<SolanaRpcClient> + Send + Sync> SenderExt for T {
+    impl<T: AsRef<SolanaRpcClient> + Send + Sync> TxnSenderClientExt for T {
         async fn send_txn(
             &self,
             txn: &TransactionWithBlockhash,
@@ -371,6 +371,8 @@ pub mod send_txn {
         }
 
         async fn finalize_signature(&self, signature: &Signature) -> Result<(), SolanaClientError> {
+            // TODO: poll while checking against block height.
+            // Maybe return a max_block_height_surpassed error.
             Ok(self
                 .as_ref()
                 .poll_for_signature_with_commitment(signature, CommitmentConfig::finalized())
@@ -379,6 +381,33 @@ pub mod send_txn {
 
         async fn get_block_height(&self) -> Result<u64, SolanaClientError> {
             Ok(self.as_ref().get_block_height().await?)
+        }
+    }
+
+    /// Default store for `TxnSender`
+    pub struct NoopStore;
+
+    #[async_trait::async_trait]
+    impl TxnStore for NoopStore {
+        fn make_span(&self) -> tracing::Span {
+            tracing::info_span!("NoopStore")
+        }
+        async fn on_prepared(&self, _signature: &Signature) -> Result<(), TxnStorePrepareError> {
+            Ok(())
+        }
+        async fn on_sent(&self, _signature: &Signature) {}
+        async fn on_sent_retry(&self, _signature: &Signature, _attempt: usize) {}
+        async fn on_finalized(&self, _signature: &Signature) {}
+        async fn on_error(&self, _signature: &Signature, _err: TxnSenderError) {}
+    }
+
+    /// Default Sleeper for `TxnSender`.
+    pub struct BlockingSleeper;
+
+    #[async_trait::async_trait]
+    impl TxnSleeper for BlockingSleeper {
+        async fn sleep(&self, duration: Duration) {
+            thread::sleep(duration);
         }
     }
 
@@ -414,9 +443,9 @@ pub mod send_txn {
             fn make_span(&self) -> tracing::Span {
                 tracing::info_span!("mock store")
             }
-            async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStoreError> {
+            async fn on_prepared(&self, signature: &Signature) -> Result<(), TxnStorePrepareError> {
                 if self.fail_prepared {
-                    return Err(TxnStoreError::new("mock failure"));
+                    return Err(TxnStorePrepareError::new("mock failure"));
                 }
                 self.record_call(format!("on_prepared: {signature}"));
                 Ok(())
@@ -464,7 +493,7 @@ pub mod send_txn {
         }
 
         #[async_trait::async_trait]
-        impl SenderExt for MockClient {
+        impl TxnSenderClientExt for MockClient {
             async fn send_txn(
                 &self,
                 txn: &TransactionWithBlockhash,

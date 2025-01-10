@@ -84,6 +84,10 @@ pub struct TransactionWithBlockhash {
 }
 
 impl TransactionWithBlockhash {
+    pub fn inner_txn(&self) -> &solana_sdk::transaction::Transaction {
+        &self.inner
+    }
+
     pub fn get_signature(&self) -> &Signature {
         self.inner.get_signature()
     }

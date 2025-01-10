@@ -59,6 +59,7 @@ use client::SolanaRpcClient;
 use error::Error;
 use keypair::Pubkey;
 use solana_sdk::instruction::Instruction;
+use solana_sdk::signature::Signature;
 use std::sync::Arc;
 
 pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
@@ -83,6 +84,10 @@ pub struct TransactionWithBlockhash {
 }
 
 impl TransactionWithBlockhash {
+    pub fn get_signature(&self) -> &Signature {
+        self.inner.get_signature()
+    }
+
     pub fn try_sign<T: solana_sdk::signers::Signers + ?Sized>(
         &mut self,
         keypairs: &T,

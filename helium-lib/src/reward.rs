@@ -12,7 +12,7 @@ use crate::{
     rewards_oracle,
     solana_sdk::instruction::Instruction,
     token::{Token, TokenAmount},
-    TransactionWithBlockhash, TransactionOpts,
+    TransactionOpts, TransactionWithBlockhash,
 };
 use chrono::Utc;
 use futures::{
@@ -433,7 +433,10 @@ pub async fn lifetime<C: GetAnchorAccount>(
         .await
 }
 
-async fn oracle_sign(oracle: &str, txn: TransactionWithBlockhash) -> Result<TransactionWithBlockhash, Error> {
+async fn oracle_sign(
+    oracle: &str,
+    txn: TransactionWithBlockhash,
+) -> Result<TransactionWithBlockhash, Error> {
     #[derive(Debug, Serialize, Deserialize)]
     struct Data {
         data: Vec<u8>,

@@ -92,6 +92,10 @@ impl TransactionWithBlockhash {
         self.inner.get_signature()
     }
 
+    pub fn get_sent_block_height(&self) -> u64 {
+        self.block_height
+    }
+
     pub fn try_sign<T: solana_sdk::signers::Signers + ?Sized>(
         &mut self,
         keypairs: &T,

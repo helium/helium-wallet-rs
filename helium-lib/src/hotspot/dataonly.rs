@@ -9,11 +9,10 @@ use crate::{
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::{Keypair, Pubkey},
-    kta, mk_transaction_with_blockhash, priority_fee,
+    kta, message, mk_transaction_with_blockhash, priority_fee,
     programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     },
-    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
     token::Token,
     TransactionOpts,
@@ -21,11 +20,12 @@ use crate::{
 use helium_crypto::{PublicKey, Sign};
 use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use serde::{Deserialize, Serialize};
+use solana_sdk::transaction::VersionedTransaction;
 
 mod iot {
     use super::*;
 
-    pub async fn onboard_transaction<
+    pub async fn onboard_message<
         C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
     >(
         client: &C,
@@ -33,7 +33,7 @@ mod iot {
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
         opts: &TransactionOpts,
-    ) -> Result<(Transaction, u64), Error> {
+    ) -> Result<(message::VersionedMessage, u64), Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
@@ -105,14 +105,14 @@ mod iot {
             onboard_ix,
         ];
 
-        mk_transaction_with_blockhash(client, ixs, owner).await
+        message::mk_message(client, ixs, &opts.lut_addresses, owner).await
     }
 }
 
 mod mobile {
     use super::*;
 
-    pub async fn onboard_transaction<
+    pub async fn onboard_message<
         C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
     >(
         client: &C,
@@ -120,7 +120,7 @@ mod mobile {
         assertion: HotspotInfoUpdate,
         owner: &Pubkey,
         opts: &TransactionOpts,
-    ) -> Result<(Transaction, u64), Error> {
+    ) -> Result<(message::VersionedMessage, u64), Error> {
         fn mk_accounts(
             config_account: helium_entity_manager::DataOnlyConfigV0,
             owner: Pubkey,
@@ -193,24 +193,22 @@ mod mobile {
             onboard_ix,
         ];
 
-        mk_transaction_with_blockhash(client, ixs, owner).await
+        message::mk_message(client, ixs, &opts.lut_addresses, owner).await
     }
 }
 
-pub async fn onboard_transaction<
-    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
->(
+pub async fn onboard_message<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     subdao: SubDao,
     hotspot_key: &helium_crypto::PublicKey,
     assertion: HotspotInfoUpdate,
     owner: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     match subdao {
-        SubDao::Iot => iot::onboard_transaction(client, hotspot_key, assertion, owner, opts).await,
+        SubDao::Iot => iot::onboard_message(client, hotspot_key, assertion, owner, opts).await,
         SubDao::Mobile => {
-            mobile::onboard_transaction(client, hotspot_key, assertion, owner, opts).await
+            mobile::onboard_message(client, hotspot_key, assertion, owner, opts).await
         }
     }
 }
@@ -222,8 +220,8 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     assertion: HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) = onboard_transaction(
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = onboard_message(
         client,
         subdao,
         hotspot_key,
@@ -232,8 +230,8 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
         opts,
     )
     .await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }
 
 pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(

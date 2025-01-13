@@ -105,13 +105,13 @@ async fn perform_add(
         "d" | "devnet" => VERIFIER_URL_DEVNET,
         url => url,
     };
-    let transaction_opts = &commit.transaction_opts();
+    let transaction_opts = &commit.transaction_opts(&client);
 
     if !hotspot_issued {
         let (tx, _) =
             hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair, transaction_opts)
                 .await?;
-        let response = commit.maybe_commit(&tx, &client).await?;
+        let response = commit.maybe_commit(tx, &client).await?;
         print_json(&response.to_json())?;
     }
     // Only assert the Hotspot if either (a) it has already been issued before this cli
@@ -128,7 +128,7 @@ async fn perform_add(
             transaction_opts,
         )
         .await?;
-        print_json(&commit.maybe_commit(&tx, &client).await?.to_json())
+        print_json(&commit.maybe_commit(tx, &client).await?.to_json())
     } else {
         Ok(())
     }

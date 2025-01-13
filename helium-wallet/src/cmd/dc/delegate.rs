@@ -24,7 +24,7 @@ impl Cmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
 
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts();
+        let transaction_opts = self.commit.transaction_opts(&client);
         let (tx, _) = dc::delegate(
             &client,
             self.subdao,
@@ -34,6 +34,6 @@ impl Cmd {
             &transaction_opts,
         )
         .await?;
-        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
+        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

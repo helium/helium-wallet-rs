@@ -4,12 +4,12 @@ use crate::{
     client::SolanaRpcClient,
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
-    mk_transaction_with_blockhash,
-    solana_client::rpc_client::SerializableTransaction,
+    message,
     solana_sdk::{
         commitment_config::CommitmentConfig, signer::Signer, system_instruction,
-        transaction::Transaction,
+        transaction::VersionedTransaction,
     },
+    TransactionOpts,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -39,58 +39,62 @@ lazy_static::lazy_static! {
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
 
-pub async fn burn<C: AsRef<SolanaRpcClient>>(
+pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
-    keypair: &Keypair,
-) -> Result<(Transaction, u64), Error> {
-    let wallet_pubkey = keypair.pubkey();
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
     let ix = match token_amount.token.mint() {
         spl_mint if spl_mint == Token::Sol.mint() => {
             return Err(DecodeError::other("native token burn not supported").into());
         }
         spl_mint => {
-            let token_account = token_amount.token.associated_token_adress(&wallet_pubkey);
+            let token_account = token_amount.token.associated_token_adress(payer);
             anchor_spl::token::spl_token::instruction::burn_checked(
                 &anchor_spl::token::spl_token::id(),
                 &token_account,
                 spl_mint,
-                &wallet_pubkey,
-                &[&wallet_pubkey],
+                payer,
+                &[payer],
                 token_amount.amount,
                 token_amount.token.decimals(),
             )?
         }
     };
 
-    let (mut txn, latest_block_height) =
-        mk_transaction_with_blockhash(client, &[ix], &wallet_pubkey).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    message::mk_message(client, &[ix], &opts.lut_addresses, payer).await
 }
 
-pub async fn transfer<C: AsRef<SolanaRpcClient>>(
+pub async fn burn<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    token_amount: &TokenAmount,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
+}
+
+pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
-    keypair: &Keypair,
-) -> Result<(Transaction, u64), Error> {
-    let wallet_public_key = keypair.pubkey();
-
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
     let mut ixs = vec![];
     for (payee, token_amount) in transfers {
         match token_amount.token.mint() {
             spl_mint if spl_mint == Token::Sol.mint() => {
-                let ix =
-                    system_instruction::transfer(&wallet_public_key, payee, token_amount.amount);
+                let ix = system_instruction::transfer(payer, payee, token_amount.amount);
                 ixs.push(ix);
             }
             spl_mint => {
-                let source_pubkey = token_amount
-                    .token
-                    .associated_token_adress(&wallet_public_key);
+                let source_pubkey = token_amount.token.associated_token_adress(payer);
                 let destination_pubkey = token_amount.token.associated_token_adress(payee);
                 let ix = spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-                    &wallet_public_key,
+                    payer,
                     payee,
                     spl_mint,
                     &anchor_spl::token::spl_token::id(),
@@ -102,7 +106,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
                     &source_pubkey,
                     token_amount.token.mint(),
                     &destination_pubkey,
-                    &wallet_public_key,
+                    payer,
                     &[],
                     token_amount.amount,
                     token_amount.token.decimals(),
@@ -111,11 +115,18 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
             }
         }
     }
+    message::mk_message(client, &ixs, &opts.lut_addresses, payer).await
+}
 
-    let (mut txn, latest_block_height) =
-        mk_transaction_with_blockhash(client, &ixs, &wallet_public_key).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+pub async fn transfer<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    transfers: &[(Pubkey, TokenAmount)],
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }
 
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(

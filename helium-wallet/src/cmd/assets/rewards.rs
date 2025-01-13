@@ -55,7 +55,7 @@ impl ClaimCmd {
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts();
+        let transaction_opts = self.commit.transaction_opts(&client);
 
         let token_amount = self
             .amount
@@ -75,7 +75,7 @@ impl ClaimCmd {
 
         let claim_response = self
             .commit
-            .maybe_commit(&tx, &client)
+            .maybe_commit(tx, &client)
             .await
             .context("while claiming rewards")?;
         print_json(&claim_response.to_json())

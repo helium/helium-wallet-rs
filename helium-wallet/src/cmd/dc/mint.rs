@@ -41,10 +41,10 @@ impl Cmd {
             (None, Some(dc)) => TokenAmount::from_u64(Token::Dc, dc),
             _ => return Err(anyhow!("Must specify either HNT or DC")),
         };
-        let transaction_opts = self.commit.transaction_opts();
+        let transaction_opts = self.commit.transaction_opts(&client);
 
         let keypair = wallet.decrypt(password.as_bytes())?;
         let (tx, _) = dc::mint(&client, amount, payee, &keypair, &transaction_opts).await?;
-        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
+        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

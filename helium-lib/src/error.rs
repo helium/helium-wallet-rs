@@ -29,6 +29,10 @@ pub enum Error {
     Program(#[from] solana_program::program_error::ProgramError),
     #[error("solana: {0}")]
     Solana(Box<solana_client::client_error::ClientError>),
+    #[error("instruction: {0}")]
+    Instruction(#[from] solana_sdk::instruction::InstructionError),
+    #[error("message: {0}")]
+    Cmopile(#[from] solana_sdk::message::CompileError),
     #[error("signing: {0}")]
     Signing(#[from] solana_sdk::signer::SignerError),
     #[error("crypto: {0}")]

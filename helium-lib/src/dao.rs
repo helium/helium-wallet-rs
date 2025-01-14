@@ -1,6 +1,6 @@
 use crate::{
-    data_credits, entity_key::AsEntityKey, get_current_epoch, helium_entity_manager,
-    helium_sub_daos, keypair::Pubkey, lazy_distributor, metaplex, rewards_oracle, token::Token,
+    asset, data_credits, entity_key::AsEntityKey, get_current_epoch, helium_entity_manager,
+    helium_sub_daos, keypair::Pubkey, lazy_distributor, rewards_oracle, token::Token,
 };
 
 use sha2::{Digest, Sha256};
@@ -53,19 +53,19 @@ impl Dao {
     }
 
     pub fn collection_metadata_key(&self, collection_key: &Pubkey) -> Pubkey {
-        metaplex::collection_metadata_key(collection_key)
+        asset::collection_metadata_key(collection_key)
     }
 
     pub fn collection_master_edition_key(&self, collection_key: &Pubkey) -> Pubkey {
-        metaplex::collection_master_edition_key(collection_key)
+        asset::collection_master_edition_key(collection_key)
     }
 
     pub fn merkle_tree_authority(&self, merkle_tree: &Pubkey) -> Pubkey {
-        metaplex::merkle_tree_authority_key(merkle_tree)
+        asset::merkle_tree_authority_key(merkle_tree)
     }
 
     pub fn bubblegum_signer(&self) -> Pubkey {
-        metaplex::bubblegum_signer_key()
+        asset::bubblegum_signer_key()
     }
 
     pub fn entity_creator_key(&self) -> Pubkey {

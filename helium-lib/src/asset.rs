@@ -8,13 +8,48 @@ use crate::{
     keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
     kta, mk_transaction_with_blockhash,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
-    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    programs::{
+        SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
+    },
     solana_sdk::{instruction::AccountMeta, transaction::Transaction},
     TransactionOpts,
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
+
+pub fn bubblegum_signer_key() -> Pubkey {
+    Pubkey::find_program_address(&[b"collection_cpi"], &mpl_bubblegum::ID).0
+}
+
+pub fn collection_metadata_key(collection_key: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    )
+    .0
+}
+
+pub fn collection_master_edition_key(collection_key: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+            b"edition",
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    )
+    .0
+}
+
+pub fn merkle_tree_authority_key(merkle_tree: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[merkle_tree.as_ref()], &mpl_bubblegum::ID).0
+}
 
 pub fn shared_merkle_key(proof_size: u8) -> Pubkey {
     Pubkey::find_program_address(

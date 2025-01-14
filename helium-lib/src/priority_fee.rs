@@ -10,7 +10,6 @@ use crate::{
         signers::Signers,
         transaction::Transaction,
     },
-    transaction::replace_or_insert_instruction,
 };
 use itertools::Itertools;
 
@@ -132,14 +131,14 @@ pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
 
 pub async fn compute_budget_for_instructions<C: AsRef<SolanaRpcClient>, T: Signers + ?Sized>(
     client: &C,
-    instructions: Vec<Instruction>,
+    instructions: &[Instruction],
     signers: &T,
     compute_multiplier: f32,
     payer: Option<&Pubkey>,
     blockhash: Option<solana_program::hash::Hash>,
 ) -> Result<solana_sdk::instruction::Instruction, crate::error::Error> {
     // Check for existing compute unit limit instruction and replace it if found
-    let mut updated_instructions = instructions.clone();
+    let mut updated_instructions = instructions.to_vec();
     for ix in &mut updated_instructions {
         if ix.program_id == solana_sdk::compute_budget::id()
             && ix.data.first()
@@ -174,18 +173,18 @@ pub async fn compute_budget_for_instructions<C: AsRef<SolanaRpcClient>, T: Signe
 
 pub async fn auto_compute_limit_and_price<C: AsRef<SolanaRpcClient>, T: Signers + ?Sized>(
     client: &C,
-    instructions: Vec<Instruction>,
+    instructions: &[Instruction],
     signers: &T,
     compute_multiplier: f32,
     payer: Option<&Pubkey>,
     blockhash: Option<solana_program::hash::Hash>,
 ) -> Result<Vec<Instruction>, Error> {
-    let mut updated_instructions = instructions.clone();
+    let mut updated_instructions = instructions.to_vec();
 
     // Compute budget instruction
     let compute_budget_ix = compute_budget_for_instructions(
         client,
-        instructions.clone(),
+        &updated_instructions,
         signers,
         compute_multiplier,
         payer,
@@ -204,7 +203,28 @@ pub async fn auto_compute_limit_and_price<C: AsRef<SolanaRpcClient>, T: Signers 
     let compute_price_ix =
         compute_price_instruction_for_accounts(client, &accounts, MIN_PRIORITY_FEE).await?;
 
-    replace_or_insert_instruction(&mut updated_instructions, compute_budget_ix, 0);
-    replace_or_insert_instruction(&mut updated_instructions, compute_price_ix, 1);
+    insert_or_replace_compute_instructions(
+        &mut updated_instructions,
+        compute_budget_ix,
+        compute_price_ix,
+    );
+
     Ok(updated_instructions)
+}
+
+fn insert_or_replace_compute_instructions(
+    instructions: &mut Vec<Instruction>,
+    budget_ix: Instruction,
+    price_ix: Instruction,
+) {
+    if let Some(pos) = instructions
+        .iter()
+        .position(|ix| ix.program_id == solana_sdk::compute_budget::id())
+    {
+        instructions[pos] = budget_ix;
+        instructions[pos + 1] = price_ix;
+    } else {
+        instructions.insert(0, budget_ix);
+        instructions.insert(1, price_ix);
+    }
 }

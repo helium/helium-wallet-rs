@@ -47,16 +47,8 @@ pub enum Error {
     Decode(#[from] DecodeError),
     #[error("encode: {0}")]
     Encode(#[from] EncodeError),
-    #[error("Wallet is not configured")]
-    WalletUnconfigured,
-    #[error("error: {0}")]
-    Error(String),
-}
-
-impl From<Box<dyn std::error::Error>> for Error {
-    fn from(err: Box<dyn std::error::Error>) -> Self {
-        Self::other(err.to_string())
-    }
+    #[error("Keypair is not configured")]
+    KeypairUnconfigured,
 }
 
 impl From<solana_client::client_error::ClientError> for Error {
@@ -91,10 +83,6 @@ impl Error {
             Self::Das(das_error) => das_error.is_account_not_found(),
             _ => false,
         }
-    }
-
-    pub fn other<S: ToString>(reason: S) -> Self {
-        Self::Error(reason.to_string())
     }
 }
 

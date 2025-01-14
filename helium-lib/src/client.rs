@@ -33,7 +33,7 @@ static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_V
 pub struct SolanaClient {
     pub inner: Arc<SolanaRpcClient>,
     pub base_url: String,
-    pub wallet: Option<Arc<Keypair>>,
+    pub keypair: Option<Arc<Keypair>>,
 }
 
 impl Default for SolanaClient {
@@ -44,7 +44,7 @@ impl Default for SolanaClient {
 }
 
 impl SolanaClient {
-    pub fn new(url: &str, wallet: Option<Arc<Keypair>>) -> Result<Self, Error> {
+    pub fn new(url: &str, keypair: Option<Arc<Keypair>>) -> Result<Self, Error> {
         let client = Arc::new(
             solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
                 url.to_string(),
@@ -55,7 +55,7 @@ impl SolanaClient {
         Ok(Self {
             inner: client,
             base_url: url.to_string(),
-            wallet,
+            keypair,
         })
     }
 
@@ -67,10 +67,10 @@ impl SolanaClient {
     }
 
     pub fn pubkey(&self) -> Result<Pubkey, Error> {
-        self.wallet
+        self.keypair
             .as_ref()
-            .map(|wallet| wallet.pubkey())
-            .ok_or_else(|| Error::WalletUnconfigured)
+            .map(|keypair| keypair.pubkey())
+            .ok_or_else(|| Error::KeypairUnconfigured)
     }
 }
 

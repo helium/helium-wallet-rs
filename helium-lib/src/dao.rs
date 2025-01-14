@@ -184,51 +184,31 @@ impl SubDao {
 
     pub fn rewardable_entity_config_key(&self) -> Pubkey {
         let sub_dao = self.key();
-        match self {
-            Self::Iot => {
-                Pubkey::find_program_address(
-                    &[
-                        b"rewardable_entity_config",
-                        &sub_dao.as_ref(),
-                        "IOT".as_bytes(),
-                    ],
-                    &helium_entity_manager::ID,
-                )
-                .0
-            }
-            Self::Mobile => {
-                Pubkey::find_program_address(
-                    &[
-                        b"rewardable_entity_config",
-                        &sub_dao.as_ref(),
-                        "MOBILE".as_bytes(),
-                    ],
-                    &helium_entity_manager::ID,
-                )
-                .0
-            }
-        }
+        let suffix = match self {
+            Self::Iot => b"IOT".as_ref(),
+            Self::Mobile => b"MOBILE".as_ref(),
+        };
+
+        Pubkey::find_program_address(
+            &[b"rewardable_entity_config", &sub_dao.as_ref(), suffix],
+            &helium_entity_manager::id(),
+        )
+        .0
     }
 
     pub fn info_key<E: AsEntityKey>(&self, entity_key: &E) -> Pubkey {
         let config_key = self.rewardable_entity_config_key();
         let hash = Sha256::digest(&entity_key.as_entity_key());
-        match self {
-            Self::Iot => {
-                Pubkey::find_program_address(
-                    &[b"iot_info", &config_key.as_ref(), &hash],
-                    &helium_entity_manager::ID,
-                )
-                .0
-            }
-            Self::Mobile => {
-                Pubkey::find_program_address(
-                    &[b"mobile_info", &config_key.as_ref(), &hash],
-                    &helium_entity_manager::ID,
-                )
-                .0
-            }
-        }
+        let prefix = match self {
+            Self::Iot => "iot_info",
+            Self::Mobile => "mobile_info",
+        };
+
+        Pubkey::find_program_address(
+            &[prefix.as_bytes(), &config_key.as_ref(), &hash],
+            &helium_entity_manager::id(),
+        )
+        .0
     }
 
     pub fn lazy_distributor_key(&self) -> Pubkey {
@@ -253,22 +233,16 @@ impl SubDao {
 
     pub fn config_key(&self) -> Pubkey {
         let sub_dao = self.key();
-        match self {
-            Self::Iot => {
-                Pubkey::find_program_address(
-                    &[b"iot_config", &sub_dao.as_ref()],
-                    &helium_entity_manager::ID,
-                )
-                .0
-            }
-            Self::Mobile => {
-                Pubkey::find_program_address(
-                    &[b"mobile_config", sub_dao.as_ref()],
-                    &helium_entity_manager::ID,
-                )
-                .0
-            }
-        }
+        let prefix = match self {
+            Self::Iot => "iot_config",
+            Self::Mobile => "mobile_config",
+        };
+
+        Pubkey::find_program_address(
+            &[prefix.as_bytes(), &sub_dao.as_ref()],
+            &helium_entity_manager::id(),
+        )
+        .0
     }
 
     pub fn epoch_info_key(&self) -> Pubkey {

@@ -201,18 +201,15 @@ pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccou
     client: &C,
     token: ClaimableToken,
     kta: &helium_entity_manager::KeyToAssetV0,
-    _recipient: &Pubkey,
+    destination_account: Option<Pubkey>,
     asset: &asset::Asset,
     asset_proof: &asset::AssetProof,
     payer: Pubkey,
 ) -> Result<Instruction, Error> {
     let ld_account = lazy_distributor(client, token).await?;
-    // TODO: Use recipient.destination != Pubkey::default() to construct
-    // a a custom distribute rewards v0 once it's exported from the
-    // lazy-distributor IDL
-    let accounts = lazy_distributor::accounts::DistributeCompressionRewardsV0 {
-        DistributeCompressionRewardsV0common:
-            lazy_distributor::accounts::DistributeCompressionRewardsV0Common {
+    macro_rules! mk_common {
+        ($name: ident, $dest_account: expr) => {
+            $name {
                 payer,
                 lazy_distributor: token.lazy_distributor_key(),
                 associated_token_program: spl_associated_token_account::id(),
@@ -224,15 +221,35 @@ pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccou
                 owner: asset.ownership.owner,
                 circuit_breaker: lazy_distributor_circuit_breaker(&ld_account),
                 recipient: token.receipient_key_from_kta(kta),
-                destination_account: Token::from(token)
-                    .associated_token_adress(&asset.ownership.owner),
-            },
-        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-        merkle_tree: asset.compression.tree,
+                destination_account: Token::from(token).associated_token_adress($dest_account),
+            }
+        };
+    }
+    use lazy_distributor::accounts::{
+        DistributeCompressionRewardsV0Common, DistributeCustomDestinationV0Common,
+    };
+    let accounts = if let Some(destination) = destination_account {
+        lazy_distributor::accounts::DistributeCustomDestinationV0 {
+            DistributeCustomDestinationV0common: mk_common!(
+                DistributeCustomDestinationV0Common,
+                &destination
+            ),
+        }
+        .to_account_metas(None)
+    } else {
+        lazy_distributor::accounts::DistributeCompressionRewardsV0 {
+            DistributeCompressionRewardsV0common: mk_common!(
+                DistributeCompressionRewardsV0Common,
+                &asset.ownership.owner
+            ),
+            compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+            merkle_tree: asset.compression.tree,
+        }
+        .to_account_metas(None)
     };
 
     let mut ix = Instruction {
-        accounts: accounts.to_account_metas(None),
+        accounts,
         program_id: lazy_distributor::id(),
         data: lazy_distributor::instruction::DistributeCompressionRewardsV0 {
             _args: lazy_distributor::DistributeCompressionRewardsArgsV0 {
@@ -319,16 +336,16 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     let kta = kta::for_entity_key(&entity_key).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 
-    let (init_ix, init_budget, recipient) =
+    let (init_ix, init_budget, destination) =
         if let Some(recipient) = recipient::for_kta(client, token, &kta).await? {
-            (None, 1, recipient.destination)
+            (
+                None,
+                1,
+                (recipient.destination != Pubkey::default()).then_some(recipient.destination),
+            )
         } else {
             let ix = recipient::init_instruction(token, &kta, &asset, &asset_proof, payer).await?;
-            (
-                Some(ix),
-                recipient::INIT_INSTRUCTION_BUDGET,
-                Pubkey::default(),
-            )
+            (Some(ix), recipient::INIT_INSTRUCTION_BUDGET, None)
         };
     let set_current_ix =
         set_current_rewards_instruction(token, kta_key, &kta, &lifetime_rewards).await?;
@@ -336,7 +353,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
         client,
         token,
         &kta,
-        &recipient,
+        destination,
         &asset,
         &asset_proof,
         *payer,

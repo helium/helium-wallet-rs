@@ -25,6 +25,10 @@ pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
 pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 
+pub fn is_devnet(url: &str) -> bool {
+    url == "d" || url.starts_with("devnet") || url.contains("test-helium")
+}
+
 #[derive(Clone)]
 pub struct Client {
     pub solana_client: Arc<SolanaRpcClient>,

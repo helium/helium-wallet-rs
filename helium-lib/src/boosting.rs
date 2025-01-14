@@ -5,9 +5,8 @@ use crate::{
     hexboosting,
     hexboosting::accounts::StartBoostV0,
     keypair::{Keypair, Pubkey},
-    mk_transaction_with_blockhash, priority_fee,
-    solana_client::rpc_client::SerializableTransaction,
-    solana_sdk::{instruction::Instruction, signer::Signer, transaction::Transaction},
+    message, priority_fee,
+    solana_sdk::{instruction::Instruction, signer::Signer, transaction::VersionedTransaction},
     TransactionOpts,
 };
 use chrono::{DateTime, Utc};
@@ -19,12 +18,12 @@ pub trait StartBoostingHex {
     fn activation_ts(&self) -> DateTime<Utc>;
 }
 
-pub async fn start_boost_transaction<C: AsRef<SolanaRpcClient>>(
+pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     keypair: &Keypair,
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     fn mk_accounts(
         start_authority: Pubkey,
         boost_config: Pubkey,
@@ -72,16 +71,16 @@ pub async fn start_boost_transaction<C: AsRef<SolanaRpcClient>>(
         start_ixs.as_slice(),
     ]
     .concat();
-    mk_transaction_with_blockhash(client, &ixs, &keypair.pubkey()).await
+    message::mk_message(client, &ixs, &opts.lut_addresses, &keypair.pubkey()).await
 }
+
 pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
     client: &C,
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
-        start_boost_transaction(client, keypair, updates, opts).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = start_boost_message(client, keypair, updates, opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }

@@ -11,6 +11,7 @@ pub mod hotspot;
 pub mod keypair;
 pub mod kta;
 pub mod memo;
+pub mod message;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;
@@ -66,12 +67,14 @@ pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Er
 
 pub struct TransactionOpts {
     pub min_priority_fee: u64,
+    pub lut_addresses: Vec<Pubkey>,
 }
 
 impl Default for TransactionOpts {
     fn default() -> Self {
         Self {
             min_priority_fee: priority_fee::MIN_PRIORITY_FEE,
+            lut_addresses: vec![message::COMMON_LUT],
         }
     }
 }

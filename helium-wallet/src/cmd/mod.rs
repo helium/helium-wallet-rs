@@ -3,13 +3,15 @@ use crate::{
     wallet::Wallet,
 };
 use helium_lib::{
-    b64, client,
+    b64,
+    client::{self, SolanaRpcClient},
     keypair::Keypair,
-    priority_fee,
+    message, priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
     },
+    solana_sdk::transaction::VersionedTransaction,
     TransactionOpts,
 };
 use serde_json::json;
@@ -96,9 +98,9 @@ pub struct CommitOpts {
 }
 
 impl CommitOpts {
-    pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>>(
+    pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>, T: Into<VersionedTransaction>>(
         &self,
-        tx: &helium_lib::solana_sdk::transaction::Transaction,
+        tx: T,
         client: &C,
     ) -> Result<CommitResponse> {
         fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
@@ -130,6 +132,7 @@ impl CommitOpts {
             mapped
         }
 
+        let versioned_tx = tx.into();
         if self.commit {
             let config = RpcSendTransactionConfig {
                 skip_preflight: self.skip_preflight,
@@ -137,14 +140,14 @@ impl CommitOpts {
             };
             client
                 .as_ref()
-                .send_transaction_with_config(tx, config)
+                .send_transaction_with_config(&versioned_tx, config)
                 .await
                 .map(Into::into)
                 .map_err(context_err)
         } else {
             client
                 .as_ref()
-                .simulate_transaction(tx)
+                .simulate_transaction(&versioned_tx)
                 .await
                 .map_err(context_err)?
                 .value
@@ -152,9 +155,14 @@ impl CommitOpts {
         }
     }
 
-    pub fn transaction_opts(&self) -> TransactionOpts {
+    pub fn transaction_opts<C: AsRef<SolanaRpcClient>>(&self, client: &C) -> TransactionOpts {
         TransactionOpts {
             min_priority_fee: self.min_priority_fee,
+            lut_addresses: if client::is_devnet(&client.as_ref().url()) {
+                vec![message::COMMON_LUT_DEVNET]
+            } else {
+                vec![message::COMMON_LUT]
+            },
         }
     }
 }

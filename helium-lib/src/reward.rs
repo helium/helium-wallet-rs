@@ -7,14 +7,18 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
     keypair::{Keypair, Pubkey},
-    kta, lazy_distributor, mk_transaction_with_blockhash, priority_fee,
+    kta, lazy_distributor, message, mk_transaction_with_blockhash, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
-    solana_sdk::{instruction::Instruction, transaction::Transaction},
+    solana_client::rpc_client::SerializableTransaction,
+    solana_sdk::{
+        instruction::Instruction,
+        signer::Signer,
+        transaction::{Transaction, VersionedTransaction},
+    },
     token::{Token, TokenAmount},
     TransactionOpts,
 };
-use anchor_client::solana_client::rpc_client::SerializableTransaction;
 use chrono::Utc;
 use futures::{
     stream::{self, StreamExt, TryStreamExt},
@@ -22,7 +26,6 @@ use futures::{
 };
 use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
-use solana_sdk::signer::Signer;
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Clone)]
@@ -198,14 +201,15 @@ pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccou
     client: &C,
     token: ClaimableToken,
     kta: &helium_entity_manager::KeyToAssetV0,
+    destination_account: Option<Pubkey>,
     asset: &asset::Asset,
     asset_proof: &asset::AssetProof,
     payer: Pubkey,
 ) -> Result<Instruction, Error> {
     let ld_account = lazy_distributor(client, token).await?;
-    let accounts = lazy_distributor::accounts::DistributeCompressionRewardsV0 {
-        DistributeCompressionRewardsV0common:
-            lazy_distributor::accounts::DistributeCompressionRewardsV0Common {
+    macro_rules! mk_common {
+        ($name: ident, $dest_account: expr) => {
+            $name {
                 payer,
                 lazy_distributor: token.lazy_distributor_key(),
                 associated_token_program: spl_associated_token_account::id(),
@@ -217,15 +221,35 @@ pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccou
                 owner: asset.ownership.owner,
                 circuit_breaker: lazy_distributor_circuit_breaker(&ld_account),
                 recipient: token.receipient_key_from_kta(kta),
-                destination_account: Token::from(token)
-                    .associated_token_adress(&asset.ownership.owner),
-            },
-        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-        merkle_tree: asset.compression.tree,
+                destination_account: Token::from(token).associated_token_adress($dest_account),
+            }
+        };
+    }
+    use lazy_distributor::accounts::{
+        DistributeCompressionRewardsV0Common, DistributeCustomDestinationV0Common,
+    };
+    let accounts = if let Some(destination) = destination_account {
+        lazy_distributor::accounts::DistributeCustomDestinationV0 {
+            DistributeCustomDestinationV0common: mk_common!(
+                DistributeCustomDestinationV0Common,
+                &destination
+            ),
+        }
+        .to_account_metas(None)
+    } else {
+        lazy_distributor::accounts::DistributeCompressionRewardsV0 {
+            DistributeCompressionRewardsV0common: mk_common!(
+                DistributeCompressionRewardsV0Common,
+                &asset.ownership.owner
+            ),
+            compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+            merkle_tree: asset.compression.tree,
+        }
+        .to_account_metas(None)
     };
 
     let mut ix = Instruction {
-        accounts: accounts.to_account_metas(None),
+        accounts,
         program_id: lazy_distributor::id(),
         data: lazy_distributor::instruction::DistributeCompressionRewardsV0 {
             _args: lazy_distributor::DistributeCompressionRewardsArgsV0 {
@@ -249,7 +273,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     encoded_entity_key: &entity_key::EncodedEntityKey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Option<(Transaction, u64)>, Error> {
+) -> Result<Option<(VersionedTransaction, u64)>, Error> {
     let Some((mut txn, block_height)) = claim_transaction(
         client,
         token,
@@ -264,7 +288,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     };
 
     txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok(Some((txn, block_height)))
+    Ok(Some((txn.into(), block_height)))
 }
 
 pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
@@ -312,16 +336,29 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     let kta = kta::for_entity_key(&entity_key).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 
-    let (init_ix, init_budget) = if recipient::for_kta(client, token, &kta).await?.is_none() {
-        let ix = recipient::init_instruction(token, &kta, &asset, &asset_proof, payer).await?;
-        (Some(ix), recipient::INIT_INSTRUCTION_BUDGET)
-    } else {
-        (None, 1)
-    };
+    let (init_ix, init_budget, destination) =
+        if let Some(recipient) = recipient::for_kta(client, token, &kta).await? {
+            (
+                None,
+                1,
+                (recipient.destination != Pubkey::default()).then_some(recipient.destination),
+            )
+        } else {
+            let ix = recipient::init_instruction(token, &kta, &asset, &asset_proof, payer).await?;
+            (Some(ix), recipient::INIT_INSTRUCTION_BUDGET, None)
+        };
     let set_current_ix =
         set_current_rewards_instruction(token, kta_key, &kta, &lifetime_rewards).await?;
-    let distribute_ix =
-        distribute_rewards_instruction(client, token, &kta, &asset, &asset_proof, *payer).await?;
+    let distribute_ix = distribute_rewards_instruction(
+        client,
+        token,
+        &kta,
+        destination,
+        &asset,
+        &asset_proof,
+        *payer,
+    )
+    .await?;
     let mut ixs_accounts = vec![];
     if let Some(ix) = &init_ix {
         ixs_accounts.extend_from_slice(&ix.accounts);
@@ -576,17 +613,17 @@ pub mod recipient {
 
     pub const INIT_INSTRUCTION_BUDGET: u32 = 150_000;
 
-    pub async fn init<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    pub async fn init_message<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         client: &C,
         token: ClaimableToken,
         entity_key: &E,
-        keypair: &Keypair,
+        payer: &Pubkey,
         opts: &TransactionOpts,
-    ) -> Result<(Transaction, u64), Error> {
+    ) -> Result<(message::VersionedMessage, u64), Error> {
         let kta = kta::for_entity_key(entity_key).await?;
         let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
 
-        let ix = init_instruction(token, &kta, &asset, &asset_proof, &keypair.pubkey()).await?;
+        let ix = init_instruction(token, &kta, &asset, &asset_proof, payer).await?;
         let ixs = &[
             priority_fee::compute_budget_instruction(INIT_INSTRUCTION_BUDGET),
             priority_fee::compute_price_instruction_for_accounts(
@@ -597,9 +634,19 @@ pub mod recipient {
             .await?,
             ix,
         ];
-        let (mut txn, block_height) =
-            mk_transaction_with_blockhash(client, ixs, &keypair.pubkey()).await?;
-        txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
+        message::mk_message(client, ixs, &opts.lut_addresses, payer).await
+    }
+
+    pub async fn init<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+        client: &C,
+        token: ClaimableToken,
+        entity_key: &E,
+        keypair: &Keypair,
+        opts: &TransactionOpts,
+    ) -> Result<(VersionedTransaction, u64), Error> {
+        let (msg, block_height) =
+            init_message(client, token, entity_key, &keypair.pubkey(), opts).await?;
+        let txn = VersionedTransaction::try_new(msg, &[keypair])?;
         Ok((txn, block_height))
     }
 }

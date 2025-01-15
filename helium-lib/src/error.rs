@@ -33,12 +33,6 @@ pub enum Error {
     Program(#[from] solana_program::program_error::ProgramError),
     #[error("solana: {0}")]
     Solana(Box<solana_client::client_error::ClientError>),
-    #[error("solana transaction: {0}")]
-    SolanaTransaction(#[from] solana_sdk::transaction::TransactionError),
-    #[error("solana pubsub: {0}")]
-    SolanaPubsub(#[from] solana_client::pubsub_client::PubsubClientError),
-    #[error("tpu sender: {0}")]
-    TPUSender(#[from] solana_client::tpu_client::TpuSenderError),
     #[error("signing: {0}")]
     Signing(#[from] solana_sdk::signer::SignerError),
     #[error("crypto: {0}")]

@@ -43,6 +43,14 @@ pub enum Error {
     Encode(#[from] EncodeError),
     #[error("Keypair is not configured")]
     KeypairUnconfigured,
+    #[error("encode: {0}")]
+    Error(String),
+}
+
+impl Error {
+    pub fn other<S: ToString>(reason: S) -> Self {
+        Self::Error(reason.to_string())
+    }
 }
 
 impl From<solana_client::client_error::ClientError> for Error {

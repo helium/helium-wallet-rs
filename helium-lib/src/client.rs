@@ -4,6 +4,7 @@ use crate::{
     error::{DecodeError, Error},
     is_zero,
     keypair::{self, Keypair, Pubkey},
+    priority_fee::auto_compute_limit_and_price,
     solana_client,
     solana_sdk::{commitment_config::CommitmentConfig, signer::Signer},
 };
@@ -11,6 +12,7 @@ use crate::{
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
+use solana_sdk::{instruction::Instruction, message::Message, transaction::Transaction};
 use std::{marker::Send, sync::Arc};
 use tracing::instrument;
 
@@ -71,6 +73,45 @@ impl SolanaClient {
             .as_ref()
             .map(|keypair| keypair.pubkey())
             .ok_or_else(|| Error::KeypairUnconfigured)
+    }
+
+    pub async fn send_instructions(
+        &self,
+        ixs: &[Instruction],
+        extra_signers: &[Keypair],
+    ) -> Result<(), Error> {
+        let keypair = self
+            .keypair
+            .as_ref()
+            .ok_or_else(|| Error::KeypairUnconfigured)?;
+
+        if ixs.is_empty() {
+            return Ok(());
+        }
+
+        let signers: Vec<&dyn Signer> = std::iter::once(keypair.as_ref() as &dyn Signer)
+            .chain(extra_signers.iter().map(|k| k as &dyn Signer))
+            .collect();
+
+        let recent_blockhash = self.inner.get_latest_blockhash().await?;
+        let optimized_ixs = auto_compute_limit_and_price(
+            &self.inner,
+            ixs,
+            &signers,
+            1.2,
+            Some(&keypair.pubkey()),
+            Some(recent_blockhash),
+        )
+        .await?;
+
+        let message = Message::new(&optimized_ixs, Some(&keypair.pubkey()));
+        let transaction = Transaction::new(&signers, message, recent_blockhash);
+
+        self.inner
+            .send_and_confirm_transaction_with_spinner(&transaction)
+            .await?;
+
+        Ok(())
     }
 }
 

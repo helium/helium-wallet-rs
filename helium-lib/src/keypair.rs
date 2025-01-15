@@ -2,7 +2,7 @@ use crate::{
     error::{DecodeError, Error},
     solana_sdk::signature::SignerError,
 };
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 #[derive(PartialEq, Debug)]
 pub struct Keypair(solana_sdk::signer::keypair::Keypair);
@@ -10,6 +10,7 @@ pub struct Keypair(solana_sdk::signer::keypair::Keypair);
 pub struct VoidKeypair;
 
 pub use solana_sdk::pubkey;
+use solana_sdk::signer::EncodableKey;
 pub use solana_sdk::{pubkey::Pubkey, pubkey::PUBKEY_BYTES, signature::Signature, signer::Signer};
 
 pub mod serde_pubkey {
@@ -139,6 +140,13 @@ impl Keypair {
         let entropy_bytes = helium_mnemonic::mnemonic_to_entropy(words)?;
         let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
             .map_err(|_| DecodeError::other("invalid words"))?;
+        Ok(Self(keypair).into())
+    }
+
+    pub fn from_path(path: PathBuf) -> Result<Self, Error> {
+        let keypair = solana_sdk::signer::keypair::Keypair::read_from_file(path).map_err(|e| {
+            Error::Decode(DecodeError::other(format!("failed to read keypair: {}", e)))
+        })?;
         Ok(Self(keypair).into())
     }
 }

@@ -137,19 +137,37 @@ pub async fn compute_budget_for_instructions<C: AsRef<SolanaRpcClient>, T: Signe
     payer: Option<&Pubkey>,
     blockhash: Option<solana_program::hash::Hash>,
 ) -> Result<solana_sdk::instruction::Instruction, crate::error::Error> {
+    const DEFAULT_COMPUTE_UNITS: u32 = 1_900_000;
     // Check for existing compute unit limit instruction and replace it if found
     let mut updated_instructions = instructions.to_vec();
-    for ix in &mut updated_instructions {
-        if ix.program_id == solana_sdk::compute_budget::id()
+
+    let has_compute_limit = updated_instructions.iter().any(|ix| {
+        ix.program_id == solana_sdk::compute_budget::id()
             && ix.data.first()
                 == solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(0)
                     .data
                     .first()
-        {
-            ix.data = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
-                1900000,
-            )
-            .data; // Replace limit
+    });
+
+    if !has_compute_limit {
+        updated_instructions.insert(0, compute_budget_instruction(DEFAULT_COMPUTE_UNITS));
+    } else {
+        // Replace existing compute unit limit instruction
+        for ix in &mut updated_instructions {
+            if ix.program_id == solana_sdk::compute_budget::id()
+                && ix.data.first()
+                    == solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                        0,
+                    )
+                    .data
+                    .first()
+            {
+                ix.data =
+                    solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                        DEFAULT_COMPUTE_UNITS,
+                    )
+                    .data;
+            }
         }
     }
 

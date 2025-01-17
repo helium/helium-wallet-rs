@@ -9,6 +9,7 @@ use crate::{
     solana_sdk::{commitment_config::CommitmentConfig, signer::Signer},
 };
 
+use anchor_client::solana_client::send_and_confirm_transactions_in_parallel;
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
@@ -54,6 +55,13 @@ impl SolanaClient {
             ),
         );
 
+        // Add debug print for keypair
+        if let Some(kp) = &keypair {
+            println!("Initializing SolanaClient with keypair: {:?}", kp.pubkey());
+        } else {
+            println!("Initializing SolanaClient without keypair");
+        }
+
         Ok(Self {
             inner: client,
             base_url: url.to_string(),
@@ -93,7 +101,11 @@ impl SolanaClient {
             .chain(extra_signers.iter().map(|k| k as &dyn Signer))
             .collect();
 
-        let recent_blockhash = self.inner.get_latest_blockhash().await?;
+        let (recent_blockhash, _) = self
+            .inner
+            .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
+            .await?;
+
         let optimized_ixs = auto_compute_limit_and_price(
             &self.inner,
             ixs,
@@ -106,7 +118,6 @@ impl SolanaClient {
 
         let message = Message::new(&optimized_ixs, Some(&keypair.pubkey()));
         let transaction = Transaction::new(&signers, message, recent_blockhash);
-
         self.inner
             .send_and_confirm_transaction_with_spinner(&transaction)
             .await?;

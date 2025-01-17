@@ -23,9 +23,3 @@ helium-proto = { git = "https://github.com/helium/proto", branch = "master", fea
     "services",
 ] }
 clap = { version = "4", features = ["derive"] }
-
-[patch.'https://github.com/helium/proto']
-helium-proto = { path = "../proto" }
-
-[patch.'https://github.com/helium/helium-anchor-gen.git']
-helium-anchor-gen = { path = "../helium-anchor-gen" }

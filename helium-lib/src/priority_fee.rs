@@ -54,6 +54,7 @@ mod helius {
                 "accountKeys": account_keys,
                 "options": {
                     "recommended": true,
+                    "evaluateEmptySlotAsZero": true
                 }
             }
         ]);

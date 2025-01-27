@@ -92,6 +92,9 @@ pub struct CommitOpts {
     /// Minimum priority fee in micro lamports
     #[arg(long, default_value_t = priority_fee::MIN_PRIORITY_FEE)]
     min_priority_fee: u64,
+    /// Maximum priority fee in micro lamports
+    #[arg(long, default_value_t = priority_fee::MAX_PRIORITY_FEE)]
+    max_priority_fee: u64,
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
@@ -158,6 +161,7 @@ impl CommitOpts {
     pub fn transaction_opts<C: AsRef<SolanaRpcClient>>(&self, client: &C) -> TransactionOpts {
         TransactionOpts {
             min_priority_fee: self.min_priority_fee,
+            max_priority_fee: self.max_priority_fee,
             lut_addresses: if client::is_devnet(&client.as_ref().url()) {
                 vec![message::COMMON_LUT_DEVNET]
             } else {

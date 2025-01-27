@@ -371,7 +371,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ixs_accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
     ];
@@ -629,7 +629,7 @@ pub mod recipient {
             priority_fee::compute_price_instruction_for_accounts(
                 client,
                 &ix.accounts,
-                opts.min_priority_fee,
+                opts.fee_range(),
             )
             .await?,
             ix,

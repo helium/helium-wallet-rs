@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use crate::{
     anchor_lang::ToAccountMetas, client::SolanaRpcClient, error::Error, keypair::Pubkey,
     solana_client,
@@ -6,17 +8,18 @@ use itertools::Itertools;
 
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
 pub const MIN_PRIORITY_FEE: u64 = 1;
+pub const MAX_PRIORITY_FEE: u64 = 2500000;
 
-pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
+pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
-    min_priority_fee: u64,
+    fee_range: RangeInclusive<u64>,
 ) -> Result<u64, Error> {
     let client_url = client.as_ref().url();
     if client_url.contains("mainnet.helius") {
-        helius::get_estimate_with_min(client, accounts, min_priority_fee).await
+        helius::get_estimate(client, accounts, fee_range).await
     } else {
-        base::get_estimate_with_min(client, accounts, min_priority_fee).await
+        base::get_estimate(client, accounts, fee_range).await
     }
 }
 
@@ -35,10 +38,10 @@ mod helius {
     use serde::Deserialize;
     use serde_json::json;
 
-    pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
+    pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
         client: &C,
         accounts: &impl ToAccountMetas,
-        min_priority_fee: u64,
+        fee_range: RangeInclusive<u64>,
     ) -> Result<u64, Error> {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -60,17 +63,19 @@ mod helius {
         ]);
 
         let response: Response = client.as_ref().send(request, params).await?;
-        Ok((response.priority_fee_estimate.ceil() as u64).max(min_priority_fee))
+        Ok((response.priority_fee_estimate.ceil() as u64)
+            .min(*fee_range.end())
+            .max(*fee_range.start()))
     }
 }
 
 mod base {
     use super::*;
 
-    pub async fn get_estimate_with_min<C: AsRef<SolanaRpcClient>>(
+    pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
         client: &C,
         accounts: &impl ToAccountMetas,
-        min_priority_fee: u64,
+        fee_range: RangeInclusive<u64>,
     ) -> Result<u64, Error> {
         let account_keys: Vec<_> = account_keys(accounts).collect();
         let recent_fees = client
@@ -92,14 +97,15 @@ mod base {
         let num_recent_fees = max_per_slot.len();
         let mid = num_recent_fees / 2;
         let estimate = if num_recent_fees == 0 {
-            min_priority_fee
+            *fee_range.start()
         } else if num_recent_fees % 2 == 0 {
             // If the number of samples is even, taken the mean of the two median fees
             (max_per_slot[mid - 1] + max_per_slot[mid]) / 2
         } else {
             max_per_slot[mid]
         }
-        .max(min_priority_fee);
+        .min(*fee_range.end())
+        .max(*fee_range.start());
         Ok(estimate)
     }
 }
@@ -115,8 +121,8 @@ pub fn compute_price_instruction(priority_fee: u64) -> solana_sdk::instruction::
 pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
-    min_priority_fee: u64,
+    fee_range: RangeInclusive<u64>,
 ) -> Result<solana_sdk::instruction::Instruction, Error> {
-    let priority_fee = get_estimate_with_min(client, accounts, min_priority_fee).await?;
+    let priority_fee = get_estimate(client, accounts, fee_range).await?;
     Ok(compute_price_instruction(priority_fee))
 }

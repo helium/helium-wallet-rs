@@ -59,7 +59,7 @@ use client::SolanaRpcClient;
 use error::Error;
 use keypair::Pubkey;
 use solana_sdk::{instruction::Instruction, transaction::Transaction};
-use std::sync::Arc;
+use std::{ops::RangeInclusive, sync::Arc};
 
 pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
     kta::init(solana_client)
@@ -67,6 +67,7 @@ pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Er
 
 pub struct TransactionOpts {
     pub min_priority_fee: u64,
+    pub max_priority_fee: u64,
     pub lut_addresses: Vec<Pubkey>,
 }
 
@@ -74,8 +75,15 @@ impl Default for TransactionOpts {
     fn default() -> Self {
         Self {
             min_priority_fee: priority_fee::MIN_PRIORITY_FEE,
+            max_priority_fee: priority_fee::MAX_PRIORITY_FEE,
             lut_addresses: vec![message::COMMON_LUT],
         }
+    }
+}
+
+impl TransactionOpts {
+    fn fee_range(&self) -> RangeInclusive<u64> {
+        RangeInclusive::new(self.min_priority_fee, self.max_priority_fee)
     }
 }
 

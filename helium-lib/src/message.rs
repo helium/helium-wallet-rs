@@ -8,6 +8,7 @@ use crate::{
     },
     Error, Pubkey,
 };
+use itertools::Itertools;
 
 pub const COMMON_LUT_DEVNET: Pubkey = pubkey!("FnqYkQ6ZKnVKdkvYCGsEeiP5qgGqVbcFUkGduy2ta4gA");
 pub const COMMON_LUT: Pubkey = pubkey!("43eY9L2spbM2b1MPDFFBStUiFGt29ziZ1nc1xbpzsfVt");
@@ -18,21 +19,21 @@ pub async fn get_lut_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     addresses: &[Pubkey],
 ) -> Result<Vec<AddressLookupTableAccount>, Error> {
-    use futures::{stream, StreamExt, TryStreamExt};
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    stream::iter(addresses)
-        .map(Ok)
-        .map_ok(|address| async move {
-            let raw = solana_client.get_account(address).await?;
-            let lut = AddressLookupTable::deserialize(&raw.data).map_err(Error::from)?;
-            Ok(AddressLookupTableAccount {
-                key: *address,
-                addresses: lut.addresses.to_vec(),
-            })
+    itertools::izip!(
+        addresses,
+        client.as_ref().get_multiple_accounts(addresses).await?
+    )
+    .filter_map(|(address, maybe_account)| {
+        maybe_account.map(|account| {
+            AddressLookupTable::deserialize(&account.data)
+                .map_err(Error::from)
+                .map(|lut| AddressLookupTableAccount {
+                    key: *address,
+                    addresses: lut.addresses.to_vec(),
+                })
         })
-        .try_buffered(addresses.len().min(5))
-        .try_collect()
-        .await
+    })
+    .try_collect()
 }
 
 pub async fn mk_message<C: AsRef<SolanaRpcClient>>(

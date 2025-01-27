@@ -22,7 +22,7 @@ use chrono::Utc;
 use futures::TryFutureExt;
 use itertools::{izip, Itertools};
 use rust_decimal::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
 pub mod dataonly;
@@ -293,7 +293,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     asset::burn(client, &kta.asset, keypair, opts).await
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "kebab-case")]
 pub enum HotspotMode {
@@ -363,7 +363,7 @@ impl HotspotPage {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Deserialize)]
 pub struct Hotspot {
     pub key: helium_crypto::PublicKey,
     #[serde(with = "serde_pubkey")]
@@ -399,7 +399,7 @@ impl Hotspot {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Copy)]
+#[derive(Serialize, Debug, Clone, Copy, Deserialize)]
 pub struct HotspotGeo {
     pub lat: f64,
     pub lng: f64,
@@ -415,7 +415,7 @@ impl From<h3o::CellIndex> for HotspotGeo {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Copy)]
+#[derive(Serialize, Debug, Clone, Copy, Deserialize)]
 pub struct HotspotLocation {
     #[serde(with = "serde_cell_index")]
     pub location: h3o::CellIndex,
@@ -492,8 +492,8 @@ pub mod serde_cell_index {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Hash)]
-#[serde(rename_all = "lowercase", untagged)]
+#[derive(Debug, Serialize, Clone, Hash, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "sub_dao")]
 pub enum HotspotInfo {
     Iot {
         mode: HotspotMode,
@@ -520,7 +520,7 @@ pub enum HotspotInfo {
     },
 }
 
-#[derive(Debug, Serialize, Clone, Hash)]
+#[derive(Debug, Serialize, Clone, Hash, Deserialize)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum MobileDeploymentInfo {
     WifiInfo {
@@ -541,7 +541,7 @@ pub enum MobileDeploymentInfo {
     },
 }
 
-#[derive(Debug, Serialize, Clone, Hash)]
+#[derive(Debug, Serialize, Clone, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct CbrsRadioInfo {
     // CBSD_ID or radio
@@ -681,7 +681,7 @@ impl HotspotInfoUpdate {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "snake_case")]
 pub enum MobileDeviceType {

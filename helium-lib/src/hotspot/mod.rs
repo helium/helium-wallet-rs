@@ -202,12 +202,8 @@ pub async fn direct_update_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>
 
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &accounts,
-            opts.min_priority_fee,
-        )
-        .await?,
+        priority_fee::compute_price_instruction_for_accounts(client, &accounts, opts.fee_range())
+            .await?,
         ix,
     ];
 

@@ -99,7 +99,7 @@ mod iot {
             priority_fee::compute_price_instruction_for_accounts(
                 client,
                 &onboard_ix.accounts,
-                opts.min_priority_fee,
+                opts.fee_range(),
             )
             .await?,
             onboard_ix,
@@ -187,7 +187,7 @@ mod mobile {
             priority_fee::compute_price_instruction_for_accounts(
                 client,
                 &onboard_ix.accounts,
-                opts.min_priority_fee,
+                opts.fee_range(),
             )
             .await?,
             onboard_ix,
@@ -291,12 +291,8 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
 
     let ixs = &[
         priority_fee::compute_budget_instruction(300_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &accounts,
-            opts.min_priority_fee,
-        )
-        .await?,
+        priority_fee::compute_price_instruction_for_accounts(client, &accounts, opts.fee_range())
+            .await?,
         issue_ix,
     ];
 

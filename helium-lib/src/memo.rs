@@ -19,7 +19,7 @@ pub async fn memo_message<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,

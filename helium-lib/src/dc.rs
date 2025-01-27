@@ -81,7 +81,7 @@ pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,
@@ -145,7 +145,7 @@ pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,
@@ -202,7 +202,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,
@@ -283,7 +283,7 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &burn_ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         burn_ix,

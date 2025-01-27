@@ -184,12 +184,8 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let ixs = &[
         compute_budget_instruction(200_000),
-        compute_price_instruction_for_accounts(
-            client,
-            &priority_fee_accounts,
-            opts.min_priority_fee,
-        )
-        .await?,
+        compute_price_instruction_for_accounts(client, &priority_fee_accounts, opts.fee_range())
+            .await?,
         transfer_ix,
     ];
 
@@ -244,12 +240,8 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let ixs = &[
         compute_budget_instruction(100_000),
-        compute_price_instruction_for_accounts(
-            client,
-            &priority_fee_accounts,
-            opts.min_priority_fee,
-        )
-        .await?,
+        compute_price_instruction_for_accounts(client, &priority_fee_accounts, opts.fee_range())
+            .await?,
         ix,
     ];
 

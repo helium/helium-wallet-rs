@@ -1,13 +1,19 @@
 use crate::{cmd::*, txn_envelope::TxnEnvelope};
-use helium_crypto::KeyTag;
+use chrono::{DateTime, Utc};
+use helium_crypto::{KeyTag, PublicKey};
 use helium_lib::{
     asset,
     client::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
     dao::SubDao,
-    hotspot::{self, HotspotInfoUpdate},
+    hotspot::{self, cert, HotspotInfoUpdate},
 };
 use helium_proto::BlockchainTxnAddGatewayV1;
 use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
+use std::{
+    fs::File,
+    io::{BufReader, Write},
+};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -172,6 +178,7 @@ impl MobileCmd {
 enum MobileCommand {
     Token(MobileToken),
     Onboard(Box<MobileOnboard>),
+    Cert(MobileCert),
 }
 
 impl MobileCommand {
@@ -179,6 +186,7 @@ impl MobileCommand {
         match self {
             Self::Token(cmd) => cmd.run(opts).await,
             Self::Onboard(cmd) => cmd.run(opts).await,
+            Self::Cert(cmd) => cmd.run(opts).await,
         }
     }
 }
@@ -244,5 +252,116 @@ impl MobileOnboard {
             &opts,
         )
         .await
+    }
+}
+
+/// Fetches or creates the cert for a mobile only data hotspot
+///
+///
+/// The given hotspot must be owned by the wallet requesting the cert.
+/// To create a hotspot provide the location of a file with the following information:
+///
+///{
+///    "address": "address of hotspot location",
+///    "lat": 12.0587,
+///    "lon": -67.08494,
+///    "nas_id": "coffee_shop_el_centro"
+///}
+///
+/// Provide the path to this file to create the certificate. For future certificate
+/// requests for the given hotspots the json file is no longer needed and can be ommitted.
+#[derive(Debug, Clone, clap::Args)]
+struct MobileCert {
+    /// The mobile hotspot to get or create the cert for
+    hotspot: PublicKey,
+    /// Location info file for a new cert
+    ///
+    /// If provided creates or gets the cert. If not provided just tries to rertieve an
+    /// existing cert.
+    info: Option<PathBuf>,
+    /// Ouptut path prefix
+    ///
+    /// On success, the certification will be stored in <output>/<hotspot>.cer
+    /// and the private key in <output>/<hotspot>.pk
+    #[arg(long)]
+    output: Option<PathBuf>,
+
+    #[arg(long)]
+    dry_run: bool,
+}
+
+fn read_info<P: AsRef<Path>>(path: P) -> Result<cert::LocationInfo> {
+    let file = File::open(path)?;
+    let result: MobileCertLocationInfo = serde_json::from_reader(BufReader::new(file))?;
+    Ok(result.into())
+}
+
+fn write_file<P: AsRef<Path>>(path: P, txt: &str) -> Result<()> {
+    let mut writer = File::create_new(path.as_ref())?;
+    writer.write_all(txt.as_bytes())?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MobileCertLocationInfo {
+    pub address: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub nas_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MobileCertInfo {
+    pub expiration: DateTime<Utc>,
+    pub private_key: PathBuf,
+    pub certificate: PathBuf,
+}
+
+impl From<MobileCertLocationInfo> for cert::LocationInfo {
+    fn from(value: MobileCertLocationInfo) -> Self {
+        Self {
+            location_address: value.address,
+            location_lat: value.lat,
+            location_lon: value.lon,
+            nas_ids: vec![value.nas_id],
+        }
+    }
+}
+
+impl MobileCert {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let location_info = self.info.as_ref().map(read_info).transpose()?;
+        let password = get_wallet_password(false)?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
+        let client = opts.client()?;
+
+        let cert_info = cert::get_or_create(
+            &client,
+            location_info,
+            self.hotspot.clone(),
+            &keypair,
+            self.dry_run,
+        )
+        .await?;
+
+        let base_path = self
+            .output
+            .to_owned()
+            .unwrap_or_default()
+            .as_path()
+            .with_file_name(self.hotspot.to_string());
+
+        let pk_path = base_path.as_path().with_extension("pk");
+        let cert_path = base_path.as_path().with_extension("cer");
+        write_file(&pk_path, &cert_info.cert.radsec_private_key)?;
+        write_file(&cert_path, &cert_info.cert.radsec_certificate)?;
+
+        let result = MobileCertInfo {
+            expiration: cert_info.cert.radsec_cert_expire,
+            private_key: pk_path,
+            certificate: cert_path,
+        };
+
+        print_json(&result)
     }
 }

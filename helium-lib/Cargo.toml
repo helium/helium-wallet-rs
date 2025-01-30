@@ -10,7 +10,7 @@ mnemonic = ["helium-mnemonic"]
 
 [dependencies]
 hex = "0.4"
-chrono = {version = "0", features = ["serde"]}
+chrono = { workspace = true }
 thiserror = "1"
 async-trait = "0"
 anchor-client = {version = "0.29.0", features = ["async"] }

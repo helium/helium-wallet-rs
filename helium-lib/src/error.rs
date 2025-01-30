@@ -1,4 +1,4 @@
-use crate::{anchor_client, client, onboarding, solana_client, token};
+use crate::{anchor_client, client, hotspot::cert, onboarding, solana_client, token};
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -15,6 +15,8 @@ pub enum Error {
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
+    #[error("cert client: {0}")]
+    Cert(#[from] cert::ClientError),
     #[error("grpc: {0}")]
     Grpc(#[from] tonic::Status),
     #[error("service: {0}")]
@@ -78,6 +80,8 @@ impl Error {
 pub enum EncodeError {
     #[error("proto: {0}")]
     Proto(#[from] helium_proto::EncodeError),
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
     #[error("bincode: {0}")]
     Bincode(#[from] bincode::Error),
     #[error("h3: {0}")]

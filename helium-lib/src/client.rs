@@ -23,6 +23,13 @@ pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?ses
 pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
 pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
+pub static CERT_URL_MAINNET: &str = "";
+pub static CERT_URL_DEVNET: &str = "https://api.svt.ims.nova.xyz/api/wifi/brownfield/inventory";
+pub static CERT_URL_MAINNET_ENV: &str = "CERT_MAINNET_URL";
+pub static CERT_URL_DEVNET_ENV: &str = "CERT_DEVNET_URL";
+pub static CERT_TOKEN_DEVNET_ENV: &str = "CERT_DEVNET_TOKEN";
+
+pub use crate::hotspot::cert::Client as CertClient;
 pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 
 pub fn is_devnet(url: &str) -> bool {
@@ -33,6 +40,7 @@ pub fn is_devnet(url: &str) -> bool {
 pub struct Client {
     pub solana_client: Arc<SolanaRpcClient>,
     pub das_client: Arc<DasClient>,
+    pub cert_client: Arc<CertClient>,
 }
 
 #[async_trait::async_trait]
@@ -104,19 +112,35 @@ impl GetAnchorAccount for Client {
 impl TryFrom<&str> for Client {
     type Error = Error;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        fn env_or(key: &str, default: &str) -> String {
-            std::env::var(key).unwrap_or_else(|_| default.to_string())
+        fn maybe_env(key: &str) -> Option<String> {
+            std::env::var(key).ok()
         }
-        let url = match value {
-            "m" | "mainnet-beta" => &env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
-            "d" | "devnet" => &env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
-            url => url,
+        fn env_or(key: &str, default: &str) -> String {
+            maybe_env(key).unwrap_or_else(|| default.to_string())
+        }
+        let rpc_url = match value {
+            "m" | "mainnet-beta" => env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
+            "d" | "devnet" => env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
+            url => url.to_string(),
         };
-        let das_client = Arc::new(DasClient::with_base_url(url)?);
-        let solana_client = Arc::new(SolanaRpcClient::new(url.to_string()));
+        let (cert_url, cert_token) = match value {
+            "d" | "devnet" => (
+                env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
+                maybe_env(CERT_TOKEN_DEVNET_ENV),
+            ),
+            url if is_devnet(url) => (
+                env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
+                maybe_env(CERT_TOKEN_DEVNET_ENV),
+            ),
+            _url => (env_or(CERT_URL_MAINNET_ENV, CERT_URL_MAINNET), None),
+        };
+        let das_client = Arc::new(DasClient::with_base_url(&rpc_url)?);
+        let solana_client = Arc::new(SolanaRpcClient::new(rpc_url));
+        let cert_client = Arc::new(CertClient::new(&cert_url, cert_token)?);
         Ok(Self {
             solana_client,
             das_client,
+            cert_client,
         })
     }
 }
@@ -130,6 +154,12 @@ impl AsRef<SolanaRpcClient> for Client {
 impl AsRef<DasClient> for Client {
     fn as_ref(&self) -> &DasClient {
         &self.das_client
+    }
+}
+
+impl AsRef<CertClient> for Client {
+    fn as_ref(&self) -> &CertClient {
+        &self.cert_client
     }
 }
 

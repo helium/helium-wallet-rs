@@ -2611,6 +2611,7 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "byteorder",
+ "chrono",
  "clap 4.5.23",
  "dialoguer 0.8.0",
  "helium-crypto",

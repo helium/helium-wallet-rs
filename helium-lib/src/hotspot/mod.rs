@@ -25,6 +25,7 @@ use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
+pub mod cert;
 pub mod dataonly;
 pub mod info;
 

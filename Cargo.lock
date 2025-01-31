@@ -2528,7 +2528,7 @@ dependencies = [
 
 [[package]]
 name = "helium-lib"
-version = "0.0.1-rc.1"
+version = "0.0.1-rc.2"
 dependencies = [
  "anchor-client",
  "anchor-spl",
@@ -2606,7 +2606,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "2.0.2-rc.1"
+version = "2.0.2-rc.2"
 dependencies = [
  "aes-gcm",
  "anyhow",

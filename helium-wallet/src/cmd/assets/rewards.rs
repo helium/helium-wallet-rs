@@ -18,6 +18,7 @@ impl Cmd {
 pub enum RewardsCommand {
     Claim(ClaimCmd),
     Pending(PendingCmd),
+    Recipient(RecipientCmd),
     Lifetime(LifetimeCmd),
     MaxClaim(MaxClaimCmd),
 }
@@ -26,6 +27,7 @@ impl RewardsCommand {
     pub async fn run(&self, opts: Opts) -> Result {
         match self {
             Self::Claim(cmd) => cmd.run(opts).await,
+            Self::Recipient(cmd) => cmd.run(opts).await,
             Self::MaxClaim(cmd) => cmd.run(opts).await,
             Self::Pending(cmd) => cmd.run(opts).await,
             Self::Lifetime(cmd) => cmd.run(opts).await,
@@ -33,8 +35,8 @@ impl RewardsCommand {
     }
 }
 
+/// Claim rewards for a given hotspot
 #[derive(Debug, Clone, clap::Args)]
-/// List current (total lifetime) rewards issued for a given entity key
 pub struct ClaimCmd {
     /// Token for command
     pub token: ClaimableToken,
@@ -79,6 +81,42 @@ impl ClaimCmd {
             .await
             .context("while claiming rewards")?;
         print_json(&claim_response.to_json())
+    }
+}
+
+/// Get or set the the recipient for rewards
+#[derive(Debug, Clone, clap::Args)]
+pub struct RecipientCmd {
+    /// Token for command
+    pub token: ClaimableToken,
+    /// The hotspot to get or set the reward recipient for
+    #[clap(flatten)]
+    pub entity_key: entity_key::EncodedEntityKey,
+    /// The recipient to send rewards to
+    pub recipient: Option<helium_lib::keypair::Pubkey>,
+    /// Commit the set transaction.
+    #[command(flatten)]
+    pub commit: CommitOpts,
+}
+
+impl RecipientCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        // let password = get_wallet_password(false)?;
+        // let keypair = opts.load_keypair(password.as_bytes())?;
+        let client = opts.client()?;
+        let transaction_opts = self.commit.transaction_opts(&client);
+
+        let destination = reward::recipient::destination::for_entity_key(
+            &client,
+            self.token,
+            &self.entity_key.as_entity_key()?,
+        )
+        .await?;
+
+        let json = json!({
+            "recipient": destination.to_string(),
+        });
+        print_json(&json)
     }
 }
 

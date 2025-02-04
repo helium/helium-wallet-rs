@@ -547,6 +547,15 @@ pub mod recipient {
         Ok(client.anchor_account(&recipient_key).await.ok())
     }
 
+    pub async fn for_entity_key<C: GetAnchorAccount, E: AsEntityKey>(
+        client: &C,
+        token: ClaimableToken,
+        entity_key: &E,
+    ) -> Result<Option<lazy_distributor::RecipientV0>, Error> {
+        let kta = kta::for_entity_key(entity_key).await?;
+        for_kta(client, token, &kta).await
+    }
+
     pub async fn for_ktas<C: GetAnchorAccount>(
         client: &C,
         token: ClaimableToken,
@@ -557,6 +566,15 @@ pub mod recipient {
             .map(|kta| token.receipient_key_from_kta(kta))
             .collect();
         client.anchor_accounts(&recipient_keys).await
+    }
+
+    pub async fn for_entity_keys<C: GetAnchorAccount, E: AsEntityKey>(
+        client: &C,
+        token: ClaimableToken,
+        entity_keys: &[E],
+    ) -> Result<Vec<Option<lazy_distributor::RecipientV0>>, Error> {
+        let ktas = kta::for_entity_keys(entity_keys).await?;
+        for_ktas(client, token, &ktas).await
     }
 
     pub async fn init_instruction(
@@ -648,6 +666,57 @@ pub mod recipient {
             init_message(client, token, entity_key, &keypair.pubkey(), opts).await?;
         let txn = VersionedTransaction::try_new(msg, &[keypair])?;
         Ok((txn, block_height))
+    }
+
+    pub mod destination {
+        use super::*;
+
+        pub async fn for_kta<C: GetAnchorAccount + AsRef<DasClient>>(
+            client: &C,
+            token: ClaimableToken,
+            kta: &helium_entity_manager::KeyToAssetV0,
+        ) -> Result<Pubkey, Error> {
+            let destination = super::for_kta(client, token, &kta)
+                .await?
+                .map(|recipient| recipient.destination)
+                .unwrap_or(Pubkey::default());
+            if destination == Pubkey::default() {
+                let asset = asset::for_kta(client, kta).await?;
+                Ok(asset.ownership.owner)
+            } else {
+                Ok(destination)
+            }
+        }
+
+        pub async fn for_entity_key<C: GetAnchorAccount + AsRef<DasClient>, E: AsEntityKey>(
+            client: &C,
+            token: ClaimableToken,
+            entity_key: &E,
+        ) -> Result<Pubkey, Error> {
+            let kta = kta::for_entity_key(entity_key).await?;
+            for_kta(client, token, &kta).await
+        }
+
+        pub async fn for_ktas<C: GetAnchorAccount>(
+            client: &C,
+            token: ClaimableToken,
+            ktas: &[helium_entity_manager::KeyToAssetV0],
+        ) -> Result<Pubkey, Error> {
+            let recipient_keys: Vec<Pubkey> = ktas
+                .iter()
+                .map(|kta| token.receipient_key_from_kta(kta))
+                .collect();
+            client.anchor_accounts(&recipient_keys).await
+        }
+
+        pub async fn for_entity_keys<C: GetAnchorAccount, E: AsEntityKey>(
+            client: &C,
+            token: ClaimableToken,
+            entity_keys: &[E],
+        ) -> Result<Vec<Pubkey>, Error> {
+            let ktas = kta::for_entity_keys(entity_keys).await?;
+            for_ktas(client, token, &ktas).await
+        }
     }
 }
 

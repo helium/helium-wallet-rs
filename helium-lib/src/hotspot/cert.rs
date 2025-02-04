@@ -101,8 +101,6 @@ impl LocationData {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct LocationInfo {
     pub location_address: String,
-    pub location_lat: f64,
-    pub location_lon: f64,
     /// NAS ID. Only one nas_id is supported
     pub nas_ids: Vec<String>,
 }

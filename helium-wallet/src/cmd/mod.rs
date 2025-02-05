@@ -8,8 +8,7 @@ use helium_lib::{
     keypair::Keypair,
     message, priority_fee,
     solana_client::{
-        self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
-        rpc_response::RpcSimulateTransactionResult,
+        self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
     },
     solana_sdk::transaction::VersionedTransaction,
     TransactionOpts,
@@ -137,13 +136,9 @@ impl CommitOpts {
 
         let versioned_tx = tx.into();
         if self.commit {
-            let config = RpcSendTransactionConfig {
-                skip_preflight: self.skip_preflight,
-                ..Default::default()
-            };
             client
                 .as_ref()
-                .send_transaction_with_config(&versioned_tx, config)
+                .send_and_confirm_transaction(&versioned_tx)
                 .await
                 .map(Into::into)
                 .map_err(context_err)

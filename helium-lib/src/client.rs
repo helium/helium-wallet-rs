@@ -275,6 +275,23 @@ impl DasClient {
     }
 
     #[instrument(skip(self), level = "trace")]
+    pub async fn get_asset_batch(
+        &self,
+        addresses: &[Pubkey],
+    ) -> Result<Vec<asset::Asset>, DasClientError> {
+        let body = jsonrpc_client::Request::new_v2("getAssetBatch")
+            .with_argument("ids".to_string(), addresses)?
+            .serialize()?;
+
+        let response = Result::from(
+            SendRequest::send_request::<Vec<asset::Asset>>(self, self.base_url.clone(), body)
+                .await?
+                .payload,
+        )?;
+        Ok(response)
+    }
+
+    #[instrument(skip(self), level = "trace")]
     pub async fn get_asset_proof(
         &self,
         address: &Pubkey,

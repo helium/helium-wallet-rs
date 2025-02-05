@@ -85,7 +85,7 @@ impl ClaimableToken {
         );
         key
     }
-    pub fn receipient_key_from_kta(&self, kta: &helium_entity_manager::KeyToAssetV0) -> Pubkey {
+    pub fn recipient_key_from_kta(&self, kta: &helium_entity_manager::KeyToAssetV0) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[
                 b"recipient",
@@ -175,7 +175,7 @@ async fn set_current_rewards_instruction(
     let accounts = rewards_oracle::accounts::SetCurrentRewardsWrapperV1 {
         oracle: reward.oracle.key,
         lazy_distributor: token.lazy_distributor_key(),
-        recipient: token.receipient_key_from_kta(kta),
+        recipient: token.recipient_key_from_kta(kta),
         lazy_distributor_program: lazy_distributor::id(),
         system_program: solana_sdk::system_program::id(),
         key_to_asset: kta_key,
@@ -220,7 +220,7 @@ pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccou
                 circuit_breaker_program: circuit_breaker::id(),
                 owner: asset.ownership.owner,
                 circuit_breaker: lazy_distributor_circuit_breaker(&ld_account),
-                recipient: token.receipient_key_from_kta(kta),
+                recipient: token.recipient_key_from_kta(kta),
                 destination_account: Token::from(token).associated_token_adress($dest_account),
             }
         };
@@ -543,7 +543,7 @@ pub mod recipient {
         token: ClaimableToken,
         kta: &helium_entity_manager::KeyToAssetV0,
     ) -> Result<Option<lazy_distributor::RecipientV0>, Error> {
-        let recipient_key = token.receipient_key_from_kta(kta);
+        let recipient_key = token.recipient_key_from_kta(kta);
         Ok(client.anchor_account(&recipient_key).await.ok())
     }
 
@@ -563,7 +563,7 @@ pub mod recipient {
     ) -> Result<Vec<Option<lazy_distributor::RecipientV0>>, Error> {
         let recipient_keys: Vec<Pubkey> = ktas
             .iter()
-            .map(|kta| token.receipient_key_from_kta(kta))
+            .map(|kta| token.recipient_key_from_kta(kta))
             .collect();
         client.anchor_accounts(&recipient_keys).await
     }
@@ -594,7 +594,7 @@ pub mod recipient {
             lazy_distributor::accounts::InitializeCompressionRecipientV0 {
                 payer,
                 lazy_distributor: token.lazy_distributor_key(),
-                recipient: token.receipient_key_from_kta(kta),
+                recipient: token.recipient_key_from_kta(kta),
                 merkle_tree: tree,
                 owner,
                 delegate: owner,
@@ -676,7 +676,7 @@ pub mod recipient {
             token: ClaimableToken,
             kta: &helium_entity_manager::KeyToAssetV0,
         ) -> Result<Pubkey, Error> {
-            let destination = super::for_kta(client, token, &kta)
+            let destination = super::for_kta(client, token, kta)
                 .await?
                 .map(|recipient| recipient.destination)
                 .unwrap_or(Pubkey::default());
@@ -688,6 +688,45 @@ pub mod recipient {
             }
         }
 
+        pub async fn for_ktas<C: GetAnchorAccount + AsRef<DasClient>>(
+            client: &C,
+            token: ClaimableToken,
+            ktas: &[helium_entity_manager::KeyToAssetV0],
+        ) -> Result<Vec<Pubkey>, Error> {
+            // Get all recipients and map to destination accounts
+            let mut maybe_destinations = super::for_ktas(client, token, ktas)
+                .await?
+                .into_iter()
+                .map(|maybe_recipient| maybe_recipient.map(|recipient| recipient.destination))
+                .collect_vec();
+            // Find all None or default destinations and map the asset key to that index
+            let asset_idxs: HashMap<Pubkey, usize> = ktas
+                .iter()
+                .zip(&maybe_destinations)
+                .enumerate()
+                .filter_map(
+                    |(index, (kta, maybe_destination))| match maybe_destination {
+                        None => Some((kta.asset, index)),
+                        Some(pubkey) if pubkey == &Pubkey::default() => Some((kta.asset, index)),
+                        _ => None,
+                    },
+                )
+                .collect();
+            // Get assets for None destinations
+            let asset_keys = asset_idxs.keys().map(ToOwned::to_owned).collect_vec();
+            let assets = asset::get_many(client, &asset_keys).await?;
+            // Replace None or default destinations with the found asset owner
+            assets.into_iter().for_each(|asset| {
+                if let Some(recipient_index) = asset_idxs.get(&asset.id) {
+                    if let Some(target) = maybe_destinations.get_mut(*recipient_index) {
+                        *target = Some(asset.ownership.owner);
+                    }
+                }
+            });
+
+            Ok(maybe_destinations.into_iter().flatten().collect())
+        }
+
         pub async fn for_entity_key<C: GetAnchorAccount + AsRef<DasClient>, E: AsEntityKey>(
             client: &C,
             token: ClaimableToken,
@@ -697,25 +736,116 @@ pub mod recipient {
             for_kta(client, token, &kta).await
         }
 
-        pub async fn for_ktas<C: GetAnchorAccount>(
-            client: &C,
-            token: ClaimableToken,
-            ktas: &[helium_entity_manager::KeyToAssetV0],
-        ) -> Result<Pubkey, Error> {
-            let recipient_keys: Vec<Pubkey> = ktas
-                .iter()
-                .map(|kta| token.receipient_key_from_kta(kta))
-                .collect();
-            client.anchor_accounts(&recipient_keys).await
-        }
-
-        pub async fn for_entity_keys<C: GetAnchorAccount, E: AsEntityKey>(
+        pub async fn for_entity_keys<C: GetAnchorAccount + AsRef<DasClient>, E: AsEntityKey>(
             client: &C,
             token: ClaimableToken,
             entity_keys: &[E],
         ) -> Result<Vec<Pubkey>, Error> {
             let ktas = kta::for_entity_keys(entity_keys).await?;
             for_ktas(client, token, &ktas).await
+        }
+
+        pub async fn update_instruction(
+            token: ClaimableToken,
+            kta: &helium_entity_manager::KeyToAssetV0,
+            asset: &asset::Asset,
+            asset_proof: &asset::AssetProof,
+            destination: &Pubkey,
+        ) -> Result<Instruction, Error> {
+            use lazy_distributor::{
+                instruction::UpdateCompressionDestinationV0, UpdateCompressionDestinationArgsV0,
+            };
+            fn mk_accounts(
+                owner: Pubkey,
+                token: ClaimableToken,
+                destination: Pubkey,
+                merkle_tree: Pubkey,
+                kta: &helium_entity_manager::KeyToAssetV0,
+            ) -> impl ToAccountMetas {
+                lazy_distributor::accounts::UpdateCompressionDestinationV0 {
+                    owner,
+                    destination,
+                    recipient: token.recipient_key_from_kta(kta),
+                    compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+                    merkle_tree,
+                }
+            }
+
+            let mut accounts = mk_accounts(
+                asset.ownership.owner,
+                token,
+                *destination,
+                asset.compression.tree,
+                kta,
+            )
+            .to_account_metas(None);
+            accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
+
+            let data = UpdateCompressionDestinationV0 {
+                _args: UpdateCompressionDestinationArgsV0 {
+                    data_hash: asset.compression.data_hash,
+                    creator_hash: asset.compression.creator_hash,
+                    root: asset_proof.root.to_bytes(),
+                    index: asset.compression.leaf_id()?,
+                },
+            }
+            .data();
+
+            let ix = Instruction {
+                program_id: lazy_distributor::id(),
+                accounts, // accounts.to_account_metas(None),
+                data,
+            };
+            Ok(ix)
+        }
+
+        pub async fn update_message<
+            C: AsRef<SolanaRpcClient> + AsRef<DasClient>,
+            E: AsEntityKey,
+        >(
+            client: &C,
+            token: ClaimableToken,
+            entity_key: &E,
+            owner: &Pubkey,
+            destination: &Pubkey,
+            opts: &TransactionOpts,
+        ) -> Result<(message::VersionedMessage, u64), Error> {
+            let kta = kta::for_entity_key(entity_key).await?;
+            let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
+            let ix = update_instruction(token, &kta, &asset, &asset_proof, destination).await?;
+            let ixs = &[
+                priority_fee::compute_budget_instruction(200_000),
+                priority_fee::compute_price_instruction_for_accounts(
+                    client,
+                    &ix.accounts,
+                    opts.fee_range(),
+                )
+                .await?,
+                ix,
+            ];
+            message::mk_message(client, ixs, &opts.lut_addresses, owner).await
+        }
+
+        pub async fn update<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+            client: &C,
+            token: ClaimableToken,
+            entity_key: &E,
+            destination: &Pubkey,
+            keypair: &Keypair,
+            opts: &TransactionOpts,
+        ) -> Result<(VersionedTransaction, u64), Error> {
+            let (msg, block_height) = update_message(
+                client,
+                token,
+                entity_key,
+                &keypair.pubkey(),
+                destination,
+                opts,
+            )
+            .await?;
+
+            let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+            Ok((txn, block_height))
         }
     }
 }

@@ -12,6 +12,7 @@ use crate::{
     solana_sdk::{instruction::AccountMeta, transaction::VersionedTransaction},
     TransactionOpts,
 };
+use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
@@ -44,6 +45,22 @@ pub async fn for_kta_with_proof<C: AsRef<DasClient>>(
 pub async fn get<C: AsRef<DasClient>>(client: &C, pubkey: &Pubkey) -> Result<Asset, Error> {
     let asset_response: Asset = client.as_ref().get_asset(pubkey).await?;
     Ok(asset_response)
+}
+
+pub async fn get_many<C: AsRef<DasClient>>(
+    client: &C,
+    pubkeys: &[Pubkey],
+) -> Result<Vec<Asset>, Error> {
+    let assets = stream::iter(pubkeys.to_vec())
+        .chunks(1000)
+        .map(|key_chunk| async move { client.as_ref().get_asset_batch(key_chunk.as_slice()).await })
+        .buffered(5)
+        .try_collect::<Vec<Vec<Asset>>>()
+        .await?
+        .into_iter()
+        .flatten()
+        .collect_vec();
+    Ok(assets)
 }
 
 pub async fn get_with_proof<C: AsRef<DasClient>>(

@@ -24,6 +24,7 @@ pub enum RewardsCommand {
     Pending(PendingCmd),
     Lifetime(LifetimeCmd),
     Claim(ClaimCmd),
+    Recipient(RecipientCmd),
 }
 
 impl RewardsCommand {
@@ -32,6 +33,7 @@ impl RewardsCommand {
             Self::Pending(cmd) => cmd.run(opts).await,
             Self::Lifetime(cmd) => cmd.run(opts).await,
             Self::Claim(cmd) => cmd.run(opts).await,
+            Self::Recipient(cmd) => cmd.run(opts).await,
         }
     }
 }
@@ -152,6 +154,38 @@ impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
 impl ClaimCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let cmd = crate::cmd::assets::rewards::ClaimCmd::from(self);
+        cmd.run(opts).await
+    }
+}
+
+/// Get or set the the recipient for hotspot rewards
+#[derive(Debug, Clone, clap::Args)]
+pub struct RecipientCmd {
+    /// Token for command
+    pub token: reward::ClaimableToken,
+    /// The hotspot to get or set the reward recipient for
+    pub hotspot: helium_crypto::PublicKey,
+    /// The new destination to send rewards to, if set
+    pub destination: Option<helium_lib::keypair::Pubkey>,
+    /// Commit the new destination if set
+    #[command(flatten)]
+    pub commit: CommitOpts,
+}
+
+impl From<&RecipientCmd> for crate::cmd::assets::rewards::RecipientCmd {
+    fn from(value: &RecipientCmd) -> Self {
+        Self {
+            token: value.token,
+            entity_key: EncodedEntityKey::from(&value.hotspot),
+            destination: value.destination,
+            commit: value.commit.clone(),
+        }
+    }
+}
+
+impl RecipientCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let cmd = crate::cmd::assets::rewards::RecipientCmd::from(self);
         cmd.run(opts).await
     }
 }

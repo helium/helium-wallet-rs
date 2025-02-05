@@ -89,34 +89,46 @@ impl ClaimCmd {
 pub struct RecipientCmd {
     /// Token for command
     pub token: ClaimableToken,
-    /// The hotspot to get or set the reward recipient for
+    /// The asset to get or set the reward recipient for
     #[clap(flatten)]
     pub entity_key: entity_key::EncodedEntityKey,
-    /// The recipient to send rewards to
-    pub recipient: Option<helium_lib::keypair::Pubkey>,
-    /// Commit the set transaction.
+    /// The new destination to send rewards to, if set
+    pub destination: Option<helium_lib::keypair::Pubkey>,
+    /// Commit the new destination if set
     #[command(flatten)]
     pub commit: CommitOpts,
 }
 
 impl RecipientCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        // let password = get_wallet_password(false)?;
-        // let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
-        let destination = reward::recipient::destination::for_entity_key(
-            &client,
-            self.token,
-            &self.entity_key.as_entity_key()?,
-        )
-        .await?;
-
-        let json = json!({
-            "recipient": destination.to_string(),
-        });
-        print_json(&json)
+        if let Some(destination) = self.destination {
+            let password = get_wallet_password(false)?;
+            let keypair = opts.load_keypair(password.as_bytes())?;
+            let (tx, _) = reward::recipient::destination::update(
+                &client,
+                self.token,
+                &self.entity_key.as_entity_key()?,
+                &destination,
+                &keypair,
+                &transaction_opts,
+            )
+            .await?;
+            print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
+        } else {
+            let destination = reward::recipient::destination::for_entity_key(
+                &client,
+                self.token,
+                &self.entity_key.as_entity_key()?,
+            )
+            .await?;
+            let json = json!({
+                "destination": destination.to_string(),
+            });
+            print_json(&json)
+        }
     }
 }
 

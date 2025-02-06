@@ -1,4 +1,4 @@
-use crate::{cmd::*, txn_envelope::TxnEnvelope};
+use crate::{cmd::*, result::Context, txn_envelope::TxnEnvelope};
 use chrono::{DateTime, Utc};
 use helium_crypto::{KeyTag, PublicKey};
 use helium_lib::{
@@ -286,7 +286,10 @@ struct MobileCert {
 }
 
 fn write_file<P: AsRef<Path>>(path: P, txt: &str, create: bool) -> Result<()> {
-    let mut writer = open_output_file(path.as_ref(), create)?;
+    let mut writer = open_output_file(path.as_ref(), create).context(format!(
+        "while opening {} for output",
+        path.as_ref().to_str().unwrap_or("file")
+    ))?;
     writer.write_all(txt.as_bytes())?;
     Ok(())
 }

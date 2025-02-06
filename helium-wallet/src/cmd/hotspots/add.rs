@@ -10,7 +10,7 @@ use helium_lib::{
 use helium_proto::BlockchainTxnAddGatewayV1;
 use rand::rngs::OsRng;
 use serde::Serialize;
-use std::{fs::File, io::Write};
+use std::io::Write;
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -268,6 +268,9 @@ struct MobileCert {
     /// NAS ID for a newly created cert
     #[arg(long)]
     nas_id: Option<String>,
+    /// Overwrite existing files
+    #[arg(long)]
+    force: bool,
     /// Ouptut path prefix
     ///
     /// On success, the certification will be stored in <output>/<hotspot>.cer
@@ -276,8 +279,8 @@ struct MobileCert {
     output: Option<PathBuf>,
 }
 
-fn write_file<P: AsRef<Path>>(path: P, txt: &str) -> Result<()> {
-    let mut writer = File::create_new(path.as_ref())?;
+fn write_file<P: AsRef<Path>>(path: P, txt: &str, create: bool) -> Result<()> {
+    let mut writer = open_output_file(path.as_ref(), create)?;
     writer.write_all(txt.as_bytes())?;
     Ok(())
 }
@@ -287,6 +290,7 @@ pub struct MobileCertInfo {
     pub expiration: DateTime<Utc>,
     pub private_key: PathBuf,
     pub certificate: PathBuf,
+    pub ca_chain: PathBuf,
 }
 
 impl MobileCert {
@@ -322,13 +326,24 @@ impl MobileCert {
 
         let pk_path = base_path.as_path().with_extension("pk");
         let cert_path = base_path.as_path().with_extension("cer");
-        write_file(&pk_path, &cert_info.cert.radsec_private_key)?;
-        write_file(&cert_path, &cert_info.cert.radsec_certificate)?;
+        let ca_path = base_path
+            .as_path()
+            .with_file_name("data-only")
+            .with_extension("ca");
+
+        write_file(&pk_path, &cert_info.cert.radsec_private_key, !self.force)?;
+        write_file(&cert_path, &cert_info.cert.radsec_certificate, !self.force)?;
+        write_file(
+            &ca_path,
+            &cert_info.cert.radsec_ca_chain.join("\n"),
+            !self.force,
+        )?;
 
         let result = MobileCertInfo {
             expiration: cert_info.cert.radsec_cert_expire,
             private_key: pk_path,
             certificate: cert_path,
+            ca_chain: ca_path,
         };
 
         print_json(&result)

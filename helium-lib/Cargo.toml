@@ -3,7 +3,7 @@ name = "helium-lib"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-version = "0.0.1-rc.3"
+version = "0.0.1-rc.4"
 
 [features]
 clap = ["dep:clap"]

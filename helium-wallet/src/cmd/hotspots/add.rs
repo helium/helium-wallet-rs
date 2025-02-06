@@ -342,11 +342,7 @@ impl MobileCert {
 
         write_file(&pk_path, &cert_info.cert.radsec_private_key, !self.force)?;
         write_file(&cert_path, &cert_info.cert.radsec_certificate, !self.force)?;
-        write_file(
-            &ca_path,
-            &cert_info.cert.radsec_ca_chain.join("\n"),
-            !self.force,
-        )?;
+        write_file(&ca_path, &cert_info.cert.radsec_ca_chain, !self.force)?;
 
         let result = MobileCertInfo {
             expiration: cert_info.cert.radsec_cert_expire,

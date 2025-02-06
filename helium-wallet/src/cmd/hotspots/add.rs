@@ -110,18 +110,19 @@ async fn perform_add(
     };
     let transaction_opts = &commit.transaction_opts(&client);
 
-    if !hotspot_issued {
+    let issue_response = if !hotspot_issued {
         let (tx, _) =
             hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair, transaction_opts)
                 .await?;
-        let response = commit.maybe_commit(tx, &client).await?;
-        print_json(&response.to_json())?;
-    }
+        commit.maybe_commit(tx, &client).await?
+    } else {
+        CommitResponse::None
+    };
     // Only assert the Hotspot if either (a) it has already been issued before this cli
     // was run or (b) `commit` is enabled which means the previous command should have created it.
     // Without this, the command will always fail for brand new hotspots when --commit is not
     // enabled, as it cannot find the key_to_asset account or asset account.
-    if hotspot_issued || commit.commit {
+    let onboard_response = if hotspot_issued || commit.commit {
         let (tx, _) = hotspot::dataonly::onboard(
             &client,
             subdao,
@@ -131,10 +132,15 @@ async fn perform_add(
             transaction_opts,
         )
         .await?;
-        print_json(&commit.maybe_commit(tx, &client).await?.to_json())
+        commit.maybe_commit(tx, &client).await?
     } else {
-        Ok(())
-    }
+        CommitResponse::None
+    };
+    let json = json!({
+        "issue": issue_response.to_json(),
+        "onboard": onboard_response.to_json(),
+    });
+    print_json(&json)
 }
 
 impl IotCmd {

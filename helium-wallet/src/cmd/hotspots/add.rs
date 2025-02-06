@@ -1,4 +1,4 @@
-use crate::{cmd::*, txn_envelope::TxnEnvelope};
+use crate::{cmd::*, result::Context, txn_envelope::TxnEnvelope};
 use chrono::{DateTime, Utc};
 use helium_crypto::{KeyTag, PublicKey};
 use helium_lib::{
@@ -10,7 +10,7 @@ use helium_lib::{
 use helium_proto::BlockchainTxnAddGatewayV1;
 use rand::rngs::OsRng;
 use serde::Serialize;
-use std::{fs::File, io::Write};
+use std::io::Write;
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -110,18 +110,19 @@ async fn perform_add(
     };
     let transaction_opts = &commit.transaction_opts(&client);
 
-    if !hotspot_issued {
+    let issue_response = if !hotspot_issued {
         let (tx, _) =
             hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair, transaction_opts)
                 .await?;
-        let response = commit.maybe_commit(tx, &client).await?;
-        print_json(&response.to_json())?;
-    }
+        commit.maybe_commit(tx, &client).await?
+    } else {
+        CommitResponse::None
+    };
     // Only assert the Hotspot if either (a) it has already been issued before this cli
     // was run or (b) `commit` is enabled which means the previous command should have created it.
     // Without this, the command will always fail for brand new hotspots when --commit is not
     // enabled, as it cannot find the key_to_asset account or asset account.
-    if hotspot_issued || commit.commit {
+    let onboard_response = if hotspot_issued || commit.commit {
         let (tx, _) = hotspot::dataonly::onboard(
             &client,
             subdao,
@@ -131,10 +132,15 @@ async fn perform_add(
             transaction_opts,
         )
         .await?;
-        print_json(&commit.maybe_commit(tx, &client).await?.to_json())
+        commit.maybe_commit(tx, &client).await?
     } else {
-        Ok(())
-    }
+        CommitResponse::None
+    };
+    let json = json!({
+        "issue": issue_response.to_json(),
+        "onboard": onboard_response.to_json(),
+    });
+    print_json(&json)
 }
 
 impl IotCmd {
@@ -268,6 +274,9 @@ struct MobileCert {
     /// NAS ID for a newly created cert
     #[arg(long)]
     nas_id: Option<String>,
+    /// Overwrite existing files
+    #[arg(long)]
+    force: bool,
     /// Ouptut path prefix
     ///
     /// On success, the certification will be stored in <output>/<hotspot>.cer
@@ -276,8 +285,11 @@ struct MobileCert {
     output: Option<PathBuf>,
 }
 
-fn write_file<P: AsRef<Path>>(path: P, txt: &str) -> Result<()> {
-    let mut writer = File::create_new(path.as_ref())?;
+fn write_file<P: AsRef<Path>>(path: P, txt: &str, create: bool) -> Result<()> {
+    let mut writer = open_output_file(path.as_ref(), create).context(format!(
+        "while opening {} for output",
+        path.as_ref().to_str().unwrap_or("file")
+    ))?;
     writer.write_all(txt.as_bytes())?;
     Ok(())
 }
@@ -287,6 +299,7 @@ pub struct MobileCertInfo {
     pub expiration: DateTime<Utc>,
     pub private_key: PathBuf,
     pub certificate: PathBuf,
+    pub ca_chain: PathBuf,
 }
 
 impl MobileCert {
@@ -322,13 +335,24 @@ impl MobileCert {
 
         let pk_path = base_path.as_path().with_extension("pk");
         let cert_path = base_path.as_path().with_extension("cer");
-        write_file(&pk_path, &cert_info.cert.radsec_private_key)?;
-        write_file(&cert_path, &cert_info.cert.radsec_certificate)?;
+        let ca_path = base_path
+            .as_path()
+            .with_file_name("data-only")
+            .with_extension("ca");
+
+        write_file(&pk_path, &cert_info.cert.radsec_private_key, !self.force)?;
+        write_file(&cert_path, &cert_info.cert.radsec_certificate, !self.force)?;
+        write_file(
+            &ca_path,
+            &cert_info.cert.radsec_ca_chain.join("\n"),
+            !self.force,
+        )?;
 
         let result = MobileCertInfo {
             expiration: cert_info.cert.radsec_cert_expire,
             private_key: pk_path,
             certificate: cert_path,
+            ca_chain: ca_path,
         };
 
         print_json(&result)

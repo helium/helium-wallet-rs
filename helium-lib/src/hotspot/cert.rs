@@ -58,6 +58,7 @@ pub struct CertResponse {
 pub struct CertInfo {
     pub radsec_private_key: String,
     pub radsec_certificate: String,
+    pub radsec_ca_chain: Vec<String>,
     pub radsec_cert_expire: DateTime<Utc>,
 }
 

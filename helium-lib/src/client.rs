@@ -23,8 +23,7 @@ pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?ses
 pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
 pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
-// TODO: Set to correct CERT service URL when available
-pub static CERT_URL_MAINNET: &str = "https://api.svt.ims.nova.xyz/api/wifi/brownfield/inventory";
+pub static CERT_URL_MAINNET: &str = "https://api.prod.ims.nova.xyz/api/wifi/brownfield/inventory";
 pub static CERT_URL_DEVNET: &str = "https://api.svt.ims.nova.xyz/api/wifi/brownfield/inventory";
 pub static CERT_URL_MAINNET_ENV: &str = "CERT_MAINNET_URL";
 pub static CERT_URL_DEVNET_ENV: &str = "CERT_DEVNET_URL";

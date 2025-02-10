@@ -23,12 +23,10 @@ pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?ses
 pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
 pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
-// TODO: Set to correct CERT service URL when available
-pub static CERT_URL_MAINNET: &str = "https://api.svt.ims.nova.xyz/api/wifi/brownfield/inventory";
+pub static CERT_URL_MAINNET: &str = "https://api.prod.ims.nova.xyz/api/wifi/brownfield/inventory";
 pub static CERT_URL_DEVNET: &str = "https://api.svt.ims.nova.xyz/api/wifi/brownfield/inventory";
 pub static CERT_URL_MAINNET_ENV: &str = "CERT_MAINNET_URL";
 pub static CERT_URL_DEVNET_ENV: &str = "CERT_DEVNET_URL";
-pub static CERT_TOKEN_DEVNET_ENV: &str = "CERT_DEVNET_TOKEN";
 
 pub use crate::hotspot::cert::Client as CertClient;
 pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
@@ -124,20 +122,14 @@ impl TryFrom<&str> for Client {
             "d" | "devnet" => env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
             url => url.to_string(),
         };
-        let (cert_url, cert_token) = match value {
-            "d" | "devnet" => (
-                env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
-                maybe_env(CERT_TOKEN_DEVNET_ENV),
-            ),
-            url if is_devnet(url) => (
-                env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
-                maybe_env(CERT_TOKEN_DEVNET_ENV),
-            ),
-            _url => (env_or(CERT_URL_MAINNET_ENV, CERT_URL_MAINNET), None),
+        let cert_url = match value {
+            "d" | "devnet" => env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
+            url if is_devnet(url) => env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
+            _url => env_or(CERT_URL_MAINNET_ENV, CERT_URL_MAINNET),
         };
         let das_client = Arc::new(DasClient::with_base_url(&rpc_url)?);
         let solana_client = Arc::new(SolanaRpcClient::new(rpc_url));
-        let cert_client = Arc::new(CertClient::new(&cert_url, cert_token)?);
+        let cert_client = Arc::new(CertClient::new(&cert_url, None)?);
         Ok(Self {
             solana_client,
             das_client,

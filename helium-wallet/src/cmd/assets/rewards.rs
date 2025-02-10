@@ -61,7 +61,7 @@ impl ClaimCmd {
 
         let token_amount = self
             .amount
-            .map(|amount| TokenAmount::from_f64(self.token.into(), amount).amount);
+            .map(|amount| TokenAmount::from_f64(self.token, amount).amount);
         let Some((tx, _)) = reward::claim(
             &client,
             self.token,

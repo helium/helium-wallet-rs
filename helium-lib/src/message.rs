@@ -36,6 +36,20 @@ pub async fn get_lut_accounts<C: AsRef<SolanaRpcClient>>(
     .try_collect()
 }
 
+pub fn mk_raw_message(
+    ixs: &[Instruction],
+    lut_accounts: &[AddressLookupTableAccount],
+    payer: &Pubkey,
+) -> Result<VersionedMessage, Error> {
+    let msg = VersionedMessage::V0(v0::Message::try_compile(
+        payer,
+        ixs,
+        lut_accounts,
+        Default::default(),
+    )?);
+    Ok(msg)
+}
+
 pub async fn mk_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     ixs: &[Instruction],
@@ -47,11 +61,7 @@ pub async fn mk_message<C: AsRef<SolanaRpcClient>>(
     let (recent_blockhash, recent_blockheight) = solana_client
         .get_latest_blockhash_with_commitment(solana_client.commitment())
         .await?;
-    let msg = VersionedMessage::V0(v0::Message::try_compile(
-        payer,
-        ixs,
-        &lut_accounts,
-        recent_blockhash,
-    )?);
+    let mut msg = mk_raw_message(ixs, &lut_accounts, payer)?;
+    msg.set_recent_blockhash(recent_blockhash);
     Ok((msg, recent_blockheight))
 }

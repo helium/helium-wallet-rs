@@ -7,14 +7,12 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager,
     keypair::{Keypair, Pubkey},
-    kta, lazy_distributor, message, mk_transaction_with_blockhash, priority_fee,
+    kta, lazy_distributor, message, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
-    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
-        instruction::Instruction,
-        signer::Signer,
-        transaction::{Transaction, VersionedTransaction},
+        instruction::Instruction, signature::NullSigner, signer::Signer,
+        transaction::VersionedTransaction,
     },
     token::{Token, TokenAmount},
     TransactionOpts,
@@ -166,9 +164,9 @@ pub async fn max_claim<C: GetAnchorAccount>(
     Ok(Token::from(token).amount(threshold - remaining))
 }
 
-async fn set_current_rewards_instruction(
+fn set_current_rewards_instruction(
     token: ClaimableToken,
-    kta_key: Pubkey,
+    kta_key: &Pubkey,
     kta: &helium_entity_manager::KeyToAssetV0,
     reward: &OracleReward,
 ) -> Result<Instruction, Error> {
@@ -178,7 +176,7 @@ async fn set_current_rewards_instruction(
         recipient: token.recipient_key_from_kta(kta),
         lazy_distributor_program: lazy_distributor::id(),
         system_program: solana_sdk::system_program::id(),
-        key_to_asset: kta_key,
+        key_to_asset: *kta_key,
         oracle_signer: Dao::oracle_signer_key(),
     }
     .to_account_metas(None);
@@ -197,16 +195,15 @@ async fn set_current_rewards_instruction(
     Ok(ix)
 }
 
-pub async fn distribute_rewards_instruction<C: AsRef<DasClient> + GetAnchorAccount>(
-    client: &C,
+pub fn distribute_rewards_instruction(
     token: ClaimableToken,
+    ld_account: &lazy_distributor::LazyDistributorV0,
     kta: &helium_entity_manager::KeyToAssetV0,
     destination_account: Option<Pubkey>,
-    asset: &asset::Asset,
-    asset_proof: &asset::AssetProof,
+    asset_with_proof: &(asset::Asset, asset::AssetProof),
     payer: Pubkey,
 ) -> Result<Instruction, Error> {
-    let ld_account = lazy_distributor(client, token).await?;
+    let (asset, asset_proof) = asset_with_proof;
     macro_rules! mk_common {
         ($name: ident, $dest_account: expr) => {
             $name {
@@ -287,8 +284,45 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
         return Ok(None);
     };
 
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok(Some((txn.into(), block_height)))
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
+    Ok(Some((txn, block_height)))
+}
+
+pub fn claim_instructions(
+    token: ClaimableToken,
+    ld_account: &lazy_distributor::LazyDistributorV0,
+    keyed_kta: &(Pubkey, helium_entity_manager::KeyToAssetV0),
+    asset_with_proof: &(asset::Asset, asset::AssetProof),
+    recipient: &Option<lazy_distributor::RecipientV0>,
+    lifetime_rewards: &OracleReward,
+    payer: &Pubkey,
+) -> Result<Vec<Instruction>, Error> {
+    let (kta_key, kta) = keyed_kta;
+    let (init_ix, destination) = if let Some(recipient) = recipient {
+        (
+            None,
+            (recipient.destination != Pubkey::default()).then_some(recipient.destination),
+        )
+    } else {
+        let ix = recipient::init_instruction(token, kta, asset_with_proof, payer)?;
+        (Some(ix), None)
+    };
+    let set_current_ix = set_current_rewards_instruction(token, kta_key, kta, lifetime_rewards)?;
+    let distribute_ix = distribute_rewards_instruction(
+        token,
+        ld_account,
+        kta,
+        destination,
+        asset_with_proof,
+        *payer,
+    )?;
+    let ixs = [init_ix, Some(set_current_ix), Some(distribute_ix)]
+        .into_iter()
+        .flatten()
+        .collect_vec();
+    Ok(ixs)
 }
 
 pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
@@ -298,7 +332,7 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     encoded_entity_key: &entity_key::EncodedEntityKey,
     payer: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<Option<(Transaction, u64)>, Error> {
+) -> Result<Option<(VersionedTransaction, u64)>, Error> {
     let entity_key_string = encoded_entity_key.to_string();
     let pending = pending(
         client,
@@ -331,58 +365,54 @@ pub async fn claim_transaction<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + Ge
     lifetime_rewards.reward.amount =
         lifetime_rewards.reward.amount - pending_reward.reward.amount + to_claim;
 
+    let ld_account = lazy_distributor(client, token).await?;
     let entity_key = encoded_entity_key.as_entity_key()?;
     let kta_key = Dao::Hnt.entity_key_to_kta_key(&entity_key);
-    let kta = kta::for_entity_key(&entity_key).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
+    let kta = kta::get(&kta_key).await?;
+    let asset_with_proof = asset::for_kta_with_proof(client, &kta).await?;
+    let recipient = recipient::for_kta(client, token, &kta).await?;
 
-    let (init_ix, init_budget, destination) =
-        if let Some(recipient) = recipient::for_kta(client, token, &kta).await? {
-            (
-                None,
-                1,
-                (recipient.destination != Pubkey::default()).then_some(recipient.destination),
-            )
-        } else {
-            let ix = recipient::init_instruction(token, &kta, &asset, &asset_proof, payer).await?;
-            (Some(ix), recipient::INIT_INSTRUCTION_BUDGET, None)
-        };
-    let set_current_ix =
-        set_current_rewards_instruction(token, kta_key, &kta, &lifetime_rewards).await?;
-    let distribute_ix = distribute_rewards_instruction(
-        client,
+    let ixs = claim_instructions(
         token,
-        &kta,
-        destination,
-        &asset,
-        &asset_proof,
-        *payer,
-    )
-    .await?;
-    let mut ixs_accounts = vec![];
-    if let Some(ix) = &init_ix {
-        ixs_accounts.extend_from_slice(&ix.accounts);
-    }
-    ixs_accounts.extend_from_slice(&set_current_ix.accounts);
-    ixs_accounts.extend_from_slice(&distribute_ix.accounts);
+        &ld_account,
+        &(kta_key, kta),
+        &asset_with_proof,
+        &recipient,
+        &lifetime_rewards,
+        payer,
+    )?;
+    let ixs_accounts = ixs
+        .iter()
+        .flat_map(|ixn| ixn.accounts.clone())
+        .collect_vec();
+    let init_budget = (ixs.len() > 2)
+        .then_some(recipient::INIT_INSTRUCTION_BUDGET)
+        .unwrap_or_default();
+    let ixs = [
+        &[
+            priority_fee::compute_budget_instruction(init_budget + 200_000),
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &ixs_accounts,
+                opts.fee_range(),
+            )
+            .await?,
+        ],
+        ixs.as_slice(),
+    ]
+    .concat();
 
-    let mut ixs = vec![
-        priority_fee::compute_budget_instruction(init_budget + 200_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ixs_accounts,
-            opts.fee_range(),
-        )
-        .await?,
-    ];
-    if let Some(ix) = init_ix {
-        ixs.push(ix);
-    }
-    ixs.extend_from_slice(&[set_current_ix, distribute_ix]);
-
-    let (txn, latest_block_height) = mk_transaction_with_blockhash(client, &ixs, payer).await?;
+    let (msg, block_height) = message::mk_message(client, &ixs, &opts.lut_addresses, payer).await?;
+    let txn = VersionedTransaction::try_new(
+        msg,
+        &[
+            // Set payer as first account key to allow callers to sign
+            &NullSigner::new(payer),
+            &NullSigner::new(&lifetime_rewards.oracle.key),
+        ],
+    )?;
     let signed_txn = oracle_sign(&lifetime_rewards.oracle.url, txn).await?;
-    Ok(Some((signed_txn, latest_block_height)))
+    Ok(Some((signed_txn, block_height)))
 }
 
 pub async fn pending<C: GetAnchorAccount>(
@@ -471,7 +501,10 @@ pub async fn lifetime<C: GetAnchorAccount>(
         .await
 }
 
-async fn oracle_sign(oracle: &str, txn: Transaction) -> Result<Transaction, Error> {
+async fn oracle_sign(
+    oracle: &str,
+    txn: VersionedTransaction,
+) -> Result<VersionedTransaction, Error> {
     #[derive(Debug, Serialize, Deserialize)]
     struct Data {
         data: Vec<u8>,
@@ -577,11 +610,10 @@ pub mod recipient {
         for_ktas(client, token, &ktas).await
     }
 
-    pub async fn init_instruction(
+    pub fn init_instruction(
         token: ClaimableToken,
         kta: &helium_entity_manager::KeyToAssetV0,
-        asset: &asset::Asset,
-        asset_proof: &asset::AssetProof,
+        asset_with_proof: &(asset::Asset, asset::AssetProof),
         payer: &Pubkey,
     ) -> Result<Instruction, Error> {
         fn mk_accounts(
@@ -602,7 +634,7 @@ pub mod recipient {
                 system_program: solana_sdk::system_program::id(),
             }
         }
-
+        let (asset, asset_proof) = asset_with_proof;
         let mut accounts = mk_accounts(
             *payer,
             asset.ownership.owner,
@@ -639,9 +671,9 @@ pub mod recipient {
         opts: &TransactionOpts,
     ) -> Result<(message::VersionedMessage, u64), Error> {
         let kta = kta::for_entity_key(entity_key).await?;
-        let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
+        let asset_with_proof = asset::for_kta_with_proof(client, &kta).await?;
 
-        let ix = init_instruction(token, &kta, &asset, &asset_proof, payer).await?;
+        let ix = init_instruction(token, &kta, &asset_with_proof, payer)?;
         let ixs = &[
             priority_fee::compute_budget_instruction(INIT_INSTRUCTION_BUDGET),
             priority_fee::compute_price_instruction_for_accounts(
@@ -864,5 +896,5 @@ fn value_to_token_amount(
         _ => return Err(DecodeError::other(format!("invalid reward value {value}")).into()),
     };
 
-    Ok(TokenAmount::from_u64(token.into(), value))
+    Ok(TokenAmount::from_u64(token, value))
 }

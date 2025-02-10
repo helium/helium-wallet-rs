@@ -423,13 +423,17 @@ impl Default for TokenAmount {
 }
 
 impl TokenAmount {
-    pub fn from_f64(token: Token, amount: f64) -> Self {
+    pub fn from_f64<T: Into<Token>>(token: T, amount: f64) -> Self {
+        let token = token.into();
         let amount = (amount * 10_usize.pow(token.decimals().into()) as f64) as u64;
         Self { token, amount }
     }
 
-    pub fn from_u64(token: Token, amount: u64) -> Self {
-        Self { token, amount }
+    pub fn from_u64<T: Into<Token>>(token: T, amount: u64) -> Self {
+        Self {
+            token: token.into(),
+            amount,
+        }
     }
 }
 

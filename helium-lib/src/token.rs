@@ -4,7 +4,7 @@ use crate::{
     client::SolanaRpcClient,
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
-    message,
+    message, priority_fee,
     solana_sdk::{
         commitment_config::CommitmentConfig, signer::Signer, system_instruction,
         transaction::VersionedTransaction,
@@ -38,6 +38,21 @@ lazy_static::lazy_static! {
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
+
+/// Number of Compute Units need to execute a System Program: Transfer
+/// instruction.
+/// (Actual value: 150)
+const SYS_PROGRAM_TRANSFER_CU: u32 = 200;
+
+/// Number of Compute Units needed to execute an SPL_CreateIdempotent
+/// instruction in its worst case; the case in which it must actually create
+/// an ATA.
+/// (Actual value: 23552, observed on-chain 2024-07)
+const SPL_CREATE_IDEMPOTENT_CU: u32 = 24000;
+
+/// Number of Compute Units needed to execute an SPL_TransferChecked instruction.
+/// (Actual value: 6199, observed on-chain 2025-02-09)
+const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
 
 pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
@@ -84,11 +99,17 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
     let mut ixs = vec![];
+    let mut ixs_accounts = vec![];
+    let mut cu_budget: u32 = 0;
     for (payee, token_amount) in transfers {
         match token_amount.token.mint() {
             spl_mint if spl_mint == Token::Sol.mint() => {
                 let ix = system_instruction::transfer(payer, payee, token_amount.amount);
+                ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
+                cu_budget = cu_budget
+                    .checked_add(SYS_PROGRAM_TRANSFER_CU)
+                    .ok_or_else(|| DecodeError::other("CU overflow"))?;
             }
             spl_mint => {
                 let source_pubkey = token_amount.token.associated_token_adress(payer);
@@ -99,7 +120,11 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                     spl_mint,
                     &anchor_spl::token::spl_token::id(),
                 );
+                ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
+                cu_budget = cu_budget
+                    .checked_add(SPL_CREATE_IDEMPOTENT_CU)
+                    .ok_or_else(|| DecodeError::other("CU overflow"))?;
 
                 let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
                     &anchor_spl::token::spl_token::id(),
@@ -111,11 +136,25 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                     token_amount.amount,
                     token_amount.token.decimals(),
                 )?;
+                ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
+                cu_budget = cu_budget
+                    .checked_add(SPL_TRANSFER_CHECKED_CU)
+                    .ok_or_else(|| DecodeError::other("CU overflow"))?;
             }
         }
     }
-    message::mk_message(client, &ixs, &opts.lut_addresses, payer).await
+    let mut final_ixs = vec![
+        priority_fee::compute_budget_instruction(cu_budget),
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &ixs_accounts,
+            opts.fee_range(),
+        )
+        .await?,
+    ];
+    final_ixs.extend_from_slice(&ixs);
+    message::mk_message(client, &final_ixs, &opts.lut_addresses, payer).await
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(

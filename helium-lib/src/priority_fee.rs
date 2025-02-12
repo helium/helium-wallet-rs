@@ -1,7 +1,10 @@
 use std::ops::RangeInclusive;
 
 use crate::{
-    anchor_lang::ToAccountMetas, client::SolanaRpcClient, error::Error, keypair::Pubkey,
+    anchor_lang::ToAccountMetas,
+    client::{SolanaRpcClient, SOLANA_URL_MAINNET},
+    error::Error,
+    keypair::Pubkey,
     solana_client,
 };
 use itertools::Itertools;
@@ -16,7 +19,7 @@ pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
     fee_range: RangeInclusive<u64>,
 ) -> Result<u64, Error> {
     let client_url = client.as_ref().url();
-    if client_url.contains("mainnet.helius") {
+    if client_url == SOLANA_URL_MAINNET || client_url.contains("mainnet.helius") {
         helius::get_estimate(client, accounts, fee_range).await
     } else {
         base::get_estimate(client, accounts, fee_range).await

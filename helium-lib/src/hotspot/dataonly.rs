@@ -9,18 +9,21 @@ use crate::{
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::{Keypair, Pubkey},
-    kta, message, mk_transaction_with_blockhash, priority_fee,
+    kta, message, priority_fee,
     programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     },
-    solana_sdk::{instruction::Instruction, signature::Signer, transaction::Transaction},
+    solana_sdk::{
+        instruction::Instruction,
+        signature::{NullSigner, Signer},
+        transaction::VersionedTransaction,
+    },
     token::Token,
     TransactionOpts,
 };
 use helium_crypto::{PublicKey, Sign};
 use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use serde::{Deserialize, Serialize};
-use solana_sdk::transaction::VersionedTransaction;
 
 mod iot {
     use super::*;
@@ -240,7 +243,7 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     add_tx: &mut BlockchainTxnAddGatewayV1,
     owner: Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(VersionedTransaction, u64), Error> {
     fn mk_accounts(
         config_account: helium_entity_manager::DataOnlyConfigV0,
         owner: Pubkey,
@@ -296,14 +299,21 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
         issue_ix,
     ];
 
-    let (txn, latest_block_height) = mk_transaction_with_blockhash(client, ixs, &owner).await?;
-
+    let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, &owner).await?;
+    let txn = VersionedTransaction::try_new(
+        msg,
+        &[
+            // Set payer as first account key to allow callers to sign
+            &NullSigner::new(&owner),
+            &NullSigner::new(&ECC_VERIFIER),
+        ],
+    )?;
     let sig = add_tx.gateway_signature.clone();
     add_tx.gateway_signature = vec![];
     let msg = add_tx.encode_to_vec();
 
     let signed_txn = verify_helium_key(verifier, &msg, &sig, txn).await?;
-    Ok((signed_txn, latest_block_height))
+    Ok((signed_txn, block_height))
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -363,11 +373,12 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     add_tx: &mut BlockchainTxnAddGatewayV1,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) =
         issue_transaction(client, verifier, add_tx, keypair.pubkey(), opts).await?;
-    let blockhash = txn.message.recent_blockhash;
-    txn.try_partial_sign(&[keypair], blockhash)?;
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
     Ok((txn, block_height))
 }
 
@@ -375,8 +386,8 @@ async fn verify_helium_key(
     verifier: &str,
     msg: &[u8],
     signature: &[u8],
-    tx: Transaction,
-) -> Result<Transaction, Error> {
+    tx: VersionedTransaction,
+) -> Result<VersionedTransaction, Error> {
     #[derive(Deserialize, Serialize, Default)]
     struct VerifyRequest<'a> {
         // hex encoded solana transaction

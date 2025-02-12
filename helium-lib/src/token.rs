@@ -107,9 +107,7 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                 let ix = system_instruction::transfer(payer, payee, token_amount.amount);
                 ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
-                cu_budget = cu_budget
-                    .checked_add(SYS_PROGRAM_TRANSFER_CU)
-                    .ok_or_else(|| DecodeError::other("CU overflow"))?;
+                cu_budget += SYS_PROGRAM_TRANSFER_CU;
             }
             spl_mint => {
                 let source_pubkey = token_amount.token.associated_token_adress(payer);
@@ -122,9 +120,7 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                 );
                 ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
-                cu_budget = cu_budget
-                    .checked_add(SPL_CREATE_IDEMPOTENT_CU)
-                    .ok_or_else(|| DecodeError::other("CU overflow"))?;
+                cu_budget += SPL_CREATE_IDEMPOTENT_CU;
 
                 let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
                     &anchor_spl::token::spl_token::id(),
@@ -138,23 +134,24 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                 )?;
                 ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
-                cu_budget = cu_budget
-                    .checked_add(SPL_TRANSFER_CHECKED_CU)
-                    .ok_or_else(|| DecodeError::other("CU overflow"))?;
+                cu_budget += SPL_TRANSFER_CHECKED_CU;
             }
         }
     }
-    let mut final_ixs = vec![
-        priority_fee::compute_budget_instruction(cu_budget),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ixs_accounts,
-            opts.fee_range(),
-        )
-        .await?,
-    ];
-    final_ixs.extend_from_slice(&ixs);
-    message::mk_message(client, &final_ixs, &opts.lut_addresses, payer).await
+    let final_ixs = &[
+        &[
+            priority_fee::compute_budget_instruction(cu_budget),
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &ixs_accounts,
+                opts.fee_range(),
+            )
+            .await?,
+        ],
+        ixs.as_slice(),
+    ]
+    .concat();
+    message::mk_message(client, final_ixs, &opts.lut_addresses, payer).await
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(

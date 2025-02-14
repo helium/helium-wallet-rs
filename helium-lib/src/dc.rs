@@ -225,17 +225,17 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
     amount: u64,
-    router_key: E,
+    router_key: &E,
     payer: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
     fn mk_accounts<E: AsEntityKey>(
         sub_dao: SubDao,
-        router_key: E,
+        router_key: &E,
         dc_burn_authority: Pubkey,
         registrar: Pubkey,
     ) -> BurnDelegatedDataCreditsV0 {
-        let delegated_data_credits = sub_dao.delegated_dc_key(&router_key);
+        let delegated_data_credits = sub_dao.delegated_dc_key(router_key);
         let escrow_account = sub_dao.escrow_key(&delegated_data_credits);
 
         BurnDelegatedDataCreditsV0 {
@@ -296,7 +296,7 @@ pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     sub_dao: SubDao,
     keypair: &Keypair,
     amount: u64,
-    router_key: E,
+    router_key: &E,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) =

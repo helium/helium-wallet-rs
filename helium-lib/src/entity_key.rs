@@ -41,7 +41,7 @@ impl AsEntityKey for helium_crypto::PublicKey {
 
 impl AsEntityKey for helium_crypto::PublicKeyBinary {
     fn as_entity_key(&self) -> Vec<u8> {
-        self.clone().into()
+        self.to_string().as_entity_key()
     }
 }
 

@@ -156,8 +156,8 @@ impl SubDao {
         }
     }
 
-    pub fn delegated_dc_key(&self, router_key: &str) -> Pubkey {
-        let hash = Sha256::digest(router_key);
+    pub fn delegated_dc_key<E: AsEntityKey>(&self, router_key: &E) -> Pubkey {
+        let hash = Sha256::digest(router_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
             &[b"delegated_data_credits", self.key().as_ref(), &hash],
             &data_credits::id(),

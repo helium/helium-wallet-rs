@@ -39,6 +39,12 @@ impl AsEntityKey for helium_crypto::PublicKey {
     }
 }
 
+impl AsEntityKey for helium_crypto::PublicKeyBinary {
+    fn as_entity_key(&self) -> Vec<u8> {
+        self.clone().into()
+    }
+}
+
 pub use helium_anchor_gen::helium_entity_manager::KeySerialization;
 
 pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, DecodeError> {

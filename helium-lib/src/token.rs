@@ -39,6 +39,11 @@ lazy_static::lazy_static! {
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
 
+/// Number of Compute Units need to execute SetComputeUnitLimit and
+/// ComputeBudget, together.
+/// (Observed value: 450)
+const SYS_PROGRAM_SETUP_CU: u32 = 600;
+
 /// Number of Compute Units need to execute a System Program: Transfer
 /// instruction.
 /// (Actual value: 150)
@@ -100,7 +105,7 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
 ) -> Result<(message::VersionedMessage, u64), Error> {
     let mut ixs = vec![];
     let mut ixs_accounts = vec![];
-    let mut cu_budget: u32 = 0;
+    let mut cu_budget: u32 = SYS_PROGRAM_SETUP_CU;
     for (payee, token_amount) in transfers {
         match token_amount.token.mint() {
             spl_mint if spl_mint == Token::Sol.mint() => {

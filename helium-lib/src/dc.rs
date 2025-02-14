@@ -1,10 +1,10 @@
 use crate::{
-    anchor_lang::AccountDeserialize,
-    anchor_lang::{InstructionData, ToAccountMetas},
+    anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas},
     anchor_spl, circuit_breaker,
     client::{GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
+    entity_key::AsEntityKey,
     error::{DecodeError, Error},
     keypair::{Keypair, Pubkey},
     message, priority_fee,
@@ -127,7 +127,7 @@ pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
         }
     }
 
-    let delegated_dc_key = subdao.delegated_dc_key(payer_key);
+    let delegated_dc_key = subdao.delegated_dc_key(&payer_key);
     let ix = Instruction {
         program_id: data_credits::id(),
         accounts: mk_accounts(delegated_dc_key, subdao, *owner).to_account_metas(None),
@@ -221,17 +221,17 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>>(
+pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
     amount: u64,
-    router_key: String,
+    router_key: E,
     payer: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
-    fn mk_accounts(
+    fn mk_accounts<E: AsEntityKey>(
         sub_dao: SubDao,
-        router_key: String,
+        router_key: E,
         dc_burn_authority: Pubkey,
         registrar: Pubkey,
     ) -> BurnDelegatedDataCreditsV0 {
@@ -291,12 +291,12 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
-pub async fn burn_delegated<C: AsRef<SolanaRpcClient>>(
+pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
     keypair: &Keypair,
     amount: u64,
-    router_key: String,
+    router_key: E,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) =

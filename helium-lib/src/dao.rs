@@ -2,7 +2,6 @@ use crate::{
     data_credits, entity_key::AsEntityKey, helium_entity_manager, helium_sub_daos, keypair::Pubkey,
     programs::TOKEN_METADATA_PROGRAM_ID, rewards_oracle, token::Token,
 };
-use chrono::Timelike;
 use sha2::{Digest, Sha256};
 
 #[derive(
@@ -212,8 +211,8 @@ impl SubDao {
     }
 
     pub fn epoch_info_key(&self) -> Pubkey {
-        const EPOCH_LENGTH: u32 = 60 * 60 * 24;
-        let epoch = chrono::Utc::now().second() / EPOCH_LENGTH;
+        const EPOCH_LENGTH: i64 = 60 * 60 * 24;
+        let epoch = chrono::Utc::now().timestamp() / EPOCH_LENGTH;
 
         let (key, _) = Pubkey::find_program_address(
             &[

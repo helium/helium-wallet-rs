@@ -84,7 +84,7 @@ impl Cmd {
             &client,
             server,
             &self.gateway,
-            update,
+            &update,
             &keypair,
             &transaction_opts,
         )

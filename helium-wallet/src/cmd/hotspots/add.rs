@@ -127,7 +127,7 @@ async fn perform_add(
             &client,
             subdao,
             &gateway,
-            update,
+            &update,
             &keypair,
             transaction_opts,
         )

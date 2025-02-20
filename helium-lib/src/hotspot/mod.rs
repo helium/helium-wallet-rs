@@ -23,6 +23,7 @@ use futures::TryFutureExt;
 use itertools::{izip, Itertools};
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
+use solana_sdk::signature::NullSigner;
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
 pub mod cert;
@@ -109,13 +110,13 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
     Ok(hotspot)
 }
 
-pub async fn direct_update_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    hotspot: &helium_crypto::PublicKey,
-    update: HotspotInfoUpdate,
+pub fn direct_update_instruction(
+    kta: &helium_entity_manager::KeyToAssetV0,
+    asset: &asset::Asset,
+    asset_proof: &asset::AssetProof,
+    update: &HotspotInfoUpdate,
     owner: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(message::VersionedMessage, u64), Error> {
+) -> Result<Instruction, Error> {
     fn mk_accounts(
         subdao: SubDao,
         kta: &helium_entity_manager::KeyToAssetV0,
@@ -154,9 +155,6 @@ pub async fn direct_update_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>
         }
     }
 
-    let kta = kta::for_entity_key(hotspot).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
-
     macro_rules! mk_update_data {
         ($ix_struct:ident, $arg_struct:ident, $($manual_fields:tt)*) => {
             $ix_struct {
@@ -172,7 +170,7 @@ pub async fn direct_update_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>
         };
     }
 
-    let mut accounts = mk_accounts(update.subdao(), &kta, &asset, owner);
+    let mut accounts = mk_accounts(update.subdao(), kta, asset, owner);
     accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
     use helium_entity_manager::{
@@ -200,27 +198,48 @@ pub async fn direct_update_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>
         accounts: accounts.to_account_metas(None),
         data,
     };
+    Ok(ix)
+}
+
+pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot: &helium_crypto::PublicKey,
+    update: &HotspotInfoUpdate,
+    owner: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
+    let ix = direct_update_instruction(&kta, &asset, &asset_proof, update, owner)?;
 
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
-        priority_fee::compute_price_instruction_for_accounts(client, &accounts, opts.fee_range())
-            .await?,
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &ix.accounts,
+            opts.fee_range(),
+        )
+        .await?,
         ix,
     ];
 
-    message::mk_message(client, ixs, &opts.lut_addresses, owner).await
+    let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, owner).await?;
+    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(owner)])?;
+    Ok((txn, block_height))
 }
 
 pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
-    update: HotspotInfoUpdate,
+    update: &HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) =
-        direct_update_message(client, hotspot, update, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let (mut txn, block_height) =
+        direct_update_transaction(client, hotspot, update, &keypair.pubkey(), opts).await?;
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
     Ok((txn, block_height))
 }
 
@@ -228,7 +247,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     onboarding_server: Option<String>,
     hotspot: &helium_crypto::PublicKey,
-    update: HotspotInfoUpdate,
+    update: &HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
 ) -> Result<VersionedTransaction, Error> {
@@ -250,14 +269,14 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 /// The Hotspot is transferred from the owner of the Hotspot to the given recipient
 /// Note that the owner is currently expected to sign this transaction and pay for
 /// transaction fees.
-pub async fn transfer_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(message::VersionedMessage, u64), Error> {
+) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
-    asset::transfer_message(client, &kta.asset, recipient, opts).await
+    asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(

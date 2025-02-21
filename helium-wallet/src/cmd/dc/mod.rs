@@ -1,6 +1,7 @@
 use crate::cmd::*;
 
 mod burn;
+mod burn_delegated;
 mod delegate;
 mod mint;
 mod price;
@@ -24,6 +25,7 @@ pub enum DcCommand {
     Mint(mint::Cmd),
     Delegate(delegate::Cmd),
     Burn(burn::Cmd),
+    BurnDelegated(burn_delegated::Cmd),
 }
 
 impl DcCommand {
@@ -33,6 +35,7 @@ impl DcCommand {
             Self::Mint(cmd) => cmd.run(opts).await,
             Self::Delegate(cmd) => cmd.run(opts).await,
             Self::Burn(cmd) => cmd.run(opts).await,
+            Self::BurnDelegated(cmd) => cmd.run(opts).await,
         }
     }
 }

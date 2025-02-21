@@ -1,8 +1,5 @@
-use std::time::Instant;
-
 use crate::cmd::*;
-use anyhow::Context;
-use helium_lib::{dao::SubDao, dc};
+use helium_lib::{dao::SubDao, dc, keypair::Keypair, solana_sdk};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Burn 1 Data Credit (DC) from another wallet into oblivion.
@@ -13,14 +10,18 @@ pub struct Cmd {
     /// Router key to derive escrow account that DC will be burned from.
     router_key: String,
 
+    /// DC burn authority keypair
+    keypair: PathBuf,
+
     #[command(flatten)]
     commit: CommitOpts,
 }
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let sol_keypair = solana_sdk::signature::read_keypair_file(&self.keypair)
+            .map_err(|_err| anyhow::anyhow!("could not read keypair file"))?;
+        let keypair = Keypair::from(sol_keypair);
 
         let client = opts.client()?;
         let transanction_opts = self.commit.transaction_opts(&client);

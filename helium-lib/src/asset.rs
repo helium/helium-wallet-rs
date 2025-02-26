@@ -6,16 +6,21 @@ use crate::{
     error::{DecodeError, Error},
     helium_entity_manager,
     keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
-    kta, mk_transaction_with_blockhash,
+    kta, message,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{
         SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
     },
-    solana_sdk::{instruction::AccountMeta, transaction::Transaction},
+    solana_sdk::{
+        instruction::{AccountMeta, Instruction},
+        transaction::VersionedTransaction,
+    },
     TransactionOpts,
 };
+use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use solana_sdk::{signature::NullSigner, signer::Signer};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
 pub fn bubblegum_signer_key() -> Pubkey {
@@ -87,6 +92,22 @@ pub async fn for_kta_with_proof<C: AsRef<DasClient>>(
 pub async fn get<C: AsRef<DasClient>>(client: &C, pubkey: &Pubkey) -> Result<Asset, Error> {
     let asset_response: Asset = client.as_ref().get_asset(pubkey).await?;
     Ok(asset_response)
+}
+
+pub async fn get_many<C: AsRef<DasClient>>(
+    client: &C,
+    pubkeys: &[Pubkey],
+) -> Result<Vec<Asset>, Error> {
+    let assets = stream::iter(pubkeys.to_vec())
+        .chunks(1000)
+        .map(|key_chunk| async move { client.as_ref().get_asset_batch(key_chunk.as_slice()).await })
+        .buffered(5)
+        .try_collect::<Vec<Vec<Asset>>>()
+        .await?
+        .into_iter()
+        .flatten()
+        .collect_vec();
+    Ok(assets)
 }
 
 pub async fn get_with_proof<C: AsRef<DasClient>>(
@@ -187,23 +208,14 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     Ok(results)
 }
 
-/// Get an unsigned transaction for an asset transfer
-///
-/// The asset is transferred from the owner to the given recipient
-/// Note that the owner is currently expected to sign this transaction and pay for
-/// transaction fees.
-pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
+pub fn transfer_instruction(
     recipient: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-
+    asset: &Asset,
+    asset_proof: &AssetProof,
+    remaining_accounts: &[AccountMeta],
+) -> Result<Instruction, Error> {
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
     let merkle_tree = asset_proof.tree_id;
-    let remaining_accounts = asset_proof.proof_for_tree(client, &merkle_tree).await?;
-
     let transfer = mpl_bubblegum::instructions::Transfer {
         leaf_owner: (asset.ownership.owner, false),
         leaf_delegate: (leaf_delegate, false),
@@ -222,22 +234,37 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         nonce: asset.compression.leaf_id,
     };
 
-    let transfer_ix = transfer.instruction_with_remaining_accounts(args, &remaining_accounts);
-    let mut priority_fee_accounts = transfer_ix.accounts.clone();
-    priority_fee_accounts.extend_from_slice(&remaining_accounts);
+    let ix = transfer.instruction_with_remaining_accounts(args, remaining_accounts);
+    Ok(ix)
+}
+
+/// Get an unsigned transaction for an asset transfer
+///
+/// The asset is transferred from the owner to the given recipient
+/// Note that the owner is currently expected to sign this transaction and pay for
+/// transaction fees.
+pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+    let remaining_accounts = asset_proof
+        .proof_for_tree(client, &asset_proof.tree_id)
+        .await?;
+    let ix = transfer_instruction(recipient, &asset, &asset_proof, &remaining_accounts)?;
 
     let ixs = &[
         compute_budget_instruction(200_000),
-        compute_price_instruction_for_accounts(
-            client,
-            &priority_fee_accounts,
-            opts.min_priority_fee,
-        )
-        .await?,
-        transfer_ix,
+        compute_price_instruction_for_accounts(client, &ix.accounts, opts.fee_range()).await?,
+        ix,
     ];
 
-    mk_transaction_with_blockhash(client, ixs, &asset.ownership.owner).await
+    let (msg, block_height) =
+        message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await?;
+    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
+    Ok((txn, block_height))
 }
 
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -246,19 +273,20 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     recipient: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut tx, latest_block_height) =
-        transfer_transaction(client, pubkey, recipient, opts).await?;
-    tx.try_sign(&[keypair], tx.message.recent_blockhash)?;
-    Ok((tx, latest_block_height))
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (mut txn, block_height) = transfer_transaction(client, pubkey, recipient, opts).await?;
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
+    Ok((txn, block_height))
 }
 
 /// Get an unsigned burn transaction for an asset
-pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
@@ -289,16 +317,12 @@ pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let ixs = &[
         compute_budget_instruction(100_000),
-        compute_price_instruction_for_accounts(
-            client,
-            &priority_fee_accounts,
-            opts.min_priority_fee,
-        )
-        .await?,
+        compute_price_instruction_for_accounts(client, &priority_fee_accounts, opts.fee_range())
+            .await?,
         ix,
     ];
 
-    mk_transaction_with_blockhash(client, ixs, &asset.ownership.owner).await
+    message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await
 }
 
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -306,10 +330,10 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     pubkey: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut tx, latest_block_height) = burn_transaction(client, pubkey, opts).await?;
-    tx.try_sign(&[keypair], tx.message.recent_blockhash)?;
-    Ok((tx, latest_block_height))
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = burn_message(client, pubkey, opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }
 
 #[derive(Deserialize, Serialize, Clone)]

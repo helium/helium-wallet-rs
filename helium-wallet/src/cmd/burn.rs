@@ -18,9 +18,10 @@ impl Cmd {
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
+        let txn_opts = self.commit.transaction_opts(&client);
 
         let token_amount = token::TokenAmount::from_f64(self.subdao.token(), self.amount);
-        let (tx, _) = token::burn(&client, &token_amount, &keypair).await?;
-        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
+        let (tx, _) = token::burn(&client, &token_amount, &keypair, &txn_opts).await?;
+        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

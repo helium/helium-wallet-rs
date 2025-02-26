@@ -100,6 +100,12 @@ impl TryFrom<&[u8; 64]> for Keypair {
     }
 }
 
+impl From<solana_sdk::signer::keypair::Keypair> for Keypair {
+    fn from(value: solana_sdk::signer::keypair::Keypair) -> Self {
+        Self(value)
+    }
+}
+
 impl Keypair {
     pub fn generate() -> Self {
         Keypair(solana_sdk::signer::keypair::Keypair::new())
@@ -136,7 +142,7 @@ impl Keypair {
     }
 
     #[cfg(feature = "mnemonic")]
-    pub fn from_words(words: Vec<String>) -> Result<Arc<Self>, Error> {
+    pub fn from_words(words: &[&str]) -> Result<Arc<Self>, Error> {
         let entropy_bytes = helium_mnemonic::mnemonic_to_entropy(words)?;
         let keypair = solana_sdk::signer::keypair::keypair_from_seed(&entropy_bytes)
             .map_err(|_| DecodeError::other("invalid words"))?;

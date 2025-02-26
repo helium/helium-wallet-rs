@@ -4,12 +4,12 @@ use crate::{
     client::SolanaRpcClient,
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
-    mk_transaction_with_blockhash,
-    solana_client::rpc_client::SerializableTransaction,
+    message, priority_fee,
     solana_sdk::{
         commitment_config::CommitmentConfig, signer::Signer, system_instruction,
-        transaction::Transaction,
+        transaction::VersionedTransaction,
     },
+    TransactionOpts,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
@@ -39,83 +39,135 @@ lazy_static::lazy_static! {
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
 }
 
-pub async fn burn<C: AsRef<SolanaRpcClient>>(
+/// Number of Compute Units need to execute SetComputeUnitLimit and
+/// ComputeBudget, together.
+/// (Observed value: 450)
+const SYS_PROGRAM_SETUP_CU: u32 = 600;
+
+/// Number of Compute Units need to execute a System Program: Transfer
+/// instruction.
+/// (Actual value: 150)
+const SYS_PROGRAM_TRANSFER_CU: u32 = 200;
+
+/// Number of Compute Units needed to execute an SPL_CreateIdempotent
+/// instruction in its worst case; the case in which it must actually create
+/// an ATA.
+/// (Actual value: 23552, observed on-chain 2024-07)
+const SPL_CREATE_IDEMPOTENT_CU: u32 = 24000;
+
+/// Number of Compute Units needed to execute an SPL_TransferChecked instruction.
+/// (Actual value: 6199, observed on-chain 2025-02-09)
+const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
+
+pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
-    keypair: &Keypair,
-) -> Result<(Transaction, u64), Error> {
-    let wallet_pubkey = keypair.pubkey();
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
     let ix = match token_amount.token.mint() {
         spl_mint if spl_mint == Token::Sol.mint() => {
             return Err(DecodeError::other("native token burn not supported").into());
         }
         spl_mint => {
-            let token_account = token_amount.token.associated_token_adress(&wallet_pubkey);
+            let token_account = token_amount.token.associated_token_adress(payer);
             anchor_spl::token::spl_token::instruction::burn_checked(
                 &anchor_spl::token::spl_token::id(),
                 &token_account,
                 spl_mint,
-                &wallet_pubkey,
-                &[&wallet_pubkey],
+                payer,
+                &[payer],
                 token_amount.amount,
                 token_amount.token.decimals(),
             )?
         }
     };
 
-    let (mut txn, latest_block_height) =
-        mk_transaction_with_blockhash(client, &[ix], &wallet_pubkey).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    message::mk_message(client, &[ix], &opts.lut_addresses, payer).await
 }
 
-pub async fn transfer<C: AsRef<SolanaRpcClient>>(
+pub async fn burn<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    token_amount: &TokenAmount,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
+}
+
+pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
-    keypair: &Keypair,
-) -> Result<(Transaction, u64), Error> {
-    let wallet_public_key = keypair.pubkey();
-
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
     let mut ixs = vec![];
+    let mut ixs_accounts = vec![];
+    let mut cu_budget: u32 = SYS_PROGRAM_SETUP_CU;
     for (payee, token_amount) in transfers {
         match token_amount.token.mint() {
             spl_mint if spl_mint == Token::Sol.mint() => {
-                let ix =
-                    system_instruction::transfer(&wallet_public_key, payee, token_amount.amount);
+                let ix = system_instruction::transfer(payer, payee, token_amount.amount);
+                ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
+                cu_budget += SYS_PROGRAM_TRANSFER_CU;
             }
             spl_mint => {
-                let source_pubkey = token_amount
-                    .token
-                    .associated_token_adress(&wallet_public_key);
+                let source_pubkey = token_amount.token.associated_token_adress(payer);
                 let destination_pubkey = token_amount.token.associated_token_adress(payee);
                 let ix = spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-                    &wallet_public_key,
+                    payer,
                     payee,
                     spl_mint,
                     &anchor_spl::token::spl_token::id(),
                 );
+                ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
+                cu_budget += SPL_CREATE_IDEMPOTENT_CU;
 
                 let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
                     &anchor_spl::token::spl_token::id(),
                     &source_pubkey,
                     token_amount.token.mint(),
                     &destination_pubkey,
-                    &wallet_public_key,
+                    payer,
                     &[],
                     token_amount.amount,
                     token_amount.token.decimals(),
                 )?;
+                ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
+                cu_budget += SPL_TRANSFER_CHECKED_CU;
             }
         }
     }
+    let final_ixs = &[
+        &[
+            priority_fee::compute_budget_instruction(cu_budget),
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &ixs_accounts,
+                opts.fee_range(),
+            )
+            .await?,
+        ],
+        ixs.as_slice(),
+    ]
+    .concat();
+    message::mk_message(client, final_ixs, &opts.lut_addresses, payer).await
+}
 
-    let (mut txn, latest_block_height) =
-        mk_transaction_with_blockhash(client, &ixs, &wallet_public_key).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+pub async fn transfer<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    transfers: &[(Pubkey, TokenAmount)],
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }
 
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
@@ -412,13 +464,17 @@ impl Default for TokenAmount {
 }
 
 impl TokenAmount {
-    pub fn from_f64(token: Token, amount: f64) -> Self {
+    pub fn from_f64<T: Into<Token>>(token: T, amount: f64) -> Self {
+        let token = token.into();
         let amount = (amount * 10_usize.pow(token.decimals().into()) as f64) as u64;
         Self { token, amount }
     }
 
-    pub fn from_u64(token: Token, amount: u64) -> Self {
-        Self { token, amount }
+    pub fn from_u64<T: Into<Token>>(token: T, amount: u64) -> Self {
+        Self {
+            token: token.into(),
+            amount,
+        }
     }
 }
 

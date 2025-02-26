@@ -1,15 +1,14 @@
 use crate::{
-    anchor_lang::AccountDeserialize,
-    anchor_lang::{InstructionData, ToAccountMetas},
+    anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas},
     anchor_spl, circuit_breaker,
     client::{GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
+    entity_key::AsEntityKey,
     error::{DecodeError, Error},
     keypair::{Keypair, Pubkey},
-    mk_transaction_with_blockhash, priority_fee,
-    solana_client::rpc_client::SerializableTransaction,
-    solana_sdk::{instruction::Instruction, signer::Signer, transaction::Transaction},
+    message, priority_fee,
+    solana_sdk::{instruction::Instruction, signer::Signer, transaction::VersionedTransaction},
     token::{Token, TokenAmount},
     TransactionOpts,
 };
@@ -18,13 +17,13 @@ use helium_anchor_gen::{
     helium_sub_daos::{self, DaoV0, SubDaoV0},
 };
 
-pub async fn mint_transaction<C: AsRef<SolanaRpcClient>>(
+pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
     payee: &Pubkey,
     payer: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     fn token_amount_to_mint_args(
         amount: TokenAmount,
     ) -> Result<data_credits::MintDataCreditsArgsV0, DecodeError> {
@@ -66,7 +65,6 @@ pub async fn mint_transaction<C: AsRef<SolanaRpcClient>>(
         .as_ref()
         .anchor_account::<data_credits::DataCreditsV0>(&Dao::dc_key())
         .await?
-        .ok_or_else(|| Error::account_not_found())?
         .hnt_price_oracle;
 
     let ix = Instruction {
@@ -83,13 +81,13 @@ pub async fn mint_transaction<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,
     ];
 
-    mk_transaction_with_blockhash(client, ixs, payer).await
+    message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
 pub async fn mint<C: AsRef<SolanaRpcClient>>(
@@ -98,21 +96,20 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     payee: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
-        mint_transaction(client, amount, payee, &keypair.pubkey(), opts).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = mint_message(client, amount, payee, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }
 
-pub async fn delegate_transaction<C: AsRef<SolanaRpcClient>>(
+pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     subdao: SubDao,
     payer_key: &str,
     amount: u64,
     owner: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     fn mk_accounts(delegated_dc_key: Pubkey, subdao: SubDao, owner: Pubkey) -> impl ToAccountMetas {
         data_credits::accounts::DelegateDataCreditsV0 {
             delegated_data_credits: delegated_dc_key,
@@ -130,7 +127,7 @@ pub async fn delegate_transaction<C: AsRef<SolanaRpcClient>>(
         }
     }
 
-    let delegated_dc_key = subdao.delegated_dc_key(payer_key);
+    let delegated_dc_key = subdao.delegated_dc_key(&payer_key);
     let ix = Instruction {
         program_id: data_credits::id(),
         accounts: mk_accounts(delegated_dc_key, subdao, *owner).to_account_metas(None),
@@ -148,12 +145,12 @@ pub async fn delegate_transaction<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,
     ];
-    mk_transaction_with_blockhash(client, ixs, owner).await
+    message::mk_message(client, ixs, &opts.lut_addresses, owner).await
 }
 
 pub async fn delegate<C: AsRef<SolanaRpcClient>>(
@@ -163,19 +160,19 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     amount: u64,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
-        delegate_transaction(client, subdao, payer_key, amount, &keypair.pubkey(), opts).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) =
+        delegate_message(client, subdao, payer_key, amount, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }
 
-pub async fn burn_transaction<C: AsRef<SolanaRpcClient>>(
+pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: u64,
     owner: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     fn mk_accounts(owner: Pubkey) -> impl ToAccountMetas {
         data_credits::accounts::BurnWithoutTrackingV0 {
             BurnWithoutTrackingV0burn_accounts:
@@ -205,12 +202,12 @@ pub async fn burn_transaction<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,
     ];
-    mk_transaction_with_blockhash(client, ixs, owner).await
+    message::mk_message(client, ixs, &opts.lut_addresses, owner).await
 }
 
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
@@ -218,28 +215,27 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     amount: u64,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
-        burn_transaction(client, amount, &keypair.pubkey(), opts).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = burn_message(client, amount, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }
 
-pub async fn burn_delegated_transaction<C: AsRef<SolanaRpcClient>>(
+pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
     amount: u64,
-    router_key: Pubkey,
+    router_key: &E,
     payer: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    fn mk_accounts(
+) -> Result<(message::VersionedMessage, u64), Error> {
+    fn mk_accounts<E: AsEntityKey>(
         sub_dao: SubDao,
-        router_key: Pubkey,
+        router_key: &E,
         dc_burn_authority: Pubkey,
         registrar: Pubkey,
     ) -> BurnDelegatedDataCreditsV0 {
-        let delegated_data_credits = sub_dao.delegated_dc_key(&router_key.to_string());
+        let delegated_data_credits = sub_dao.delegated_dc_key(router_key);
         let escrow_account = sub_dao.escrow_key(&delegated_data_credits);
 
         BurnDelegatedDataCreditsV0 {
@@ -287,25 +283,25 @@ pub async fn burn_delegated_transaction<C: AsRef<SolanaRpcClient>>(
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &burn_ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         burn_ix,
     ];
-    mk_transaction_with_blockhash(client, ixs, payer).await
+    message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
-pub async fn burn_delegated<C: AsRef<SolanaRpcClient>>(
+pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
     keypair: &Keypair,
     amount: u64,
-    router_key: Pubkey,
+    router_key: &E,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
-        burn_delegated_transaction(client, sub_dao, amount, router_key, &keypair.pubkey(), opts)
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) =
+        burn_delegated_message(client, sub_dao, amount, router_key, &keypair.pubkey(), opts)
             .await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }

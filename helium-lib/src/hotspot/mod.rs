@@ -7,13 +7,12 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
-    kta, mk_transaction_with_blockhash, onboarding, priority_fee,
+    kta, message, onboarding, priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-    solana_client::rpc_client::SerializableTransaction,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
         signer::Signer,
-        transaction::Transaction,
+        transaction::VersionedTransaction,
     },
     token::Token,
     TransactionOpts,
@@ -23,9 +22,11 @@ use chrono::Utc;
 use futures::TryFutureExt;
 use itertools::{izip, Itertools};
 use rust_decimal::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use solana_sdk::signature::NullSigner;
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
+pub mod cert;
 pub mod dataonly;
 pub mod info;
 
@@ -109,13 +110,13 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
     Ok(hotspot)
 }
 
-pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    hotspot: &helium_crypto::PublicKey,
-    update: HotspotInfoUpdate,
+pub fn direct_update_instruction(
+    kta: &helium_entity_manager::KeyToAssetV0,
+    asset: &asset::Asset,
+    asset_proof: &asset::AssetProof,
+    update: &HotspotInfoUpdate,
     owner: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<Instruction, Error> {
     fn mk_accounts(
         subdao: SubDao,
         kta: &helium_entity_manager::KeyToAssetV0,
@@ -154,9 +155,6 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
         }
     }
 
-    let kta = kta::for_entity_key(hotspot).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
-
     macro_rules! mk_update_data {
         ($ix_struct:ident, $arg_struct:ident, $($manual_fields:tt)*) => {
             $ix_struct {
@@ -172,7 +170,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
         };
     }
 
-    let mut accounts = mk_accounts(update.subdao(), &kta, &asset, owner);
+    let mut accounts = mk_accounts(update.subdao(), kta, asset, owner);
     accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
     use helium_entity_manager::{
@@ -200,42 +198,59 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
         accounts: accounts.to_account_metas(None),
         data,
     };
+    Ok(ix)
+}
+
+pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot: &helium_crypto::PublicKey,
+    update: &HotspotInfoUpdate,
+    owner: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
+    let ix = direct_update_instruction(&kta, &asset, &asset_proof, update, owner)?;
 
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
         priority_fee::compute_price_instruction_for_accounts(
             client,
-            &accounts,
-            opts.min_priority_fee,
+            &ix.accounts,
+            opts.fee_range(),
         )
         .await?,
         ix,
     ];
 
-    mk_transaction_with_blockhash(client, ixs, owner).await
+    let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, owner).await?;
+    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(owner)])?;
+    Ok((txn, block_height))
 }
 
 pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
-    update: HotspotInfoUpdate,
+    update: &HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (mut txn, block_height) =
         direct_update_transaction(client, hotspot, update, &keypair.pubkey(), opts).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
+    Ok((txn, block_height))
 }
 
 pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     onboarding_server: Option<String>,
     hotspot: &helium_crypto::PublicKey,
-    update: HotspotInfoUpdate,
+    update: &HotspotInfoUpdate,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<Transaction, Error> {
+) -> Result<VersionedTransaction, Error> {
     let public_key = keypair.pubkey();
     if let Some(server) = onboarding_server {
         let onboarding_client = onboarding::Client::new(&server);
@@ -243,7 +258,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
             .get_update_txn(hotspot, &public_key, update)
             .await?;
         tx.try_partial_sign(&[keypair], tx.message.recent_blockhash)?;
-        return Ok(tx);
+        return Ok(tx.into());
     };
     let (tx, _) = direct_update(client, hotspot, update, keypair, opts).await?;
     Ok(tx)
@@ -259,7 +274,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
@@ -270,18 +285,18 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     recipient: &Pubkey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::transfer(client, &kta.asset, recipient, keypair, opts).await
 }
 
-pub async fn burn_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
-    asset::burn_transaction(client, &kta.asset, opts).await
+    asset::burn_message(client, &kta.asset, opts).await
 }
 
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
@@ -289,12 +304,12 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     hotspot_key: &helium_crypto::PublicKey,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::burn(client, &kta.asset, keypair, opts).await
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "kebab-case")]
 pub enum HotspotMode {
@@ -364,7 +379,7 @@ impl HotspotPage {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Deserialize)]
 pub struct Hotspot {
     pub key: helium_crypto::PublicKey,
     #[serde(with = "serde_pubkey")]
@@ -400,7 +415,7 @@ impl Hotspot {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Copy)]
+#[derive(Serialize, Debug, Clone, Copy, Deserialize)]
 pub struct HotspotGeo {
     pub lat: f64,
     pub lng: f64,
@@ -416,7 +431,7 @@ impl From<h3o::CellIndex> for HotspotGeo {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Copy)]
+#[derive(Serialize, Debug, Clone, Copy, Deserialize)]
 pub struct HotspotLocation {
     #[serde(with = "serde_cell_index")]
     pub location: h3o::CellIndex,
@@ -493,8 +508,8 @@ pub mod serde_cell_index {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Hash)]
-#[serde(rename_all = "lowercase", untagged)]
+#[derive(Debug, Serialize, Clone, Hash, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "sub_dao")]
 pub enum HotspotInfo {
     Iot {
         mode: HotspotMode,
@@ -521,7 +536,7 @@ pub enum HotspotInfo {
     },
 }
 
-#[derive(Debug, Serialize, Clone, Hash)]
+#[derive(Debug, Serialize, Clone, Hash, Deserialize)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum MobileDeploymentInfo {
     WifiInfo {
@@ -542,7 +557,7 @@ pub enum MobileDeploymentInfo {
     },
 }
 
-#[derive(Debug, Serialize, Clone, Hash)]
+#[derive(Debug, Serialize, Clone, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct CbrsRadioInfo {
     // CBSD_ID or radio
@@ -682,7 +697,7 @@ impl HotspotInfoUpdate {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "snake_case")]
 pub enum MobileDeviceType {

@@ -3,21 +3,14 @@ use crate::{
     asset,
     error::{DecodeError, Error},
     is_zero,
-    keypair::{self, Keypair, Pubkey},
-    priority_fee::auto_compute_limit_and_price,
+    keypair::{self, Pubkey},
     solana_client,
-    solana_sdk::{commitment_config::CommitmentConfig, signer::Signer},
 };
-
-use anchor_client::solana_client::send_and_confirm_transactions_in_parallel;
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
-use solana_sdk::{instruction::Instruction, message::Message, transaction::Transaction};
 use std::{marker::Send, sync::Arc};
 use tracing::instrument;
-
-pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
@@ -30,153 +23,28 @@ pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?ses
 pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
 pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
-static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+pub static CERT_URL_MAINNET: &str = "https://api.prod.ims.nova.xyz/api/wifi/brownfield/inventory";
+pub static CERT_URL_DEVNET: &str = "https://api.svt.ims.nova.xyz/api/wifi/brownfield/inventory";
+pub static CERT_URL_MAINNET_ENV: &str = "CERT_MAINNET_URL";
+pub static CERT_URL_DEVNET_ENV: &str = "CERT_DEVNET_URL";
 
-#[derive(Clone)]
-pub struct SolanaClient {
-    pub inner: Arc<SolanaRpcClient>,
-    pub base_url: String,
-    pub keypair: Option<Arc<Keypair>>,
-}
+pub use crate::hotspot::cert::Client as CertClient;
+pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 
-impl Default for SolanaClient {
-    fn default() -> Self {
-        // safe to unwrap
-        Self::new(SOLANA_URL_MAINNET, None).unwrap()
-    }
-}
-
-impl SolanaClient {
-    pub fn new(url: &str, keypair: Option<Arc<Keypair>>) -> Result<Self, Error> {
-        let client = Arc::new(
-            solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
-                url.to_string(),
-                CommitmentConfig::finalized(),
-            ),
-        );
-
-        // Add debug print for keypair
-        if let Some(kp) = &keypair {
-            println!("Initializing SolanaClient with keypair: {:?}", kp.pubkey());
-        } else {
-            println!("Initializing SolanaClient without keypair");
-        }
-
-        Ok(Self {
-            inner: client,
-            base_url: url.to_string(),
-            keypair,
-        })
-    }
-
-    pub fn ws_url(&self) -> String {
-        self.base_url
-            .replace("https", "wss")
-            .replace("http", "ws")
-            .replace("127.0.0.1:8899", "127.0.0.1:8900")
-    }
-
-    pub fn pubkey(&self) -> Result<Pubkey, Error> {
-        self.keypair
-            .as_ref()
-            .map(|keypair| keypair.pubkey())
-            .ok_or_else(|| Error::KeypairUnconfigured)
-    }
-
-    pub async fn send_instructions(
-        &self,
-        ixs: &[Instruction],
-        extra_signers: &[Keypair],
-    ) -> Result<(), Error> {
-        let keypair = self
-            .keypair
-            .as_ref()
-            .ok_or_else(|| Error::KeypairUnconfigured)?;
-
-        if ixs.is_empty() {
-            return Ok(());
-        }
-
-        let signers: Vec<&dyn Signer> = std::iter::once(keypair.as_ref() as &dyn Signer)
-            .chain(extra_signers.iter().map(|k| k as &dyn Signer))
-            .collect();
-
-        let (recent_blockhash, _) = self
-            .inner
-            .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
-            .await?;
-
-        let optimized_ixs = auto_compute_limit_and_price(
-            &self.inner,
-            ixs,
-            &signers,
-            1.2,
-            Some(&keypair.pubkey()),
-            Some(recent_blockhash),
-        )
-        .await?;
-
-        let message = Message::new(&optimized_ixs, Some(&keypair.pubkey()));
-        let transaction = Transaction::new(&signers, message, recent_blockhash);
-        self.inner
-            .send_and_confirm_transaction_with_spinner(&transaction)
-            .await?;
-
-        Ok(())
-    }
+pub fn is_devnet(url: &str) -> bool {
+    url == "d" || url.starts_with("devnet") || url.contains("test-helium")
 }
 
 #[derive(Clone)]
 pub struct Client {
-    pub solana_client: Arc<SolanaClient>,
+    pub solana_client: Arc<SolanaRpcClient>,
     pub das_client: Arc<DasClient>,
-}
-
-impl TryFrom<&str> for Client {
-    type Error = Error;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        fn env_or(key: &str, default: &str) -> String {
-            std::env::var(key).unwrap_or_else(|_| default.to_string())
-        }
-        let url = match value {
-            "m" | "mainnet-beta" => &env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
-            "d" | "devnet" => &env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
-            url => url,
-        };
-        let das_client = Arc::new(DasClient::with_base_url(url)?);
-        let solana_client = Arc::new(SolanaClient::new(url, None)?);
-
-        Ok(Self {
-            solana_client,
-            das_client,
-        })
-    }
-}
-
-impl AsRef<SolanaRpcClient> for SolanaClient {
-    fn as_ref(&self) -> &SolanaRpcClient {
-        &self.inner
-    }
-}
-
-impl AsRef<SolanaRpcClient> for Client {
-    fn as_ref(&self) -> &SolanaRpcClient {
-        &self.solana_client.inner
-    }
-}
-
-impl AsRef<DasClient> for Client {
-    fn as_ref(&self) -> &DasClient {
-        &self.das_client
-    }
+    pub cert_client: Arc<CertClient>,
 }
 
 #[async_trait::async_trait]
 pub trait GetAnchorAccount {
-    async fn anchor_account<T: AccountDeserialize>(
-        &self,
-        pubkey: &Pubkey,
-    ) -> Result<Option<T>, Error>;
+    async fn anchor_account<T: AccountDeserialize>(&self, pubkey: &Pubkey) -> Result<T, Error>;
     async fn anchor_accounts<T: AccountDeserialize + Send>(
         &self,
         pubkeys: &[Pubkey],
@@ -185,13 +53,10 @@ pub trait GetAnchorAccount {
 
 #[async_trait::async_trait]
 impl GetAnchorAccount for SolanaRpcClient {
-    async fn anchor_account<T: AccountDeserialize>(
-        &self,
-        pubkey: &Pubkey,
-    ) -> Result<Option<T>, Error> {
+    async fn anchor_account<T: AccountDeserialize>(&self, pubkey: &Pubkey) -> Result<T, Error> {
         let account = self.get_account(pubkey).await?;
         let decoded = T::try_deserialize(&mut account.data.as_ref())?;
-        Ok(Some(decoded))
+        Ok(decoded)
     }
 
     async fn anchor_accounts<T: AccountDeserialize + Send>(
@@ -199,7 +64,7 @@ impl GetAnchorAccount for SolanaRpcClient {
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<T>>, Error> {
         async fn get_accounts<A: AccountDeserialize + Send>(
-            client: &solana_client::nonblocking::rpc_client::RpcClient,
+            client: &SolanaRpcClient,
             pubkeys: &[Pubkey],
         ) -> Result<Vec<Option<A>>, Error> {
             let accounts = client.get_multiple_accounts(pubkeys).await?;
@@ -232,14 +97,62 @@ impl GetAnchorAccount for Client {
     async fn anchor_account<T: AccountDeserialize>(
         &self,
         pubkey: &keypair::Pubkey,
-    ) -> Result<Option<T>, Error> {
-        self.solana_client.inner.anchor_account(pubkey).await
+    ) -> Result<T, Error> {
+        self.solana_client.anchor_account(pubkey).await
     }
     async fn anchor_accounts<T: AccountDeserialize + Send>(
         &self,
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<T>>, Error> {
-        self.solana_client.inner.anchor_accounts(pubkeys).await
+        self.solana_client.anchor_accounts(pubkeys).await
+    }
+}
+
+impl TryFrom<&str> for Client {
+    type Error = Error;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        fn maybe_env(key: &str) -> Option<String> {
+            std::env::var(key).ok()
+        }
+        fn env_or(key: &str, default: &str) -> String {
+            maybe_env(key).unwrap_or_else(|| default.to_string())
+        }
+        let rpc_url = match value {
+            "m" | "mainnet-beta" => env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
+            "d" | "devnet" => env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
+            url => url.to_string(),
+        };
+        let cert_url = match value {
+            "d" | "devnet" => env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
+            url if is_devnet(url) => env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
+            _url => env_or(CERT_URL_MAINNET_ENV, CERT_URL_MAINNET),
+        };
+        let das_client = Arc::new(DasClient::with_base_url(&rpc_url)?);
+        let solana_client = Arc::new(SolanaRpcClient::new(rpc_url));
+        let cert_client = Arc::new(CertClient::new(&cert_url, None)?);
+        Ok(Self {
+            solana_client,
+            das_client,
+            cert_client,
+        })
+    }
+}
+
+impl AsRef<SolanaRpcClient> for Client {
+    fn as_ref(&self) -> &SolanaRpcClient {
+        &self.solana_client
+    }
+}
+
+impl AsRef<DasClient> for Client {
+    fn as_ref(&self) -> &DasClient {
+        &self.das_client
+    }
+}
+
+impl AsRef<CertClient> for Client {
+    fn as_ref(&self) -> &CertClient {
+        &self.cert_client
     }
 }
 
@@ -313,6 +226,8 @@ impl DasClientError {
 #[jsonrpc_client::api]
 pub trait DAS {}
 
+static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
 #[jsonrpc_client::implement(DAS)]
 #[derive(Debug, Clone)]
 pub struct DasClient {
@@ -345,6 +260,23 @@ impl DasClient {
 
         let response = Result::from(
             SendRequest::send_request::<asset::Asset>(self, self.base_url.clone(), body)
+                .await?
+                .payload,
+        )?;
+        Ok(response)
+    }
+
+    #[instrument(skip(self), level = "trace")]
+    pub async fn get_asset_batch(
+        &self,
+        addresses: &[Pubkey],
+    ) -> Result<Vec<asset::Asset>, DasClientError> {
+        let body = jsonrpc_client::Request::new_v2("getAssetBatch")
+            .with_argument("ids".to_string(), addresses)?
+            .serialize()?;
+
+        let response = Result::from(
+            SendRequest::send_request::<Vec<asset::Asset>>(self, self.base_url.clone(), body)
                 .await?
                 .payload,
         )?;

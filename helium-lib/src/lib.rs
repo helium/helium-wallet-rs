@@ -12,6 +12,7 @@ pub mod iot;
 pub mod keypair;
 pub mod kta;
 pub mod memo;
+pub mod message;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;
@@ -59,27 +60,37 @@ use client::SolanaRpcClient;
 use error::Error;
 use keypair::Pubkey;
 use solana_sdk::{instruction::Instruction, transaction::Transaction};
-use std::sync::Arc;
+use std::{ops::RangeInclusive, sync::Arc};
 
-pub fn init(solana_client: Arc<client::SolanaClient>) -> Result<(), error::Error> {
-    kta::init(solana_client.inner.clone())
+pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
+    kta::init(solana_client)
 }
 
 pub struct TransactionOpts {
     pub min_priority_fee: u64,
+    pub max_priority_fee: u64,
+    pub lut_addresses: Vec<Pubkey>,
 }
 
 impl Default for TransactionOpts {
     fn default() -> Self {
         Self {
             min_priority_fee: priority_fee::MIN_PRIORITY_FEE,
+            max_priority_fee: priority_fee::MAX_PRIORITY_FEE,
+            lut_addresses: vec![message::COMMON_LUT],
         }
     }
 }
 
-const EPOCH_LENGTH: u64 = 60 * 60 * 24;
 pub fn get_current_epoch(unix_time: u64) -> u64 {
+    const EPOCH_LENGTH: u64 = 60 * 60 * 24;
     unix_time / EPOCH_LENGTH
+}
+
+impl TransactionOpts {
+    fn fee_range(&self) -> RangeInclusive<u64> {
+        RangeInclusive::new(self.min_priority_fee, self.max_priority_fee)
+    }
 }
 
 pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(

@@ -1,21 +1,23 @@
 use crate::{
     asset, data_credits, entity_key::AsEntityKey, get_current_epoch, helium_entity_manager,
-    helium_sub_daos, keypair::Pubkey, lazy_distributor, rewards_oracle, token::Token,
+    helium_sub_daos, keypair::Pubkey, rewards_oracle, token::Token,
 };
 
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, Default,
+)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum Dao {
+    #[default]
     Hnt,
 }
 
 impl std::fmt::Display for Dao {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        f.write_str(&str)
+        f.write_str("hnt")
     }
 }
 
@@ -139,15 +141,11 @@ impl SubDao {
     }
 
     pub fn key(&self) -> Pubkey {
-        let mint = self.mint();
-        Pubkey::find_program_address(&[b"sub_dao", mint.as_ref()], &helium_sub_daos::ID).0
-    }
-
-    pub fn mint(&self) -> &Pubkey {
-        match self {
-            Self::Iot => Token::Iot.mint(),
-            Self::Mobile => Token::Mobile.mint(),
-        }
+        Pubkey::find_program_address(
+            &[b"sub_dao", self.token().mint().as_ref()],
+            &helium_sub_daos::id(),
+        )
+        .0
     }
 
     pub fn token(&self) -> Token {
@@ -157,16 +155,8 @@ impl SubDao {
         }
     }
 
-    pub fn lazy_distributor(&self) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[b"lazy_distributor", self.mint().as_ref()],
-            &lazy_distributor::id(),
-        );
-        key
-    }
-
-    pub fn delegated_dc_key(&self, router_key: &str) -> Pubkey {
-        let hash = Sha256::digest(router_key);
+    pub fn delegated_dc_key<E: AsEntityKey>(&self, router_key: &E) -> Pubkey {
+        let hash = Sha256::digest(router_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
             &[b"delegated_data_credits", self.key().as_ref(), &hash],
             &data_credits::id(),
@@ -209,26 +199,6 @@ impl SubDao {
             &helium_entity_manager::id(),
         )
         .0
-    }
-
-    pub fn lazy_distributor_key(&self) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[b"lazy_distributor", self.mint().as_ref()],
-            &lazy_distributor::id(),
-        );
-        key
-    }
-
-    pub fn receipient_key_from_kta(&self, kta: &helium_entity_manager::KeyToAssetV0) -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(
-            &[
-                b"recipient",
-                self.lazy_distributor_key().as_ref(),
-                kta.asset.as_ref(),
-            ],
-            &lazy_distributor::id(),
-        );
-        key
     }
 
     pub fn config_key(&self) -> Pubkey {

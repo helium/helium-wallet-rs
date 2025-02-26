@@ -54,7 +54,7 @@ impl Client {
         &self,
         hotspot: &helium_crypto::PublicKey,
         signer: &keypair::Pubkey,
-        update: HotspotInfoUpdate,
+        update: &HotspotInfoUpdate,
     ) -> Result<solana_sdk::transaction::Transaction, OnboardingError> {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]

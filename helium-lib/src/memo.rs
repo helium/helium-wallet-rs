@@ -2,31 +2,30 @@ use crate::{
     client::SolanaRpcClient,
     error::Error,
     keypair::{Keypair, Pubkey},
-    mk_transaction_with_blockhash, priority_fee,
-    solana_client::rpc_client::SerializableTransaction,
-    solana_sdk::{signer::Signer, transaction::Transaction},
+    message, priority_fee,
+    solana_sdk::{signer::Signer, transaction::VersionedTransaction},
     TransactionOpts,
 };
 
-pub async fn memo_transaction<C: AsRef<SolanaRpcClient>>(
+pub async fn memo_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     data: &str,
     pubkey: &Pubkey,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
+) -> Result<(message::VersionedMessage, u64), Error> {
     let ix = spl_memo::build_memo(data.as_bytes(), &[pubkey]);
     let ixs = &[
         priority_fee::compute_budget_instruction(200_000),
         priority_fee::compute_price_instruction_for_accounts(
             client,
             &ix.accounts,
-            opts.min_priority_fee,
+            opts.fee_range(),
         )
         .await?,
         ix,
     ];
 
-    mk_transaction_with_blockhash(client, ixs, pubkey).await
+    message::mk_message(client, ixs, &opts.lut_addresses, pubkey).await
 }
 
 pub async fn memo<C: AsRef<SolanaRpcClient>>(
@@ -34,9 +33,8 @@ pub async fn memo<C: AsRef<SolanaRpcClient>>(
     data: &str,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(Transaction, u64), Error> {
-    let (mut txn, latest_block_height) =
-        memo_transaction(client, data, &keypair.pubkey(), opts).await?;
-    txn.try_sign(&[keypair], *txn.get_recent_blockhash())?;
-    Ok((txn, latest_block_height))
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) = memo_message(client, data, &keypair.pubkey(), opts).await?;
+    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    Ok((txn, block_height))
 }

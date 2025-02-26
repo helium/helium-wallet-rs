@@ -24,10 +24,10 @@ impl Cmd {
             &client,
             &asset.id,
             &keypair,
-            &self.commit.transaction_opts(),
+            &self.commit.transaction_opts(&client),
         )
         .await?;
 
-        print_json(&self.commit.maybe_commit(&tx, &client).await?.to_json())
+        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

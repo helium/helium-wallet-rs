@@ -7,16 +7,7 @@ use crate::{
     dao::SubDao,
     entity_key::AsEntityKey,
     error::{DecodeError, Error},
-    helium_entity_manager::{
-        self,
-        instruction::{
-            OnboardDataOnlyIotHotspotV0, OnboardDataOnlyMobileHotspotV0, OnboardIotHotspotV0,
-            OnboardMobileHotspotV0, UpdateIotInfoV0, UpdateMobileInfoV0,
-        },
-        OnboardDataOnlyIotHotspotArgsV0, OnboardDataOnlyMobileHotspotArgsV0,
-        OnboardIotHotspotArgsV0, OnboardMobileHotspotArgsV0, UpdateIotInfoArgsV0,
-        UpdateMobileInfoArgsV0,
-    },
+    helium_entity_manager,
     hotspot::{CommittedHotspotInfoUpdate, HotspotInfo, HotspotInfoUpdate},
     keypair::Pubkey,
     solana_sdk::{commitment_config::CommitmentConfig, signature::Signature},
@@ -25,6 +16,14 @@ use chrono::DateTime;
 use futures::{
     stream::{self, StreamExt, TryStreamExt},
     TryFutureExt,
+};
+use helium_anchor_gen::helium_entity_manager::{
+    instruction::{
+        OnboardDataOnlyIotHotspotV0, OnboardDataOnlyMobileHotspotV0, OnboardIotHotspotV0,
+        OnboardMobileHotspotV0, UpdateIotInfoV0, UpdateMobileInfoV0,
+    },
+    OnboardDataOnlyIotHotspotArgsV0, OnboardDataOnlyMobileHotspotArgsV0, OnboardIotHotspotArgsV0,
+    OnboardMobileHotspotArgsV0, UpdateIotInfoArgsV0, UpdateMobileInfoArgsV0,
 };
 use serde::{Deserialize, Serialize};
 use solana_transaction_status::{
@@ -41,14 +40,14 @@ pub async fn get<C: GetAnchorAccount>(
     let hotspot_info = match subdao {
         SubDao::Iot => client
             .anchor_account::<helium_entity_manager::IotHotspotInfoV0>(info_key)
-            .await?
+            .await
             .map(Into::into),
         SubDao::Mobile => client
             .anchor_account::<helium_entity_manager::MobileHotspotInfoV0>(info_key)
-            .await?
+            .await
             .map(Into::into),
-    };
-
+    }
+    .ok();
     Ok(hotspot_info)
 }
 

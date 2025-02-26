@@ -150,7 +150,7 @@ mod tests {
     const SEED_PWD: &str = "h3l1Um";
 
     fn create_test_keypair() -> Keypair {
-        let entropy = helium_mnemonic::mnemonic_to_entropy(phrase_to_words(MNEMONIC_PHRASE))
+        let entropy = helium_mnemonic::mnemonic_to_entropy(&phrase_to_words(MNEMONIC_PHRASE))
             .expect("mnemonic");
         Keypair::generate_from_entropy(&entropy).expect("keypair")
     }

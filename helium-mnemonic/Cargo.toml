@@ -3,6 +3,7 @@ name = "helium-mnemonic"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+version = "0.0.1-rc.1"
 
 [dependencies]
 bitvec = "*" # inherits from elliptic-curve crate

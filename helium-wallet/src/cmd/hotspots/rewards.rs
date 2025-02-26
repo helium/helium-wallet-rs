@@ -1,7 +1,6 @@
 use crate::cmd::*;
 use client::DasClient;
 use helium_lib::{
-    dao::SubDao,
     entity_key::{EncodedEntityKey, KeySerialization},
     hotspot,
     keypair::Pubkey,
@@ -25,6 +24,7 @@ pub enum RewardsCommand {
     Pending(PendingCmd),
     Lifetime(LifetimeCmd),
     Claim(ClaimCmd),
+    Recipient(RecipientCmd),
 }
 
 impl RewardsCommand {
@@ -33,6 +33,7 @@ impl RewardsCommand {
             Self::Pending(cmd) => cmd.run(opts).await,
             Self::Lifetime(cmd) => cmd.run(opts).await,
             Self::Claim(cmd) => cmd.run(opts).await,
+            Self::Recipient(cmd) => cmd.run(opts).await,
         }
     }
 }
@@ -59,8 +60,8 @@ async fn collect_hotspots<C: AsRef<DasClient>>(
 #[derive(Clone, Debug, clap::Args)]
 /// List pending rewards for given Hotspots
 pub struct PendingCmd {
-    /// Subdao for command
-    subdao: SubDao,
+    /// Token for command
+    token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
     /// Wallet to look up hotspots for
@@ -81,7 +82,7 @@ impl PendingCmd {
         let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
         let pending = reward::pending(
             &client,
-            &self.subdao,
+            self.token,
             &entity_key_strings,
             KeySerialization::B58,
         )
@@ -96,8 +97,8 @@ impl PendingCmd {
 ///
 /// This includes both claimed and unclaimed rewards
 pub struct LifetimeCmd {
-    /// Subdao for command
-    subdao: SubDao,
+    /// Token for command
+    token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
     /// Wallet to look up hotspots for
@@ -116,7 +117,7 @@ impl LifetimeCmd {
         )
         .await?;
         let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
-        let rewards = reward::lifetime(&client, &self.subdao, &entity_key_strings).await?;
+        let rewards = reward::lifetime(&client, self.token, &entity_key_strings).await?;
 
         print_json(&rewards)
     }
@@ -125,8 +126,8 @@ impl LifetimeCmd {
 #[derive(Clone, Debug, clap::Args)]
 /// Claim rewards for one or all Hotspots in a wallet
 pub struct ClaimCmd {
-    /// Subdao for command
-    subdao: SubDao,
+    /// Token for command
+    token: reward::ClaimableToken,
     /// Hotspot public key to send claim for
     hotspot: helium_crypto::PublicKey,
     /// The optional amount to claim
@@ -134,11 +135,6 @@ pub struct ClaimCmd {
     /// If not specific the full pending amount is claimed, limited by the maximum
     /// claim amount for the subdao
     pub amount: Option<f64>,
-    /// Do not check and initialize the on chain recipient
-    ///
-    /// For known assets that have been previously initialized this will speed up the claim
-    #[arg(long)]
-    skip_init: bool,
     /// Commit the claim transaction.
     #[command(flatten)]
     commit: CommitOpts,
@@ -147,10 +143,9 @@ pub struct ClaimCmd {
 impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
     fn from(value: &ClaimCmd) -> Self {
         Self {
-            subdao: value.subdao,
+            token: value.token,
             entity_key: EncodedEntityKey::from(&value.hotspot),
             amount: value.amount,
-            skip_init: value.skip_init,
             commit: value.commit.clone(),
         }
     }
@@ -159,6 +154,38 @@ impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
 impl ClaimCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let cmd = crate::cmd::assets::rewards::ClaimCmd::from(self);
+        cmd.run(opts).await
+    }
+}
+
+/// Get or set the the recipient for hotspot rewards
+#[derive(Debug, Clone, clap::Args)]
+pub struct RecipientCmd {
+    /// Token for command
+    pub token: reward::ClaimableToken,
+    /// The hotspot to get or set the reward recipient for
+    pub hotspot: helium_crypto::PublicKey,
+    /// The new destination to send rewards to, if set
+    pub destination: Option<helium_lib::keypair::Pubkey>,
+    /// Commit the new destination if set
+    #[command(flatten)]
+    pub commit: CommitOpts,
+}
+
+impl From<&RecipientCmd> for crate::cmd::assets::rewards::RecipientCmd {
+    fn from(value: &RecipientCmd) -> Self {
+        Self {
+            token: value.token,
+            entity_key: EncodedEntityKey::from(&value.hotspot),
+            destination: value.destination,
+            commit: value.commit.clone(),
+        }
+    }
+}
+
+impl RecipientCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let cmd = crate::cmd::assets::rewards::RecipientCmd::from(self);
         cmd.run(opts).await
     }
 }

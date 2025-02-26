@@ -191,9 +191,7 @@ impl Wallet {
                 let helium_pubkey = helium_crypto::PublicKey::read(reader)?;
                 Pubkey::try_from(helium_pubkey).map_err(Error::from)
             }
-            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => {
-                Pubkey::read(reader).map_err(anyhow::Error::from)
-            }
+            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => Pubkey::read(reader),
             _ => bail!("Invalid wallet kind {kind}"),
         }
     }
@@ -207,13 +205,11 @@ impl Wallet {
             | WALLET_KIND_SHARDED_V2 => {
                 let tag = reader.read_u8()?;
                 match KeyType::try_from(tag)? {
-                    KeyType::Ed25519 => Keypair::read(reader).map_err(anyhow::Error::from),
+                    KeyType::Ed25519 => Keypair::read(reader),
                     _ => bail!("Unsupported key type: {tag}"),
                 }
             }
-            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => {
-                Keypair::read(reader).map_err(anyhow::Error::from)
-            }
+            WALLET_KIND_BASIC_V3 | WALLET_KIND_SHARDED_V3 => Keypair::read(reader),
             _ => bail!("Invalid wallet kind {kind}"),
         }
     }
@@ -464,8 +460,8 @@ mod tests {
             "drill toddler tongue laundry access silly few faint glove birth crumble add",
         );
 
-        let from_keypair = Keypair::from_words(seed_words.clone()).expect("to generate a keypair");
-        let entropy = helium_mnemonic::mnemonic_to_entropy(seed_words)
+        let from_keypair = Keypair::from_words(&seed_words).expect("to generate a keypair");
+        let entropy = helium_mnemonic::mnemonic_to_entropy(&seed_words)
             .expect("entropy from mnemonic")
             .to_vec();
 
@@ -499,8 +495,8 @@ mod tests {
 
         let seed_words = phrase_to_words(
             "moment case dirt ski tool dynamic sort ugly pluck drop kiwi knee jar easy verb canal nuclear survey before dwarf prosper cave pottery target");
-        let from_keypair = Keypair::from_words(seed_words.clone()).expect("to generate a keypair");
-        let entropy = helium_mnemonic::mnemonic_to_entropy(seed_words)
+        let from_keypair = Keypair::from_words(&seed_words).expect("to generate a keypair");
+        let entropy = helium_mnemonic::mnemonic_to_entropy(&seed_words)
             .expect("entropy from mnemonic")
             .to_vec();
 

@@ -1,4 +1,4 @@
-use crate::{anchor_client, client, onboarding, solana_client, token};
+use crate::{anchor_client, client, hotspot::cert, onboarding, solana_client, token};
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -19,6 +19,8 @@ pub enum Error {
     AccountAbsent(String),
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
+    #[error("cert client: {0}")]
+    Cert(#[from] cert::ClientError),
     #[error("grpc: {0}")]
     Grpc(#[from] tonic::Status),
     #[error("service: {0}")]
@@ -33,6 +35,10 @@ pub enum Error {
     Program(#[from] solana_program::program_error::ProgramError),
     #[error("solana: {0}")]
     Solana(Box<solana_client::client_error::ClientError>),
+    #[error("instruction: {0}")]
+    Instruction(#[from] solana_sdk::instruction::InstructionError),
+    #[error("message: {0}")]
+    Cmopile(#[from] solana_sdk::message::CompileError),
     #[error("signing: {0}")]
     Signing(#[from] solana_sdk::signer::SignerError),
     #[error("crypto: {0}")]
@@ -92,6 +98,8 @@ impl Error {
 pub enum EncodeError {
     #[error("proto: {0}")]
     Proto(#[from] helium_proto::EncodeError),
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
     #[error("bincode: {0}")]
     Bincode(#[from] bincode::Error),
     #[error("h3: {0}")]

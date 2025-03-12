@@ -20,6 +20,7 @@ use crate::{
 use angry_purple_tiger::AnimalName;
 use chrono::Utc;
 use futures::TryFutureExt;
+use helium_proto::services::mobile_config;
 use itertools::{izip, Itertools};
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -567,6 +568,15 @@ pub struct CbrsRadioInfo {
     pub elevation: i32,
 }
 
+impl From<mobile_config::CbrsRadioDeploymentInfo> for CbrsRadioInfo {
+    fn from(value: mobile_config::CbrsRadioDeploymentInfo) -> Self {
+        Self {
+            radio_id: value.radio_id,
+            elevation: value.elevation as i32,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub struct CommittedHotspotInfoUpdate {
@@ -841,6 +851,31 @@ impl From<helium_entity_manager::MobileDeploymentInfoV0> for MobileDeploymentInf
             helium_entity_manager::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
                 Self::CbrsInfo {
                     radio_infos: radio_infos.into_iter().map(CbrsRadioInfo::from).collect(),
+                }
+            }
+        }
+    }
+}
+
+impl From<mobile_config::gateway_metadata_v2::DeploymentInfo> for MobileDeploymentInfo {
+    fn from(value: mobile_config::gateway_metadata_v2::DeploymentInfo) -> Self {
+        match value {
+            mobile_config::gateway_metadata_v2::DeploymentInfo::WifiDeploymentInfo(value) => {
+                Self::WifiInfo {
+                    antenna: value.antenna,
+                    elevation: value.elevation as i32,
+                    azimuth: Decimal::new(value.azimuth as i64, 2),
+                    mechanical_down_tilt: Decimal::new(value.mechanical_down_tilt as i64, 2),
+                    electrical_down_tilt: Decimal::new(value.electrical_down_tilt as i64, 2),
+                }
+            }
+            mobile_config::gateway_metadata_v2::DeploymentInfo::CbrsDeploymentInfo(value) => {
+                Self::CbrsInfo {
+                    radio_infos: value
+                        .cbrs_radios_deployment_info
+                        .into_iter()
+                        .map(CbrsRadioInfo::from)
+                        .collect(),
                 }
             }
         }

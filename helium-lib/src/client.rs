@@ -603,15 +603,15 @@ pub mod config {
     pub mod mobile {
         use super::*;
         use helium_proto::services::mobile_config::{
-            DeviceType, GatewayClient, GatewayInfo, GatewayInfoBatchReqV1, GatewayInfoReqV1,
-            GatewayInfoResV1, GatewayInfoStreamReqV1, GatewayInfoStreamResV1,
+            DeviceType, GatewayClient, GatewayInfoBatchReqV1, GatewayInfoReqV1, GatewayInfoResV2,
+            GatewayInfoStreamReqV2, GatewayInfoStreamResV2, GatewayInfoV2,
         };
 
         impl_message_sign!(GatewayInfoReqV1);
-        impl_message_sign!(GatewayInfoStreamReqV1);
+        impl_message_sign!(GatewayInfoStreamReqV2);
         impl_message_sign!(GatewayInfoBatchReqV1);
-        impl_message_verify!(GatewayInfoResV1);
-        impl_message_verify!(GatewayInfoStreamResV1);
+        impl_message_verify!(GatewayInfoResV2);
+        impl_message_verify!(GatewayInfoStreamResV2);
 
         #[derive(Clone)]
         pub struct Client {
@@ -645,7 +645,7 @@ pub mod config {
                     signature: vec![],
                 };
                 req.sign(&self.keypair)?;
-                match self.client.info(req).await {
+                match self.client.info_v2(req).await {
                     Ok(resp) => {
                         let inner = resp.into_inner();
                         inner.verify(&self.address)?;
@@ -668,7 +668,7 @@ pub mod config {
                 };
                 req.sign(&self.keypair)?;
                 let mut result = Vec::with_capacity(addresses.len());
-                let mut stream = self.client.info_batch(req).await?.into_inner();
+                let mut stream = self.client.info_batch_v2(req).await?.into_inner();
                 loop {
                     match stream.try_next().await {
                         Ok(Some(res)) => {
@@ -696,13 +696,13 @@ pub mod config {
                 BoxStream<Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
-                let mut req = GatewayInfoStreamReqV1 {
+                let mut req = GatewayInfoStreamReqV2 {
                     signer: self.keypair.public_key().into(),
                     batch_size: 1000,
                     ..Default::default()
                 };
                 req.sign(&self.keypair)?;
-                let streaming = self.client.info_stream(req).await?.into_inner();
+                let streaming = self.client.info_stream_v2(req).await?.into_inner();
                 let streaming = streaming
                     .map_err(Error::from)
                     .and_then(|res| {
@@ -719,7 +719,7 @@ pub mod config {
             }
         }
 
-        fn info_from_res(res: GatewayInfoResV1) -> Result<Option<HotspotInfo>, Error> {
+        fn info_from_res(res: GatewayInfoResV2) -> Result<Option<HotspotInfo>, Error> {
             let Some(info) = res.info else {
                 return Ok(None);
             };
@@ -727,7 +727,7 @@ pub mod config {
         }
 
         fn info_from_info(
-            info: GatewayInfo,
+            info: GatewayInfoV2,
         ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
             let address = info.address.try_into()?;
             let Some(metadata) = info.metadata else {
@@ -750,7 +750,7 @@ pub mod config {
                     mode,
                     location: metadata.location.parse().ok(),
                     location_asserts: 0,
-                    deployment_info: None,
+                    deployment_info: metadata.deployment_info.map(Into::into),
                 }),
             ))
         }

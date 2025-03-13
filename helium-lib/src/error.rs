@@ -10,7 +10,7 @@ pub enum Error {
     #[error("onboarding: {0}")]
     Onboarding(#[from] onboarding::OnboardingError),
     #[error("anchor client: {0}")]
-    Anchor(#[from] anchor_client::ClientError),
+    Anchor(Box<anchor_client::ClientError>),
     #[error("anchor lang: {0}")]
     AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
     #[error("Account already exists")]
@@ -22,7 +22,7 @@ pub enum Error {
     #[error("cert client: {0}")]
     Cert(#[from] cert::ClientError),
     #[error("grpc: {0}")]
-    Grpc(#[from] tonic::Status),
+    Grpc(Box<tonic::Status>),
     #[error("service: {0}")]
     Service(#[from] helium_proto::services::Error),
     #[error("price client: {0}")]
@@ -65,6 +65,18 @@ impl From<solana_client::client_error::ClientError> for Error {
     }
 }
 
+impl From<anchor_client::ClientError> for Error {
+    fn from(value: anchor_client::ClientError) -> Self {
+        Self::Anchor(Box::new(value))
+    }
+}
+
+impl From<tonic::Status> for Error {
+    fn from(value: tonic::Status) -> Self {
+        Self::Grpc(Box::new(value))
+    }
+}
+
 impl Error {
     pub fn account_not_found() -> Self {
         anchor_client::ClientError::AccountNotFound.into()
@@ -82,7 +94,10 @@ impl Error {
             rpc_request::RpcError as SolanaClientRpcError,
         };
         match self {
-            Self::Anchor(anchor_client::ClientError::AccountNotFound) => true,
+            Self::Anchor(client_error) => matches!(
+                client_error.as_ref(),
+                anchor_client::ClientError::AccountNotFound
+            ),
             Self::Solana(client_error) => matches!(client_error.as_ref(), SolanaClientError {
                     kind: SolanaClientErrorKind::RpcError(SolanaClientRpcError::ForUser(msg)),
                     ..

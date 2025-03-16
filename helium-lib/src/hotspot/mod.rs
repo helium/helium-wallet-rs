@@ -547,11 +547,7 @@ pub enum MobileDeploymentInfo {
         #[serde(skip_serializing_if = "is_zero")]
         elevation: i32,
         #[serde(skip_serializing_if = "is_zero")]
-        azimuth: Decimal,
-        #[serde(skip_serializing_if = "is_zero")]
-        mechanical_down_tilt: Decimal,
-        #[serde(skip_serializing_if = "is_zero")]
-        electrical_down_tilt: Decimal,
+        azimuth: u16,
     },
     CbrsInfo {
         radio_infos: Vec<CbrsRadioInfo>,
@@ -839,14 +835,11 @@ impl From<helium_entity_manager::MobileDeploymentInfoV0> for MobileDeploymentInf
                 antenna,
                 elevation,
                 azimuth,
-                mechanical_down_tilt,
-                electrical_down_tilt,
+                ..
             } => Self::WifiInfo {
                 antenna,
                 elevation,
-                azimuth: Decimal::new(azimuth as i64, 2),
-                mechanical_down_tilt: Decimal::new(mechanical_down_tilt as i64, 2),
-                electrical_down_tilt: Decimal::new(electrical_down_tilt as i64, 2),
+                azimuth,
             },
             helium_entity_manager::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
                 Self::CbrsInfo {
@@ -864,9 +857,7 @@ impl From<mobile_config::gateway_metadata_v2::DeploymentInfo> for MobileDeployme
                 Self::WifiInfo {
                     antenna: value.antenna,
                     elevation: value.elevation as i32,
-                    azimuth: Decimal::new(value.azimuth as i64, 2),
-                    mechanical_down_tilt: Decimal::new(value.mechanical_down_tilt as i64, 2),
-                    electrical_down_tilt: Decimal::new(value.electrical_down_tilt as i64, 2),
+                    azimuth: value.azimuth as u16,
                 }
             }
             mobile_config::gateway_metadata_v2::DeploymentInfo::CbrsDeploymentInfo(value) => {

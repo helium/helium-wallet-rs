@@ -390,7 +390,7 @@ pub struct Hotspot {
     pub owner: Pubkey,
     #[serde(skip_serializing_if = "std::ops::Not::not", default)]
     pub burnt: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
 
@@ -514,25 +514,25 @@ pub mod serde_cell_index {
 pub enum HotspotInfo {
     Iot {
         mode: HotspotMode,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         gain: Option<Decimal>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         elevation: Option<i32>,
         #[serde(flatten)]
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         location: Option<HotspotLocation>,
-        #[serde(skip_serializing_if = "is_zero")]
+        #[serde(skip_serializing_if = "is_zero", default)]
         location_asserts: u16,
     },
     Mobile {
         mode: HotspotMode,
         #[serde(flatten)]
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         location: Option<HotspotLocation>,
-        #[serde(skip_serializing_if = "is_zero")]
+        #[serde(skip_serializing_if = "is_zero", default)]
         location_asserts: u16,
         device_type: MobileDeviceType,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         deployment_info: Option<MobileDeploymentInfo>,
     },
 }
@@ -544,12 +544,13 @@ pub enum MobileDeploymentInfo {
         #[serde(skip_serializing_if = "is_zero")]
         antenna: u32,
         // the height of the Hotspot above ground level in whole meters
-        #[serde(skip_serializing_if = "is_zero")]
+        #[serde(skip_serializing_if = "is_zero", default)]
         elevation: i32,
-        #[serde(skip_serializing_if = "is_zero")]
+        #[serde(skip_serializing_if = "is_zero", default)]
         azimuth: u16,
     },
     CbrsInfo {
+        #[serde(skip_serializing_if = "Vec::is_empty", default)]
         radio_infos: Vec<CbrsRadioInfo>,
     },
 }

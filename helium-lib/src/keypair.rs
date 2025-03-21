@@ -100,6 +100,27 @@ impl TryFrom<&[u8; 64]> for Keypair {
     }
 }
 
+impl TryFrom<helium_crypto::Keypair> for Keypair {
+    type Error = DecodeError;
+
+    fn try_from(value: helium_crypto::Keypair) -> std::result::Result<Self, Self::Error> {
+        let key_tag = value.key_tag();
+        if key_tag.key_type != helium_crypto::KeyType::Ed25519 {
+            return Err(DecodeError::other("not an ed25519 key"));
+        }
+
+        value
+            .to_vec()
+            .try_into()
+            .map_err(|_| DecodeError::other("invalid key length"))
+            .and_then(|bytes_array: [u8; 65]| {
+                let slice: &[u8; 64] = (&bytes_array[1..]).try_into().unwrap();
+                Self::try_from(slice)
+                    .map_err(|_| DecodeError::other("failed to create solana keypair"))
+            })
+    }
+}
+
 impl From<solana_sdk::signer::keypair::Keypair> for Keypair {
     fn from(value: solana_sdk::signer::keypair::Keypair) -> Self {
         Self(value)

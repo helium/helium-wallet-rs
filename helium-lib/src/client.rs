@@ -3,12 +3,17 @@ use crate::{
     asset,
     error::{DecodeError, Error},
     is_zero,
-    keypair::{self, Pubkey},
+    keypair::{self, Keypair, Pubkey},
+    priority_fee::auto_compute_limit_and_price,
     solana_client,
 };
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
+use solana_sdk::{
+    address_lookup_table::AddressLookupTableAccount, commitment_config::CommitmentConfig,
+    instruction::Instruction, message::Message, signer::Signer, transaction::Transaction,
+};
 use std::{marker::Send, sync::Arc};
 use tracing::instrument;
 
@@ -36,8 +41,96 @@ pub fn is_devnet(url: &str) -> bool {
 }
 
 #[derive(Clone)]
+pub struct SolanaClient {
+    pub inner: Arc<SolanaRpcClient>,
+    pub base_url: String,
+    pub keypair: Option<Arc<Keypair>>,
+}
+
+impl Default for SolanaClient {
+    fn default() -> Self {
+        // safe to unwrap
+        Self::new(SOLANA_URL_MAINNET, None).unwrap()
+    }
+}
+
+impl SolanaClient {
+    pub fn new(url: &str, keypair: Option<Arc<Keypair>>) -> Result<Self, Error> {
+        let client = Arc::new(
+            solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
+                url.to_string(),
+                CommitmentConfig::finalized(),
+            ),
+        );
+
+        Ok(Self {
+            inner: client,
+            base_url: url.to_string(),
+            keypair,
+        })
+    }
+
+    pub fn ws_url(&self) -> String {
+        self.base_url
+            .replace("https", "wss")
+            .replace("http", "ws")
+            .replace("127.0.0.1:8899", "127.0.0.1:8900")
+    }
+
+    pub fn pubkey(&self) -> Result<Pubkey, Error> {
+        self.keypair
+            .as_ref()
+            .map(|keypair| keypair.pubkey())
+            .ok_or_else(|| Error::KeypairUnconfigured)
+    }
+
+    pub async fn send_instructions(
+        &self,
+        ixs: &[Instruction],
+        extra_signers: &[Keypair],
+        lookup_tables: Option<Vec<AddressLookupTableAccount>>,
+    ) -> Result<(), Error> {
+        let keypair = self
+            .keypair
+            .as_ref()
+            .ok_or_else(|| Error::KeypairUnconfigured)?;
+
+        if ixs.is_empty() {
+            return Ok(());
+        }
+
+        let signers: Vec<&dyn Signer> = std::iter::once(keypair.as_ref() as &dyn Signer)
+            .chain(extra_signers.iter().map(|k| k as &dyn Signer))
+            .collect();
+
+        let (recent_blockhash, _) = self
+            .inner
+            .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
+            .await?;
+
+        let optimized_ixs = auto_compute_limit_and_price(
+            &self.inner,
+            ixs,
+            1.2,
+            &keypair.pubkey(),
+            Some(recent_blockhash),
+            lookup_tables,
+        )
+        .await?;
+
+        let message = Message::new(&optimized_ixs, Some(&keypair.pubkey()));
+        let transaction = Transaction::new(&signers, message, recent_blockhash);
+        self.inner
+            .send_and_confirm_transaction_with_spinner(&transaction)
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
 pub struct Client {
-    pub solana_client: Arc<SolanaRpcClient>,
+    pub solana_client: Arc<SolanaClient>,
     pub das_client: Arc<DasClient>,
     pub cert_client: Arc<CertClient>,
 }
@@ -98,13 +191,13 @@ impl GetAnchorAccount for Client {
         &self,
         pubkey: &keypair::Pubkey,
     ) -> Result<T, Error> {
-        self.solana_client.anchor_account(pubkey).await
+        self.solana_client.inner.anchor_account(pubkey).await
     }
     async fn anchor_accounts<T: AccountDeserialize + Send>(
         &self,
         pubkeys: &[Pubkey],
     ) -> Result<Vec<Option<T>>, Error> {
-        self.solana_client.anchor_accounts(pubkeys).await
+        self.solana_client.inner.anchor_accounts(pubkeys).await
     }
 }
 
@@ -128,7 +221,7 @@ impl TryFrom<&str> for Client {
             _url => env_or(CERT_URL_MAINNET_ENV, CERT_URL_MAINNET),
         };
         let das_client = Arc::new(DasClient::with_base_url(&rpc_url)?);
-        let solana_client = Arc::new(SolanaRpcClient::new(rpc_url));
+        let solana_client = Arc::new(SolanaClient::new(&rpc_url, None)?);
         let cert_client = Arc::new(CertClient::new(&cert_url, None)?);
         Ok(Self {
             solana_client,
@@ -138,9 +231,15 @@ impl TryFrom<&str> for Client {
     }
 }
 
+impl AsRef<SolanaRpcClient> for SolanaClient {
+    fn as_ref(&self) -> &SolanaRpcClient {
+        &self.inner
+    }
+}
+
 impl AsRef<SolanaRpcClient> for Client {
     fn as_ref(&self) -> &SolanaRpcClient {
-        &self.solana_client
+        &self.solana_client.inner
     }
 }
 

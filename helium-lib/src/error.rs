@@ -1,4 +1,5 @@
 use crate::{anchor_client, client, hotspot::cert, onboarding, solana_client, token};
+use solana_sdk::transaction::TransactionError;
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -49,6 +50,8 @@ pub enum Error {
     Encode(#[from] EncodeError),
     #[error("Keypair is not configured")]
     KeypairUnconfigured,
+    #[error("Simulated transaction error: {0}")]
+    SimulatedTransactionError(TransactionError),
     #[error("encode: {0}")]
     Error(String),
 }

@@ -968,7 +968,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115e54d64eb62cdebad391c19efc9dce4981c690c85a33a12199d99bb9546fee"
 dependencies = [
  "borsh-derive 0.10.4",
- "hashbrown 0.11.2",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -2500,7 +2500,7 @@ dependencies = [
  "bs58 0.5.1",
  "byteorder",
  "ed25519-compact",
- "getrandom 0.1.16",
+ "getrandom 0.2.15",
  "k256",
  "lazy_static",
  "multihash",
@@ -2569,7 +2569,7 @@ name = "helium-mnemonic"
 version = "0.0.1-rc.1"
 dependencies = [
  "bitvec",
- "bs58 0.3.1",
+ "bs58 0.5.1",
  "lazy_static",
  "sha2 0.10.8",
  "thiserror",

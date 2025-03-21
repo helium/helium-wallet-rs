@@ -29,5 +29,5 @@ clap = { version = "4", features = ["derive"] }
 # patch the github url to point to your local proto repo.
 #
 #
-[patch.'https://github.com/helium/helium-anchor-gen']
-helium-anchor-gen = { path = "../helium-anchor-gen" }
+# [patch.'https://github.com/helium/helium-anchor-gen']
+# helium-anchor-gen = { path = "../helium-anchor-gen" }

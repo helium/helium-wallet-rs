@@ -8,6 +8,7 @@ pub mod dc;
 pub mod entity_key;
 pub mod error;
 pub mod hotspot;
+pub mod iot;
 pub mod keypair;
 pub mod kta;
 pub mod memo;
@@ -23,7 +24,7 @@ pub use anchor_client::solana_client;
 pub use anchor_spl;
 pub use helium_anchor_gen::{
     anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
-    hexboosting, lazy_distributor, rewards_oracle,
+    hexboosting, iot_routing_manager, lazy_distributor, rewards_oracle,
 };
 pub use solana_sdk;
 pub use solana_sdk::bs58;
@@ -79,6 +80,11 @@ impl Default for TransactionOpts {
             lut_addresses: vec![message::COMMON_LUT],
         }
     }
+}
+
+pub fn get_current_epoch(unix_time: u64) -> u64 {
+    const EPOCH_LENGTH: u64 = 60 * 60 * 24;
+    unix_time / EPOCH_LENGTH
 }
 
 impl TransactionOpts {

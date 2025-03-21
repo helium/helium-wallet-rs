@@ -8,7 +8,9 @@ use crate::{
     keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
     kta, message,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
-    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+    programs::{
+        SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
+    },
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
         transaction::VersionedTransaction,
@@ -20,6 +22,47 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{signature::NullSigner, signer::Signer};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
+
+pub fn bubblegum_signer_key() -> Pubkey {
+    Pubkey::find_program_address(&[b"collection_cpi"], &mpl_bubblegum::ID).0
+}
+
+pub fn collection_metadata_key(collection_key: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    )
+    .0
+}
+
+pub fn collection_master_edition_key(collection_key: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+            b"edition",
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    )
+    .0
+}
+
+pub fn merkle_tree_authority_key(merkle_tree: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[merkle_tree.as_ref()], &mpl_bubblegum::ID).0
+}
+
+pub fn shared_merkle_key(proof_size: u8) -> Pubkey {
+    Pubkey::find_program_address(
+        &[b"shared_merkle", &[proof_size]],
+        &helium_entity_manager::ID,
+    )
+    .0
+}
 
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
     client: &C,
@@ -74,6 +117,7 @@ pub async fn get_with_proof<C: AsRef<DasClient>>(
     let (asset, asset_proof) = futures::try_join!(get(client, pubkey), proof::get(client, pubkey))?;
     Ok((asset, asset_proof))
 }
+
 pub mod canopy {
     use super::*;
     use spl_account_compression::state::{merkle_tree_get_size, ConcurrentMerkleTreeHeader};

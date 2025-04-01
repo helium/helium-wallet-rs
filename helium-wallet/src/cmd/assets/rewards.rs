@@ -162,13 +162,7 @@ pub struct PendingCmd {
 impl PendingCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let pending = reward::pending(
-            &client,
-            self.token,
-            &[self.entity_key.entity_key.clone()],
-            self.entity_key.encoding.into(),
-        )
-        .await?;
+        let pending = reward::pending(&client, self.token, None, &[&self.entity_key]).await?;
 
         print_json(&pending)
     }
@@ -188,8 +182,7 @@ pub struct LifetimeCmd {
 impl LifetimeCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let rewards =
-            reward::lifetime(&client, self.token, &[self.entity_key.entity_key.clone()]).await?;
+        let rewards = reward::lifetime(&client, self.token, &[&self.entity_key]).await?;
 
         print_json(&rewards)
     }

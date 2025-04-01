@@ -32,11 +32,30 @@ where
     for_kta(client, &kta).await
 }
 
+pub async fn for_entity_keys<E, C: AsRef<DasClient>>(
+    client: &C,
+    entity_keys: &[E],
+) -> Result<Vec<Asset>, Error>
+where
+    E: AsEntityKey,
+{
+    let ktas = kta::for_entity_keys(entity_keys).await?;
+    for_ktas(client, &ktas).await
+}
+
 pub async fn for_kta<C: AsRef<DasClient>>(
     client: &C,
     kta: &helium_entity_manager::KeyToAssetV0,
 ) -> Result<Asset, Error> {
     get(client, &kta.asset).await
+}
+
+pub async fn for_ktas<C: AsRef<DasClient>>(
+    client: &C,
+    ktas: &[helium_entity_manager::KeyToAssetV0],
+) -> Result<Vec<Asset>, Error> {
+    let pubkeys = ktas.iter().map(|kta| kta.asset).collect_vec();
+    get_many(client, &pubkeys).await
 }
 
 pub async fn for_kta_with_proof<C: AsRef<DasClient>>(
@@ -74,6 +93,7 @@ pub async fn get_with_proof<C: AsRef<DasClient>>(
     let (asset, asset_proof) = futures::try_join!(get(client, pubkey), proof::get(client, pubkey))?;
     Ok((asset, asset_proof))
 }
+
 pub mod canopy {
     use super::*;
     use spl_account_compression::state::{merkle_tree_get_size, ConcurrentMerkleTreeHeader};
@@ -128,6 +148,27 @@ pub mod proof {
     ) -> Result<AssetProof, Error> {
         let asset_proof_response: AssetProof = client.as_ref().get_asset_proof(pubkey).await?;
         Ok(asset_proof_response)
+    }
+
+    pub async fn get_many<C: AsRef<DasClient>>(
+        client: &C,
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<AssetProof>, Error> {
+        let proofs = stream::iter(pubkeys.to_vec())
+            .chunks(1000)
+            .map(|key_chunk| async move {
+                client
+                    .as_ref()
+                    .get_asset_proof_batch(key_chunk.as_slice())
+                    .await
+            })
+            .buffered(5)
+            .try_collect::<Vec<Vec<AssetProof>>>()
+            .await?
+            .into_iter()
+            .flatten()
+            .collect_vec();
+        Ok(proofs)
     }
 }
 

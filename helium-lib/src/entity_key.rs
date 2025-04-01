@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, hash::Hash};
 
 use crate::error::DecodeError;
 use solana_sdk::bs58;
@@ -57,7 +57,7 @@ pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, Decode
     Ok(entity_key)
 }
 
-#[derive(Debug, Clone, serde::Serialize, Copy, Default)]
+#[derive(Debug, Clone, serde::Serialize, Copy, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum EntityKeyEncoding {
@@ -110,5 +110,11 @@ impl From<&helium_crypto::PublicKey> for EncodedEntityKey {
             encoding: EntityKeyEncoding::B58,
             entity_key: value.to_string(),
         }
+    }
+}
+
+impl AsRef<EncodedEntityKey> for EncodedEntityKey {
+    fn as_ref(&self) -> &EncodedEntityKey {
+        self
     }
 }

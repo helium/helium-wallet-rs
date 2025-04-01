@@ -1,11 +1,6 @@
 use crate::cmd::*;
 use client::DasClient;
-use helium_lib::{
-    entity_key::{EncodedEntityKey, KeySerialization},
-    hotspot,
-    keypair::Pubkey,
-    reward,
-};
+use helium_lib::{entity_key::EncodedEntityKey, hotspot, keypair::Pubkey, reward};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -79,14 +74,8 @@ impl PendingCmd {
             self.owner.or(Some(wallet.public_key)),
         )
         .await?;
-        let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
-        let pending = reward::pending(
-            &client,
-            self.token,
-            &entity_key_strings,
-            KeySerialization::B58,
-        )
-        .await?;
+        let encoded_entity_keys: Vec<EncodedEntityKey> = hotspots.iter().map(Into::into).collect();
+        let pending = reward::pending(&client, self.token, None, &encoded_entity_keys).await?;
 
         print_json(&pending)
     }
@@ -116,8 +105,8 @@ impl LifetimeCmd {
             self.owner.or(Some(wallet.public_key)),
         )
         .await?;
-        let entity_key_strings = hotspots_to_entity_key_strings(&hotspots);
-        let rewards = reward::lifetime(&client, self.token, &entity_key_strings).await?;
+        let encoded_entity_keys: Vec<EncodedEntityKey> = hotspots.iter().map(Into::into).collect();
+        let rewards = reward::lifetime(&client, self.token, &encoded_entity_keys).await?;
 
         print_json(&rewards)
     }
@@ -188,11 +177,4 @@ impl RecipientCmd {
         let cmd = crate::cmd::assets::rewards::RecipientCmd::from(self);
         cmd.run(opts).await
     }
-}
-
-fn hotspots_to_entity_key_strings(public_keys: &[helium_crypto::PublicKey]) -> Vec<String> {
-    public_keys
-        .iter()
-        .map(|key| key.to_string())
-        .collect::<Vec<String>>()
 }

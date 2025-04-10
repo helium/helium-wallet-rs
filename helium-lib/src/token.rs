@@ -5,10 +5,8 @@ use crate::{
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
     message, priority_fee,
-    solana_sdk::{
-        commitment_config::CommitmentConfig, signer::Signer, system_instruction,
-        transaction::VersionedTransaction,
-    },
+    solana_sdk::{commitment_config::CommitmentConfig, signer::Signer, system_instruction},
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -93,7 +91,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 
@@ -166,7 +164,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 

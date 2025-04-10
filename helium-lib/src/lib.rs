@@ -18,6 +18,7 @@ pub mod priority_fee;
 pub mod programs;
 pub mod reward;
 pub mod token;
+pub mod transaction;
 
 pub use anchor_client;
 pub use anchor_client::solana_client;

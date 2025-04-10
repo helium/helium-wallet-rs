@@ -12,9 +12,9 @@ use crate::{
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
         signer::Signer,
-        transaction::VersionedTransaction,
     },
     token::Token,
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use angry_purple_tiger::AnimalName;
@@ -225,7 +225,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     ];
 
     let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, owner).await?;
-    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(owner)])?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(owner)])?;
     Ok((txn, block_height))
 }
 

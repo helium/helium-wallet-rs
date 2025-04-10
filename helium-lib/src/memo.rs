@@ -3,8 +3,8 @@ use crate::{
     error::Error,
     keypair::{Keypair, Pubkey},
     message, priority_fee,
-    solana_sdk::{signer::Signer, transaction::VersionedTransaction},
-    TransactionOpts,
+    solana_sdk::signer::Signer,
+    transaction, TransactionOpts,
 };
 
 pub async fn memo_message<C: AsRef<SolanaRpcClient>>(
@@ -33,8 +33,8 @@ pub async fn memo<C: AsRef<SolanaRpcClient>>(
     data: &str,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
+) -> Result<(transaction::VersionedTransaction, u64), Error> {
     let (msg, block_height) = memo_message(client, data, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = transaction::mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }

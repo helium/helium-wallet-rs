@@ -9,10 +9,8 @@ use crate::{
     kta, message,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
-    solana_sdk::{
-        instruction::{AccountMeta, Instruction},
-        transaction::VersionedTransaction,
-    },
+    solana_sdk::instruction::{AccountMeta, Instruction},
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use futures::{stream, StreamExt, TryStreamExt};
@@ -260,7 +258,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let (msg, block_height) =
         message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await?;
-    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
     Ok((txn, block_height))
 }
 
@@ -329,7 +327,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, pubkey, opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 

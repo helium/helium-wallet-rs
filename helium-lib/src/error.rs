@@ -101,6 +101,8 @@ pub enum EncodeError {
     Bincode(#[from] bincode::Error),
     #[error("h3: {0}")]
     H3(#[from] h3o::error::InvalidLatLng),
+    #[error("instruction group too long: {0}")]
+    TooManyInstructions(usize),
     #[error("encode: {0}")]
     Encode(String),
 }
@@ -108,6 +110,10 @@ pub enum EncodeError {
 impl EncodeError {
     pub fn other<S: ToString>(reason: S) -> Self {
         Self::Encode(reason.to_string())
+    }
+
+    pub fn too_many_instructions(len: usize) -> Self {
+        Self::TooManyInstructions(len)
     }
 }
 

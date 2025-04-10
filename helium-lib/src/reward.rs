@@ -13,10 +13,9 @@ use crate::{
     priority_fee,
     programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     rewards_oracle,
-    solana_sdk::{
-        instruction::Instruction, signer::Signer, sysvar, transaction::VersionedTransaction,
-    },
+    solana_sdk::{instruction::Instruction, signer::Signer, sysvar},
     token::{Token, TokenAmount},
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use chrono::Utc;
@@ -302,7 +301,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
         &keypair.pubkey(),
     )
     .await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok(Some((txn, block_height)))
 }
 
@@ -872,7 +871,7 @@ pub mod recipient {
     ) -> Result<(VersionedTransaction, u64), Error> {
         let (msg, block_height) =
             init_message(client, token, entity_key, &keypair.pubkey(), opts).await?;
-        let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+        let txn = mk_transaction(msg, &[keypair])?;
         Ok((txn, block_height))
     }
 
@@ -1052,7 +1051,7 @@ pub mod recipient {
             )
             .await?;
 
-            let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+            let txn = mk_transaction(msg, &[keypair])?;
             Ok((txn, block_height))
         }
     }

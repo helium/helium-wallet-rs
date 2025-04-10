@@ -16,9 +16,9 @@ use crate::{
     solana_sdk::{
         instruction::Instruction,
         signature::{NullSigner, Signer},
-        transaction::VersionedTransaction,
     },
     token::Token,
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use helium_crypto::{PublicKey, Sign};
@@ -227,7 +227,7 @@ pub async fn onboard_transaction<
     ];
     let (msg, block_height) =
         message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await?;
-    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
     Ok((txn, block_height))
 }
 
@@ -317,7 +317,7 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     ];
 
     let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, &owner).await?;
-    let txn = VersionedTransaction::try_new(
+    let txn = mk_transaction(
         msg,
         &[
             // Set payer as first account key to allow callers to sign

@@ -8,8 +8,9 @@ use crate::{
     error::{DecodeError, Error},
     keypair::{Keypair, Pubkey},
     message, priority_fee,
-    solana_sdk::{instruction::Instruction, signer::Signer, transaction::VersionedTransaction},
+    solana_sdk::{instruction::Instruction, signer::Signer},
     token::{Token, TokenAmount},
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use helium_anchor_gen::{
@@ -98,7 +99,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = mint_message(client, amount, payee, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 
@@ -163,7 +164,7 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) =
         delegate_message(client, subdao, payer_key, amount, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 
@@ -217,7 +218,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, amount, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 
@@ -302,6 +303,6 @@ pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     let (msg, block_height) =
         burn_delegated_message(client, sub_dao, amount, router_key, &keypair.pubkey(), opts)
             .await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }

@@ -1,13 +1,13 @@
-use std::ops::RangeInclusive;
-
 use crate::{
     anchor_lang::ToAccountMetas,
     client::{SolanaRpcClient, SOLANA_URL_MAINNET},
     error::Error,
     keypair::Pubkey,
     solana_client,
+    solana_sdk::instruction::Instruction,
 };
 use itertools::Itertools;
+use std::ops::RangeInclusive;
 
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
 pub const MIN_PRIORITY_FEE: u64 = 1;
@@ -113,11 +113,19 @@ mod base {
     }
 }
 
-pub fn compute_budget_instruction(compute_limit: u32) -> solana_sdk::instruction::Instruction {
+pub fn compute_placeholder_instructions() -> [Instruction; 2] {
+    [
+        // Set budget high, will be updated by client or simulation
+        compute_budget_instruction(1_000_000),
+        compute_price_instruction(MIN_PRIORITY_FEE),
+    ]
+}
+
+pub fn compute_budget_instruction(compute_limit: u32) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(compute_limit)
 }
 
-pub fn compute_price_instruction(priority_fee: u64) -> solana_sdk::instruction::Instruction {
+pub fn compute_price_instruction(priority_fee: u64) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee)
 }
 
@@ -125,7 +133,26 @@ pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
     fee_range: RangeInclusive<u64>,
-) -> Result<solana_sdk::instruction::Instruction, Error> {
+) -> Result<Instruction, Error> {
     let priority_fee = get_estimate(client, accounts, fee_range).await?;
     Ok(compute_price_instruction(priority_fee))
+}
+
+pub async fn compute_price_instruction_for_instructions<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    instructions: &[Instruction],
+    fee_range: RangeInclusive<u64>,
+) -> Result<Instruction, Error> {
+    let accounts = instructions
+        .iter()
+        .flat_map(|each| each.accounts.clone())
+        .collect_vec();
+    compute_price_instruction_for_accounts(client, &accounts, fee_range).await
+}
+
+pub async fn compute_budget_instruction_for_instructions<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    instructions: &[Instruction],
+    fee_range: RangeInclusive<u64>,
+) -> Result<Instruction, Error> {
 }

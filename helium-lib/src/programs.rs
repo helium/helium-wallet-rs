@@ -1,4 +1,4 @@
-// use crate::keypair::pubkey;
+#![allow(clippy::too_many_arguments)]
 use anchor_lang::prelude::*;
 
 pub const TOKEN_METADATA_PROGRAM_ID: Pubkey =

@@ -149,10 +149,3 @@ pub async fn compute_price_instruction_for_instructions<C: AsRef<SolanaRpcClient
         .collect_vec();
     compute_price_instruction_for_accounts(client, &accounts, fee_range).await
 }
-
-pub async fn compute_budget_instruction_for_instructions<C: AsRef<SolanaRpcClient>>(
-    client: &C,
-    instructions: &[Instruction],
-    fee_range: RangeInclusive<u64>,
-) -> Result<Instruction, Error> {
-}

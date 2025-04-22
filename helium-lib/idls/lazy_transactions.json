@@ -1,0 +1,642 @@
+{
+  "accounts": [
+    {
+      "discriminator": [
+        12,
+        72,
+        207,
+        108,
+        1,
+        228,
+        167,
+        221
+      ],
+      "name": "Block"
+    },
+    {
+      "discriminator": [
+        51,
+        89,
+        224,
+        39,
+        73,
+        173,
+        229,
+        141
+      ],
+      "name": "LazyTransactionsV0"
+    }
+  ],
+  "address": "1atrmQs3eq1N2FEYWu6tyTXbCjP4uQwExpjtnhXtS8h",
+  "errors": [
+    {
+      "code": 6000,
+      "msg": "The data did not match the root verification",
+      "name": "InvalidData"
+    },
+    {
+      "code": 6001,
+      "msg": "Failed to serialize instruction",
+      "name": "InstructionSerializeFailed"
+    },
+    {
+      "code": 6002,
+      "msg": "Failed to serialize ToCreate",
+      "name": "ToCreateSerializeFailed"
+    },
+    {
+      "code": 6003,
+      "msg": "Invalid canopy length",
+      "name": "CanopyLengthMismatch"
+    },
+    {
+      "code": 6004,
+      "msg": "Transaction has already been executed",
+      "name": "TransactionAlreadyExecuted"
+    }
+  ],
+  "instructions": [
+    {
+      "accounts": [
+        {
+          "name": "refund",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "signer": true
+        },
+        {
+          "name": "lazy_transactions",
+          "writable": true
+        },
+        {
+          "name": "canopy",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        92,
+        189,
+        176,
+        245,
+        129,
+        173,
+        166,
+        169
+      ],
+      "name": "close_canopy_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "refund",
+          "writable": true
+        },
+        {
+          "name": "lazy_transactions",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "signer": true
+        },
+        {
+          "name": "block",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lazy_transactions"
+              },
+              {
+                "kind": "arg",
+                "path": "args.index"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "executed_transactions",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CloseMarkerArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        202,
+        88,
+        149,
+        144,
+        81,
+        215,
+        1,
+        175
+      ],
+      "name": "close_marker_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "lazy_transactions",
+          "writable": true
+        },
+        {
+          "name": "canopy",
+          "relations": [
+            "lazy_transactions"
+          ]
+        },
+        {
+          "name": "lazy_signer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  122,
+                  121,
+                  95,
+                  115,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "account": "LazyTransactionsV0",
+                "kind": "account",
+                "path": "lazy_transactions.name"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "block",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  108,
+                  111,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lazy_transactions"
+              },
+              {
+                "kind": "arg",
+                "path": "args.index"
+              }
+            ]
+          }
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "name": "executed_transactions",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ExecuteTransactionArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        217,
+        93,
+        174,
+        97,
+        130,
+        183,
+        126,
+        44
+      ],
+      "name": "execute_transaction_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "lazy_transactions",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  97,
+                  122,
+                  121,
+                  95,
+                  116,
+                  114,
+                  97,
+                  110,
+                  115,
+                  97,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110,
+                  115
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.name"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "canopy",
+          "writable": true
+        },
+        {
+          "name": "executed_transactions",
+          "writable": true
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeLazyTransactionsArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        32,
+        227,
+        207,
+        127,
+        112,
+        50,
+        31,
+        157
+      ],
+      "name": "initialize_lazy_transactions_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "authority",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "signer": true
+        },
+        {
+          "name": "lazy_transactions",
+          "writable": true
+        },
+        {
+          "name": "canopy",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "SetCanopyArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        25,
+        86,
+        129,
+        124,
+        184,
+        195,
+        134,
+        89
+      ],
+      "name": "set_canopy_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "authority",
+          "relations": [
+            "lazy_transactions"
+          ],
+          "signer": true
+        },
+        {
+          "name": "lazy_transactions",
+          "writable": true
+        },
+        {
+          "name": "canopy",
+          "writable": true
+        },
+        {
+          "name": "executed_transactions",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "UpdateLazyTransactionsArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        56,
+        223,
+        165,
+        245,
+        150,
+        236,
+        173,
+        37
+      ],
+      "name": "update_lazy_transactions_v0"
+    }
+  ],
+  "metadata": {
+    "description": "Created with Anchor",
+    "name": "lazy_transactions",
+    "spec": "0.1.0",
+    "version": "0.2.1"
+  },
+  "types": [
+    {
+      "name": "Block",
+      "type": {
+        "fields": [],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "CloseMarkerArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "index",
+            "type": "u32"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "CompiledInstruction",
+      "type": {
+        "fields": [
+          {
+            "docs": [
+              "Index into the transaction keys array indicating the program account that executes this instruction."
+            ],
+            "name": "program_id_index",
+            "type": "u8"
+          },
+          {
+            "docs": [
+              "Ordered indices into the transaction keys array indicating which accounts to pass to the program."
+            ],
+            "name": "accounts",
+            "type": "bytes"
+          },
+          {
+            "docs": [
+              "The program input data."
+            ],
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ExecuteTransactionArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "instructions",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "CompiledInstruction"
+                }
+              }
+            }
+          },
+          {
+            "docs": [
+              "Additional signer seeds. Should include bump",
+              "Note that these seeds will be prefixed with \"user\", lazy_transactions.name",
+              "and the bump you pass and account should be consistent with this. But to save space",
+              "in the instruction, they should be ommitted here. See tests for examples"
+            ],
+            "name": "signer_seeds",
+            "type": {
+              "vec": {
+                "vec": "bytes"
+              }
+            }
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "InitializeLazyTransactionsArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_depth",
+            "type": "u32"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "LazyTransactionsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "max_depth",
+            "type": "u32"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "canopy",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "executed_transactions",
+            "type": "pubkey"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "SetCanopyArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "offset",
+            "type": "u32"
+          },
+          {
+            "name": "bytes",
+            "type": "bytes"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "UpdateLazyTransactionsArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "root",
+            "type": {
+              "option": {
+                "array": [
+                  "u8",
+                  32
+                ]
+              }
+            }
+          },
+          {
+            "name": "authority",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    }
+  ]
+}

@@ -1,0 +1,480 @@
+{
+  "accounts": [
+    {
+      "discriminator": [
+        234,
+        40,
+        244,
+        64,
+        154,
+        171,
+        29,
+        177
+      ],
+      "name": "KeyToAssetV0"
+    },
+    {
+      "discriminator": [
+        135,
+        186,
+        185,
+        252,
+        10,
+        77,
+        99,
+        167
+      ],
+      "name": "LazyDistributorV0"
+    },
+    {
+      "discriminator": [
+        174,
+        14,
+        199,
+        217,
+        206,
+        108,
+        154,
+        50
+      ],
+      "name": "RecipientV0"
+    }
+  ],
+  "address": "rorcfdX4h9m9swCKgcypaHJ8NGYVANBpmV9EHn3cYrF",
+  "instructions": [
+    {
+      "accounts": [
+        {
+          "name": "oracle",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "lazy_distributor",
+          "relations": [
+            "recipient"
+          ]
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "key_to_asset"
+        },
+        {
+          "name": "oracle_signer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  97,
+                  99,
+                  108,
+                  101,
+                  95,
+                  115,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "address": "1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w",
+          "name": "lazy_distributor_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "SetCurrentRewardsWrapperArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        86,
+        85,
+        48,
+        51,
+        102,
+        177,
+        226,
+        112
+      ],
+      "name": "set_current_rewards_wrapper_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "oracle",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "lazy_distributor",
+          "relations": [
+            "recipient"
+          ]
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "key_to_asset"
+        },
+        {
+          "name": "oracle_signer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  97,
+                  99,
+                  108,
+                  101,
+                  95,
+                  115,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "address": "1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w",
+          "name": "lazy_distributor_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "SetCurrentRewardsWrapperArgsV1"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        162,
+        91,
+        235,
+        68,
+        36,
+        45,
+        155,
+        54
+      ],
+      "name": "set_current_rewards_wrapper_v1"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "lazy_distributor",
+          "relations": [
+            "recipient"
+          ]
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "key_to_asset"
+        },
+        {
+          "name": "oracle_signer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  97,
+                  99,
+                  108,
+                  101,
+                  95,
+                  115,
+                  105,
+                  103,
+                  110,
+                  101,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "address": "1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w",
+          "name": "lazy_distributor_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "address": "Sysvar1nstructions1111111111111111111111111",
+          "docs": [
+            "the supplied Sysvar could be anything else.",
+            "The Instruction Sysvar has not been implemented",
+            "in the Anchor framework yet, so this is the safe approach."
+          ],
+          "name": "sysvar_instructions"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "SetCurrentRewardsWrapperArgsV1"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        251,
+        147,
+        241,
+        180,
+        37,
+        151,
+        13,
+        127
+      ],
+      "name": "set_current_rewards_wrapper_v2"
+    }
+  ],
+  "metadata": {
+    "description": "Created with Anchor",
+    "name": "rewards_oracle",
+    "spec": "0.1.0",
+    "version": "0.2.4"
+  },
+  "types": [
+    {
+      "name": "KeySerialization",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "B58"
+          },
+          {
+            "name": "UTF8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "KeyToAssetV0",
+      "type": {
+        "fields": [
+          {
+            "name": "dao",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "entity_key",
+            "type": "bytes"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "key_serialization",
+            "type": {
+              "defined": {
+                "name": "KeySerialization"
+              }
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "LazyDistributorV0",
+      "type": {
+        "fields": [
+          {
+            "name": "version",
+            "type": "u16"
+          },
+          {
+            "name": "rewards_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "rewards_escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracles",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "OracleConfigV0"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "approver",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "OracleConfigV0",
+      "type": {
+        "fields": [
+          {
+            "name": "oracle",
+            "type": "pubkey"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "RecipientV0",
+      "type": {
+        "fields": [
+          {
+            "name": "lazy_distributor",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_rewards",
+            "type": "u64"
+          },
+          {
+            "name": "current_config_version",
+            "type": "u16"
+          },
+          {
+            "name": "current_rewards",
+            "type": {
+              "vec": {
+                "option": "u64"
+              }
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "reserved",
+            "type": "u64"
+          },
+          {
+            "docs": [
+              "Pubkey::Default if not being used."
+            ],
+            "name": "destination",
+            "type": "pubkey"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "SetCurrentRewardsWrapperArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "entity_key",
+            "type": "bytes"
+          },
+          {
+            "name": "oracle_index",
+            "type": "u16"
+          },
+          {
+            "name": "current_rewards",
+            "type": "u64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "SetCurrentRewardsWrapperArgsV1",
+      "type": {
+        "fields": [
+          {
+            "name": "oracle_index",
+            "type": "u16"
+          },
+          {
+            "name": "current_rewards",
+            "type": "u64"
+          }
+        ],
+        "kind": "struct"
+      }
+    }
+  ]
+}

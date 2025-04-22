@@ -1,7 +1,6 @@
-use std::{fmt::Display, hash::Hash};
-
-use crate::error::DecodeError;
+use crate::{error::DecodeError, helium_entity_manager};
 use solana_sdk::bs58;
+use std::{fmt::Display, hash::Hash};
 
 pub trait AsEntityKey {
     fn as_entity_key(&self) -> Vec<u8>;
@@ -45,7 +44,7 @@ impl AsEntityKey for helium_crypto::PublicKeyBinary {
     }
 }
 
-pub use helium_anchor_gen::helium_entity_manager::KeySerialization;
+pub use helium_entity_manager::types::KeySerialization;
 
 pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, DecodeError> {
     let entity_key = match encoding {

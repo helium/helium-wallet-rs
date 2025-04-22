@@ -1,6 +1,6 @@
 use crate::{
     anchor_lang::AccountDeserialize, client::SolanaRpcClient, dao::Dao, entity_key::AsEntityKey,
-    error::Error, helium_entity_manager::KeyToAssetV0, keypair::Pubkey,
+    error::Error, helium_entity_manager::accounts::KeyToAssetV0, keypair::Pubkey,
     solana_sdk::account::Account,
 };
 use futures::{stream, StreamExt, TryFutureExt, TryStreamExt};

@@ -18,8 +18,8 @@ pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com
 pub static VERIFIER_URL_MAINNET: &str = "https://ecc-verifier.web.helium.io";
 pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com";
 
-pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443?session-key=Pluto";
-pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?session-key=Pluto";
+pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443";
+pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com";
 pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
 pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 

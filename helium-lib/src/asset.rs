@@ -135,7 +135,7 @@ pub mod canopy {
     use super::*;
 
     async fn get_heights() -> Result<HashMap<Pubkey, usize>, Error> {
-        const KNOWN_CANOPY_HEIGHT_URL: &str = "https://shdw-drive.genesysgo.net/6tcnBSybPG7piEDShBcrVtYJDPSvGrDbVvXmXKpzBvWP/merkles.json";
+        const KNOWN_CANOPY_HEIGHT_URL: &str = "https://entities.nft.helium.io/v2/merkles";
         let client = reqwest::Client::new();
         let map: HashMap<String, usize> = client
             .get(KNOWN_CANOPY_HEIGHT_URL)

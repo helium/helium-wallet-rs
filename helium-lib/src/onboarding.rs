@@ -20,7 +20,7 @@ impl Client {
     where
         T: 'static + DeserializeOwned + Send,
     {
-        let url = format!("{}{}", &self.base_url, path);
+        let url = format!("{}{path}", &self.base_url);
         let resp = self.inner.get(&url).send().await?;
         let onboarding_resp = resp.json::<OnboardingResponse<T>>().await?;
         if !onboarding_resp.success {
@@ -34,7 +34,7 @@ impl Client {
         T: 'static + DeserializeOwned + Send,
         P: Serialize + ?Sized,
     {
-        let url = format!("{}{}", &self.base_url, path);
+        let url = format!("{}{path}", &self.base_url);
         let resp = self.inner.post(&url).json(&params).send().await?;
         let onboarding_resp = resp.json::<OnboardingResponse<T>>().await?;
         if !onboarding_resp.success {
@@ -47,7 +47,7 @@ impl Client {
         &self,
         hotspot: &helium_crypto::PublicKey,
     ) -> Result<Hotspot, OnboardingError> {
-        self.get::<Hotspot>(&format!("/hotspots/{}", hotspot)).await
+        self.get::<Hotspot>(&format!("/hotspots/{hotspot}")).await
     }
 
     pub async fn get_update_txn(

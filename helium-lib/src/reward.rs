@@ -21,7 +21,7 @@ use chrono::Utc;
 use futures::{stream, StreamExt, TryFutureExt, TryStreamExt};
 use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Oracle {
@@ -46,13 +46,27 @@ pub struct OracleReward {
     pub reward: TokenAmount,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, Default,
+)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum ClaimableToken {
     Iot,
     Mobile,
+    #[default]
     Hnt,
+}
+
+impl Display for ClaimableToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            Self::Iot => "iot",
+            Self::Mobile => "mobile",
+            Self::Hnt => "hnt",
+        };
+        f.write_str(str)
+    }
 }
 
 impl From<ClaimableToken> for Token {

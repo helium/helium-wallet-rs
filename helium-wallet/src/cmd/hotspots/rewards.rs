@@ -56,6 +56,7 @@ async fn collect_hotspots<C: AsRef<DasClient>>(
 /// List pending rewards for given Hotspots
 pub struct PendingCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
@@ -87,6 +88,7 @@ impl PendingCmd {
 /// This includes both claimed and unclaimed rewards
 pub struct LifetimeCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
@@ -116,6 +118,7 @@ impl LifetimeCmd {
 /// Claim rewards for one or all Hotspots in a wallet
 pub struct ClaimCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     token: reward::ClaimableToken,
     /// Hotspot public key to send claim for
     hotspot: helium_crypto::PublicKey,
@@ -151,6 +154,7 @@ impl ClaimCmd {
 #[derive(Debug, Clone, clap::Args)]
 pub struct RecipientCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     pub token: reward::ClaimableToken,
     /// The hotspot to get or set the reward recipient for
     pub hotspot: helium_crypto::PublicKey,

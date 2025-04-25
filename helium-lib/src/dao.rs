@@ -1,6 +1,6 @@
 use crate::{
     data_credits, entity_key::AsEntityKey, helium_entity_manager, helium_sub_daos, keypair::Pubkey,
-    programs::TOKEN_METADATA_PROGRAM_ID, rewards_oracle, token::Token,
+    rewards_oracle, token::Token,
 };
 use sha2::{Digest, Sha256};
 
@@ -26,14 +26,14 @@ impl Dao {
             Self::Hnt => Token::Hnt.mint(),
         };
         let (dao_key, _) =
-            Pubkey::find_program_address(&[b"dao", mint.as_ref()], &helium_sub_daos::id());
+            Pubkey::find_program_address(&[b"dao", mint.as_ref()], &helium_sub_daos::ID);
         dao_key
     }
 
     pub fn dataonly_config_key(&self) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"data_only_config", self.key().as_ref()],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         );
         key
     }
@@ -41,52 +41,15 @@ impl Dao {
     pub fn dataonly_escrow_key(&self) -> Pubkey {
         let (data_only_escrow, _doe_bump) = Pubkey::find_program_address(
             &[b"data_only_escrow", self.dataonly_config_key().as_ref()],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         );
         data_only_escrow
-    }
-
-    pub fn collection_metadata_key(&self, collection_key: &Pubkey) -> Pubkey {
-        let (collection_metadata, _bump) = Pubkey::find_program_address(
-            &[
-                b"metadata",
-                TOKEN_METADATA_PROGRAM_ID.as_ref(),
-                collection_key.as_ref(),
-            ],
-            &TOKEN_METADATA_PROGRAM_ID,
-        );
-        collection_metadata
-    }
-
-    pub fn collection_master_edition_key(&self, collection_key: &Pubkey) -> Pubkey {
-        let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
-            &[
-                b"metadata",
-                TOKEN_METADATA_PROGRAM_ID.as_ref(),
-                collection_key.as_ref(),
-                b"edition",
-            ],
-            &TOKEN_METADATA_PROGRAM_ID,
-        );
-        collection_master_edition
-    }
-
-    pub fn merkle_tree_authority(&self, merkle_tree: &Pubkey) -> Pubkey {
-        let (tree_authority, _ta_bump) =
-            Pubkey::find_program_address(&[merkle_tree.as_ref()], &mpl_bubblegum::ID);
-        tree_authority
-    }
-
-    pub fn bubblegum_signer(&self) -> Pubkey {
-        let (bubblegum_signer, _bs_bump) =
-            Pubkey::find_program_address(&[b"collection_cpi"], &mpl_bubblegum::ID);
-        bubblegum_signer
     }
 
     pub fn entity_creator_key(&self) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"entity_creator", self.key().as_ref()],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         );
         key
     }
@@ -95,24 +58,24 @@ impl Dao {
         let hash = Sha256::digest(entity_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
             &[b"key_to_asset", self.key().as_ref(), hash.as_ref()],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         );
         key
     }
 
     pub fn oracle_signer_key() -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::id());
+        let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::ID);
         key
     }
 
     pub fn dc_account_payer() -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::id());
+        let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::ID);
         key
     }
 
     pub fn dc_key() -> Pubkey {
         let (key, _) =
-            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::id());
+            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::ID);
         key
     }
 }
@@ -143,7 +106,7 @@ impl SubDao {
     pub fn key(&self) -> Pubkey {
         let (subdao_key, _) = Pubkey::find_program_address(
             &[b"sub_dao", self.token().mint().as_ref()],
-            &helium_sub_daos::id(),
+            &helium_sub_daos::ID,
         );
         subdao_key
     }
@@ -159,7 +122,7 @@ impl SubDao {
         let hash = Sha256::digest(router_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
             &[b"delegated_data_credits", self.key().as_ref(), &hash],
-            &data_credits::id(),
+            &data_credits::ID,
         );
         key
     }
@@ -167,7 +130,7 @@ impl SubDao {
     pub fn escrow_key(&self, delegated_dc_key: &Pubkey) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"escrow_dc_account", delegated_dc_key.as_ref()],
-            &data_credits::id(),
+            &data_credits::ID,
         );
         key
     }
@@ -179,7 +142,7 @@ impl SubDao {
         };
         let (key, _) = Pubkey::find_program_address(
             &[b"rewardable_entity_config", self.key().as_ref(), suffix],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         );
         key
     }
@@ -193,7 +156,7 @@ impl SubDao {
         };
         let (key, _) = Pubkey::find_program_address(
             &[prefix.as_bytes(), config_key.as_ref(), &hash],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         );
         key
     }
@@ -205,7 +168,7 @@ impl SubDao {
         };
         let (key, _) = Pubkey::find_program_address(
             &[prefix.as_bytes(), self.key().as_ref()],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         );
         key
     }

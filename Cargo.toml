@@ -6,21 +6,24 @@ repository = "https://github.com/helium/helium-wallet-rs"
 
 [workspace]
 members = [
-    "helium-wallet",
-    "helium-lib",
-    "helium-mnemonic"
+  "helium-wallet",
+  "helium-lib",
+  # "helium-mnemonic"
 ]
 resolver = "2"
 
 [workspace.dependencies]
 sha2 = "0.10"
 base64 = ">=0.21"
-chrono = {version = "0", features = ["serde"]}
+chrono = { version = "0", features = ["serde"] }
 serde = "1"
 serde_json = "1"
 rust_decimal = { version = "1", features = ["serde-float"] }
-helium-crypto = { version = "0.8" }
+helium-crypto = { version = "0.9" }
 helium-proto = { git = "https://github.com/helium/proto", branch = "master", features = [
-    "services",
+  "services",
 ] }
 clap = { version = "4", features = ["derive"] }
+
+[patch.crates-io]
+anchor-lang = { git = "https://github.com/madninja/anchor.git", branch = "madninja/const_pubkey" }

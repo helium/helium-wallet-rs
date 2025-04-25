@@ -3,11 +3,10 @@ use crate::{
     client::SolanaRpcClient,
     error::Error,
     hexboosting,
-    hexboosting::accounts::StartBoostV0,
     keypair::{Keypair, Pubkey},
     message, priority_fee,
-    solana_sdk::{instruction::Instruction, signer::Signer, transaction::VersionedTransaction},
-    TransactionOpts,
+    solana_sdk::{instruction::Instruction, signer::Signer},
+    transaction, TransactionOpts,
 };
 use chrono::{DateTime, Utc};
 
@@ -29,7 +28,7 @@ pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
         boost_config: Pubkey,
         boosted_hex: Pubkey,
     ) -> impl ToAccountMetas {
-        StartBoostV0 {
+        hexboosting::client::accounts::StartBoostV0 {
             start_authority,
             boost_config,
             boosted_hex,
@@ -47,10 +46,10 @@ pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
         let accounts = accounts.to_account_metas(None);
         ix_accounts.extend_from_slice(&accounts);
         let ix = Instruction {
-            program_id: hexboosting::id(),
+            program_id: hexboosting::ID,
             accounts,
-            data: hexboosting::instruction::StartBoostV0 {
-                _args: hexboosting::StartBoostArgsV0 {
+            data: hexboosting::client::args::StartBoostV0 {
+                args: hexboosting::types::StartBoostArgsV0 {
                     start_ts: update.activation_ts().timestamp(),
                 },
             }
@@ -79,8 +78,8 @@ pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
     keypair: &Keypair,
     opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
+) -> Result<(transaction::VersionedTransaction, u64), Error> {
     let (msg, block_height) = start_boost_message(client, keypair, updates, opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = transaction::mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }

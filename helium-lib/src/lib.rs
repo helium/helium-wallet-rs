@@ -5,6 +5,7 @@ pub mod client;
 pub mod boosting;
 pub mod dao;
 pub mod dc;
+pub mod ed25519_instruction;
 pub mod entity_key;
 pub mod error;
 pub mod hotspot;
@@ -17,14 +18,17 @@ pub mod priority_fee;
 pub mod programs;
 pub mod reward;
 pub mod token;
+pub mod transaction;
 
+pub use crate::programs::{
+    bubblegum, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos, hexboosting,
+    lazy_distributor, rewards_oracle, spl_account_compression,
+};
 pub use anchor_client;
 pub use anchor_client::solana_client;
+pub use anchor_lang;
 pub use anchor_spl;
-pub use helium_anchor_gen::{
-    anchor_lang, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos,
-    hexboosting, lazy_distributor, rewards_oracle,
-};
+pub use solana_program;
 pub use solana_sdk;
 pub use solana_sdk::bs58;
 

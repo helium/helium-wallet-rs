@@ -1,5 +1,6 @@
 use crate::{
-    bs58,
+    anchor_lang::{InstructionData, ToAccountMetas},
+    bs58, bubblegum,
     client::{DasClient, DasSearchAssetsParams, SolanaRpcClient},
     dao::Dao,
     entity_key::{self, AsEntityKey},
@@ -8,11 +9,10 @@ use crate::{
     keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
     kta, message,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
-    programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
-    solana_sdk::{
-        instruction::{AccountMeta, Instruction},
-        transaction::VersionedTransaction,
-    },
+    programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
+    solana_sdk::instruction::{AccountMeta, Instruction},
+    spl_account_compression,
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use futures::{stream, StreamExt, TryStreamExt};
@@ -32,16 +32,35 @@ where
     for_kta(client, &kta).await
 }
 
+pub async fn for_entity_keys<E, C: AsRef<DasClient>>(
+    client: &C,
+    entity_keys: &[E],
+) -> Result<Vec<Asset>, Error>
+where
+    E: AsEntityKey,
+{
+    let ktas = kta::for_entity_keys(entity_keys).await?;
+    for_ktas(client, ktas.as_slice()).await
+}
+
 pub async fn for_kta<C: AsRef<DasClient>>(
     client: &C,
-    kta: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::accounts::KeyToAssetV0,
 ) -> Result<Asset, Error> {
     get(client, &kta.asset).await
 }
 
+pub async fn for_ktas<C: AsRef<DasClient>>(
+    client: &C,
+    ktas: &[helium_entity_manager::accounts::KeyToAssetV0],
+) -> Result<Vec<Asset>, Error> {
+    let pubkeys = ktas.iter().map(|kta| kta.asset).collect_vec();
+    get_many(client, &pubkeys).await
+}
+
 pub async fn for_kta_with_proof<C: AsRef<DasClient>>(
     client: &C,
-    kta: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::accounts::KeyToAssetV0,
 ) -> Result<(Asset, AssetProof), Error> {
     get_with_proof(client, &kta.asset).await
 }
@@ -74,12 +93,49 @@ pub async fn get_with_proof<C: AsRef<DasClient>>(
     let (asset, asset_proof) = futures::try_join!(get(client, pubkey), proof::get(client, pubkey))?;
     Ok((asset, asset_proof))
 }
+
+pub fn collection_metadata_key(collection_key: &Pubkey) -> Pubkey {
+    let (collection_metadata, _bump) = Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    );
+    collection_metadata
+}
+
+pub fn collection_master_edition_key(collection_key: &Pubkey) -> Pubkey {
+    let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+            b"edition",
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    );
+    collection_master_edition
+}
+
+pub fn merkle_tree_authority(merkle_tree: &Pubkey) -> Pubkey {
+    let (tree_authority, _ta_bump) =
+        Pubkey::find_program_address(&[merkle_tree.as_ref()], &bubblegum::ID);
+    tree_authority
+}
+
+pub fn bubblegum_signer() -> Pubkey {
+    let (bubblegum_signer, _bump) =
+        Pubkey::find_program_address(&[b"collection_cpi"], &bubblegum::ID);
+    bubblegum_signer
+}
+
 pub mod canopy {
     use super::*;
-    use spl_account_compression::state::{merkle_tree_get_size, ConcurrentMerkleTreeHeader};
 
     async fn get_heights() -> Result<HashMap<Pubkey, usize>, Error> {
-        const KNOWN_CANOPY_HEIGHT_URL: &str = "https://shdw-drive.genesysgo.net/6tcnBSybPG7piEDShBcrVtYJDPSvGrDbVvXmXKpzBvWP/merkles.json";
+        const KNOWN_CANOPY_HEIGHT_URL: &str = "https://entities.nft.helium.io/v2/merkles";
         let client = reqwest::Client::new();
         let map: HashMap<String, usize> = client
             .get(KNOWN_CANOPY_HEIGHT_URL)
@@ -99,23 +155,14 @@ pub mod canopy {
     }
 
     pub async fn height_for_tree<C: AsRef<SolanaRpcClient>>(
-        client: &C,
+        _client: &C,
         tree: &Pubkey,
     ) -> Result<usize, Error> {
-        use helium_anchor_gen::anchor_lang::AnchorDeserialize;
-        if let Some(height) = get_heights().await?.get(tree) {
-            return Ok(*height);
-        }
-        let tree_account = client.as_ref().get_account(tree).await?;
-        let header = ConcurrentMerkleTreeHeader::deserialize(&mut &tree_account.data[..])
-            .map_err(|_| DecodeError::other("invalid merkle tree header"))?;
-        let merkle_tree_size = merkle_tree_get_size(&header)
-            .map_err(|_| DecodeError::other("invalid merkle tree header"))?;
-        let canopy_size = tree_account.data.len()
-            - std::mem::size_of::<ConcurrentMerkleTreeHeader>()
-            - merkle_tree_size;
-        let canopy_depth = (canopy_size / 32 + 1).ilog2();
-        Ok(canopy_depth as usize)
+        get_heights()
+            .await?
+            .get(tree)
+            .copied()
+            .ok_or_else(Error::account_not_found)
     }
 }
 
@@ -128,6 +175,27 @@ pub mod proof {
     ) -> Result<AssetProof, Error> {
         let asset_proof_response: AssetProof = client.as_ref().get_asset_proof(pubkey).await?;
         Ok(asset_proof_response)
+    }
+
+    pub async fn get_many<C: AsRef<DasClient>>(
+        client: &C,
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<AssetProof>, Error> {
+        let proofs = stream::iter(pubkeys.to_vec())
+            .chunks(1000)
+            .map(|key_chunk| async move {
+                client
+                    .as_ref()
+                    .get_asset_proof_batch(key_chunk.as_slice())
+                    .await
+            })
+            .buffered(5)
+            .try_collect::<Vec<Vec<AssetProof>>>()
+            .await?
+            .into_iter()
+            .flatten()
+            .collect_vec();
+        Ok(proofs)
     }
 }
 
@@ -170,27 +238,37 @@ pub fn transfer_instruction(
     asset_proof: &AssetProof,
     remaining_accounts: &[AccountMeta],
 ) -> Result<Instruction, Error> {
-    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-    let merkle_tree = asset_proof.tree_id;
-    let transfer = mpl_bubblegum::instructions::Transfer {
-        leaf_owner: (asset.ownership.owner, false),
-        leaf_delegate: (leaf_delegate, false),
-        new_leaf_owner: *recipient,
-        tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
-        merkle_tree,
-        log_wrapper: SPL_NOOP_PROGRAM_ID,
-        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-        system_program: solana_sdk::system_program::id(),
+    use bubblegum::client::{
+        accounts::Transfer as TransferAccounts, args::Transfer as TransferArgs,
     };
-    let args = mpl_bubblegum::instructions::TransferInstructionArgs {
+    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
+    let mut accounts = TransferAccounts {
+        leaf_owner: asset.ownership.owner,
+        leaf_delegate,
+        new_leaf_owner: *recipient,
+        tree_authority: merkle_tree_authority(&asset_proof.tree_id),
+        merkle_tree: asset_proof.tree_id,
+        log_wrapper: SPL_NOOP_PROGRAM_ID,
+        compression_program: spl_account_compression::ID,
+        system_program: solana_sdk::system_program::id(),
+    }
+    .to_account_metas(None);
+    accounts.extend_from_slice(remaining_accounts);
+
+    let data = TransferArgs {
         creator_hash: asset.compression.creator_hash,
         root: asset_proof.root.to_bytes(),
         data_hash: asset.compression.data_hash,
         index: asset.compression.leaf_id()?,
         nonce: asset.compression.leaf_id,
-    };
+    }
+    .data();
 
-    let ix = transfer.instruction_with_remaining_accounts(args, remaining_accounts);
+    let ix = Instruction {
+        program_id: bubblegum::ID,
+        accounts,
+        data,
+    };
     Ok(ix)
 }
 
@@ -219,7 +297,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 
     let (msg, block_height) =
         message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await?;
-    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
     Ok((txn, block_height))
 }
 
@@ -243,23 +321,25 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     pubkey: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
+    use bubblegum::client::{accounts::Burn as BurnAccounts, args::Burn as BurnArgs};
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-    let merkle_tree = asset_proof.tree_id;
-    let remaining_accounts = asset_proof.proof_for_tree(client, &merkle_tree).await?;
+    let remaining_accounts = asset_proof
+        .proof_for_tree(client, &asset_proof.tree_id)
+        .await?;
 
-    let burn = mpl_bubblegum::instructions::Burn {
-        leaf_owner: (asset.ownership.owner, false),
-        leaf_delegate: (leaf_delegate, false),
-        tree_config: mpl_bubblegum::accounts::TreeConfig::find_pda(&merkle_tree).0,
-        merkle_tree,
+    let burn = BurnAccounts {
+        leaf_owner: asset.ownership.owner,
+        leaf_delegate,
+        merkle_tree: asset_proof.tree_id,
+        tree_authority: merkle_tree_authority(&asset_proof.tree_id),
         log_wrapper: SPL_NOOP_PROGRAM_ID,
-        compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+        compression_program: spl_account_compression::ID,
         system_program: solana_sdk::system_program::id(),
     };
 
-    let args = mpl_bubblegum::instructions::BurnInstructionArgs {
+    let args = BurnArgs {
         creator_hash: asset.compression.creator_hash,
         root: asset_proof.root.to_bytes(),
         data_hash: asset.compression.data_hash,
@@ -267,7 +347,14 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         nonce: asset.compression.leaf_id,
     };
 
-    let ix = burn.instruction_with_remaining_accounts(args, &remaining_accounts);
+    let ix = Instruction {
+        program_id: bubblegum::ID,
+        accounts: burn.to_account_metas(None),
+        data: args.data(),
+    };
+
+    // burn.instruction_with_remaining_accounts(args, &remaining_accounts);
+
     let mut priority_fee_accounts = ix.accounts.clone();
     priority_fee_accounts.extend_from_slice(&remaining_accounts);
 
@@ -288,7 +375,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, pubkey, opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 
@@ -378,16 +465,16 @@ impl Asset {
         };
         let key_serialization =
             if ["IOT OPS", "CARRIER"].contains(&self.content.metadata.symbol.as_str()) {
-                helium_entity_manager::KeySerialization::UTF8
+                helium_entity_manager::types::KeySerialization::UTF8
             } else {
-                helium_entity_manager::KeySerialization::B58
+                helium_entity_manager::types::KeySerialization::B58
             };
         let entity_key = entity_key::from_str(entity_key_str, key_serialization)?;
         let kta_key = Dao::Hnt.entity_key_to_kta_key(&entity_key);
         Ok(kta_key)
     }
 
-    pub async fn get_kta(&self) -> Result<helium_entity_manager::KeyToAssetV0, Error> {
+    pub async fn get_kta(&self) -> Result<helium_entity_manager::accounts::KeyToAssetV0, Error> {
         kta::get(&self.kta_key()?).await
     }
 

@@ -1,4 +1,4 @@
-use crate::{anchor_client, client, hotspot::cert, onboarding, solana_client, token};
+use crate::{anchor_client, anchor_lang, client, hotspot::cert, onboarding, solana_client, token};
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -12,7 +12,7 @@ pub enum Error {
     #[error("anchor client: {0}")]
     Anchor(Box<anchor_client::ClientError>),
     #[error("anchor lang: {0}")]
-    AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
+    AnchorLang(#[from] anchor_lang::error::Error),
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
     #[error("cert client: {0}")]
@@ -101,6 +101,8 @@ pub enum EncodeError {
     Bincode(#[from] bincode::Error),
     #[error("h3: {0}")]
     H3(#[from] h3o::error::InvalidLatLng),
+    #[error("instruction group too long: {0}")]
+    TooManyInstructions(usize),
     #[error("encode: {0}")]
     Encode(String),
 }
@@ -108,6 +110,10 @@ pub enum EncodeError {
 impl EncodeError {
     pub fn other<S: ToString>(reason: S) -> Self {
         Self::Encode(reason.to_string())
+    }
+
+    pub fn too_many_instructions(len: usize) -> Self {
+        Self::TooManyInstructions(len)
     }
 }
 

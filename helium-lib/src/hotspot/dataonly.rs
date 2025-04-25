@@ -423,7 +423,7 @@ async fn verify_helium_key(
     let client = reqwest::Client::new();
     let serialized_tx = hex::encode(bincode::serialize(&tx).map_err(EncodeError::from)?);
     let response = client
-        .post(format!("{}/verify", verifier))
+        .post(format!("{verifier}/verify"))
         .json(&VerifyRequest {
             transaction: &serialized_tx,
             msg: &hex::encode(msg),

@@ -51,7 +51,7 @@ pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, Decode
         KeySerialization::UTF8 => str.as_entity_key(),
         KeySerialization::B58 => bs58::decode(str)
             .into_vec()
-            .map_err(|_| DecodeError::other(format!("invalid entity key {}", str)))?,
+            .map_err(|_| DecodeError::other(format!("invalid entity key {str}")))?,
     };
     Ok(entity_key)
 }

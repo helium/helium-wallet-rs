@@ -39,6 +39,7 @@ impl RewardsCommand {
 #[derive(Debug, Clone, clap::Args)]
 pub struct ClaimCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     pub token: ClaimableToken,
     #[clap(flatten)]
     pub entity_key: entity_key::EncodedEntityKey,
@@ -88,6 +89,7 @@ impl ClaimCmd {
 #[derive(Debug, Clone, clap::Args)]
 pub struct RecipientCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     pub token: ClaimableToken,
     /// The asset to get or set the reward recipient for
     #[clap(flatten)]
@@ -139,6 +141,7 @@ impl RecipientCmd {
 /// decayed amount bed on previous claims
 pub struct MaxClaimCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     token: ClaimableToken,
 }
 
@@ -154,6 +157,7 @@ impl MaxClaimCmd {
 /// List claimable pending rewards for a given asset
 pub struct PendingCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     token: ClaimableToken,
     #[clap(flatten)]
     entity_key: entity_key::EncodedEntityKey,
@@ -174,6 +178,7 @@ impl PendingCmd {
 /// This includes both claimed and unclaimed rewards
 pub struct LifetimeCmd {
     /// Token for command
+    #[clap(long, default_value_t)]
     token: ClaimableToken,
     #[clap(flatten)]
     entity_key: entity_key::EncodedEntityKey,

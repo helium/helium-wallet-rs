@@ -7046,6 +7046,8 @@ dependencies = [
 [[package]]
 name = "solana-transaction-utils"
 version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fbed85bba4b4210edfe9de2c766d7935e7375faa76d3a93b34a220413b37eeb"
 dependencies = [
  "bincode",
  "dashmap",

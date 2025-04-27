@@ -15,7 +15,10 @@ chrono = { workspace = true }
 thiserror = "1"
 async-trait = "0"
 anchor-client = { version = "0.31.1", features = ["async"] }
-anchor-lang = { version = "0.31.1", features = ["idl-build", "derive"] }
+anchor-lang = { git = "https://github.com/madninja/anchor", branch = "madninja/const_pubkey", features = [
+  "idl-build",
+  "derive",
+] }
 anchor-spl = { version = "0.31.1", features = ["mint", "token"] }
 # curve25519-dalek = "3.2.1"
 url = { version = "2", features = ["serde"] }
@@ -48,8 +51,8 @@ sha2 = { workspace = true }
 clap = { workspace = true, optional = true }
 helium-mnemonic = { path = "../helium-mnemonic", optional = true }
 bytemuck = "1"
-solana-transaction-utils = { path = "../../tuktuk/solana-transaction-utils" }
-# solana-transaction-utils = "0.3"
+# solana-transaction-utils = { path = "../../tuktuk/solana-transaction-utils" }
+solana-transaction-utils = "0.3"
 
 [dev-dependencies]
 rand = "0.8"

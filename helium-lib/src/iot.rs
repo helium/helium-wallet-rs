@@ -110,15 +110,14 @@ pub mod organization {
 
     use crate::{
         asset,
-        client::{GetAnchorAccount, SolanaRpcClient},
         dao::{Dao, SubDao},
         data_credits,
         error::Error,
-        helium_entity_manager,
-        iot_routing_manager::{self, client::accounts::InitializeOrganizationV0},
+        helium_entity_manager, iot_routing_manager,
         programs::SPL_NOOP_PROGRAM_ID,
         spl_account_compression,
         token::Token,
+        ::{GetAnchorAccount, SolanaRpc},
     };
 
     pub enum OrgIdentifier {

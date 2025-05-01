@@ -188,7 +188,7 @@ impl SubDao {
 
     pub fn info_key<E: AsEntityKey>(&self, entity_key: &E) -> Pubkey {
         let config_key = self.rewardable_entity_config_key();
-        let hash = Sha256::digest(&entity_key.as_entity_key());
+        let hash = Sha256::digest(entity_key.as_entity_key());
         let prefix = match self {
             Self::Iot => "iot_info",
             Self::Mobile => "mobile_info",

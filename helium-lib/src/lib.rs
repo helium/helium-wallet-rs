@@ -22,8 +22,8 @@ pub mod token;
 pub mod transaction;
 
 pub use crate::programs::{
-    bubblegum, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos, hexboosting, iot_routing_manager
-    lazy_distributor, rewards_oracle, spl_account_compression,
+    bubblegum, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos, hexboosting,
+    iot_routing_manager, lazy_distributor, rewards_oracle, spl_account_compression,
 };
 pub use anchor_client;
 pub use anchor_client::solana_client;

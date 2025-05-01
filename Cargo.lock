@@ -927,11 +927,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115e54d64eb62cdebad391c19efc9dce4981c690c85a33a12199d99bb9546fee"
 dependencies = [
  "borsh-derive 0.10.4",
-<<<<<<< HEAD
- "hashbrown 0.12.3",
-=======
  "hashbrown 0.13.2",
->>>>>>> master
 ]
 
 [[package]]
@@ -1194,18 +1190,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "circuit-breaker"
-version = "0.1.2"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "clap"
 version = "4.5.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1642,18 +1626,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "data-credits"
-version = "0.2.3"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "data-encoding"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1960,16 +1932,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
-<<<<<<< HEAD
-name = "fanout"
-version = "0.1.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-=======
 name = "event-listener"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3492acde4c3fc54c845eaab3eed8bd00c7a7d881f78bfc801e43a93dec1331ae"
->>>>>>> master
 dependencies = [
  "concurrent-queue",
  "parking",
@@ -2393,31 +2359,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-<<<<<<< HEAD
-name = "helium-anchor-gen"
-version = "0.1.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
- "circuit-breaker",
- "data-credits",
- "fanout",
- "helium-entity-manager",
- "helium-sub-daos",
- "hexboosting",
- "lazy-distributor",
- "lazy-transactions",
- "mobile-entity-manager",
- "price-oracle",
- "rewards-oracle",
- "treasury-management",
- "voter-stake-registry",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "helium-crypto"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2427,10 +2368,6 @@ dependencies = [
  "bs58",
  "byteorder",
  "ed25519-compact",
-<<<<<<< HEAD
- "getrandom 0.2.15",
-=======
->>>>>>> master
  "k256",
  "lazy_static",
  "multihash",
@@ -2441,20 +2378,7 @@ dependencies = [
  "sha2 0.10.8",
  "signature 1.4.0",
  "solana-sdk",
-<<<<<<< HEAD
- "thiserror",
-]
-
-[[package]]
-name = "helium-entity-manager"
-version = "0.3.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-=======
  "thiserror 1.0.69",
->>>>>>> master
 ]
 
 [[package]]
@@ -2505,11 +2429,7 @@ name = "helium-mnemonic"
 version = "0.0.1-rc.1"
 dependencies = [
  "bitvec",
-<<<<<<< HEAD
- "bs58 0.5.1",
-=======
  "bs58",
->>>>>>> master
  "lazy_static",
  "sha2 0.10.8",
  "thiserror 1.0.69",
@@ -2532,18 +2452,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "helium-sub-daos"
-version = "0.2.9"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "helium-wallet"
 version = "2.1.1"
 dependencies = [
@@ -2594,18 +2502,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "hexboosting"
-version = "0.2.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "histogram"
 version = "0.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3116,27 +3012,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "lazy-distributor"
-version = "0.3.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-name = "lazy-transactions"
-version = "0.2.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3371,32 +3246,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "mobile-entity-manager"
-version = "0.2.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-name = "mpl-bubblegum"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9eff5ae5cafd1acdf7e7c93359da1eec91dcaede318470d9f68b78e8b7469f4"
-dependencies = [
- "borsh 0.10.4",
- "kaigan",
- "num-derive 0.3.3",
- "num-traits",
- "solana-program 1.18.26",
- "thiserror",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "multihash"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3919,20 +3768,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "664ec5419c51e34154eec046ebcba56312d5a2fc3b09a06da188e1ad21afadf6"
 dependencies = [
  "proc-macro2",
-<<<<<<< HEAD
- "syn 2.0.95",
-]
-
-[[package]]
-name = "price-oracle"
-version = "0.2.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-=======
  "syn 2.0.100",
->>>>>>> master
 ]
 
 [[package]]
@@ -4444,16 +4280,10 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "rewards-oracle"
-version = "0.2.3"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-=======
 name = "reqwest-middleware"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a735987236a8e238bf0296c7e351b999c188ccc11477f311b82b55c93984216"
->>>>>>> master
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8251,18 +8081,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "treasury-management"
-version = "0.2.1"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8443,18 +8261,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
-<<<<<<< HEAD
-name = "voter-stake-registry"
-version = "0.4.0"
-source = "git+https://github.com/helium/helium-anchor-gen.git#87b00759b4ca4727b36e8221410f4255ad06eca4"
-dependencies = [
- "anchor-gen",
- "anchor-lang",
-]
-
-[[package]]
-=======
->>>>>>> master
 name = "walkdir"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -106,17 +106,17 @@ pub fn organization_key_to_asset(dao: &Pubkey, oui: u64) -> Pubkey {
 }
 
 pub mod organization {
-    use helium_anchor_gen::data_credits;
-
     use super::*;
 
     use crate::{
         asset,
         client::{GetAnchorAccount, SolanaRpcClient},
         dao::{Dao, SubDao},
+        data_credits,
         error::Error,
         helium_entity_manager, iot_routing_manager,
-        programs::{SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID},
+        programs::SPL_NOOP_PROGRAM_ID,
+        spl_account_compression,
         token::Token,
     };
 
@@ -222,7 +222,7 @@ pub mod organization {
                     bubblegum_program: mpl_bubblegum::ID,
                     token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
                     log_wrapper: SPL_NOOP_PROGRAM_ID,
-                    compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+                    compression_program: spl_account_compression::ID,
                     data_credits_program: data_credits::ID,
                     token_program: anchor_spl::token::ID,
                     associated_token_program: spl_associated_token_account::ID,

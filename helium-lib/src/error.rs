@@ -12,8 +12,6 @@ pub enum Error {
     Onboarding(#[from] onboarding::OnboardingError),
     #[error("anchor client: {0}")]
     Anchor(Box<anchor_client::ClientError>),
-    #[error("anchor lang: {0}")]
-    AnchorLang(#[from] helium_anchor_gen::anchor_lang::error::Error),
     #[error("Account already exists")]
     AccountExists,
     #[error("Account non existent: {0}")]

@@ -174,7 +174,7 @@ impl Keypair {
         let keypair = solana_sdk::signer::keypair::Keypair::read_from_file(path).map_err(|e| {
             Error::Decode(DecodeError::other(format!("failed to read keypair: {}", e)))
         })?;
-        Ok(Self(keypair).into())
+        Ok(Self(keypair))
     }
 }
 

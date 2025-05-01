@@ -88,7 +88,7 @@ impl Error {
     }
 
     pub fn account_exists() -> Self {
-        Self::AccountExists.into()
+        Self::AccountExists
     }
 
     pub fn is_account_not_found(&self) -> bool {

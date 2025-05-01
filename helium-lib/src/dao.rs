@@ -27,31 +27,32 @@ impl Dao {
             Self::Hnt => Token::Hnt.mint(),
         };
 
-        Pubkey::find_program_address(&[b"dao", mint.as_ref()], &helium_sub_daos::ID).0
+        let (key, _) = Pubkey::find_program_address(&[b"dao", mint.as_ref()], &helium_sub_daos::ID);
+        key
     }
 
     pub fn program_approval_key(&self, program: &Pubkey) -> Pubkey {
-        Pubkey::find_program_address(
-            &[b"program_approval", &self.key().as_ref(), program.as_ref()],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"program_approval", self.key().as_ref(), program.as_ref()],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn dataonly_config_key(&self) -> Pubkey {
-        Pubkey::find_program_address(
-            &[b"data_only_config", &self.key().as_ref()],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"data_only_config", self.key().as_ref()],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn dataonly_escrow_key(&self) -> Pubkey {
-        Pubkey::find_program_address(
-            &[b"data_only_escrow", &self.dataonly_config_key().as_ref()],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"data_only_escrow", self.dataonly_config_key().as_ref()],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn collection_metadata_key(&self, collection_key: &Pubkey) -> Pubkey {
@@ -71,21 +72,20 @@ impl Dao {
     }
 
     pub fn entity_creator_key(&self) -> Pubkey {
-        Pubkey::find_program_address(
-            &[b"entity_creator", &self.key().as_ref()],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"entity_creator", self.key().as_ref()],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn entity_key_to_kta_key<E: AsEntityKey + ?Sized>(&self, entity_key: &E) -> Pubkey {
         let hash = Sha256::digest(entity_key.as_entity_key());
-
-        Pubkey::find_program_address(
-            &[b"key_to_asset", &self.key().as_ref(), &hash],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"key_to_asset", self.key().as_ref(), &hash],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn oracle_signer_key() -> Pubkey {
@@ -109,11 +109,11 @@ impl Dao {
         let unix_time = chrono::Utc::now().timestamp() as u64;
         let epoch = get_current_epoch(unix_time);
         let b_u64 = epoch.to_le_bytes();
-        Pubkey::find_program_address(
-            &[b"dao_epoch_info", &dao.as_ref(), &b_u64],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"dao_epoch_info", dao.as_ref(), &b_u64],
             &helium_sub_daos::ID,
-        )
-        .0
+        );
+        key
     }
 }
 
@@ -141,11 +141,11 @@ impl SubDao {
     }
 
     pub fn key(&self) -> Pubkey {
-        Pubkey::find_program_address(
+        let (key, _) = Pubkey::find_program_address(
             &[b"sub_dao", self.token().mint().as_ref()],
             &helium_sub_daos::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn token(&self) -> Token {
@@ -179,11 +179,11 @@ impl SubDao {
             Self::Mobile => b"MOBILE".as_ref(),
         };
 
-        Pubkey::find_program_address(
-            &[b"rewardable_entity_config", &sub_dao.as_ref(), suffix],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"rewardable_entity_config", sub_dao.as_ref(), suffix],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn info_key<E: AsEntityKey>(&self, entity_key: &E) -> Pubkey {
@@ -194,11 +194,11 @@ impl SubDao {
             Self::Mobile => "mobile_info",
         };
 
-        Pubkey::find_program_address(
-            &[prefix.as_bytes(), &config_key.as_ref(), &hash],
+        let (key, _) = Pubkey::find_program_address(
+            &[prefix.as_bytes(), config_key.as_ref(), &hash],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn config_key(&self) -> Pubkey {
@@ -208,11 +208,11 @@ impl SubDao {
             Self::Mobile => "mobile_config",
         };
 
-        Pubkey::find_program_address(
-            &[prefix.as_bytes(), &sub_dao.as_ref()],
+        let (key, _) = Pubkey::find_program_address(
+            &[prefix.as_bytes(), sub_dao.as_ref()],
             &helium_entity_manager::ID,
-        )
-        .0
+        );
+        key
     }
 
     pub fn epoch_info_key(&self) -> Pubkey {
@@ -220,10 +220,10 @@ impl SubDao {
         let unix_time = chrono::Utc::now().timestamp() as u64;
         let epoch = get_current_epoch(unix_time);
         let b_u64 = epoch.to_le_bytes();
-        Pubkey::find_program_address(
-            &[b"sub_dao_epoch_info", &sub_dao.as_ref(), &b_u64],
+        let (key, _) = Pubkey::find_program_address(
+            &[b"sub_dao_epoch_info", sub_dao.as_ref(), &b_u64],
             &helium_sub_daos::ID,
-        )
-        .0
+        );
+        key
     }
 }

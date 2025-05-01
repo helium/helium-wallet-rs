@@ -11,79 +11,79 @@ use spl_associated_token_account::get_associated_token_address;
 use std::result::Result;
 
 pub fn routing_manager_key(sub_dao: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[b"routing_manager", sub_dao.as_ref()],
         &iot_routing_manager::ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn organization_key(routing_manager: &Pubkey, oui: u64) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[
             b"organization",
             routing_manager.as_ref(),
             &oui.to_le_bytes(),
         ],
         &iot_routing_manager::ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn devaddr_constraint_key(organization: &Pubkey, start_addr: u64) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[
             b"devaddr_constraint",
             organization.as_ref(),
             &start_addr.to_le_bytes(),
         ],
         &iot_routing_manager::ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn net_id_key(routing_manager: &Pubkey, net_id: u32) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[b"net_id", routing_manager.as_ref(), &net_id.to_le_bytes()],
         &iot_routing_manager::ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn organization_delegate_key(organization: &Pubkey, delegate: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[
             b"organization_delegate",
             organization.as_ref(),
             delegate.as_ref(),
         ],
         &iot_routing_manager::ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn organization_collection_key(routing_manager: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[b"collection", routing_manager.as_ref()],
         &iot_routing_manager::ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn organization_collection_metadata_key(collection: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[
             b"metadata",
             TOKEN_METADATA_PROGRAM_ID.as_ref(),
             collection.as_ref(),
         ],
         &TOKEN_METADATA_PROGRAM_ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn organization_collection_master_edition_key(collection: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[
             b"metadata",
             TOKEN_METADATA_PROGRAM_ID.as_ref(),
@@ -91,18 +91,18 @@ pub fn organization_collection_master_edition_key(collection: &Pubkey) -> Pubkey
             b"edition",
         ],
         &TOKEN_METADATA_PROGRAM_ID,
-    )
-    .0
+    );
+    key
 }
 
 pub fn organization_key_to_asset(dao: &Pubkey, oui: u64) -> Pubkey {
     let seed_str = format!("OUI_{}", oui);
     let hash = Sha256::digest(seed_str.as_bytes());
-    Pubkey::find_program_address(
+    let (key, _) = Pubkey::find_program_address(
         &[b"key_to_asset", dao.as_ref(), &hash],
         &helium_entity_manager::ID,
-    )
-    .0
+    );
+    key
 }
 
 pub mod organization {
@@ -162,7 +162,7 @@ pub mod organization {
             .as_ref()
             .get_account(&payer_dc_ata_key)
             .await
-            .map_err(|_| Error::AccountAbsent(format!("Payer DC token account.")))?;
+            .map_err(|_| Error::AccountAbsent("Payer DC token account.".to_string()))?;
 
         client
             .as_ref()
@@ -203,10 +203,10 @@ pub mod organization {
                     program_approval: program_approval_key,
                     routing_manager: routing_manager_key,
                     net_id: net_id_key,
-                    dc_mint: Token::Dc.mint().clone(),
+                    dc_mint: *Token::Dc.mint(),
                     data_credits: Dao::dc_key(),
                     payer_dc_account: payer_dc_ata_key,
-                    authority: authority.unwrap_or(payer.clone()),
+                    authority: authority.unwrap_or(payer),
                     bubblegum_signer: asset::bubblegum_signer_key(),
                     shared_merkle: shared_merkle_key,
                     helium_entity_manager_program: helium_entity_manager::ID,
@@ -221,7 +221,7 @@ pub mod organization {
                     entity_creator: Dao::Hnt.entity_creator_key(),
                     key_to_asset: organization_key_to_asset(&dao_key, oui),
                     tree_authority: asset::merkle_tree_authority_key(&shared_merkle.merkle_tree),
-                    recipient: recipient.unwrap_or(payer.clone()),
+                    recipient: recipient.unwrap_or(payer),
                     merkle_tree: shared_merkle.merkle_tree,
                     bubblegum_program: bubblegum::ID,
                     token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
@@ -295,7 +295,7 @@ pub mod organization_delegate {
                 program_id: iot_routing_manager::ID,
                 accounts: iot_routing_manager::client::accounts::InitializeOrganizationDelegateV0 {
                     payer,
-                    authority: authority.unwrap_or(payer.clone()),
+                    authority: authority.unwrap_or(payer),
                     delegate,
                     organization: organization_key,
                     organization_delegate: organization_delegate_key,
@@ -399,7 +399,7 @@ pub mod net_id {
                     payer,
                     routing_manager: routing_manager_key,
                     net_id_authority: routing_manager.net_id_authority,
-                    authority: authority.unwrap_or(payer.clone()),
+                    authority: authority.unwrap_or(payer),
                     net_id: net_id_key,
                     system_program: solana_sdk::system_program::ID,
                 }
@@ -437,11 +437,11 @@ pub mod devaddr_constraint {
             .as_ref()
             .get_account(&payer_dc_ata_key)
             .await
-            .map_err(|_| Error::AccountAbsent(format!("Payer DC token account.")))?;
+            .map_err(|_| Error::AccountAbsent("Payer DC token account.".to_string()))?;
 
         let net_id = client
             .as_ref()
-            .anchor_account::<iot_routing_manager::accounts::NetIdV0>(&&net_id_key)
+            .anchor_account::<iot_routing_manager::accounts::NetIdV0>(&net_id_key)
             .await?;
 
         let devaddr_constarint_key =
@@ -453,11 +453,11 @@ pub mod devaddr_constraint {
                 program_id: iot_routing_manager::ID,
                 accounts: iot_routing_manager::client::accounts::InitializeDevaddrConstraintV0 {
                     payer,
-                    authority: authority.unwrap_or(payer.clone()),
+                    authority: authority.unwrap_or(payer),
                     net_id: net_id_key,
                     routing_manager: routing_manager_key,
                     organization: organization_key,
-                    dc_mint: Token::Dc.mint().clone(),
+                    dc_mint: *Token::Dc.mint(),
                     data_credits: Dao::dc_key(),
                     payer_dc_account: payer_dc_ata_key,
                     devaddr_constraint: devaddr_constarint_key,

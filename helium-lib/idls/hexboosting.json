@@ -1,0 +1,1222 @@
+{
+  "accounts": [
+    {
+      "discriminator": [
+        156,
+        47,
+        176,
+        79,
+        140,
+        160,
+        214,
+        183
+      ],
+      "name": "BoostConfigV0"
+    },
+    {
+      "discriminator": [
+        133,
+        159,
+        70,
+        91,
+        177,
+        69,
+        162,
+        77
+      ],
+      "name": "BoostedHexV0"
+    },
+    {
+      "discriminator": [
+        167,
+        134,
+        141,
+        5,
+        178,
+        238,
+        194,
+        189
+      ],
+      "name": "BoostedHexV1"
+    },
+    {
+      "discriminator": [
+        145,
+        30,
+        146,
+        217,
+        129,
+        70,
+        200,
+        132
+      ],
+      "name": "CarrierV0"
+    },
+    {
+      "discriminator": [
+        101,
+        75,
+        232,
+        141,
+        239,
+        45,
+        29,
+        205
+      ],
+      "name": "DaoV0"
+    },
+    {
+      "discriminator": [
+        171,
+        162,
+        190,
+        96,
+        54,
+        214,
+        214,
+        162
+      ],
+      "name": "DataCreditsV0"
+    },
+    {
+      "discriminator": [
+        19,
+        5,
+        31,
+        112,
+        144,
+        214,
+        82,
+        128
+      ],
+      "name": "SubDaoV0"
+    }
+  ],
+  "address": "hexbnKYoA2GercNNhHUCCfrTRWrHjT6ujKPXTa5NPqJ",
+  "errors": [
+    {
+      "code": 6000,
+      "msg": "Must boost for the minimum boosting duration",
+      "name": "BelowMinimumBoost"
+    },
+    {
+      "code": 6001,
+      "msg": "No mobile oracle price",
+      "name": "NoOraclePrice"
+    },
+    {
+      "code": 6002,
+      "msg": "Hex is already boosted the maximum amount of 256x",
+      "name": "MaxBoostExceeded"
+    },
+    {
+      "code": 6003,
+      "msg": "Hexboost version has changed since this instruction was formed, transaction rejected for safety",
+      "name": "InvalidVersion"
+    },
+    {
+      "code": 6004,
+      "msg": "Error from pyth",
+      "name": "PythError"
+    },
+    {
+      "code": 6005,
+      "msg": "No pyth price found",
+      "name": "PythPriceNotFound"
+    },
+    {
+      "code": 6006,
+      "msg": "Error in arithmetic",
+      "name": "ArithmeticError"
+    },
+    {
+      "code": 6007,
+      "msg": "Cannot boost a period that is in progress or over",
+      "name": "BoostPeriodOver"
+    },
+    {
+      "code": 6008,
+      "msg": "Cannot leave a gap in boost periods",
+      "name": "NoEmptyPeriods"
+    },
+    {
+      "code": 6009,
+      "msg": "Pyth price is stale",
+      "name": "PythPriceFeedStale"
+    }
+  ],
+  "instructions": [
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "boost_config"
+        },
+        {
+          "name": "carrier"
+        },
+        {
+          "name": "hexboost_authority",
+          "relations": [
+            "carrier"
+          ],
+          "signer": true
+        },
+        {
+          "name": "data_credits",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  99
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "dc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dc_mint",
+          "relations": [
+            "boost_config",
+            "data_credits"
+          ],
+          "writable": true
+        },
+        {
+          "name": "payment_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "payer"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "dc_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "boosted_hex",
+          "writable": true
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "name": "associated_token_program"
+        },
+        {
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
+          "name": "data_credits_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "BoostArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        146,
+        246,
+        159,
+        51,
+        180,
+        35,
+        181,
+        68
+      ],
+      "name": "boost_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "rent_reclaim_authority",
+          "relations": [
+            "boost_config"
+          ],
+          "signer": true
+        },
+        {
+          "name": "boost_config",
+          "relations": [
+            "boosted_hex"
+          ]
+        },
+        {
+          "name": "boosted_hex",
+          "writable": true
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        121,
+        128,
+        3,
+        8,
+        105,
+        222,
+        31,
+        96
+      ],
+      "name": "close_boost_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "sub_dao"
+        },
+        {
+          "name": "authority",
+          "relations": [
+            "sub_dao"
+          ],
+          "signer": true
+        },
+        {
+          "name": "rent_reclaim_authority"
+        },
+        {
+          "name": "start_authority"
+        },
+        {
+          "name": "price_oracle"
+        },
+        {
+          "name": "dc_mint",
+          "relations": [
+            "dao"
+          ]
+        },
+        {
+          "name": "boost_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  111,
+                  115,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "dc_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "name": "dao",
+          "relations": [
+            "sub_dao"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeBoostConfigArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        91,
+        33,
+        41,
+        209,
+        43,
+        27,
+        177,
+        92
+      ],
+      "name": "initialize_boost_config_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "start_authority",
+          "relations": [
+            "boost_config"
+          ],
+          "signer": true
+        },
+        {
+          "name": "boost_config",
+          "relations": [
+            "boosted_hex"
+          ]
+        },
+        {
+          "name": "boosted_hex",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "StartBoostArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        184,
+        86,
+        83,
+        12,
+        221,
+        251,
+        157,
+        111
+      ],
+      "name": "start_boost_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "start_authority",
+          "relations": [
+            "boost_config"
+          ],
+          "signer": true
+        },
+        {
+          "name": "boost_config",
+          "relations": [
+            "boosted_hex"
+          ]
+        },
+        {
+          "name": "boosted_hex",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "StartBoostArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        216,
+        105,
+        227,
+        145,
+        53,
+        11,
+        144,
+        199
+      ],
+      "name": "start_boost_v1"
+    },
+    {
+      "accounts": [
+        {
+          "name": "sub_dao",
+          "relations": [
+            "boost_config"
+          ]
+        },
+        {
+          "name": "authority",
+          "relations": [
+            "sub_dao"
+          ],
+          "signer": true
+        },
+        {
+          "name": "boost_config",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "UpdateBoostConfigArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        86,
+        246,
+        58,
+        96,
+        39,
+        14,
+        113,
+        90
+      ],
+      "name": "update_boost_config_v0"
+    }
+  ],
+  "metadata": {
+    "description": "Created with Anchor",
+    "name": "hexboosting",
+    "spec": "0.1.0",
+    "version": "0.2.1"
+  },
+  "types": [
+    {
+      "name": "BoostAmountV0",
+      "type": {
+        "fields": [
+          {
+            "name": "period",
+            "type": "u16"
+          },
+          {
+            "name": "amount",
+            "type": "u8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "BoostArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "location",
+            "type": "u64"
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          },
+          {
+            "name": "amounts",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "BoostAmountV0"
+                }
+              }
+            }
+          },
+          {
+            "name": "device_type",
+            "type": {
+              "defined": {
+                "name": "DeviceTypeV0"
+              }
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "BoostConfigV0",
+      "type": {
+        "fields": [
+          {
+            "name": "price_oracle",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "sub_dao",
+            "type": "pubkey"
+          },
+          {
+            "docs": [
+              "Authority to reclaim rent from hexes no longer boosted"
+            ],
+            "name": "rent_reclaim_authority",
+            "type": "pubkey"
+          },
+          {
+            "docs": [
+              "The price in the oracle (usd) to burn boost",
+              "For simplicity, this should have the same number of decimals as the price oracle"
+            ],
+            "name": "boost_price",
+            "type": "u64"
+          },
+          {
+            "docs": [
+              "The length of a period (defined as a month in the HIP)"
+            ],
+            "name": "period_length",
+            "type": "u32"
+          },
+          {
+            "docs": [
+              "The minimum of periods to boost"
+            ],
+            "name": "minimum_periods",
+            "type": "u16"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "docs": [
+              "Authority to start the hex"
+            ],
+            "name": "start_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "dc_mint",
+            "type": "pubkey"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "BoostedHexV0",
+      "type": {
+        "fields": [
+          {
+            "name": "boost_config",
+            "type": "pubkey"
+          },
+          {
+            "name": "location",
+            "type": "u64"
+          },
+          {
+            "name": "start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                "u64",
+                8
+              ]
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "docs": [
+              "Each entry represents the boost multiplier for a given period"
+            ],
+            "name": "boosts_by_period",
+            "type": "bytes"
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "BoostedHexV1",
+      "type": {
+        "fields": [
+          {
+            "name": "device_type",
+            "type": {
+              "defined": {
+                "name": "DeviceTypeV0"
+              }
+            }
+          },
+          {
+            "name": "boost_config",
+            "type": "pubkey"
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          },
+          {
+            "name": "location",
+            "type": "u64"
+          },
+          {
+            "name": "start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "docs": [
+              "Each entry represents the boost multiplier for a given period"
+            ],
+            "name": "boosts_by_period",
+            "type": "bytes"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "CarrierV0",
+      "type": {
+        "fields": [
+          {
+            "name": "sub_dao",
+            "type": "pubkey"
+          },
+          {
+            "name": "update_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "issuing_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "collection",
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "merkle_tree",
+            "type": "pubkey"
+          },
+          {
+            "name": "approved",
+            "type": "bool"
+          },
+          {
+            "name": "collection_bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "hexboost_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "incentive_escrow_fund_bps",
+            "type": "u16"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "DaoV0",
+      "type": {
+        "fields": [
+          {
+            "name": "hnt_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "dc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "registrar",
+            "type": "pubkey"
+          },
+          {
+            "name": "hst_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "net_emissions_cap",
+            "type": "u64"
+          },
+          {
+            "name": "num_sub_daos",
+            "type": "u32"
+          },
+          {
+            "name": "emission_schedule",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "EmissionScheduleItem"
+                }
+              }
+            }
+          },
+          {
+            "name": "hst_emission_schedule",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "PercentItem"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "rewards_escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "delegator_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "delegator_rewards_percent",
+            "type": "u64"
+          },
+          {
+            "name": "proposal_namespace",
+            "type": "pubkey"
+          },
+          {
+            "name": "recent_proposals",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "RecentProposal"
+                  }
+                },
+                4
+              ]
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "DataCreditsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "dc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "hnt_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "hnt_price_oracle",
+            "type": "pubkey"
+          },
+          {
+            "name": "data_credits_bump",
+            "type": "u8"
+          },
+          {
+            "name": "account_payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "account_payer_bump",
+            "type": "u8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "DeviceTypeV0",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "CbrsIndoor"
+          },
+          {
+            "name": "CbrsOutdoor"
+          },
+          {
+            "name": "WifiIndoor"
+          },
+          {
+            "name": "WifiOutdoor"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EmissionScheduleItem",
+      "type": {
+        "fields": [
+          {
+            "name": "start_unix_time",
+            "type": "i64"
+          },
+          {
+            "name": "emissions_per_epoch",
+            "type": "u64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "InitializeBoostConfigArgsV0",
+      "type": {
+        "fields": [
+          {
+            "docs": [
+              "The price in the oracle (usd) to burn boost"
+            ],
+            "name": "boost_price",
+            "type": "u64"
+          },
+          {
+            "docs": [
+              "The length of a period (defined as a month in the HIP)"
+            ],
+            "name": "period_length",
+            "type": "u32"
+          },
+          {
+            "docs": [
+              "The minimum of periods to boost"
+            ],
+            "name": "minimum_periods",
+            "type": "u16"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "PercentItem",
+      "type": {
+        "fields": [
+          {
+            "name": "start_unix_time",
+            "type": "i64"
+          },
+          {
+            "name": "percent",
+            "type": "u8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "RecentProposal",
+      "type": {
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "StartBoostArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "start_ts",
+            "type": "i64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "SubDaoV0",
+      "type": {
+        "fields": [
+          {
+            "name": "dao",
+            "type": "pubkey"
+          },
+          {
+            "name": "dnt_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "rewards_escrow",
+            "type": "pubkey"
+          },
+          {
+            "docs": [
+              "DEPRECATED: use dao.delegator_pool instead. But some people still need to claim old DNT rewards"
+            ],
+            "name": "delegator_pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "vehnt_delegated",
+            "type": "u128"
+          },
+          {
+            "name": "vehnt_last_calculated_ts",
+            "type": "i64"
+          },
+          {
+            "name": "vehnt_fall_rate",
+            "type": "u128"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "_deprecated_active_device_aggregator",
+            "type": "pubkey"
+          },
+          {
+            "name": "dc_burn_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "onboarding_dc_fee",
+            "type": "u64"
+          },
+          {
+            "name": "emission_schedule",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "EmissionScheduleItem"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "registrar",
+            "type": "pubkey"
+          },
+          {
+            "name": "_deprecated_delegator_rewards_percent",
+            "type": "u64"
+          },
+          {
+            "name": "onboarding_data_only_dc_fee",
+            "type": "u64"
+          },
+          {
+            "name": "dc_onboarding_fees_paid",
+            "type": "u64"
+          },
+          {
+            "name": "active_device_authority",
+            "type": "pubkey"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "UpdateBoostConfigArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "start_authority",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "rent_reclaim_authority",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "boost_price",
+            "type": {
+              "option": "u64"
+            }
+          },
+          {
+            "name": "minimum_periods",
+            "type": {
+              "option": "u16"
+            }
+          },
+          {
+            "name": "price_oracle",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "dc_mint",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    }
+  ]
+}

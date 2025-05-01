@@ -1,19 +1,16 @@
 use crate::{
     anchor_lang::AccountDeserialize,
-    anchor_spl,
+    anchor_spl, circuit_breaker,
     client::SolanaRpcClient,
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
     message, priority_fee,
-    solana_sdk::{
-        commitment_config::CommitmentConfig, signer::Signer, system_instruction,
-        transaction::VersionedTransaction,
-    },
+    solana_sdk::{commitment_config::CommitmentConfig, signer::Signer, system_instruction},
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
-use helium_anchor_gen::circuit_breaker;
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
 #[derive(Debug, thiserror::Error)]
@@ -93,7 +90,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 
@@ -166,7 +163,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
-    let txn = VersionedTransaction::try_new(msg, &[keypair])?;
+    let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
 }
 
@@ -248,7 +245,6 @@ pub mod price {
         token: Token,
         max_age: Duration,
     ) -> Result<Price, Error> {
-        use helium_anchor_gen::anchor_lang::AccountDeserialize;
         let price_key = token.price_key().ok_or(PriceError::InvalidToken(token))?;
         let price_feed = token.price_feed().ok_or(PriceError::InvalidToken(token))?;
         let account = client.as_ref().get_account(price_key).await?;
@@ -383,7 +379,7 @@ impl Token {
     pub fn mint_circuit_breaker_address(&self) -> Pubkey {
         let (circuit_breaker, _) = Pubkey::find_program_address(
             &[b"mint_windowed_breaker", self.mint().as_ref()],
-            &circuit_breaker::id(),
+            &circuit_breaker::ID,
         );
         circuit_breaker
     }

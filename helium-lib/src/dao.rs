@@ -89,18 +89,18 @@ impl Dao {
     }
 
     pub fn oracle_signer_key() -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::id());
+        let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::ID);
         key
     }
 
     pub fn dc_account_payer() -> Pubkey {
-        let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::id());
+        let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::ID);
         key
     }
 
     pub fn dc_key() -> Pubkey {
         let (key, _) =
-            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::id());
+            Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::ID);
         key
     }
 
@@ -143,7 +143,7 @@ impl SubDao {
     pub fn key(&self) -> Pubkey {
         Pubkey::find_program_address(
             &[b"sub_dao", self.token().mint().as_ref()],
-            &helium_sub_daos::id(),
+            &helium_sub_daos::ID,
         )
         .0
     }
@@ -159,7 +159,7 @@ impl SubDao {
         let hash = Sha256::digest(router_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
             &[b"delegated_data_credits", self.key().as_ref(), &hash],
-            &data_credits::id(),
+            &data_credits::ID,
         );
         key
     }
@@ -167,7 +167,7 @@ impl SubDao {
     pub fn escrow_key(&self, delegated_dc_key: &Pubkey) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"escrow_dc_account", delegated_dc_key.as_ref()],
-            &data_credits::id(),
+            &data_credits::ID,
         );
         key
     }
@@ -181,7 +181,7 @@ impl SubDao {
 
         Pubkey::find_program_address(
             &[b"rewardable_entity_config", &sub_dao.as_ref(), suffix],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         )
         .0
     }
@@ -196,7 +196,7 @@ impl SubDao {
 
         Pubkey::find_program_address(
             &[prefix.as_bytes(), &config_key.as_ref(), &hash],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         )
         .0
     }
@@ -210,7 +210,7 @@ impl SubDao {
 
         Pubkey::find_program_address(
             &[prefix.as_bytes(), &sub_dao.as_ref()],
-            &helium_entity_manager::id(),
+            &helium_entity_manager::ID,
         )
         .0
     }

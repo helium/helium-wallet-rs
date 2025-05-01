@@ -17,13 +17,16 @@ use futures::{
     stream::{self, StreamExt, TryStreamExt},
     TryFutureExt,
 };
-use helium_anchor_gen::helium_entity_manager::{
-    instruction::{
+use helium_entity_manager::{
+    client::args::{
         OnboardDataOnlyIotHotspotV0, OnboardDataOnlyMobileHotspotV0, OnboardIotHotspotV0,
         OnboardMobileHotspotV0, UpdateIotInfoV0, UpdateMobileInfoV0,
     },
-    OnboardDataOnlyIotHotspotArgsV0, OnboardDataOnlyMobileHotspotArgsV0, OnboardIotHotspotArgsV0,
-    OnboardMobileHotspotArgsV0, UpdateIotInfoArgsV0, UpdateMobileInfoArgsV0,
+    types::{
+        OnboardDataOnlyIotHotspotArgsV0, OnboardDataOnlyMobileHotspotArgsV0,
+        OnboardIotHotspotArgsV0, OnboardMobileHotspotArgsV0, UpdateIotInfoArgsV0,
+        UpdateMobileInfoArgsV0,
+    },
 };
 use serde::{Deserialize, Serialize};
 use solana_transaction_status::{
@@ -39,11 +42,11 @@ pub async fn get<C: GetAnchorAccount>(
 ) -> Result<Option<HotspotInfo>, Error> {
     let hotspot_info = match subdao {
         SubDao::Iot => client
-            .anchor_account::<helium_entity_manager::IotHotspotInfoV0>(info_key)
+            .anchor_account::<helium_entity_manager::accounts::IotHotspotInfoV0>(info_key)
             .await
             .map(Into::into),
         SubDao::Mobile => client
-            .anchor_account::<helium_entity_manager::MobileHotspotInfoV0>(info_key)
+            .anchor_account::<helium_entity_manager::accounts::MobileHotspotInfoV0>(info_key)
             .await
             .map(Into::into),
     }
@@ -65,12 +68,12 @@ pub async fn get_many<C: GetAnchorAccount>(
     let accounts = match subdao {
         SubDao::Iot => to_infos(
             client
-                .anchor_accounts::<helium_entity_manager::IotHotspotInfoV0>(info_keys)
+                .anchor_accounts::<helium_entity_manager::accounts::IotHotspotInfoV0>(info_keys)
                 .await?,
         ),
         SubDao::Mobile => to_infos(
             client
-                .anchor_accounts::<helium_entity_manager::MobileHotspotInfoV0>(info_keys)
+                .anchor_accounts::<helium_entity_manager::accounts::MobileHotspotInfoV0>(info_keys)
                 .await?,
         ),
     };
@@ -219,7 +222,7 @@ impl HotspotInfoUpdate {
         let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(decoded)) = ixn else {
             return Err(DecodeError::other("not a decoded instruction"));
         };
-        if decoded.program_id != helium_entity_manager::id().to_string() {
+        if decoded.program_id != helium_entity_manager::ID.to_string() {
             return Ok(None);
         }
         if decoded.data.is_empty() {
@@ -244,7 +247,7 @@ impl HotspotInfoUpdate {
             let account = Pubkey::from_str(account_str).map_err(DecodeError::from)?;
             Ok(account)
         }
-        match discriminator {
+        match discriminator.as_slice() {
             UpdateMobileInfoV0::DISCRIMINATOR => {
                 let info_key = get_info_key(&decoded, 2)?;
                 UpdateMobileInfoArgsV0::deserialize(&mut args)

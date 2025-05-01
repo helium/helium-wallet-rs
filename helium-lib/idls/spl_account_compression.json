@@ -1,0 +1,694 @@
+{
+  "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
+  "metadata": {
+    "name": "spl_account_compression",
+    "version": "0.1.2",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "init_empty_merkle_tree",
+      "docs": [
+        "Creates a new merkle tree with maximum leaf capacity of `power(2, max_depth)`",
+        "and a minimum concurrency limit of `max_buffer_size`.",
+        "",
+        "Concurrency limit represents the # of replace instructions that can be successfully",
+        "executed with proofs dated for the same root. For example, a maximum buffer size of 1024",
+        "means that a minimum of 1024 replaces can be executed before a new proof must be",
+        "generated for the next replace instruction.",
+        "",
+        "Concurrency limit should be determined by empirically testing the demand for",
+        "state built on top of SPL Compression.",
+        "",
+        "For instructions on enabling the canopy, see [canopy]."
+      ],
+      "discriminator": [
+        191,
+        11,
+        119,
+        7,
+        180,
+        107,
+        220,
+        110
+      ],
+      "accounts": [
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that controls write-access to the tree",
+            "Typically a program, e.g., the Bubblegum contract validates that leaves are valid NFTs."
+          ],
+          "signer": true
+        },
+        {
+          "name": "log_wrapper",
+          "docs": [
+            "Program used to emit changelogs as instruction data.",
+            "See `WRAPYChf58WFCnyjXKJHtrPgzKXgHp6MD9aVDqJBbGh`"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "max_depth",
+          "type": "u32"
+        },
+        {
+          "name": "max_buffer_size",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "replace_leaf",
+      "docs": [
+        "Note:",
+        "Supporting this instruction open a security vulnerability for indexers.",
+        "This instruction has been deemed unusable for publicly indexed compressed NFTs.",
+        "Indexing batched data in this way requires indexers to read in the `uri`s onto physical storage",
+        "and then into their database. This opens up a DOS attack vector, whereby this instruction is",
+        "repeatedly invoked, causing indexers to fail.",
+        "",
+        "Because this instruction was deemed insecure, this instruction has been removed",
+        "until secure usage is available on-chain.",
+        "Executes an instruction that overwrites a leaf node.",
+        "Composing programs should check that the data hashed into previous_leaf",
+        "matches the authority information necessary to execute this instruction."
+      ],
+      "discriminator": [
+        204,
+        165,
+        76,
+        100,
+        73,
+        147,
+        0,
+        128
+      ],
+      "accounts": [
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that controls write-access to the tree",
+            "Typically a program, e.g., the Bubblegum contract validates that leaves are valid NFTs."
+          ],
+          "signer": true
+        },
+        {
+          "name": "log_wrapper",
+          "docs": [
+            "Program used to emit changelogs as instruction data.",
+            "See `WRAPYChf58WFCnyjXKJHtrPgzKXgHp6MD9aVDqJBbGh`"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "previous_leaf",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "new_leaf",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "index",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "transfer_authority",
+      "docs": [
+        "Transfers `authority`.",
+        "Requires `authority` to sign"
+      ],
+      "discriminator": [
+        48,
+        169,
+        76,
+        72,
+        229,
+        180,
+        55,
+        161
+      ],
+      "accounts": [
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that controls write-access to the tree",
+            "Typically a program, e.g., the Bubblegum contract validates that leaves are valid NFTs."
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "verify_leaf",
+      "docs": [
+        "Verifies a provided proof and leaf.",
+        "If invalid, throws an error."
+      ],
+      "discriminator": [
+        124,
+        220,
+        22,
+        223,
+        104,
+        10,
+        250,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "merkle_tree"
+        }
+      ],
+      "args": [
+        {
+          "name": "root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "leaf",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "index",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "append",
+      "docs": [
+        "This instruction allows the tree's `authority` to append a new leaf to the tree",
+        "without having to supply a proof.",
+        "",
+        "Learn more about SPL",
+        "ConcurrentMerkleTree",
+        "[here](https://github.com/solana-labs/solana-program-library/tree/master/libraries/concurrent-merkle-tree)"
+      ],
+      "discriminator": [
+        149,
+        120,
+        18,
+        222,
+        236,
+        225,
+        88,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that controls write-access to the tree",
+            "Typically a program, e.g., the Bubblegum contract validates that leaves are valid NFTs."
+          ],
+          "signer": true
+        },
+        {
+          "name": "log_wrapper",
+          "docs": [
+            "Program used to emit changelogs as instruction data.",
+            "See `WRAPYChf58WFCnyjXKJHtrPgzKXgHp6MD9aVDqJBbGh`"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "leaf",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "insert_or_append",
+      "docs": [
+        "This instruction takes a proof, and will attempt to write the given leaf",
+        "to the specified index in the tree. If the insert operation fails, the leaf will be `append`-ed",
+        "to the tree.",
+        "It is up to the indexer to parse the final location of the leaf from the emitted changelog."
+      ],
+      "discriminator": [
+        6,
+        42,
+        50,
+        190,
+        51,
+        109,
+        178,
+        168
+      ],
+      "accounts": [
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that controls write-access to the tree",
+            "Typically a program, e.g., the Bubblegum contract validates that leaves are valid NFTs."
+          ],
+          "signer": true
+        },
+        {
+          "name": "log_wrapper",
+          "docs": [
+            "Program used to emit changelogs as instruction data.",
+            "See `WRAPYChf58WFCnyjXKJHtrPgzKXgHp6MD9aVDqJBbGh`"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "leaf",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "index",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "close_empty_tree",
+      "discriminator": [
+        50,
+        14,
+        219,
+        107,
+        78,
+        103,
+        16,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Authority that controls write-access to the tree"
+          ],
+          "signer": true
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "IncorrectLeafLength",
+      "msg": "Incorrect leaf length. Expected vec of 32 bytes"
+    },
+    {
+      "code": 6001,
+      "name": "ConcurrentMerkleTreeError",
+      "msg": "Concurrent merkle tree error"
+    },
+    {
+      "code": 6002,
+      "name": "ZeroCopyError",
+      "msg": "Issue zero copying concurrent merkle tree data"
+    },
+    {
+      "code": 6003,
+      "name": "ConcurrentMerkleTreeConstantsError",
+      "msg": "An unsupported max depth or max buffer size constant was provided"
+    },
+    {
+      "code": 6004,
+      "name": "CanopyLengthMismatch",
+      "msg": "Expected a different byte length for the merkle tree canopy"
+    },
+    {
+      "code": 6005,
+      "name": "IncorrectAuthority",
+      "msg": "Provided authority does not match expected tree authority"
+    },
+    {
+      "code": 6006,
+      "name": "IncorrectAccountOwner",
+      "msg": "Account is owned by a different program, expected it to be owned by this program"
+    },
+    {
+      "code": 6007,
+      "name": "IncorrectAccountType",
+      "msg": "Account provided has incorrect account type"
+    }
+  ],
+  "types": [
+    {
+      "name": "ApplicationDataEventV1",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "application_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChangeLogEventV1",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "docs": [
+              "Public key of the ConcurrentMerkleTree"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "path",
+            "docs": [
+              "Nodes of off-chain merkle tree needed by indexer"
+            ],
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "PathNode"
+                }
+              }
+            }
+          },
+          {
+            "name": "seq",
+            "docs": [
+              "Index corresponding to the number of successful operations on this tree.",
+              "Used by the off-chain indexer to figure out when there are gaps to be backfilled."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "index",
+            "docs": [
+              "Bitmap of node parity (used when hashing)"
+            ],
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConcurrentMerkleTreeHeader",
+      "docs": [
+        "Initialization parameters for an SPL ConcurrentMerkleTree.",
+        "",
+        "Only the following permutations are valid:",
+        "",
+        "| max_depth | max_buffer_size       |",
+        "| --------- | --------------------- |",
+        "| 14        | (64, 256, 1024, 2048) |",
+        "| 20        | (64, 256, 1024, 2048) |",
+        "| 24        | (64, 256, 512, 1024, 2048) |",
+        "| 26        | (64, 256, 512, 1024, 2048) |",
+        "| 30        | (512, 1024, 2048) |",
+        ""
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "account_type",
+            "docs": [
+              "Account type"
+            ],
+            "type": {
+              "defined": {
+                "name": "CompressionAccountType"
+              }
+            }
+          },
+          {
+            "name": "header",
+            "docs": [
+              "Versioned header"
+            ],
+            "type": {
+              "defined": {
+                "name": "ConcurrentMerkleTreeHeaderData"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConcurrentMerkleTreeHeaderDataV1",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "max_buffer_size",
+            "docs": [
+              "Buffer of changelogs stored on-chain.",
+              "Must be a power of 2; see above table for valid combinations."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "max_depth",
+            "docs": [
+              "Depth of the SPL ConcurrentMerkleTree to store.",
+              "Tree capacity can be calculated as power(2, max_depth).",
+              "See above table for valid options."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Authority that validates the content of the trees.",
+              "Typically a program, e.g., the Bubblegum contract validates that leaves are valid NFTs."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creation_slot",
+            "docs": [
+              "Slot corresponding to when the Merkle tree was created.",
+              "Provides a lower-bound on what slot to start (re-)building a tree from."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "padding",
+            "docs": [
+              "Needs padding for the account to be 8-byte aligned",
+              "8-byte alignment is necessary to zero-copy the SPL ConcurrentMerkleTree"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                6
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PathNode",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "node",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ApplicationDataEvent",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "V1",
+            "fields": [
+              {
+                "defined": {
+                  "name": "ApplicationDataEventV1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChangeLogEvent",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "V1",
+            "fields": [
+              {
+                "defined": {
+                  "name": "ChangeLogEventV1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "AccountCompressionEvent",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "ChangeLog",
+            "fields": [
+              {
+                "defined": {
+                  "name": "ChangeLogEvent"
+                }
+              }
+            ]
+          },
+          {
+            "name": "ApplicationData",
+            "fields": [
+              {
+                "defined": {
+                  "name": "ApplicationDataEvent"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "CompressionAccountType",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Uninitialized"
+          },
+          {
+            "name": "ConcurrentMerkleTree"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConcurrentMerkleTreeHeaderData",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "V1",
+            "fields": [
+              {
+                "defined": {
+                  "name": "ConcurrentMerkleTreeHeaderDataV1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

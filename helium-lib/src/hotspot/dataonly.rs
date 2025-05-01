@@ -1,6 +1,6 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
-    asset, b64,
+    asset, b64, bubblegum,
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
@@ -10,15 +10,14 @@ use crate::{
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::{Keypair, Pubkey},
     kta, message, priority_fee,
-    programs::{
-        SPL_ACCOUNT_COMPRESSION_PROGRAM_ID, SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID,
-    },
+    programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
     solana_sdk::{
         instruction::Instruction,
         signature::{NullSigner, Signer},
-        transaction::VersionedTransaction,
     },
+    spl_account_compression,
     token::Token,
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use helium_crypto::{PublicKey, Sign};
@@ -30,22 +29,21 @@ mod iot {
 
     pub fn onboard_instruction(
         hotspot_key: &helium_crypto::PublicKey,
-        config_account: &helium_entity_manager::DataOnlyConfigV0,
+        config_account: &helium_entity_manager::accounts::DataOnlyConfigV0,
         asset: &asset::Asset,
         asset_proof: &asset::AssetProof,
         assertion: &HotspotInfoUpdate,
         owner: &Pubkey,
     ) -> Result<Instruction, Error> {
         fn mk_accounts(
-            config_account: &helium_entity_manager::DataOnlyConfigV0,
+            config_account: &helium_entity_manager::accounts::DataOnlyConfigV0,
             owner: &Pubkey,
             hotspot_key: &helium_crypto::PublicKey,
         ) -> impl ToAccountMetas {
-            use helium_entity_manager::accounts::OnboardDataOnlyIotHotspotV0;
             let dao = Dao::Hnt;
             let entity_key = hotspot_key.as_entity_key();
             let data_only_config_key = dao.dataonly_config_key();
-            OnboardDataOnlyIotHotspotV0 {
+            helium_entity_manager::client::accounts::OnboardDataOnlyIotHotspotV0 {
                 payer: *owner,
                 dc_fee_payer: *owner,
                 iot_info: SubDao::Iot.info_key(&entity_key),
@@ -59,9 +57,9 @@ mod iot {
                 sub_dao: SubDao::Iot.key(),
                 dc_mint: *Token::Dc.mint(),
                 dc: Dao::dc_key(),
-                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-                data_credits_program: data_credits::id(),
-                helium_sub_daos_program: helium_sub_daos::id(),
+                compression_program: spl_account_compression::ID,
+                data_credits_program: data_credits::ID,
+                helium_sub_daos_program: helium_sub_daos::ID,
                 token_program: anchor_spl::token::ID,
                 associated_token_program: spl_associated_token_account::id(),
                 system_program: solana_sdk::system_program::id(),
@@ -73,10 +71,10 @@ mod iot {
         onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
         let onboard_ix = solana_sdk::instruction::Instruction {
-            program_id: helium_entity_manager::id(),
+            program_id: helium_entity_manager::ID,
             accounts: onboard_accounts,
-            data: helium_entity_manager::instruction::OnboardDataOnlyIotHotspotV0 {
-                _args: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0 {
+            data: helium_entity_manager::client::args::OnboardDataOnlyIotHotspotV0 {
+                args: helium_entity_manager::types::OnboardDataOnlyIotHotspotArgsV0 {
                     data_hash: asset.compression.data_hash,
                     creator_hash: asset.compression.creator_hash,
                     index: asset.compression.leaf_id()?,
@@ -97,22 +95,21 @@ mod mobile {
 
     pub fn onboard_instruction(
         hotspot_key: &helium_crypto::PublicKey,
-        config_account: &helium_entity_manager::DataOnlyConfigV0,
+        config_account: &helium_entity_manager::accounts::DataOnlyConfigV0,
         asset: &asset::Asset,
         asset_proof: &asset::AssetProof,
         assertion: &HotspotInfoUpdate,
         owner: &Pubkey,
     ) -> Result<Instruction, Error> {
         fn mk_accounts(
-            config_account: &helium_entity_manager::DataOnlyConfigV0,
+            config_account: &helium_entity_manager::accounts::DataOnlyConfigV0,
             owner: &Pubkey,
             hotspot_key: &helium_crypto::PublicKey,
         ) -> impl ToAccountMetas {
-            use helium_entity_manager::accounts::OnboardDataOnlyMobileHotspotV0;
             let dao = Dao::Hnt;
             let entity_key = hotspot_key.as_entity_key();
             let data_only_config_key = dao.dataonly_config_key();
-            OnboardDataOnlyMobileHotspotV0 {
+            helium_entity_manager::client::accounts::OnboardDataOnlyMobileHotspotV0 {
                 payer: *owner,
                 dc_fee_payer: *owner,
                 mobile_info: SubDao::Mobile.info_key(&entity_key),
@@ -129,12 +126,12 @@ mod mobile {
                 dnt_mint: *Token::Mobile.mint(),
                 dnt_price: *Token::Mobile.price_key().unwrap(), // safe to unwrap
                 dnt_burner: Token::Mobile.associated_token_adress(owner),
-                compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-                data_credits_program: data_credits::id(),
-                helium_sub_daos_program: helium_sub_daos::id(),
+                compression_program: spl_account_compression::ID,
+                data_credits_program: data_credits::ID,
+                helium_sub_daos_program: helium_sub_daos::ID,
                 token_program: anchor_spl::token::ID,
-                associated_token_program: spl_associated_token_account::id(),
-                system_program: solana_sdk::system_program::id(),
+                associated_token_program: spl_associated_token_account::ID,
+                system_program: solana_sdk::system_program::ID,
             }
         }
 
@@ -143,10 +140,10 @@ mod mobile {
         onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
         let onboard_ix = solana_sdk::instruction::Instruction {
-            program_id: helium_entity_manager::id(),
+            program_id: helium_entity_manager::ID,
             accounts: onboard_accounts,
-            data: helium_entity_manager::instruction::OnboardDataOnlyMobileHotspotV0 {
-                _args: helium_entity_manager::OnboardDataOnlyMobileHotspotArgsV0 {
+            data: helium_entity_manager::client::args::OnboardDataOnlyMobileHotspotV0 {
+                args: helium_entity_manager::types::OnboardDataOnlyMobileHotspotArgsV0 {
                     data_hash: asset.compression.data_hash,
                     creator_hash: asset.compression.creator_hash,
                     index: asset.compression.leaf_id()?,
@@ -165,7 +162,7 @@ mod mobile {
 pub fn onboard_instruction(
     subdao: SubDao,
     hotspot_key: &helium_crypto::PublicKey,
-    config_account: &helium_entity_manager::DataOnlyConfigV0,
+    config_account: &helium_entity_manager::accounts::DataOnlyConfigV0,
     asset: &asset::Asset,
     asset_proof: &asset::AssetProof,
     assertion: &HotspotInfoUpdate,
@@ -202,7 +199,9 @@ pub async fn onboard_transaction<
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let config_account = client
-        .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(&Dao::Hnt.dataonly_config_key())
+        .anchor_account::<helium_entity_manager::accounts::DataOnlyConfigV0>(
+            &Dao::Hnt.dataonly_config_key(),
+        )
         .await?;
     let kta = kta::for_entity_key(hotspot_key).await?;
     let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
@@ -227,7 +226,7 @@ pub async fn onboard_transaction<
     ];
     let (msg, block_height) =
         message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await?;
-    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
     Ok((txn, block_height))
 }
 
@@ -262,49 +261,51 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     fn mk_accounts(
-        config_account: helium_entity_manager::DataOnlyConfigV0,
+        config_account: helium_entity_manager::accounts::DataOnlyConfigV0,
         owner: Pubkey,
         entity_key: &[u8],
     ) -> impl ToAccountMetas {
-        use helium_entity_manager::accounts::IssueDataOnlyEntityV0;
         let dao = Dao::Hnt;
         let dataonly_config_key = dao.dataonly_config_key();
-        IssueDataOnlyEntityV0 {
+        helium_entity_manager::client::accounts::IssueDataOnlyEntityV0 {
             payer: owner,
             ecc_verifier: ECC_VERIFIER,
             collection: config_account.collection,
-            collection_metadata: dao.collection_metadata_key(&config_account.collection),
-            collection_master_edition: dao
-                .collection_master_edition_key(&config_account.collection),
+            collection_metadata: asset::collection_metadata_key(&config_account.collection),
+            collection_master_edition: asset::collection_master_edition_key(
+                &config_account.collection,
+            ),
             data_only_config: dataonly_config_key,
             entity_creator: dao.entity_creator_key(),
             dao: dao.key(),
             key_to_asset: dao.entity_key_to_kta_key(&entity_key),
-            tree_authority: dao.merkle_tree_authority(&config_account.merkle_tree),
+            tree_authority: asset::merkle_tree_authority(&config_account.merkle_tree),
             recipient: owner,
             merkle_tree: config_account.merkle_tree,
             data_only_escrow: dao.dataonly_escrow_key(),
-            bubblegum_signer: dao.bubblegum_signer(),
+            bubblegum_signer: asset::bubblegum_signer(),
             token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
             log_wrapper: SPL_NOOP_PROGRAM_ID,
-            bubblegum_program: mpl_bubblegum::ID,
-            compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
+            bubblegum_program: bubblegum::ID,
+            compression_program: spl_account_compression::ID,
             system_program: solana_sdk::system_program::id(),
         }
     }
 
     let config_account = client
-        .anchor_account::<helium_entity_manager::DataOnlyConfigV0>(&Dao::Hnt.dataonly_config_key())
+        .anchor_account::<helium_entity_manager::accounts::DataOnlyConfigV0>(
+            &Dao::Hnt.dataonly_config_key(),
+        )
         .await?;
     let hotspot_key = helium_crypto::PublicKey::from_bytes(&add_tx.gateway)?;
     let entity_key = hotspot_key.as_entity_key();
     let accounts = mk_accounts(config_account, owner, &entity_key);
 
     let issue_ix = Instruction {
-        program_id: helium_entity_manager::id(),
+        program_id: helium_entity_manager::ID,
         accounts: accounts.to_account_metas(None),
-        data: helium_entity_manager::instruction::IssueDataOnlyEntityV0 {
-            _args: helium_entity_manager::IssueDataOnlyEntityArgsV0 { entity_key },
+        data: helium_entity_manager::client::args::IssueDataOnlyEntityV0 {
+            args: helium_entity_manager::types::IssueDataOnlyEntityArgsV0 { entity_key },
         }
         .data(),
     };
@@ -317,7 +318,7 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     ];
 
     let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, &owner).await?;
-    let txn = VersionedTransaction::try_new(
+    let txn = mk_transaction(
         msg,
         &[
             // Set payer as first account key to allow callers to sign
@@ -422,7 +423,7 @@ async fn verify_helium_key(
     let client = reqwest::Client::new();
     let serialized_tx = hex::encode(bincode::serialize(&tx).map_err(EncodeError::from)?);
     let response = client
-        .post(format!("{}/verify", verifier))
+        .post(format!("{verifier}/verify"))
         .json(&VerifyRequest {
             transaction: &serialized_tx,
             msg: &hex::encode(msg),

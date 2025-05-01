@@ -1,6 +1,6 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
-    anchor_spl, asset, bs58,
+    anchor_spl, asset, bs58, bubblegum,
     client::{DasClient, DasSearchAssetsParams, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
@@ -8,13 +8,13 @@ use crate::{
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
     kta, message, onboarding, priority_fee,
-    programs::SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
         signer::Signer,
-        transaction::VersionedTransaction,
     },
+    spl_account_compression,
     token::Token,
+    transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use angry_purple_tiger::AnimalName;
@@ -35,12 +35,16 @@ pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLg
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
 pub fn entity_key_from_kta(
-    kta: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::accounts::KeyToAssetV0,
 ) -> Result<helium_crypto::PublicKey, Error> {
     let key_str = match kta.key_serialization {
-        helium_entity_manager::KeySerialization::B58 => bs58::encode(&kta.entity_key).into_string(),
-        helium_entity_manager::KeySerialization::UTF8 => String::from_utf8(kta.entity_key.to_vec())
-            .map_err(|_| DecodeError::other("invalid entity key string"))?,
+        helium_entity_manager::types::KeySerialization::B58 => {
+            bs58::encode(&kta.entity_key).into_string()
+        }
+        helium_entity_manager::types::KeySerialization::UTF8 => {
+            String::from_utf8(kta.entity_key.to_vec())
+                .map_err(|_| DecodeError::other("invalid entity key string"))?
+        }
     };
     Ok(helium_crypto::PublicKey::from_str(&key_str)?)
 }
@@ -112,7 +116,7 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
 }
 
 pub fn direct_update_instruction(
-    kta: &helium_entity_manager::KeyToAssetV0,
+    kta: &helium_entity_manager::accounts::KeyToAssetV0,
     asset: &asset::Asset,
     asset_proof: &asset::AssetProof,
     update: &HotspotInfoUpdate,
@@ -120,31 +124,31 @@ pub fn direct_update_instruction(
 ) -> Result<Instruction, Error> {
     fn mk_accounts(
         subdao: SubDao,
-        kta: &helium_entity_manager::KeyToAssetV0,
+        kta: &helium_entity_manager::accounts::KeyToAssetV0,
         asset: &asset::Asset,
         owner: &Pubkey,
     ) -> Vec<AccountMeta> {
-        use helium_entity_manager::accounts::{UpdateIotInfoV0, UpdateMobileInfoV0};
+        use helium_entity_manager::client::accounts::{UpdateIotInfoV0, UpdateMobileInfoV0};
         macro_rules! mk_update_info {
             ($name:ident, $info:ident) => {
                 $name {
-                    bubblegum_program: mpl_bubblegum::ID,
+                    bubblegum_program: bubblegum::ID,
                     payer: owner.to_owned(),
                     dc_fee_payer: owner.to_owned(),
                     $info: subdao.info_key(&kta.entity_key),
                     hotspot_owner: owner.to_owned(),
                     merkle_tree: asset.compression.tree,
-                    tree_authority: Dao::Hnt.merkle_tree_authority(&asset.compression.tree),
+                    tree_authority: asset::merkle_tree_authority(&asset.compression.tree),
                     dc_burner: Token::Dc.associated_token_adress(owner),
                     rewardable_entity_config: subdao.rewardable_entity_config_key(),
                     dao: Dao::Hnt.key(),
                     sub_dao: subdao.key(),
                     dc_mint: *Token::Dc.mint(),
                     dc: Dao::dc_key(),
-                    compression_program: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
-                    data_credits_program: data_credits::id(),
+                    compression_program: spl_account_compression::ID,
+                    data_credits_program: data_credits::ID,
                     token_program: anchor_spl::token::ID,
-                    associated_token_program: spl_associated_token_account::id(),
+                    associated_token_program: spl_associated_token_account::ID,
                     system_program: solana_sdk::system_program::id(),
                 }
                 .to_account_metas(None)
@@ -159,7 +163,7 @@ pub fn direct_update_instruction(
     macro_rules! mk_update_data {
         ($ix_struct:ident, $arg_struct:ident, $($manual_fields:tt)*) => {
             $ix_struct {
-                _args: $arg_struct {
+                args: $arg_struct {
                     root: asset_proof.root.to_bytes(),
                     data_hash: asset.compression.data_hash,
                     creator_hash: asset.compression.creator_hash,
@@ -175,10 +179,13 @@ pub fn direct_update_instruction(
     accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
 
     use helium_entity_manager::{
-        instruction::{
+        client::args::{
             UpdateIotInfoV0 as IxUpdateIotInfo, UpdateMobileInfoV0 as IxUpdateMobileInfo,
         },
-        UpdateIotInfoArgsV0 as ArgsUpdateIotInfo, UpdateMobileInfoArgsV0 as ArgsUpdateMobileInfo,
+        types::{
+            UpdateIotInfoArgsV0 as ArgsUpdateIotInfo,
+            UpdateMobileInfoArgsV0 as ArgsUpdateMobileInfo,
+        },
     };
     let data = match update.subdao() {
         SubDao::Iot => {
@@ -195,7 +202,7 @@ pub fn direct_update_instruction(
         }
     };
     let ix = Instruction {
-        program_id: helium_entity_manager::id(),
+        program_id: helium_entity_manager::ID,
         accounts: accounts.to_account_metas(None),
         data,
     };
@@ -225,7 +232,7 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     ];
 
     let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, owner).await?;
-    let txn = VersionedTransaction::try_new(msg, &[&NullSigner::new(owner)])?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(owner)])?;
     Ok((txn, block_height))
 }
 
@@ -390,7 +397,7 @@ pub struct Hotspot {
     pub owner: Pubkey,
     #[serde(skip_serializing_if = "std::ops::Not::not", default)]
     pub burnt: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
 
@@ -401,7 +408,7 @@ impl Hotspot {
     }
 
     pub fn from_asset_with_kta(
-        kta: helium_entity_manager::KeyToAssetV0,
+        kta: helium_entity_manager::accounts::KeyToAssetV0,
         asset: asset::Asset,
     ) -> Result<Self, Error> {
         let entity_key = entity_key_from_kta(&kta)?;
@@ -514,25 +521,25 @@ pub mod serde_cell_index {
 pub enum HotspotInfo {
     Iot {
         mode: HotspotMode,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         gain: Option<Decimal>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         elevation: Option<i32>,
         #[serde(flatten)]
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         location: Option<HotspotLocation>,
-        #[serde(skip_serializing_if = "is_zero")]
+        #[serde(skip_serializing_if = "is_zero", default)]
         location_asserts: u16,
     },
     Mobile {
         mode: HotspotMode,
         #[serde(flatten)]
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         location: Option<HotspotLocation>,
-        #[serde(skip_serializing_if = "is_zero")]
+        #[serde(skip_serializing_if = "is_zero", default)]
         location_asserts: u16,
         device_type: MobileDeviceType,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         deployment_info: Option<MobileDeploymentInfo>,
     },
 }
@@ -544,16 +551,13 @@ pub enum MobileDeploymentInfo {
         #[serde(skip_serializing_if = "is_zero")]
         antenna: u32,
         // the height of the Hotspot above ground level in whole meters
-        #[serde(skip_serializing_if = "is_zero")]
+        #[serde(skip_serializing_if = "is_zero", default)]
         elevation: i32,
-        #[serde(skip_serializing_if = "is_zero")]
-        azimuth: Decimal,
-        #[serde(skip_serializing_if = "is_zero")]
-        mechanical_down_tilt: Decimal,
-        #[serde(skip_serializing_if = "is_zero")]
-        electrical_down_tilt: Decimal,
+        #[serde(skip_serializing_if = "is_zero", default)]
+        azimuth: u16,
     },
     CbrsInfo {
+        #[serde(skip_serializing_if = "Vec::is_empty", default)]
         radio_infos: Vec<CbrsRadioInfo>,
     },
 }
@@ -744,13 +748,13 @@ impl std::str::FromStr for MobileDeviceType {
     }
 }
 
-impl From<helium_entity_manager::MobileDeviceTypeV0> for MobileDeviceType {
-    fn from(value: helium_entity_manager::MobileDeviceTypeV0) -> Self {
+impl From<helium_entity_manager::types::MobileDeviceTypeV0> for MobileDeviceType {
+    fn from(value: helium_entity_manager::types::MobileDeviceTypeV0) -> Self {
         match value {
-            helium_entity_manager::MobileDeviceTypeV0::Cbrs => Self::Cbrs,
-            helium_entity_manager::MobileDeviceTypeV0::WifiIndoor => Self::WifiIndoor,
-            helium_entity_manager::MobileDeviceTypeV0::WifiOutdoor => Self::WifiOutdoor,
-            helium_entity_manager::MobileDeviceTypeV0::WifiDataOnly => Self::WifiDataOnly,
+            helium_entity_manager::types::MobileDeviceTypeV0::Cbrs => Self::Cbrs,
+            helium_entity_manager::types::MobileDeviceTypeV0::WifiIndoor => Self::WifiIndoor,
+            helium_entity_manager::types::MobileDeviceTypeV0::WifiOutdoor => Self::WifiOutdoor,
+            helium_entity_manager::types::MobileDeviceTypeV0::WifiDataOnly => Self::WifiDataOnly,
         }
     }
 }
@@ -808,8 +812,8 @@ impl HotspotInfo {
     }
 }
 
-impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
-    fn from(value: helium_entity_manager::IotHotspotInfoV0) -> Self {
+impl From<helium_entity_manager::accounts::IotHotspotInfoV0> for HotspotInfo {
+    fn from(value: helium_entity_manager::accounts::IotHotspotInfoV0) -> Self {
         Self::Iot {
             mode: value.is_full_hotspot.into(),
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
@@ -820,8 +824,8 @@ impl From<helium_entity_manager::IotHotspotInfoV0> for HotspotInfo {
     }
 }
 
-impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
-    fn from(value: helium_entity_manager::MobileHotspotInfoV0) -> Self {
+impl From<helium_entity_manager::accounts::MobileHotspotInfoV0> for HotspotInfo {
+    fn from(value: helium_entity_manager::accounts::MobileHotspotInfoV0) -> Self {
         Self::Mobile {
             mode: value.is_full_hotspot.into(),
             location: HotspotLocation::from_maybe(value.location),
@@ -832,23 +836,20 @@ impl From<helium_entity_manager::MobileHotspotInfoV0> for HotspotInfo {
     }
 }
 
-impl From<helium_entity_manager::MobileDeploymentInfoV0> for MobileDeploymentInfo {
-    fn from(value: helium_entity_manager::MobileDeploymentInfoV0) -> Self {
+impl From<helium_entity_manager::types::MobileDeploymentInfoV0> for MobileDeploymentInfo {
+    fn from(value: helium_entity_manager::types::MobileDeploymentInfoV0) -> Self {
         match value {
-            helium_entity_manager::MobileDeploymentInfoV0::WifiInfoV0 {
+            helium_entity_manager::types::MobileDeploymentInfoV0::WifiInfoV0 {
                 antenna,
                 elevation,
                 azimuth,
-                mechanical_down_tilt,
-                electrical_down_tilt,
+                ..
             } => Self::WifiInfo {
                 antenna,
                 elevation,
-                azimuth: Decimal::new(azimuth as i64, 2),
-                mechanical_down_tilt: Decimal::new(mechanical_down_tilt as i64, 2),
-                electrical_down_tilt: Decimal::new(electrical_down_tilt as i64, 2),
+                azimuth,
             },
-            helium_entity_manager::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
+            helium_entity_manager::types::MobileDeploymentInfoV0::CbrsInfoV0 { radio_infos } => {
                 Self::CbrsInfo {
                     radio_infos: radio_infos.into_iter().map(CbrsRadioInfo::from).collect(),
                 }
@@ -864,9 +865,7 @@ impl From<mobile_config::gateway_metadata_v2::DeploymentInfo> for MobileDeployme
                 Self::WifiInfo {
                     antenna: value.antenna,
                     elevation: value.elevation as i32,
-                    azimuth: Decimal::new(value.azimuth as i64, 2),
-                    mechanical_down_tilt: Decimal::new(value.mechanical_down_tilt as i64, 2),
-                    electrical_down_tilt: Decimal::new(value.electrical_down_tilt as i64, 2),
+                    azimuth: value.azimuth as u16,
                 }
             }
             mobile_config::gateway_metadata_v2::DeploymentInfo::CbrsDeploymentInfo(value) => {
@@ -882,8 +881,8 @@ impl From<mobile_config::gateway_metadata_v2::DeploymentInfo> for MobileDeployme
     }
 }
 
-impl From<helium_entity_manager::RadioInfoV0> for CbrsRadioInfo {
-    fn from(value: helium_entity_manager::RadioInfoV0) -> Self {
+impl From<helium_entity_manager::types::RadioInfoV0> for CbrsRadioInfo {
+    fn from(value: helium_entity_manager::types::RadioInfoV0) -> Self {
         Self {
             radio_id: value.radio_id,
             elevation: value.elevation,
@@ -891,8 +890,8 @@ impl From<helium_entity_manager::RadioInfoV0> for CbrsRadioInfo {
     }
 }
 
-impl From<helium_entity_manager::UpdateIotInfoArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::UpdateIotInfoArgsV0) -> Self {
+impl From<helium_entity_manager::types::UpdateIotInfoArgsV0> for HotspotInfoUpdate {
+    fn from(value: helium_entity_manager::types::UpdateIotInfoArgsV0) -> Self {
         Self::Iot {
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
@@ -901,8 +900,8 @@ impl From<helium_entity_manager::UpdateIotInfoArgsV0> for HotspotInfoUpdate {
     }
 }
 
-impl From<helium_entity_manager::OnboardIotHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::OnboardIotHotspotArgsV0) -> Self {
+impl From<helium_entity_manager::types::OnboardIotHotspotArgsV0> for HotspotInfoUpdate {
+    fn from(value: helium_entity_manager::types::OnboardIotHotspotArgsV0) -> Self {
         Self::Iot {
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
@@ -911,8 +910,8 @@ impl From<helium_entity_manager::OnboardIotHotspotArgsV0> for HotspotInfoUpdate 
     }
 }
 
-impl From<helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0) -> Self {
+impl From<helium_entity_manager::types::OnboardDataOnlyIotHotspotArgsV0> for HotspotInfoUpdate {
+    fn from(value: helium_entity_manager::types::OnboardDataOnlyIotHotspotArgsV0) -> Self {
         Self::Iot {
             gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
             elevation: value.elevation,
@@ -921,24 +920,24 @@ impl From<helium_entity_manager::OnboardDataOnlyIotHotspotArgsV0> for HotspotInf
     }
 }
 
-impl From<helium_entity_manager::UpdateMobileInfoArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::UpdateMobileInfoArgsV0) -> Self {
+impl From<helium_entity_manager::types::UpdateMobileInfoArgsV0> for HotspotInfoUpdate {
+    fn from(value: helium_entity_manager::types::UpdateMobileInfoArgsV0) -> Self {
         Self::Mobile {
             location: HotspotLocation::from_maybe(value.location),
         }
     }
 }
 
-impl From<helium_entity_manager::OnboardMobileHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::OnboardMobileHotspotArgsV0) -> Self {
+impl From<helium_entity_manager::types::OnboardMobileHotspotArgsV0> for HotspotInfoUpdate {
+    fn from(value: helium_entity_manager::types::OnboardMobileHotspotArgsV0) -> Self {
         Self::Mobile {
             location: HotspotLocation::from_maybe(value.location),
         }
     }
 }
 
-impl From<helium_entity_manager::OnboardDataOnlyMobileHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::OnboardDataOnlyMobileHotspotArgsV0) -> Self {
+impl From<helium_entity_manager::types::OnboardDataOnlyMobileHotspotArgsV0> for HotspotInfoUpdate {
+    fn from(value: helium_entity_manager::types::OnboardDataOnlyMobileHotspotArgsV0) -> Self {
         Self::Mobile {
             location: HotspotLocation::from_maybe(value.location),
         }

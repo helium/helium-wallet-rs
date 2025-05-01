@@ -1,0 +1,4350 @@
+{
+  "accounts": [
+    {
+      "discriminator": [
+        152,
+        131,
+        154,
+        46,
+        158,
+        42,
+        31,
+        233
+      ],
+      "name": "PositionV0"
+    },
+    {
+      "discriminator": [
+        162,
+        41,
+        210,
+        200,
+        205,
+        177,
+        228,
+        11
+      ],
+      "name": "ProposalConfigV0"
+    },
+    {
+      "discriminator": [
+        254,
+        194,
+        16,
+        171,
+        214,
+        20,
+        192,
+        81
+      ],
+      "name": "ProposalV0"
+    },
+    {
+      "discriminator": [
+        196,
+        152,
+        78,
+        155,
+        132,
+        136,
+        147,
+        55
+      ],
+      "name": "ProxyAssignmentV0"
+    },
+    {
+      "discriminator": [
+        187,
+        22,
+        143,
+        173,
+        201,
+        68,
+        34,
+        64
+      ],
+      "name": "ProxyConfigV0"
+    },
+    {
+      "discriminator": [
+        83,
+        225,
+        185,
+        120,
+        185,
+        31,
+        200,
+        178
+      ],
+      "name": "ProxyMarkerV0"
+    },
+    {
+      "discriminator": [
+        193,
+        202,
+        205,
+        51,
+        78,
+        168,
+        150,
+        128
+      ],
+      "name": "Registrar"
+    },
+    {
+      "discriminator": [
+        83,
+        205,
+        59,
+        215,
+        144,
+        234,
+        43,
+        70
+      ],
+      "name": "VoteMarkerV0"
+    }
+  ],
+  "address": "hvsrNC3NKbcryqDs2DocYHZ9yPKEVzdSjQG6RVtK1s8",
+  "errors": [
+    {
+      "code": 6000,
+      "msg": "Exchange rate must be greater than zero",
+      "name": "InvalidRate"
+    },
+    {
+      "code": 6001,
+      "msg": "",
+      "name": "RatesFull"
+    },
+    {
+      "code": 6002,
+      "msg": "",
+      "name": "VotingMintNotFound"
+    },
+    {
+      "code": 6003,
+      "msg": "",
+      "name": "DepositEntryNotFound"
+    },
+    {
+      "code": 6004,
+      "msg": "",
+      "name": "DepositEntryFull"
+    },
+    {
+      "code": 6005,
+      "msg": "",
+      "name": "VotingTokenNonZero"
+    },
+    {
+      "code": 6006,
+      "msg": "",
+      "name": "OutOfBoundsDepositEntryIndex"
+    },
+    {
+      "code": 6007,
+      "msg": "",
+      "name": "UnusedDepositEntryIndex"
+    },
+    {
+      "code": 6008,
+      "msg": "",
+      "name": "InsufficientUnlockedTokens"
+    },
+    {
+      "code": 6009,
+      "msg": "",
+      "name": "UnableToConvert"
+    },
+    {
+      "code": 6010,
+      "msg": "",
+      "name": "InvalidLockupPeriod"
+    },
+    {
+      "code": 6011,
+      "msg": "",
+      "name": "InvalidEndTs"
+    },
+    {
+      "code": 6012,
+      "msg": "",
+      "name": "InvalidDays"
+    },
+    {
+      "code": 6013,
+      "msg": "",
+      "name": "VotingMintConfigIndexAlreadyInUse"
+    },
+    {
+      "code": 6014,
+      "msg": "",
+      "name": "OutOfBoundsVotingMintConfigIndex"
+    },
+    {
+      "code": 6015,
+      "msg": "Exchange rate decimals cannot be larger than registrar decimals",
+      "name": "InvalidDecimals"
+    },
+    {
+      "code": 6016,
+      "msg": "",
+      "name": "InvalidToDepositAndWithdrawInOneSlot"
+    },
+    {
+      "code": 6017,
+      "msg": "",
+      "name": "ShouldBeTheFirstIxInATx"
+    },
+    {
+      "code": 6018,
+      "msg": "",
+      "name": "ForbiddenCpi"
+    },
+    {
+      "code": 6019,
+      "msg": "",
+      "name": "InvalidMint"
+    },
+    {
+      "code": 6020,
+      "msg": "",
+      "name": "DebugInstruction"
+    },
+    {
+      "code": 6021,
+      "msg": "",
+      "name": "ClawbackNotAllowedOnDeposit"
+    },
+    {
+      "code": 6022,
+      "msg": "",
+      "name": "DepositStillLocked"
+    },
+    {
+      "code": 6023,
+      "msg": "",
+      "name": "InvalidAuthority"
+    },
+    {
+      "code": 6024,
+      "msg": "",
+      "name": "InvalidTokenOwnerRecord"
+    },
+    {
+      "code": 6025,
+      "msg": "",
+      "name": "InvalidRealmAuthority"
+    },
+    {
+      "code": 6026,
+      "msg": "",
+      "name": "VoterWeightOverflow"
+    },
+    {
+      "code": 6027,
+      "msg": "",
+      "name": "LockupSaturationMustBePositive"
+    },
+    {
+      "code": 6028,
+      "msg": "",
+      "name": "VotingMintConfiguredWithDifferentIndex"
+    },
+    {
+      "code": 6029,
+      "msg": "",
+      "name": "InternalProgramError"
+    },
+    {
+      "code": 6030,
+      "msg": "",
+      "name": "InsufficientLockedTokens"
+    },
+    {
+      "code": 6031,
+      "msg": "",
+      "name": "MustKeepTokensLocked"
+    },
+    {
+      "code": 6032,
+      "msg": "",
+      "name": "InvalidLockupKind"
+    },
+    {
+      "code": 6033,
+      "msg": "",
+      "name": "InvalidChangeToClawbackDepositEntry"
+    },
+    {
+      "code": 6034,
+      "msg": "",
+      "name": "InternalErrorBadLockupVoteWeight"
+    },
+    {
+      "code": 6035,
+      "msg": "",
+      "name": "DepositStartTooFarInFuture"
+    },
+    {
+      "code": 6036,
+      "msg": "",
+      "name": "VaultTokenNonZero"
+    },
+    {
+      "code": 6037,
+      "msg": "",
+      "name": "InvalidTimestampArguments"
+    },
+    {
+      "code": 6038,
+      "msg": "Cast vote is not allowed on update_voter_weight_record_v0 endpoint",
+      "name": "CastVoteIsNotAllowed"
+    },
+    {
+      "code": 6039,
+      "msg": "Program id was not what was expected",
+      "name": "InvalidProgramId"
+    },
+    {
+      "code": 6040,
+      "msg": "",
+      "name": "InvalidMintOwner"
+    },
+    {
+      "code": 6041,
+      "msg": "",
+      "name": "InvalidMintAmount"
+    },
+    {
+      "code": 6042,
+      "msg": "",
+      "name": "DuplicatedNftDetected"
+    },
+    {
+      "code": 6043,
+      "msg": "",
+      "name": "InvalidTokenOwnerForVoterWeightRecord"
+    },
+    {
+      "code": 6044,
+      "msg": "",
+      "name": "NftAlreadyVoted"
+    },
+    {
+      "code": 6045,
+      "msg": "",
+      "name": "InvalidProposalForNftVoteRecord"
+    },
+    {
+      "code": 6046,
+      "msg": "",
+      "name": "InvalidTokenOwnerForNftVoteRecord"
+    },
+    {
+      "code": 6047,
+      "msg": "",
+      "name": "UninitializedAccount"
+    },
+    {
+      "code": 6048,
+      "msg": "",
+      "name": "PositionNotWritable"
+    },
+    {
+      "code": 6049,
+      "msg": "",
+      "name": "InvalidVoteRecordForNftVoteRecord"
+    },
+    {
+      "code": 6050,
+      "msg": "",
+      "name": "VoteRecordMustBeWithdrawn"
+    },
+    {
+      "code": 6051,
+      "msg": "",
+      "name": "VoterWeightRecordMustBeExpired"
+    },
+    {
+      "code": 6052,
+      "msg": "",
+      "name": "InvalidMintForPosition"
+    },
+    {
+      "code": 6053,
+      "msg": "",
+      "name": "InvalidOwner"
+    },
+    {
+      "code": 6054,
+      "msg": "You may not deposit additional tokens on a position created during the genesis period that still has the genesis multiplier",
+      "name": "NoDepositOnGenesisPositions"
+    },
+    {
+      "code": 6055,
+      "msg": "Cannot change a position while active votes exist",
+      "name": "ActiveVotesExist"
+    },
+    {
+      "code": 6056,
+      "msg": "Position update authority must sign off on this transaction",
+      "name": "UnauthorizedPositionUpdateAuthority"
+    },
+    {
+      "code": 6057,
+      "msg": "Cannot transfer to the same position",
+      "name": "SamePosition"
+    },
+    {
+      "code": 6058,
+      "name": "MaxChoicesExceeded"
+    },
+    {
+      "code": 6059,
+      "name": "NoVoteForThisChoice"
+    },
+    {
+      "code": 6060,
+      "msg": "No changes to count",
+      "name": "NoChangesToCount"
+    }
+  ],
+  "instructions": [
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "dao",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                10,
+                104,
+                152,
+                190,
+                21,
+                252,
+                131,
+                38,
+                148,
+                54,
+                47,
+                241,
+                62,
+                209,
+                226,
+                156,
+                55,
+                230,
+                135,
+                33,
+                39,
+                214,
+                182,
+                249,
+                212,
+                26,
+                40,
+                238,
+                129,
+                125,
+                204,
+                154
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  97,
+                  111
+                ]
+              },
+              {
+                "account": "Registrar",
+                "kind": "account",
+                "path": "registrar.realm_governing_token_mint"
+              }
+            ]
+          },
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ClearRecentProposalsArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        149,
+        201,
+        192,
+        200,
+        184,
+        142,
+        146,
+        231
+      ],
+      "name": "clear_recent_proposals_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "sol_destination",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "position_token_account",
+          "writable": true
+        },
+        {
+          "name": "position_authority",
+          "signer": true
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+          "name": "token_metadata_program"
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        173,
+        188,
+        35,
+        215,
+        182,
+        237,
+        158,
+        7
+      ],
+      "name": "close_position_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "writable": true
+        },
+        {
+          "name": "realm_authority",
+          "relations": [
+            "registrar"
+          ],
+          "signer": true
+        },
+        {
+          "docs": [
+            "Tokens of this mint will produce vote weight"
+          ],
+          "name": "mint"
+        },
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ConfigureVotingMintArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        46,
+        52,
+        225,
+        144,
+        13,
+        214,
+        246,
+        100
+      ],
+      "name": "configure_voting_mint_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "account": "PositionV0",
+                "kind": "account",
+                "path": "position.mint"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "relations": [
+            "proxy_marker",
+            "proxy_assignment"
+          ]
+        },
+        {
+          "name": "proxy_marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  120,
+                  121,
+                  95,
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "voter"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "proxy_assignment"
+        },
+        {
+          "name": "proposal",
+          "relations": [
+            "proxy_marker"
+          ],
+          "writable": true
+        },
+        {
+          "name": "proposal_config",
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "state_controller",
+          "relations": [
+            "proposal_config"
+          ],
+          "writable": true
+        },
+        {
+          "name": "on_vote_hook",
+          "relations": [
+            "proposal_config"
+          ]
+        },
+        {
+          "name": "proposal_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        82,
+        172,
+        157,
+        8,
+        73,
+        214,
+        168,
+        62
+      ],
+      "name": "count_proxy_vote_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "position"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "deposit_token"
+          ]
+        },
+        {
+          "name": "deposit_token",
+          "writable": true
+        },
+        {
+          "name": "deposit_authority",
+          "signer": true
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "DepositArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        174,
+        234,
+        80,
+        137,
+        26,
+        149,
+        244,
+        29
+      ],
+      "name": "deposit_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar"
+        },
+        {
+          "name": "collection",
+          "relations": [
+            "registrar"
+          ]
+        },
+        {
+          "name": "collection_metadata",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "collection_master_edition",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  100,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "writable": true
+        },
+        {
+          "name": "metadata",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "master_edition",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  100,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "position_token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "recipient"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "recipient"
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "position"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deposit_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "deposit_mint"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "name": "associated_token_program"
+        },
+        {
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+          "name": "token_metadata_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializePositionArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        251,
+        173,
+        133,
+        198,
+        158,
+        35,
+        152,
+        97
+      ],
+      "name": "initialize_position_v0"
+    },
+    {
+      "accounts": [
+        {
+          "docs": [
+            "The voting registrar. There can only be a single registrar",
+            "per governance realm and governing mint."
+          ],
+          "name": "registrar",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "realm"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  97,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "realm_governing_token_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "collection",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  101,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "registrar"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "metadata",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "master_edition",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "token_metadata_program"
+              },
+              {
+                "kind": "account",
+                "path": "collection"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  100,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "registrar"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "collection"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "docs": [
+            "An spl-governance realm",
+            "",
+            "realm is validated in the instruction:",
+            "- realm is owned by the governance_program_id",
+            "- realm_governing_token_mint must be the community or council mint",
+            "- realm_authority is realm.authority"
+          ],
+          "name": "realm"
+        },
+        {
+          "docs": [
+            "The program id of the spl-governance program the realm belongs to."
+          ],
+          "name": "governance_program_id"
+        },
+        {
+          "docs": [
+            "Either the realm community mint or the council mint."
+          ],
+          "name": "realm_governing_token_mint"
+        },
+        {
+          "name": "realm_authority",
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+          "name": "token_metadata_program"
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "name": "associated_token_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "name": "proxy_config",
+          "optional": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeRegistrarArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        120,
+        90,
+        57,
+        8,
+        36,
+        255,
+        82,
+        25
+      ],
+      "name": "initialize_registrar_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "from_token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "from"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "to_token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "to"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "from",
+          "signer": true
+        },
+        {
+          "name": "to",
+          "signer": true
+        },
+        {
+          "name": "approver",
+          "signer": true
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "name": "associated_token_program"
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        6,
+        11,
+        51,
+        147,
+        93,
+        231,
+        39,
+        35
+      ],
+      "name": "ledger_transfer_position_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "rent_refund",
+          "relations": [
+            "marker"
+          ],
+          "writable": true
+        },
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "registrar",
+          "relations": [
+            "marker",
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "relations": [
+            "proxy_assignment"
+          ],
+          "signer": true
+        },
+        {
+          "name": "proxy_assignment"
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "marker",
+            "position"
+          ]
+        },
+        {
+          "name": "proposal",
+          "writable": true
+        },
+        {
+          "name": "proposal_config",
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "state_controller",
+          "relations": [
+            "proposal_config"
+          ],
+          "writable": true
+        },
+        {
+          "name": "on_vote_hook",
+          "relations": [
+            "proposal_config"
+          ]
+        },
+        {
+          "name": "proposal_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "RelinquishVoteArgsV1"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        233,
+        48,
+        26,
+        36,
+        62,
+        170,
+        79,
+        158
+      ],
+      "name": "proxied_relinquish_vote_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  120,
+                  121,
+                  95,
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "voter"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "signer": true
+        },
+        {
+          "name": "proposal",
+          "writable": true
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "VoteArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        68,
+        205,
+        48,
+        30,
+        164,
+        62,
+        0,
+        70
+      ],
+      "name": "proxied_relinquish_vote_v1"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "account": "PositionV0",
+                "kind": "account",
+                "path": "position.mint"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "relations": [
+            "proxy_assignment"
+          ],
+          "signer": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "proxy_assignment"
+        },
+        {
+          "name": "proposal",
+          "writable": true
+        },
+        {
+          "name": "proposal_config",
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "state_controller",
+          "relations": [
+            "proposal_config"
+          ],
+          "writable": true
+        },
+        {
+          "name": "on_vote_hook",
+          "relations": [
+            "proposal_config"
+          ]
+        },
+        {
+          "name": "proposal_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "VoteArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        138,
+        145,
+        60,
+        51,
+        185,
+        167,
+        162,
+        158
+      ],
+      "name": "proxied_vote_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  120,
+                  121,
+                  95,
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "voter"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "signer": true
+        },
+        {
+          "name": "proposal"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "VoteArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        190,
+        176,
+        85,
+        200,
+        29,
+        248,
+        0,
+        127
+      ],
+      "name": "proxied_vote_v1"
+    },
+    {
+      "accounts": [
+        {
+          "name": "rent_refund",
+          "relations": [
+            "marker"
+          ],
+          "writable": true
+        },
+        {
+          "name": "marker",
+          "writable": true
+        },
+        {
+          "name": "proposal",
+          "relations": [
+            "marker"
+          ]
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        171,
+        115,
+        190,
+        138,
+        152,
+        254,
+        238,
+        148
+      ],
+      "name": "relinquish_expired_proxy_vote_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "rent_refund",
+          "relations": [
+            "marker"
+          ],
+          "writable": true
+        },
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "account": "VoteMarkerV0",
+                "kind": "account",
+                "path": "marker.mint"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "proposal",
+          "relations": [
+            "marker"
+          ]
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        202,
+        184,
+        88,
+        82,
+        245,
+        20,
+        104,
+        178
+      ],
+      "name": "relinquish_expired_vote_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "registrar",
+          "relations": [
+            "marker",
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "signer": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "voter"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposal",
+          "writable": true
+        },
+        {
+          "name": "proposal_config",
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "state_controller",
+          "relations": [
+            "proposal_config"
+          ],
+          "writable": true
+        },
+        {
+          "name": "on_vote_hook",
+          "relations": [
+            "proposal_config"
+          ]
+        },
+        {
+          "name": "proposal_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "name": "rent_refund",
+          "relations": [
+            "marker"
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "RelinquishVoteArgsV1"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        142,
+        201,
+        65,
+        226,
+        112,
+        136,
+        248,
+        102
+      ],
+      "name": "relinquish_vote_v1"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position_update_authority",
+          "signer": true
+        },
+        {
+          "name": "position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position_token_account"
+        },
+        {
+          "name": "position_authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ResetLockupArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        163,
+        196,
+        86,
+        249,
+        96,
+        116,
+        236,
+        194
+      ],
+      "name": "reset_lockup_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "writable": true
+        },
+        {
+          "name": "realm_authority",
+          "relations": [
+            "registrar"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "time_offset",
+          "type": "i64"
+        }
+      ],
+      "discriminator": [
+        173,
+        231,
+        217,
+        226,
+        178,
+        247,
+        144,
+        87
+      ],
+      "name": "set_time_offset_v0"
+    },
+    {
+      "accounts": [
+        {
+          "address": "hprdnjkbziK8NqhThmAn5Gu4XqrBbctX8du4PfJdgvW",
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        18,
+        41,
+        232,
+        50,
+        253,
+        184,
+        27,
+        43
+      ],
+      "name": "temp_release_position_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "relations": [
+            "source_position",
+            "target_position"
+          ]
+        },
+        {
+          "name": "position_update_authority",
+          "signer": true
+        },
+        {
+          "name": "source_position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "source_position"
+          ]
+        },
+        {
+          "name": "position_token_account"
+        },
+        {
+          "name": "position_authority",
+          "signer": true
+        },
+        {
+          "name": "target_position",
+          "writable": true
+        },
+        {
+          "name": "deposit_mint"
+        },
+        {
+          "name": "source_vault",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "source_position"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deposit_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "target_vault",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "target_position"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deposit_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "name": "associated_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "TransferArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        162,
+        182,
+        193,
+        97,
+        102,
+        85,
+        127,
+        189
+      ],
+      "name": "transfer_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "writable": true
+        },
+        {
+          "name": "realm_authority",
+          "relations": [
+            "registrar"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "UpdateRegistrarAuthorityArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        121,
+        25,
+        97,
+        199,
+        89,
+        77,
+        38,
+        40
+      ],
+      "name": "update_registrar_authority_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "registrar",
+          "writable": true
+        },
+        {
+          "name": "realm_authority",
+          "relations": [
+            "registrar"
+          ],
+          "signer": true
+        },
+        {
+          "name": "proxy_config",
+          "optional": true
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        74,
+        102,
+        193,
+        203,
+        108,
+        169,
+        140,
+        97
+      ],
+      "name": "update_registrar_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "marker",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ],
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "signer": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "voter"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposal",
+          "writable": true
+        },
+        {
+          "name": "proposal_config",
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "state_controller",
+          "relations": [
+            "proposal_config"
+          ],
+          "writable": true
+        },
+        {
+          "name": "on_vote_hook",
+          "relations": [
+            "proposal_config"
+          ]
+        },
+        {
+          "name": "proposal_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "VoteArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        82,
+        47,
+        20,
+        22,
+        108,
+        59,
+        245,
+        115
+      ],
+      "name": "vote_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "position_authority",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "registrar",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "position_token_account",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "position_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "position"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deposit_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "deposit_mint"
+        },
+        {
+          "name": "destination",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "position_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deposit_mint"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "name": "associated_token_program"
+        },
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "name": "token_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "WithdrawArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        240,
+        127,
+        207,
+        228,
+        69,
+        25,
+        253,
+        97
+      ],
+      "name": "withdraw_v0"
+    }
+  ],
+  "metadata": {
+    "description": "Heliums voter weight plugin for spl-governance",
+    "name": "voter_stake_registry",
+    "spec": "0.1.0",
+    "version": "0.4.4"
+  },
+  "types": [
+    {
+      "name": "Choice",
+      "type": {
+        "fields": [
+          {
+            "name": "weight",
+            "type": "u128"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": {
+              "option": "string"
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ClearRecentProposalsArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "ts",
+            "type": "i64"
+          },
+          {
+            "name": "dao_bump",
+            "type": "u8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ConfigureVotingMintArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "idx",
+            "type": "u16"
+          },
+          {
+            "name": "baseline_vote_weight_scaled_factor",
+            "type": "u64"
+          },
+          {
+            "name": "max_extra_lockup_vote_weight_scaled_factor",
+            "type": "u64"
+          },
+          {
+            "name": "genesis_vote_power_multiplier",
+            "type": "u8"
+          },
+          {
+            "name": "genesis_vote_power_multiplier_expiration_ts",
+            "type": "i64"
+          },
+          {
+            "name": "lockup_saturation_secs",
+            "type": "u64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "DepositArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "InitializePositionArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "LockupKind"
+              }
+            }
+          },
+          {
+            "name": "periods",
+            "type": "u32"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "InitializeRegistrarArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "position_update_authority",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "Lockup",
+      "type": {
+        "fields": [
+          {
+            "name": "start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "end_ts",
+            "type": "i64"
+          },
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "LockupKind"
+              }
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "LockupKind",
+      "repr": {
+        "kind": "rust"
+      },
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "None"
+          },
+          {
+            "name": "Cliff"
+          },
+          {
+            "name": "Constant"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionV0",
+      "type": {
+        "fields": [
+          {
+            "name": "registrar",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "lockup",
+            "type": {
+              "defined": {
+                "name": "Lockup"
+              }
+            }
+          },
+          {
+            "name": "amount_deposited_native",
+            "type": "u64"
+          },
+          {
+            "name": "voting_mint_config_idx",
+            "type": "u8"
+          },
+          {
+            "name": "num_active_votes",
+            "type": "u16"
+          },
+          {
+            "name": "genesis_end",
+            "type": "i64"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "vote_controller",
+            "type": "pubkey"
+          },
+          {
+            "name": "registrar_paid_rent",
+            "type": "u64"
+          },
+          {
+            "name": "recent_proposals",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "RecentProposal"
+                }
+              }
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ProposalConfigV0",
+      "type": {
+        "fields": [
+          {
+            "name": "vote_controller",
+            "type": "pubkey"
+          },
+          {
+            "name": "state_controller",
+            "type": "pubkey"
+          },
+          {
+            "name": "on_vote_hook",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ProposalState",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Draft"
+          },
+          {
+            "name": "Cancelled"
+          },
+          {
+            "fields": [
+              {
+                "name": "start_ts",
+                "type": "i64"
+              }
+            ],
+            "name": "Voting"
+          },
+          {
+            "fields": [
+              {
+                "name": "choices",
+                "type": {
+                  "vec": "u16"
+                }
+              },
+              {
+                "name": "end_ts",
+                "type": "i64"
+              }
+            ],
+            "name": "Resolved"
+          },
+          {
+            "fields": [
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "bin",
+                "type": "bytes"
+              }
+            ],
+            "name": "Custom"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalV0",
+      "type": {
+        "fields": [
+          {
+            "name": "namespace",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "state",
+            "type": {
+              "defined": {
+                "name": "ProposalState"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "proposal_config",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_choices_per_voter",
+            "type": "u16"
+          },
+          {
+            "name": "seed",
+            "type": "bytes"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "type": "string"
+          },
+          {
+            "name": "tags",
+            "type": {
+              "vec": "string"
+            }
+          },
+          {
+            "name": "choices",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "Choice"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ProxyAssignmentV0",
+      "type": {
+        "fields": [
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "proxy_config",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u16"
+          },
+          {
+            "name": "next_voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "rent_refund",
+            "type": "pubkey"
+          },
+          {
+            "name": "expiration_time",
+            "type": "i64"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ProxyConfigV0",
+      "type": {
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "max_proxy_time",
+            "type": "i64"
+          },
+          {
+            "name": "seasons",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "SeasonV0"
+                }
+              }
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "docs": [
+        "Marker to indicate that a proxy intends to vote this way on a proposal,",
+        "all votes of proxies are permissionless based on this marker"
+      ],
+      "name": "ProxyMarkerV0",
+      "type": {
+        "fields": [
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "choices",
+            "type": {
+              "vec": "u16"
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "rent_refund",
+            "type": "pubkey"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "RecentProposal",
+      "type": {
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "Registrar",
+      "type": {
+        "fields": [
+          {
+            "name": "governance_program_id",
+            "type": "pubkey"
+          },
+          {
+            "name": "realm",
+            "type": "pubkey"
+          },
+          {
+            "name": "realm_governing_token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "realm_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "time_offset",
+            "type": "i64"
+          },
+          {
+            "name": "position_update_authority",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "collection",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "collection_bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "reserved1",
+            "type": {
+              "array": [
+                "u8",
+                4
+              ]
+            }
+          },
+          {
+            "name": "reserved2",
+            "type": {
+              "array": [
+                "u64",
+                3
+              ]
+            }
+          },
+          {
+            "name": "proxy_config",
+            "type": "pubkey"
+          },
+          {
+            "name": "voting_mints",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "VotingMintConfigV0"
+                }
+              }
+            }
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "RelinquishVoteArgsV1",
+      "type": {
+        "fields": [
+          {
+            "name": "choice",
+            "type": "u16"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "ResetLockupArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "LockupKind"
+              }
+            }
+          },
+          {
+            "name": "periods",
+            "type": "u32"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "SeasonV0",
+      "type": {
+        "fields": [
+          {
+            "name": "start",
+            "type": "i64"
+          },
+          {
+            "name": "end",
+            "type": "i64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "TransferArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "UpdateRegistrarAuthorityArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "VoteArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "choice",
+            "type": "u16"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "VoteMarkerV0",
+      "type": {
+        "fields": [
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "registrar",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "choices",
+            "type": {
+              "vec": "u16"
+            }
+          },
+          {
+            "name": "weight",
+            "type": "u128"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "docs": [
+              "Whether this vote has been cleared on the position after proposal expired",
+              "DEPRECATED. New votes will have markers closed after the vote completes."
+            ],
+            "name": "_deprecated_relinquished",
+            "type": "bool"
+          },
+          {
+            "name": "proxy_index",
+            "type": "u16"
+          },
+          {
+            "name": "rent_refund",
+            "type": "pubkey"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "VotingMintConfigV0",
+      "type": {
+        "fields": [
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "baseline_vote_weight_scaled_factor",
+            "type": "u64"
+          },
+          {
+            "name": "max_extra_lockup_vote_weight_scaled_factor",
+            "type": "u64"
+          },
+          {
+            "name": "genesis_vote_power_multiplier",
+            "type": "u8"
+          },
+          {
+            "name": "genesis_vote_power_multiplier_expiration_ts",
+            "type": "i64"
+          },
+          {
+            "name": "lockup_saturation_secs",
+            "type": "u64"
+          },
+          {
+            "name": "reserved",
+            "type": "i8"
+          }
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "WithdrawArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ],
+        "kind": "struct"
+      }
+    }
+  ]
+}

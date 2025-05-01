@@ -1,4 +1,4 @@
-use crate::{anchor_client, client, hotspot::cert, onboarding, solana_client, token};
+use crate::{anchor_client, anchor_lang, client, hotspot::cert, onboarding, solana_client, token};
 use solana_sdk::transaction::TransactionError;
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
@@ -38,6 +38,8 @@ pub enum Error {
     Solana(Box<solana_client::client_error::ClientError>),
     #[error("instruction: {0}")]
     Instruction(#[from] solana_sdk::instruction::InstructionError),
+    #[error("transaction: {0}")]
+    Transaction(#[from] solana_transaction_utils::error::Error),
     #[error("message: {0}")]
     Cmopile(#[from] solana_sdk::message::CompileError),
     #[error("signing: {0}")]

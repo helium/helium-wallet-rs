@@ -14,7 +14,7 @@ use solana_sdk::{
     address_lookup_table::AddressLookupTableAccount, commitment_config::CommitmentConfig,
     instruction::Instruction, message::Message, signer::Signer, transaction::Transaction,
 };
-use std::{marker::Send, sync::Arc};
+use std::{collections::HashMap, marker::Send, sync::Arc};
 use tracing::instrument;
 
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
@@ -23,8 +23,8 @@ pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com
 pub static VERIFIER_URL_MAINNET: &str = "https://ecc-verifier.web.helium.io";
 pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com";
 
-pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443?session-key=Pluto";
-pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com?session-key=Pluto";
+pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443";
+pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com";
 pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
 pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
@@ -296,6 +296,8 @@ pub enum DasClientError {
     Rpc(#[from] jsonrpc_client::Error<reqwest::Error>),
     #[error("json error {0}")]
     Json(#[from] serde_json::Error),
+    #[error("missing response key {0}")]
+    MissingKey(String),
 }
 
 impl From<reqwest::Error> for DasClientError {
@@ -319,6 +321,10 @@ impl DasClientError {
             })) => message.starts_with("Database Error: RecordNotFound"),
             _other => false,
         }
+    }
+
+    pub fn missing_response_key<S: ToString>(v: S) -> Self {
+        Self::MissingKey(v.to_string())
     }
 }
 
@@ -371,7 +377,10 @@ impl DasClient {
         addresses: &[Pubkey],
     ) -> Result<Vec<asset::Asset>, DasClientError> {
         let body = jsonrpc_client::Request::new_v2("getAssetBatch")
-            .with_argument("ids".to_string(), addresses)?
+            .with_argument(
+                "ids".to_string(),
+                addresses.iter().map(ToString::to_string).collect_vec(),
+            )?
             .serialize()?;
 
         let response = Result::from(
@@ -397,6 +406,40 @@ impl DasClient {
                 .payload,
         )?;
         Ok(response)
+    }
+
+    #[instrument(skip(self), level = "trace")]
+    pub async fn get_asset_proof_batch(
+        &self,
+        addresses: &[Pubkey],
+    ) -> Result<Vec<asset::AssetProof>, DasClientError> {
+        let body = jsonrpc_client::Request::new_v2("getAssetProofBatch")
+            .with_argument(
+                "ids".to_string(),
+                addresses.iter().map(ToString::to_string).collect_vec(),
+            )?
+            .serialize()?;
+
+        let mut response = Result::from(
+            SendRequest::send_request::<HashMap<String, asset::AssetProof>>(
+                self,
+                self.base_url.clone(),
+                body,
+            )
+            .await?
+            .payload,
+        )?;
+
+        let result = addresses
+            .iter()
+            .map(|pubkey| {
+                response
+                    .remove(&pubkey.to_string())
+                    .ok_or_else(|| DasClientError::missing_response_key(pubkey.to_string()))
+            })
+            .try_collect()?;
+
+        Ok(result)
     }
 
     #[instrument(skip(self, params), level = "trace")]

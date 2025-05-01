@@ -1,7 +1,6 @@
-use std::fmt::Display;
-
-use crate::error::DecodeError;
+use crate::{error::DecodeError, helium_entity_manager};
 use solana_sdk::bs58;
+use std::{fmt::Display, hash::Hash};
 
 pub trait AsEntityKey {
     fn as_entity_key(&self) -> Vec<u8>;
@@ -45,19 +44,19 @@ impl AsEntityKey for helium_crypto::PublicKeyBinary {
     }
 }
 
-pub use helium_anchor_gen::helium_entity_manager::KeySerialization;
+pub use helium_entity_manager::types::KeySerialization;
 
 pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, DecodeError> {
     let entity_key = match encoding {
         KeySerialization::UTF8 => str.as_entity_key(),
         KeySerialization::B58 => bs58::decode(str)
             .into_vec()
-            .map_err(|_| DecodeError::other(format!("invalid entity key {}", str)))?,
+            .map_err(|_| DecodeError::other(format!("invalid entity key {str}")))?,
     };
     Ok(entity_key)
 }
 
-#[derive(Debug, Clone, serde::Serialize, Copy, Default)]
+#[derive(Debug, Clone, serde::Serialize, Copy, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum EntityKeyEncoding {
@@ -110,5 +109,11 @@ impl From<&helium_crypto::PublicKey> for EncodedEntityKey {
             encoding: EntityKeyEncoding::B58,
             entity_key: value.to_string(),
         }
+    }
+}
+
+impl AsRef<EncodedEntityKey> for EncodedEntityKey {
+    fn as_ref(&self) -> &EncodedEntityKey {
+        self
     }
 }

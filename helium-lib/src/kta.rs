@@ -1,6 +1,6 @@
 use crate::{
     anchor_lang::AccountDeserialize, client::SolanaRpcClient, dao::Dao, entity_key::AsEntityKey,
-    error::Error, helium_entity_manager::KeyToAssetV0, keypair::Pubkey,
+    error::Error, helium_entity_manager::accounts::KeyToAssetV0, keypair::Pubkey,
     solana_sdk::account::Account,
 };
 use futures::{stream, StreamExt, TryFutureExt, TryStreamExt};
@@ -20,9 +20,19 @@ pub async fn get(kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
     cache.get(kta_key).await
 }
 
+pub fn get_cached(kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
+    let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
+    cache.get_cached(kta_key)
+}
+
 pub async fn get_many(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get_many(kta_keys).await
+}
+
+pub fn get_many_cached(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
+    let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
+    cache.get_many_cached(kta_keys)
 }
 
 pub async fn for_entity_key<E>(entity_key: &E) -> Result<KeyToAssetV0, Error>
@@ -69,6 +79,13 @@ impl KtaCache {
         self.cache.write().expect("cache write lock poisoned")
     }
 
+    fn get_cached(&self, kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
+        self.cache_read()
+            .get(kta_key)
+            .cloned()
+            .ok_or(Error::account_not_found())
+    }
+
     async fn get(&self, kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
         if let Some(account) = self.cache_read().get(kta_key) {
             return Ok(account.clone());
@@ -87,6 +104,14 @@ impl KtaCache {
         // of multiple requests for the same kta_key before the key is found
         self.cache_write().insert(*kta_key, kta.clone());
         Ok(kta)
+    }
+
+    fn get_many_cached(&self, kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
+        let cache = self.cache_read();
+        kta_keys
+            .iter()
+            .map(|key| cache.get(key).cloned().ok_or(Error::account_not_found()))
+            .try_collect()
     }
 
     async fn get_many(&self, kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
@@ -131,12 +156,6 @@ impl KtaCache {
                 })
                 .try_collect::<_, (), _>()?;
         }
-        {
-            let cache = self.cache_read();
-            kta_keys
-                .iter()
-                .map(|key| cache.get(key).cloned().ok_or(Error::account_not_found()))
-                .try_collect()
-        }
+        self.get_many_cached(kta_keys)
     }
 }

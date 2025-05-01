@@ -110,6 +110,7 @@ pub mod organization {
 
     use crate::{
         asset,
+        client::{GetAnchorAccount, SolanaRpcClient},
         dao::{Dao, SubDao},
         data_credits,
         error::Error,
@@ -117,7 +118,6 @@ pub mod organization {
         programs::SPL_NOOP_PROGRAM_ID,
         spl_account_compression,
         token::Token,
-        ::{GetAnchorAccount, SolanaRpc},
     };
 
     pub enum OrgIdentifier {

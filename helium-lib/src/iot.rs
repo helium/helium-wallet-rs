@@ -1,6 +1,6 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
-    data_credits, helium_entity_manager, iot_routing_manager,
+    bubblegum, data_credits, helium_entity_manager, iot_routing_manager,
     keypair::Pubkey,
     programs::TOKEN_METADATA_PROGRAM_ID,
 };
@@ -114,7 +114,8 @@ pub mod organization {
         dao::{Dao, SubDao},
         data_credits,
         error::Error,
-        helium_entity_manager, iot_routing_manager,
+        helium_entity_manager,
+        iot_routing_manager::{self, client::accounts::InitializeOrganizationV0},
         programs::SPL_NOOP_PROGRAM_ID,
         spl_account_compression,
         token::Token,
@@ -128,7 +129,7 @@ pub mod organization {
     pub async fn ensure_exists<C: AsRef<SolanaRpcClient>>(
         client: &C,
         identifier: OrgIdentifier,
-    ) -> Result<(Pubkey, iot_routing_manager::OrganizationV0), Error> {
+    ) -> Result<(Pubkey, iot_routing_manager::accounts::OrganizationV0), Error> {
         let sub_dao = SubDao::Iot.key();
         let routing_manager_key = routing_manager_key(&sub_dao);
         let organization_key = match identifier {
@@ -138,7 +139,7 @@ pub mod organization {
 
         match client
             .as_ref()
-            .anchor_account::<iot_routing_manager::OrganizationV0>(&organization_key)
+            .anchor_account::<iot_routing_manager::accounts::OrganizationV0>(&organization_key)
             .await
         {
             Ok(organization) => Ok((organization_key, organization)),
@@ -166,24 +167,28 @@ pub mod organization {
 
         client
             .as_ref()
-            .anchor_account::<helium_entity_manager::ProgramApprovalV0>(&program_approval_key)
+            .anchor_account::<helium_entity_manager::accounts::ProgramApprovalV0>(
+                &program_approval_key,
+            )
             .await?;
 
         let shared_merkle_key = asset::shared_merkle_key(3);
         let shared_merkle = client
             .as_ref()
-            .anchor_account::<helium_entity_manager::SharedMerkleV0>(&shared_merkle_key)
+            .anchor_account::<helium_entity_manager::accounts::SharedMerkleV0>(&shared_merkle_key)
             .await?;
 
         let routing_manager_key = routing_manager_key(&sub_dao);
         let routing_manager = client
             .as_ref()
-            .anchor_account::<iot_routing_manager::IotRoutingManagerV0>(&routing_manager_key)
+            .anchor_account::<iot_routing_manager::accounts::IotRoutingManagerV0>(
+                &routing_manager_key,
+            )
             .await?;
 
         client
             .as_ref()
-            .anchor_account::<iot_routing_manager::NetIdV0>(&net_id_key)
+            .anchor_account::<iot_routing_manager::accounts::NetIdV0>(&net_id_key)
             .await?;
 
         let oui = routing_manager.next_oui_id;
@@ -194,7 +199,7 @@ pub mod organization {
             organization_key,
             Instruction {
                 program_id: iot_routing_manager::ID,
-                accounts: iot_routing_manager::accounts::InitializeOrganizationV0 {
+                accounts: iot_routing_manager::client::accounts::InitializeOrganizationV0 {
                     payer,
                     program_approval: program_approval_key,
                     routing_manager: routing_manager_key,
@@ -219,7 +224,7 @@ pub mod organization {
                     tree_authority: asset::merkle_tree_authority_key(&shared_merkle.merkle_tree),
                     recipient: recipient.unwrap_or(payer.clone()),
                     merkle_tree: shared_merkle.merkle_tree,
-                    bubblegum_program: mpl_bubblegum::ID,
+                    bubblegum_program: bubblegum::ID,
                     token_metadata_program: TOKEN_METADATA_PROGRAM_ID,
                     log_wrapper: SPL_NOOP_PROGRAM_ID,
                     compression_program: spl_account_compression::ID,
@@ -229,7 +234,7 @@ pub mod organization {
                     system_program: solana_sdk::system_program::ID,
                 }
                 .to_account_metas(None),
-                data: iot_routing_manager::instruction::InitializeOrganizationV0 {}.data(),
+                data: iot_routing_manager::client::args::InitializeOrganizationV0 {}.data(),
             },
         ))
     }
@@ -242,14 +247,14 @@ pub mod organization {
     ) -> Result<Instruction, Error> {
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
-            accounts: iot_routing_manager::accounts::ApproveOrganizationV0 {
+            accounts: iot_routing_manager::client::accounts::ApproveOrganizationV0 {
                 authority,
                 organization: organization_key,
                 net_id: net_id_key,
                 system_program: solana_sdk::system_program::ID,
             }
             .to_account_metas(None),
-            data: iot_routing_manager::instruction::ApproveOrganizationV0 {}.data(),
+            data: iot_routing_manager::client::args::ApproveOrganizationV0 {}.data(),
         })
     }
 
@@ -257,16 +262,16 @@ pub mod organization {
         _client: &C,
         authority: Pubkey,
         organization_key: Pubkey,
-        args: iot_routing_manager::UpdateOrganizationArgsV0,
+        args: iot_routing_manager::types::UpdateOrganizationArgsV0,
     ) -> Result<Instruction, Error> {
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
-            accounts: iot_routing_manager::accounts::UpdateOrganizationV0 {
+            accounts: iot_routing_manager::client::accounts::UpdateOrganizationV0 {
                 authority,
                 organization: organization_key,
             }
             .to_account_metas(None),
-            data: iot_routing_manager::instruction::UpdateOrganizationV0 { _args: args }.data(),
+            data: iot_routing_manager::client::args::UpdateOrganizationV0 { args }.data(),
         })
     }
 }
@@ -289,7 +294,7 @@ pub mod organization_delegate {
             organization_delegate_key,
             Instruction {
                 program_id: iot_routing_manager::ID,
-                accounts: iot_routing_manager::accounts::InitializeOrganizationDelegateV0 {
+                accounts: iot_routing_manager::client::accounts::InitializeOrganizationDelegateV0 {
                     payer,
                     authority: authority.unwrap_or(payer.clone()),
                     delegate,
@@ -298,7 +303,7 @@ pub mod organization_delegate {
                     system_program: solana_sdk::system_program::ID,
                 }
                 .to_account_metas(None),
-                data: iot_routing_manager::instruction::InitializeOrganizationDelegateV0 {}.data(),
+                data: iot_routing_manager::client::args::InitializeOrganizationDelegateV0 {}.data(),
             },
         ))
     }
@@ -313,14 +318,14 @@ pub mod organization_delegate {
 
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
-            accounts: iot_routing_manager::accounts::RemoveOrganizationDelegateV0 {
+            accounts: iot_routing_manager::client::accounts::RemoveOrganizationDelegateV0 {
                 authority,
                 rent_refund: authority,
                 organization: organization_key,
                 organization_delegate: organization_delegate_key,
             }
             .to_account_metas(None),
-            data: iot_routing_manager::instruction::RemoveOrganizationDelegateV0 {}.data(),
+            data: iot_routing_manager::client::args::RemoveOrganizationDelegateV0 {}.data(),
         })
     }
 }
@@ -343,7 +348,7 @@ pub mod net_id {
     pub async fn ensure_exists<C: AsRef<SolanaRpcClient>>(
         client: &C,
         identifier: NetIdIdentifier,
-    ) -> Result<(Pubkey, iot_routing_manager::NetIdV0), Error> {
+    ) -> Result<(Pubkey, iot_routing_manager::accounts::NetIdV0), Error> {
         let sub_dao = SubDao::Iot.key();
         let routing_manager_key = routing_manager_key(&sub_dao);
         let net_id_key = match identifier {
@@ -353,7 +358,7 @@ pub mod net_id {
 
         match client
             .as_ref()
-            .anchor_account::<iot_routing_manager::NetIdV0>(&net_id_key)
+            .anchor_account::<iot_routing_manager::accounts::NetIdV0>(&net_id_key)
             .await
         {
             Ok(net_id) => Ok((net_id_key, net_id)),
@@ -364,20 +369,22 @@ pub mod net_id {
     pub async fn create<C: AsRef<SolanaRpcClient>>(
         client: &C,
         payer: Pubkey,
-        args: iot_routing_manager::InitializeNetIdArgsV0,
+        args: iot_routing_manager::types::InitializeNetIdArgsV0,
         authority: Option<Pubkey>,
     ) -> Result<(Pubkey, Instruction), Error> {
         let sub_dao = SubDao::Iot.key();
         let routing_manager_key = routing_manager_key(&sub_dao);
         let routing_manager = client
             .as_ref()
-            .anchor_account::<iot_routing_manager::IotRoutingManagerV0>(&routing_manager_key)
+            .anchor_account::<iot_routing_manager::accounts::IotRoutingManagerV0>(
+                &routing_manager_key,
+            )
             .await?;
 
         let net_id_key = net_id_key(&routing_manager_key, args.net_id);
         let net_id_exists = client
             .as_ref()
-            .anchor_account::<iot_routing_manager::NetIdV0>(&net_id_key)
+            .anchor_account::<iot_routing_manager::accounts::NetIdV0>(&net_id_key)
             .await
             .is_ok();
 
@@ -389,7 +396,7 @@ pub mod net_id {
             net_id_key,
             Instruction {
                 program_id: iot_routing_manager::ID,
-                accounts: iot_routing_manager::accounts::InitializeNetIdV0 {
+                accounts: iot_routing_manager::client::accounts::InitializeNetIdV0 {
                     payer,
                     routing_manager: routing_manager_key,
                     net_id_authority: routing_manager.net_id_authority,
@@ -398,7 +405,7 @@ pub mod net_id {
                     system_program: solana_sdk::system_program::ID,
                 }
                 .to_account_metas(None),
-                data: iot_routing_manager::instruction::InitializeNetIdV0 { _args: args }.data(),
+                data: iot_routing_manager::client::args::InitializeNetIdV0 { args }.data(),
             },
         ))
     }
@@ -418,7 +425,7 @@ pub mod devaddr_constraint {
     pub async fn create<C: AsRef<SolanaRpcClient>>(
         client: &C,
         payer: Pubkey,
-        args: iot_routing_manager::InitializeDevaddrConstraintArgsV0,
+        args: iot_routing_manager::types::InitializeDevaddrConstraintArgsV0,
         organization_key: Pubkey,
         net_id_key: Pubkey,
         authority: Option<Pubkey>,
@@ -435,7 +442,7 @@ pub mod devaddr_constraint {
 
         let net_id = client
             .as_ref()
-            .anchor_account::<iot_routing_manager::NetIdV0>(&&net_id_key)
+            .anchor_account::<iot_routing_manager::accounts::NetIdV0>(&&net_id_key)
             .await?;
 
         let devaddr_constarint_key =
@@ -445,7 +452,7 @@ pub mod devaddr_constraint {
             devaddr_constarint_key,
             Instruction {
                 program_id: iot_routing_manager::ID,
-                accounts: iot_routing_manager::accounts::InitializeDevaddrConstraintV0 {
+                accounts: iot_routing_manager::client::accounts::InitializeDevaddrConstraintV0 {
                     payer,
                     authority: authority.unwrap_or(payer.clone()),
                     net_id: net_id_key,
@@ -461,10 +468,8 @@ pub mod devaddr_constraint {
                     system_program: solana_sdk::system_program::ID,
                 }
                 .to_account_metas(None),
-                data: iot_routing_manager::instruction::InitializeDevaddrConstraintV0 {
-                    _args: args,
-                }
-                .data(),
+                data: iot_routing_manager::client::args::InitializeDevaddrConstraintV0 { args }
+                    .data(),
             },
         ))
     }
@@ -476,19 +481,21 @@ pub mod devaddr_constraint {
     ) -> Result<Instruction, Error> {
         let devaddr_constraint = client
             .as_ref()
-            .anchor_account::<iot_routing_manager::DevaddrConstraintV0>(&devaddr_constraint_key)
+            .anchor_account::<iot_routing_manager::accounts::DevaddrConstraintV0>(
+                &devaddr_constraint_key,
+            )
             .await?;
 
         Ok(Instruction {
             program_id: iot_routing_manager::ID,
-            accounts: iot_routing_manager::accounts::RemoveDevaddrConstraintV0 {
+            accounts: iot_routing_manager::client::accounts::RemoveDevaddrConstraintV0 {
                 authority,
                 rent_refund: authority,
                 net_id: devaddr_constraint.net_id,
                 devaddr_constraint: devaddr_constraint_key,
             }
             .to_account_metas(None),
-            data: iot_routing_manager::instruction::RemoveDevaddrConstraintV0 {}.data(),
+            data: iot_routing_manager::client::args::RemoveDevaddrConstraintV0 {}.data(),
         })
     }
 }

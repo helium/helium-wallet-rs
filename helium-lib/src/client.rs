@@ -4,15 +4,14 @@ use crate::{
     error::{DecodeError, Error},
     is_zero,
     keypair::{self, Keypair, Pubkey},
-    priority_fee::auto_compute_limit_and_price,
-    solana_client,
+    priority_fee, solana_client, TransactionOpts,
 };
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use jsonrpc_client::{JsonRpcError, SendRequest};
 use solana_sdk::{
-    address_lookup_table::AddressLookupTableAccount, commitment_config::CommitmentConfig,
-    instruction::Instruction, message::Message, signer::Signer, transaction::Transaction,
+    commitment_config::CommitmentConfig, instruction::Instruction, message::Message,
+    signer::Signer, transaction::Transaction,
 };
 use std::{collections::HashMap, marker::Send, sync::Arc};
 use tracing::instrument;
@@ -84,20 +83,16 @@ impl SolanaClient {
             .ok_or_else(|| Error::KeypairUnconfigured)
     }
 
-    pub async fn send_instructions(
+    pub async fn send_instruction(
         &self,
-        ixs: &[Instruction],
+        ix: Instruction,
         extra_signers: &[Keypair],
-        lookup_tables: Option<Vec<AddressLookupTableAccount>>,
+        opts: &TransactionOpts,
     ) -> Result<(), Error> {
         let keypair = self
             .keypair
             .as_ref()
             .ok_or_else(|| Error::KeypairUnconfigured)?;
-
-        if ixs.is_empty() {
-            return Ok(());
-        }
 
         let signers: Vec<&dyn Signer> = std::iter::once(keypair.as_ref() as &dyn Signer)
             .chain(extra_signers.iter().map(|k| k as &dyn Signer))
@@ -108,17 +103,18 @@ impl SolanaClient {
             .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
             .await?;
 
-        let optimized_ixs = auto_compute_limit_and_price(
-            &self.inner,
-            ixs,
-            1.2,
-            &keypair.pubkey(),
-            Some(recent_blockhash),
-            lookup_tables,
-        )
-        .await?;
+        let ixs = &[
+            priority_fee::compute_budget_instruction(150_000),
+            priority_fee::compute_price_instruction_for_accounts(
+                &self,
+                &ix.accounts,
+                opts.fee_range(),
+            )
+            .await?,
+            ix,
+        ];
 
-        let message = Message::new(&optimized_ixs, Some(&keypair.pubkey()));
+        let message = Message::new(ixs, Some(&keypair.pubkey()));
         let transaction = Transaction::new(&signers, message, recent_blockhash);
         self.inner
             .send_and_confirm_transaction_with_spinner(&transaction)

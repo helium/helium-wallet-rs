@@ -46,7 +46,7 @@ serde_json = { workspace = true }
 lazy_static = "1"
 rust_decimal = { workspace = true }
 helium-proto = { workspace = true }
-angry-purple-tiger = "0"
+angry-purple-tiger = "1"
 sha2 = { workspace = true }
 clap = { workspace = true, optional = true }
 helium-mnemonic = { path = "../helium-mnemonic", optional = true }

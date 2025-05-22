@@ -21,6 +21,47 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{signature::NullSigner, signer::Signer};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
+pub fn bubblegum_signer_key() -> Pubkey {
+    Pubkey::find_program_address(&[b"collection_cpi"], &bubblegum::ID).0
+}
+
+pub fn collection_metadata_key(collection_key: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    )
+    .0
+}
+
+pub fn collection_master_edition_key(collection_key: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            b"metadata",
+            TOKEN_METADATA_PROGRAM_ID.as_ref(),
+            collection_key.as_ref(),
+            b"edition",
+        ],
+        &TOKEN_METADATA_PROGRAM_ID,
+    )
+    .0
+}
+
+pub fn merkle_tree_authority_key(merkle_tree: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[merkle_tree.as_ref()], &bubblegum::ID).0
+}
+
+pub fn shared_merkle_key(proof_size: u8) -> Pubkey {
+    Pubkey::find_program_address(
+        &[b"shared_merkle", &[proof_size]],
+        &helium_entity_manager::ID,
+    )
+    .0
+}
+
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
     client: &C,
     entity_key: &E,
@@ -92,31 +133,6 @@ pub async fn get_with_proof<C: AsRef<DasClient>>(
 ) -> Result<(Asset, AssetProof), Error> {
     let (asset, asset_proof) = futures::try_join!(get(client, pubkey), proof::get(client, pubkey))?;
     Ok((asset, asset_proof))
-}
-
-pub fn collection_metadata_key(collection_key: &Pubkey) -> Pubkey {
-    let (collection_metadata, _bump) = Pubkey::find_program_address(
-        &[
-            b"metadata",
-            TOKEN_METADATA_PROGRAM_ID.as_ref(),
-            collection_key.as_ref(),
-        ],
-        &TOKEN_METADATA_PROGRAM_ID,
-    );
-    collection_metadata
-}
-
-pub fn collection_master_edition_key(collection_key: &Pubkey) -> Pubkey {
-    let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
-        &[
-            b"metadata",
-            TOKEN_METADATA_PROGRAM_ID.as_ref(),
-            collection_key.as_ref(),
-            b"edition",
-        ],
-        &TOKEN_METADATA_PROGRAM_ID,
-    );
-    collection_master_edition
 }
 
 pub fn merkle_tree_authority(merkle_tree: &Pubkey) -> Pubkey {

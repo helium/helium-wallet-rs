@@ -7,6 +7,13 @@ use crate::{
     solana_sdk::instruction::Instruction,
 };
 use itertools::Itertools;
+use solana_sdk::{
+    compute_budget::ComputeBudgetInstruction,
+    hash::Hash,
+    message::{v0, AddressLookupTableAccount, VersionedMessage},
+    signature::NullSigner,
+    transaction::VersionedTransaction,
+};
 use std::ops::RangeInclusive;
 
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
@@ -127,6 +134,76 @@ pub fn compute_budget_instruction(compute_limit: u32) -> Instruction {
 
 pub fn compute_price_instruction(priority_fee: u64) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee)
+}
+
+pub async fn compute_budget_for_instructions<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    instructions: &[Instruction],
+    compute_multiplier: f32,
+    payer: &Pubkey,
+    blockhash: Option<Hash>,
+    lookup_tables: Option<Vec<AddressLookupTableAccount>>,
+) -> Result<Instruction, Error> {
+    // Check for existing compute unit limit instruction and replace it if found
+    let mut updated_instructions = instructions.to_vec();
+    let mut has_compute_budget = false;
+    for ix in &mut updated_instructions {
+        if ix.program_id == solana_sdk::compute_budget::id()
+            && ix.data.first()
+                == ComputeBudgetInstruction::set_compute_unit_limit(0)
+                    .data
+                    .first()
+        {
+            ix.data = ComputeBudgetInstruction::set_compute_unit_limit(1900000).data; // Replace limit
+            has_compute_budget = true;
+            break;
+        }
+    }
+
+    if !has_compute_budget {
+        // Prepend compute budget instruction if none was found
+        updated_instructions.insert(0, ComputeBudgetInstruction::set_compute_unit_limit(1900000));
+    }
+
+    let blockhash_actual = match blockhash {
+        Some(hash) => hash,
+        None => client.as_ref().get_latest_blockhash().await?,
+    };
+
+    let message = VersionedMessage::V0(v0::Message::try_compile(
+        payer,
+        &updated_instructions,
+        lookup_tables.unwrap_or_default().as_slice(),
+        blockhash_actual,
+    )?);
+
+    let num_signers = updated_instructions
+        .iter()
+        .flat_map(|ix| ix.accounts.iter())
+        .filter(|a| a.is_signer)
+        .map(|a| a.pubkey)
+        .chain(std::iter::once(*payer)) // Include payer
+        .unique()
+        .count();
+
+    let signers = (0..num_signers)
+        .map(|_| NullSigner::new(payer))
+        .collect::<Vec<_>>();
+
+    let null_signers: Vec<&NullSigner> = signers.iter().collect();
+    let snub_tx = VersionedTransaction::try_new(message, null_signers.as_slice())?;
+
+    // Simulate the transaction to get the actual compute used
+    let simulation_result = client.as_ref().simulate_transaction(&snub_tx).await?;
+    if let Some(err) = simulation_result.value.err {
+        return Err(Error::SimulatedTransactionError(err));
+    }
+    let actual_compute_used = simulation_result.value.units_consumed.unwrap_or(200000);
+    let final_compute_budget = (actual_compute_used as f32 * compute_multiplier) as u32;
+
+    Ok(ComputeBudgetInstruction::set_compute_unit_limit(
+        final_compute_budget,
+    ))
 }
 
 pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(

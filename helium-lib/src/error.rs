@@ -1,4 +1,5 @@
 use crate::{anchor_client, anchor_lang, client, hotspot::cert, onboarding, solana_client, token};
+use solana_sdk::transaction::TransactionError;
 use std::{array::TryFromSliceError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -13,6 +14,10 @@ pub enum Error {
     Anchor(Box<anchor_client::ClientError>),
     #[error("anchor lang: {0}")]
     AnchorLang(#[from] anchor_lang::error::Error),
+    #[error("Account already exists")]
+    AccountExists,
+    #[error("Account non existent: {0}")]
+    AccountAbsent(String),
     #[error("DAS client: {0}")]
     Das(#[from] client::DasClientError),
     #[error("cert client: {0}")]
@@ -45,6 +50,18 @@ pub enum Error {
     Decode(#[from] DecodeError),
     #[error("encode: {0}")]
     Encode(#[from] EncodeError),
+    #[error("Keypair is not configured")]
+    KeypairUnconfigured,
+    #[error("Simulated transaction error: {0}")]
+    SimulatedTransactionError(TransactionError),
+    #[error("encode: {0}")]
+    Error(String),
+}
+
+impl Error {
+    pub fn other<S: ToString>(reason: S) -> Self {
+        Self::Error(reason.to_string())
+    }
 }
 
 impl From<solana_client::client_error::ClientError> for Error {
@@ -68,6 +85,10 @@ impl From<tonic::Status> for Error {
 impl Error {
     pub fn account_not_found() -> Self {
         anchor_client::ClientError::AccountNotFound.into()
+    }
+
+    pub fn account_exists() -> Self {
+        Self::AccountExists
     }
 
     pub fn is_account_not_found(&self) -> bool {

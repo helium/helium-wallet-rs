@@ -9,6 +9,7 @@ pub mod ed25519_instruction;
 pub mod entity_key;
 pub mod error;
 pub mod hotspot;
+pub mod iot;
 pub mod keypair;
 pub mod kta;
 pub mod memo;
@@ -22,7 +23,7 @@ pub mod transaction;
 
 pub use crate::programs::{
     bubblegum, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos, hexboosting,
-    lazy_distributor, rewards_oracle, spl_account_compression,
+    iot_routing_manager, lazy_distributor, rewards_oracle, spl_account_compression,
 };
 pub use anchor_client;
 pub use anchor_client::solana_client;
@@ -83,6 +84,11 @@ impl Default for TransactionOpts {
             lut_addresses: vec![message::COMMON_LUT],
         }
     }
+}
+
+pub fn get_current_epoch(unix_time: u64) -> u64 {
+    const EPOCH_LENGTH: u64 = 60 * 60 * 24;
+    unix_time / EPOCH_LENGTH
 }
 
 impl TransactionOpts {

@@ -15,5 +15,6 @@ declare_program!(hexboosting);
 declare_program!(rewards_oracle);
 declare_program!(spl_account_compression);
 declare_program!(bubblegum);
+declare_program!(iot_routing_manager);
 declare_program!(mobile_entity_manager);
 declare_program!(price_oracle);

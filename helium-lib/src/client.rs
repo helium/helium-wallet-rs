@@ -87,7 +87,7 @@ impl SolanaClient {
         &self,
         ix: Instruction,
         extra_signers: &[Keypair],
-        opts: &TransactionOpts,
+        opts: Option<&TransactionOpts>,
     ) -> Result<(), Error> {
         let keypair = self
             .keypair
@@ -103,8 +103,19 @@ impl SolanaClient {
             .get_latest_blockhash_with_commitment(CommitmentConfig::finalized())
             .await?;
 
+        let default_opts = TransactionOpts::default();
+        let opts = opts.unwrap_or(&default_opts);
+
         let ixs = &[
-            priority_fee::compute_budget_instruction(150_000),
+            priority_fee::compute_budget_for_instructions(
+                &self,
+                &[ix.clone()],
+                1.5, // Add 50% buffer to computed units
+                &keypair.pubkey(),
+                Some(recent_blockhash),
+                None,
+            )
+            .await?,
             priority_fee::compute_price_instruction_for_accounts(
                 &self,
                 &ix.accounts,

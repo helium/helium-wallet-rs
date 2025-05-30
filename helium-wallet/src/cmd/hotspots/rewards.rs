@@ -75,7 +75,8 @@ impl PendingCmd {
         };
         let hotspots = collect_hotspots(&client, self.hotspots.clone(), Some(owner)).await?;
         let encoded_entity_keys: Vec<EncodedEntityKey> = hotspots.iter().map(Into::into).collect();
-        let pending = reward::pending(&client, self.token, None, &encoded_entity_keys).await?;
+        let pending =
+            reward::pending_amounts(&client, self.token, None, &encoded_entity_keys).await?;
 
         print_json(&pending)
     }

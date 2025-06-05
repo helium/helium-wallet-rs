@@ -674,6 +674,9 @@ pub async fn lifetime<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     encoded_entity_keys: &[E],
 ) -> Result<HashMap<String, Vec<OracleReward>>, Error> {
     let ld_account = lazy_distributor(client, token).await?;
+    for key in encoded_entity_keys {
+        println!("{}", key.as_ref().entity_key.as_str());
+    }
     stream::iter(ld_account.oracles)
         .enumerate()
         .map(Ok)

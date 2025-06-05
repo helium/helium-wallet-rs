@@ -25,6 +25,7 @@ use std::{
 pub mod assets;
 pub mod balance;
 pub mod burn;
+pub mod claim;
 pub mod create;
 pub mod dc;
 pub mod export;

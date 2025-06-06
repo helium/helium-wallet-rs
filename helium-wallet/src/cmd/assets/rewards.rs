@@ -166,7 +166,8 @@ pub struct PendingCmd {
 impl PendingCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let pending = reward::pending(&client, self.token, None, &[&self.entity_key]).await?;
+        let pending =
+            reward::pending_amounts(&client, self.token, None, &[&self.entity_key]).await?;
 
         print_json(&pending)
     }

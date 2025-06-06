@@ -3,6 +3,7 @@ pub mod b64;
 pub mod client;
 
 pub mod boosting;
+pub mod crons;
 pub mod dao;
 pub mod dc;
 pub mod ed25519_instruction;
@@ -31,6 +32,7 @@ pub use anchor_spl;
 pub use solana_program;
 pub use solana_sdk;
 pub use solana_sdk::bs58;
+pub use tuktuk_sdk;
 
 pub(crate) trait Zero {
     const ZERO: Self;

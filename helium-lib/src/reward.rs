@@ -580,6 +580,22 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
         .try_collect()
 }
 
+pub async fn pending_amounts<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
+    client: &C,
+    token: ClaimableToken,
+    lifetime_rewards: Option<&HashMap<String, Vec<OracleReward>>>,
+    encoded_entity_keys: &[E],
+) -> Result<HashMap<String, TokenAmount>, Error> {
+    pending(client, token, lifetime_rewards, encoded_entity_keys)
+        .map_ok(|pending| {
+            pending
+                .into_iter()
+                .map(|(key, oracle_reward)| (key, oracle_reward.reward))
+                .collect()
+        })
+        .await
+}
+
 pub async fn pending<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     client: &C,
     token: ClaimableToken,
@@ -658,6 +674,9 @@ pub async fn lifetime<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     encoded_entity_keys: &[E],
 ) -> Result<HashMap<String, Vec<OracleReward>>, Error> {
     let ld_account = lazy_distributor(client, token).await?;
+    for key in encoded_entity_keys {
+        println!("{}", key.as_ref().entity_key.as_str());
+    }
     stream::iter(ld_account.oracles)
         .enumerate()
         .map(Ok)

@@ -45,6 +45,8 @@ pub enum Error {
     Decode(#[from] DecodeError),
     #[error("encode: {0}")]
     Encode(#[from] EncodeError),
+    #[error("tuktuk: {0}")]
+    Tuktuk(#[from] tuktuk_sdk::error::Error),
 }
 
 impl From<solana_client::client_error::ClientError> for Error {

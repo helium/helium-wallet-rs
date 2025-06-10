@@ -1,6 +1,7 @@
 use crate::cmd::*;
 
 pub mod burn;
+pub mod claim;
 pub mod info;
 pub mod rewards;
 

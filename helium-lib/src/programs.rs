@@ -17,3 +17,4 @@ declare_program!(spl_account_compression);
 declare_program!(bubblegum);
 declare_program!(mobile_entity_manager);
 declare_program!(price_oracle);
+declare_program!(hpl_crons);

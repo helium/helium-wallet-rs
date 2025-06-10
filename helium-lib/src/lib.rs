@@ -16,6 +16,7 @@ pub mod message;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;
+pub mod queue;
 pub mod reward;
 pub mod token;
 pub mod transaction;
@@ -31,6 +32,7 @@ pub use anchor_spl;
 pub use solana_program;
 pub use solana_sdk;
 pub use solana_sdk::bs58;
+pub use tuktuk_sdk;
 
 pub(crate) trait Zero {
     const ZERO: Self;

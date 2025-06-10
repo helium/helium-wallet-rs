@@ -131,7 +131,7 @@ pub struct ClaimCmd {
     commit: CommitOpts,
 }
 
-impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
+impl From<&ClaimCmd> for crate::cmd::assets::claim::one::Cmd {
     fn from(value: &ClaimCmd) -> Self {
         Self {
             token: value.token,
@@ -144,7 +144,7 @@ impl From<&ClaimCmd> for crate::cmd::assets::rewards::ClaimCmd {
 
 impl ClaimCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let cmd = crate::cmd::assets::rewards::ClaimCmd::from(self);
+        let cmd = crate::cmd::assets::claim::one::Cmd::from(self);
         cmd.run(opts).await
     }
 }

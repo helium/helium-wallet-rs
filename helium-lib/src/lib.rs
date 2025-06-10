@@ -3,7 +3,6 @@ pub mod b64;
 pub mod client;
 
 pub mod boosting;
-pub mod crons;
 pub mod dao;
 pub mod dc;
 pub mod ed25519_instruction;
@@ -17,6 +16,7 @@ pub mod message;
 pub mod onboarding;
 pub mod priority_fee;
 pub mod programs;
+pub mod queue;
 pub mod reward;
 pub mod token;
 pub mod transaction;

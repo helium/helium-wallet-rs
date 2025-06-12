@@ -70,8 +70,7 @@ impl UpgradeCmd {
 impl Basic {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = opts.load_wallet()?;
-        let keypair = wallet.decrypt(password.as_bytes())?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
 
         let format = format::Basic {
             pwhash: PwHash::argon2id13_default(),
@@ -79,7 +78,7 @@ impl Basic {
         let new_wallet = Wallet::encrypt(&keypair, password.as_bytes(), Format::Basic(format))?;
         let mut writer = open_output_file(&self.output, !self.force)?;
         new_wallet.write(&mut writer)?;
-        info::print_wallet(&wallet)
+        info::print_wallet(&new_wallet)
     }
 }
 

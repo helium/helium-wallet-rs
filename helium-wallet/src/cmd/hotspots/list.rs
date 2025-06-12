@@ -10,12 +10,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let owner = if let Some(walet) = self.wallet {
-            walet
-        } else {
-            let wallet = opts.load_wallet()?;
-            wallet.public_key
-        };
+        let owner = opts.maybe_wallet_key(self.wallet)?;
         let client = opts.client()?;
         let hotspots = hotspot::for_owner(&client, &owner).await?;
         let json = json!( {

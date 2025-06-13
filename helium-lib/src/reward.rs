@@ -218,7 +218,6 @@ pub fn distribute_rewards_instruction_for_destination(
     token: ClaimableToken,
     ld_account: &lazy_distributor::accounts::LazyDistributorV0,
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
-    asset: &asset::Asset,
     destination_account: &Pubkey,
     payer: &Pubkey,
 ) -> Result<Instruction, Error> {
@@ -232,7 +231,7 @@ pub fn distribute_rewards_instruction_for_destination(
             system_program: solana_sdk::system_program::ID,
             token_program: anchor_spl::token::ID,
             circuit_breaker_program: circuit_breaker::ID,
-            owner: asset.ownership.owner,
+            owner: *destination_account,
             circuit_breaker: lazy_distributor_circuit_breaker(ld_account),
             recipient: token.recipient_key_from_kta(kta),
             destination_account: Token::from(token).associated_token_adress(destination_account),
@@ -349,7 +348,6 @@ pub fn claim_instructions_for_destination(
         common.token,
         common.ld_account,
         common.kta,
-        &common.asset,
         destination,
         common.payer,
     )?;
@@ -674,9 +672,6 @@ pub async fn lifetime<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     encoded_entity_keys: &[E],
 ) -> Result<HashMap<String, Vec<OracleReward>>, Error> {
     let ld_account = lazy_distributor(client, token).await?;
-    for key in encoded_entity_keys {
-        println!("{}", key.as_ref().entity_key.as_str());
-    }
     stream::iter(ld_account.oracles)
         .enumerate()
         .map(Ok)

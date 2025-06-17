@@ -8107,8 +8107,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "tuktuk-program"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "902b147e0b1c2e5510fc189c7a41a7c2b81ebb098980710ca620e58883389eef"
+source = "git+https://github.com/helium/tuktuk.git?branch=main#7d52607afdd0365e5011d39bbcc0fee9ae08620b"
 dependencies = [
  "anchor-lang",
 ]
@@ -8116,8 +8115,7 @@ dependencies = [
 [[package]]
 name = "tuktuk-sdk"
 version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0aa63167452c98c2a4087e6a1be1efa90a3c0a9764087e23c0534275d0f26399"
+source = "git+https://github.com/helium/tuktuk.git?branch=main#7d52607afdd0365e5011d39bbcc0fee9ae08620b"
 dependencies = [
  "anchor-lang",
  "async-trait",

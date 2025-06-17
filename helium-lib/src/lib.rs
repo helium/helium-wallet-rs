@@ -18,6 +18,7 @@ pub mod priority_fee;
 pub mod programs;
 pub mod queue;
 pub mod reward;
+pub mod schedule;
 pub mod token;
 pub mod transaction;
 

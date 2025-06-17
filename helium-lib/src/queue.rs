@@ -4,7 +4,7 @@ use crate::{
     keypair::Keypair,
     message, priority_fee,
     programs::hpl_crons,
-    solana_sdk::instruction::Instruction,
+    solana_sdk::{instruction::Instruction, pubkey},
     transaction::{mk_transaction, VersionedTransaction},
     Pubkey, TransactionOpts,
 };
@@ -13,8 +13,14 @@ use solana_sdk::signer::Signer;
 use tuktuk_sdk::tuktuk_program::TaskQueueV0;
 use tuktuk_sdk::{tuktuk, tuktuk_program};
 
+pub const TASK_QUEUE_ID: Pubkey = pubkey!("H39gEszvsi6AT4rYBiJTuZHJSF5hMHy6CKGTd7wzhsg7");
+
 pub fn claim_wallet_key(task_queue_key: &Pubkey, wallet: &Pubkey) -> Pubkey {
     tuktuk::custom_signer_key(task_queue_key, &[b"claim_payer", wallet.as_ref()])
+}
+
+pub fn task_queue_authority_key(task_queue_key: &Pubkey, queue_authority: &Pubkey) -> Pubkey {
+    tuktuk::task_queue::task_queue_authority_key(task_queue_key, queue_authority)
 }
 
 pub fn claim_wallet_instruction(

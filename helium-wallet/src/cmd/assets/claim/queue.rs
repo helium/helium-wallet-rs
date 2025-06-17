@@ -51,16 +51,11 @@ pub struct ClaimWalletCmd {
 
 impl ClaimWalletCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let wallet = if let Some(wallet) = self.wallet {
-            wallet
-        } else {
-            opts.load_wallet()?.public_key
-        };
+        let wallet = opts.maybe_wallet_key(self.wallet)?;
         let client = opts.client()?;
 
         if self.info {
-            let claim_wallet =
-                queue::claim_wallet::claim_wallet_key(&queue::TASK_QUEUE_ID, &wallet);
+            let claim_wallet = queue::claim_wallet_key(&queue::TASK_QUEUE_ID, &wallet);
             let claim_info = json!({
                 "claim_wallet": token::balance_for_address(&client, &claim_wallet).await?,
             });
@@ -71,7 +66,7 @@ impl ClaimWalletCmd {
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
         let transaction_opts = self.commit.transaction_opts(&client);
-        let (tx, _) = queue::claim_wallet::claim_wallet(
+        let (tx, _) = queue::claim_wallet(
             &client,
             &queue::TASK_QUEUE_ID,
             &wallet,

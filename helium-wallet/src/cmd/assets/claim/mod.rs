@@ -2,6 +2,7 @@ use crate::cmd::*;
 
 pub mod one;
 pub mod queue;
+pub mod schedule;
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -20,6 +21,7 @@ impl Cmd {
 pub enum ClaimCommand {
     One(one::Cmd),
     Queue(queue::Cmd),
+    Schedule(schedule::Cmd),
 }
 
 impl ClaimCommand {
@@ -27,6 +29,7 @@ impl ClaimCommand {
         match self {
             Self::One(cmd) => cmd.run(opts).await,
             Self::Queue(cmd) => cmd.run(opts).await,
+            Self::Schedule(cmd) => cmd.run(opts).await,
         }
     }
 }

@@ -17,6 +17,7 @@ impl Cmd {
         let client = opts.client()?;
         let balance = token::balance_for_address(&client, &escrow_key)
             .await?
+            .or(Some(token::Token::Dc.to_balance(escrow_key, 0)))
             .map(|balance| balance.amount);
         let json = json!({
             "router": self.router_key,

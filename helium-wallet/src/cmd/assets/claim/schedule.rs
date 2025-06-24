@@ -1,5 +1,6 @@
 use crate::cmd::*;
 use helium_lib::{
+    entity_key,
     keypair::{Pubkey, Signer},
     queue, schedule, token,
 };
@@ -23,12 +24,14 @@ pub enum Command {
     Info(InfoCmd),
     Close(CloseCmd),
     Wallet(ClaimWalletCmd),
+    One(ClaimOneCmd),
 }
 
 impl Command {
     pub async fn run(&self, opts: Opts) -> Result {
         match self {
             Self::Wallet(cmd) => cmd.run(opts).await,
+            Self::One(cmd) => cmd.run(opts).await,
             Self::Init(cmd) => cmd.run(opts).await,
             Self::Info(cmd) => cmd.run(opts).await,
             Self::Close(cmd) => cmd.run(opts).await,
@@ -109,32 +112,41 @@ impl InitCmd {
 /// This includes the schedule, name and current balance of the wallet funding the schedule itself,
 /// separate from the wallets for each of the jobs that run within the schedule.
 #[derive(Clone, Debug, clap::Args)]
-pub struct InfoCmd {}
+pub struct InfoCmd {
+    /// The wallet to look up claim information for
+    /// Defaults to active wallet
+    pub wallet: Option<Pubkey>,
+}
 
 impl InfoCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        #[derive(Debug, serde::Serialize)]
+        #[derive(Debug, serde::Serialize, Default)]
         struct CronJobInfo {
             schedule: String,
-            #[serde(with = "helium_lib::keypair::serde_pubkey")]
-            cron_job: Pubkey,
             cron_jobs: u32,
-            balance: token::TokenAmount,
+            cron_wallet: token::TokenBalance,
+            claim_wallet: token::TokenBalance,
         }
 
-        let wallet = opts.maybe_wallet_key(None)?;
+        let claim_wallet = opts.maybe_wallet_key(self.wallet)?;
+        let cron_wallet = opts.maybe_wallet_key(None)?;
         let client = opts.client()?;
 
-        let cron_job_key = schedule::cron_job_key_for_wallet(&wallet, 0);
-        let Some(cronjob) = schedule::get(&client, &cron_job_key).await? else {
-            bail!("No schedule found for this wallet");
-        };
+        let cron_job_key = schedule::cron_job_key_for_wallet(&cron_wallet, 0);
+        let claim_wallet = queue::claim_wallet_key(&queue::TASK_QUEUE_ID, &claim_wallet);
 
-        let info = CronJobInfo {
-            schedule: cronjob.schedule,
-            cron_job: cron_job_key,
-            cron_jobs: cronjob.num_transactions,
-            balance: schedule::cron_job_balance(&client, &cron_job_key).await?,
+        let mut info = CronJobInfo {
+            claim_wallet: token::balance_for_address(&client, &claim_wallet)
+                .await?
+                .unwrap_or(token::Token::Sol.to_balance(claim_wallet, 0)),
+            cron_wallet: token::balance_for_address(&client, &cron_job_key)
+                .await?
+                .unwrap_or(token::Token::Sol.to_balance(cron_job_key, 0)),
+            ..Default::default()
+        };
+        if let Some(cronjob) = schedule::get(&client, &cron_job_key).await? {
+            info.schedule = cronjob.schedule;
+            info.cron_jobs = cronjob.num_transactions;
         };
 
         print_json(&info)
@@ -180,8 +192,10 @@ impl CloseCmd {
 /// with a small amount of SOL. When new hotspots are added, additional payee
 /// creation costs are incurred for that wallet.
 ///
-/// Use the `--info` option in this command to check on the balance of the
-/// claim_wallet. The suggested funded amount at the time of this writing is
+/// In addition the "cron_wallet"
+///
+/// Use the `schedule info` command to check on the balance of the
+/// claim_wallet as well as the . The suggested funded amount at the time of this writing is
 /// between 0.05 and 0.1 SOL, with the top end allowing for a lot of growth.
 #[derive(Clone, Debug, clap::Args)]
 pub struct ClaimWalletCmd {
@@ -216,6 +230,43 @@ impl ClaimWalletCmd {
         let (tx, _) =
             schedule::claim_wallet(&client, &cron_job_key, &wallet, &keypair, &transaction_opts)
                 .await?;
+
+        print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
+    }
+}
+
+/// Create and start a repating claim for a single asset
+///
+/// The tuktuk system will fund the "claim_wallet" it uses to pay for claims
+/// with a small amount of SOL. When new assets are added, additional payee
+/// creation costs are incurred for that wallet.
+///
+/// Use the `schedule info` to check on the balance of the
+/// claim_wallet. The suggested funded amount at the time of this writing is
+/// between 0.05 and 0.1 SOL, with the top end allowing for a lot of growth.
+#[derive(Clone, Debug, clap::Args)]
+pub struct ClaimOneCmd {
+    #[clap(flatten)]
+    pub entity_key: entity_key::EncodedEntityKey,
+    #[command(flatten)]
+    commit: CommitOpts,
+}
+
+impl ClaimOneCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let client = opts.client()?;
+        let password = get_wallet_password(false)?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
+        let transaction_opts = self.commit.transaction_opts(&client);
+        let cron_job_key = schedule::cron_job_key_for_wallet(&keypair.pubkey(), 0);
+        let (tx, _) = schedule::claim_asset(
+            &client,
+            &cron_job_key,
+            &self.entity_key,
+            &keypair,
+            &transaction_opts,
+        )
+        .await?;
 
         print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
     }

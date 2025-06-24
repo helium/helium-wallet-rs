@@ -1,13 +1,14 @@
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
+    dao::Dao,
+    entity_key::EncodedEntityKey,
     error::Error,
     keypair::Keypair,
     message, priority_fee,
     programs::hpl_crons::{self, accounts::CronJobV0, types::RemoveEntityFromCronArgsV0},
     queue,
     solana_sdk::{instruction::Instruction, signer::Signer, system_instruction},
-    token,
     transaction::{mk_transaction, VersionedTransaction},
     tuktuk_sdk::{
         tuktuk,
@@ -23,14 +24,6 @@ pub fn entity_cron_authority_key(wallet: &Pubkey) -> Pubkey {
 
 pub fn cron_job_key_for_wallet(wallet: &Pubkey, job_id: u32) -> Pubkey {
     tuktuk::cron::cron_job_key(&entity_cron_authority_key(wallet), job_id)
-}
-
-pub async fn cron_job_balance<C: AsRef<SolanaRpcClient>>(
-    client: &C,
-    cron_job_key: &Pubkey,
-) -> Result<token::TokenAmount, Error> {
-    let amount = client.as_ref().get_balance(cron_job_key).await?;
-    Ok(token::TokenAmount::from_u64(token::Token::Sol, amount))
 }
 
 pub async fn get<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
@@ -319,6 +312,75 @@ pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnch
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job = client.anchor_account(cron_job_key).await?;
     let ix = claim_wallet_instruction(cron_job_key, &cron_job, wallet, &keypair.pubkey())?;
+    let ixs = &[
+        priority_fee::compute_budget_instruction(100_000),
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &ix.accounts,
+            opts.fee_range(),
+        )
+        .await?,
+        ix,
+    ];
+
+    let (msg, block_height) =
+        message::mk_message(client, ixs, &opts.lut_addresses, &keypair.pubkey()).await?;
+    let txn = mk_transaction(msg, &[keypair])?;
+    Ok((txn, block_height))
+}
+
+pub fn claim_asset_instruction(
+    cron_job_key: &Pubkey,
+    cron_job: &CronJobV0,
+    kta_key: &Pubkey,
+    payer: &Pubkey,
+) -> Result<Instruction, Error> {
+    fn mk_accounts(
+        cron_job_key: &Pubkey,
+        cron_job_index: u32,
+        kta_key: &Pubkey,
+        payer: &Pubkey,
+    ) -> impl ToAccountMetas {
+        let user_authority = *payer;
+        let authority = entity_cron_authority_key(&user_authority);
+        let cron_job_transaction = tuktuk::cron_job_transaction::key(cron_job_key, cron_job_index);
+        hpl_crons::client::accounts::AddEntityToCronV0 {
+            authority,
+            user_authority,
+            key_to_asset: *kta_key,
+            payer: *payer,
+            cron_job: *cron_job_key,
+            cron_job_transaction,
+            system_program: solana_sdk::system_program::ID,
+            cron_program: tuktuk_program::cron::ID,
+        }
+    }
+    let cron_job_index = cron_job.next_transaction_id;
+    let accounts = mk_accounts(cron_job_key, cron_job_index, kta_key, payer);
+    let ix = Instruction {
+        program_id: hpl_crons::ID,
+        accounts: accounts.to_account_metas(None),
+        data: hpl_crons::client::args::AddEntityToCronV0 {
+            args: hpl_crons::types::AddEntityToCronArgsV0 {
+                index: cron_job_index,
+            },
+        }
+        .data(),
+    };
+    Ok(ix)
+}
+
+pub async fn claim_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+    client: &C,
+    cron_job_key: &Pubkey,
+    encoded_entity_key: &EncodedEntityKey,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let cron_job = client.anchor_account(cron_job_key).await?;
+    let entity_key = encoded_entity_key.as_entity_key()?;
+    let kta_key = Dao::Hnt.entity_key_to_kta_key(&entity_key);
+    let ix = claim_asset_instruction(cron_job_key, &cron_job, &kta_key, &keypair.pubkey())?;
     let ixs = &[
         priority_fee::compute_budget_instruction(100_000),
         priority_fee::compute_price_instruction_for_accounts(

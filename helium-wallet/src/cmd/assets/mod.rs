@@ -4,6 +4,7 @@ pub mod burn;
 pub mod claim;
 pub mod info;
 pub mod rewards;
+pub mod transfer;
 
 #[derive(Debug, clap::Args)]
 pub struct Cmd {
@@ -23,6 +24,7 @@ pub enum AssetCommand {
     Rewards(rewards::Cmd),
     Info(info::Cmd),
     Burn(burn::Cmd),
+    Transfer(transfer::Cmd),
 }
 
 impl AssetCommand {
@@ -31,6 +33,7 @@ impl AssetCommand {
             Self::Rewards(cmd) => cmd.run(opts).await,
             Self::Info(cmd) => cmd.run(opts).await,
             Self::Burn(cmd) => cmd.run(opts).await,
+            Self::Transfer(cmd) => cmd.run(opts).await,
         }
     }
 }

@@ -85,7 +85,7 @@ impl ClaimCmd {
     }
 }
 
-/// Get or set the the recipient for rewards
+/// Get or set the recipient for rewards
 #[derive(Debug, Clone, clap::Args)]
 pub struct RecipientCmd {
     /// Token for command

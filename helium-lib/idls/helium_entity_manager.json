@@ -1,280 +1,29 @@
 {
-  "accounts": [
-    {
-      "discriminator": [
-        101,
-        75,
-        232,
-        141,
-        239,
-        45,
-        29,
-        205
-      ],
-      "name": "DaoV0"
-    },
-    {
-      "discriminator": [
-        171,
-        162,
-        190,
-        96,
-        54,
-        214,
-        214,
-        162
-      ],
-      "name": "DataCreditsV0"
-    },
-    {
-      "discriminator": [
-        30,
-        122,
-        56,
-        9,
-        66,
-        106,
-        63,
-        188
-      ],
-      "name": "DataOnlyConfigV0"
-    },
-    {
-      "discriminator": [
-        121,
-        208,
-        53,
-        245,
-        199,
-        166,
-        246,
-        79
-      ],
-      "name": "IotHotspotInfoV0"
-    },
-    {
-      "discriminator": [
-        234,
-        40,
-        244,
-        64,
-        154,
-        171,
-        29,
-        177
-      ],
-      "name": "KeyToAssetV0"
-    },
-    {
-      "discriminator": [
-        32,
-        228,
-        124,
-        23,
-        19,
-        132,
-        142,
-        91
-      ],
-      "name": "MakerApprovalV0"
-    },
-    {
-      "discriminator": [
-        97,
-        196,
-        103,
-        146,
-        176,
-        33,
-        71,
-        235
-      ],
-      "name": "MakerV0"
-    },
-    {
-      "discriminator": [
-        121,
-        200,
-        116,
-        209,
-        41,
-        241,
-        228,
-        184
-      ],
-      "name": "MobileHotspotInfoV0"
-    },
-    {
-      "discriminator": [
-        34,
-        241,
-        35,
-        99,
-        157,
-        126,
-        244,
-        205
-      ],
-      "name": "PriceUpdateV2"
-    },
-    {
-      "discriminator": [
-        57,
-        60,
-        120,
-        143,
-        46,
-        126,
-        59,
-        206
-      ],
-      "name": "ProgramApprovalV0"
-    },
-    {
-      "discriminator": [
-        185,
-        154,
-        130,
-        233,
-        9,
-        161,
-        150,
-        13
-      ],
-      "name": "RewardableEntityConfigV0"
-    },
-    {
-      "discriminator": [
-        19,
-        5,
-        31,
-        112,
-        144,
-        214,
-        82,
-        128
-      ],
-      "name": "SubDaoV0"
-    },
-    {
-      "discriminator": [
-        122,
-        245,
-        175,
-        248,
-        171,
-        34,
-        0,
-        207
-      ],
-      "name": "TreeConfig"
-    }
-  ],
   "address": "hemjuPXBpNvggtaUnN1MwT3wrdhttKEfosTcc2P9Pg8",
-  "errors": [
-    {
-      "code": 6000,
-      "msg": "Invalid ecc compcat",
-      "name": "InvalidEccCompact"
-    },
-    {
-      "code": 6001,
-      "msg": "Invalid string length, your string was likely too long",
-      "name": "InvalidStringLength"
-    },
-    {
-      "code": 6002,
-      "msg": "The string was not alphanumeric",
-      "name": "StringNotAlphanumeric"
-    },
-    {
-      "code": 6003,
-      "msg": "Metadata Program Mismatch",
-      "name": "InvalidMetadataProgram"
-    },
-    {
-      "code": 6004,
-      "msg": "The realloc increase was too large",
-      "name": "InvalidDataIncrease"
-    },
-    {
-      "code": 6005,
-      "msg": "Genesis endpoints are currently disabled",
-      "name": "NoGenesis"
-    },
-    {
-      "code": 6006,
-      "msg": "The tree can only be replaced when it is close to full",
-      "name": "TreeNotFull"
-    },
-    {
-      "code": 6007,
-      "msg": "The provided tree is an invalid size",
-      "name": "InvalidTreeSpace"
-    },
-    {
-      "code": 6008,
-      "msg": "Invalid seeds provided",
-      "name": "InvalidSeeds"
-    },
-    {
-      "code": 6009,
-      "msg": "Invalid settings provided",
-      "name": "InvalidSettings"
-    },
-    {
-      "code": 6010,
-      "msg": "Invalid DC fee",
-      "name": "InvalidDcFee"
-    },
-    {
-      "code": 6011,
-      "msg": "Onboarding fee has already been set for this account",
-      "name": "OnboardingFeeAlreadySet"
-    },
-    {
-      "code": 6012,
-      "msg": "Account doesn't matched expected address",
-      "name": "InvalidAccountAddress"
-    },
-    {
-      "code": 6013,
-      "msg": "Invalid symbol, must be 'IOT' or 'MOBILE'",
-      "name": "InvalidSymbol"
-    },
-    {
-      "code": 6014,
-      "msg": "Mobile device type not found",
-      "name": "InvalidDeviceType"
-    },
-    {
-      "code": 6015,
-      "msg": "Error loading Pyth data",
-      "name": "PythError"
-    },
-    {
-      "code": 6016,
-      "msg": "Pyth price is not available",
-      "name": "PythPriceNotFound"
-    },
-    {
-      "code": 6017,
-      "msg": "Pyth price is stale",
-      "name": "PythPriceFeedStale"
-    },
-    {
-      "code": 6018,
-      "msg": "Arithmetic error",
-      "name": "ArithmeticError"
-    }
-  ],
+  "metadata": {
+    "name": "helium_entity_manager",
+    "version": "0.2.14",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
   "instructions": [
     {
+      "name": "approve_maker_v0",
+      "discriminator": [
+        12,
+        230,
+        133,
+        92,
+        150,
+        229,
+        141,
+        142
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "rewardable_entity_config"
@@ -293,44 +42,8 @@
         },
         {
           "name": "escrow",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -377,22 +90,59 @@
                 "kind": "account",
                 "path": "hnt_mint"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
           "name": "authority",
+          "signer": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "maker"
         },
         {
           "name": "maker_approval",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -423,20 +173,19 @@
                 "path": "maker"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
           "name": "dao",
@@ -446,38 +195,39 @@
           ]
         }
       ],
-      "args": [],
-      "discriminator": [
-        12,
-        230,
-        133,
-        92,
-        150,
-        229,
-        141,
-        142
-      ],
-      "name": "approve_maker_v0"
+      "args": []
     },
     {
+      "name": "approve_program_v0",
+      "discriminator": [
+        5,
+        238,
+        152,
+        185,
+        72,
+        120,
+        3,
+        145
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dao"
         },
         {
           "name": "authority",
+          "signer": true,
           "relations": [
             "dao"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "program_approval",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -510,12 +260,11 @@
                 "path": "args.program_id"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -527,31 +276,32 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        5,
-        238,
-        152,
-        185,
-        72,
-        120,
-        3,
-        145
-      ],
-      "name": "approve_program_v0"
+      ]
     },
     {
+      "name": "initialize_data_only_v0",
+      "discriminator": [
+        19,
+        81,
+        219,
+        30,
+        10,
+        34,
+        12,
+        80
+      ],
       "accounts": [
         {
           "name": "authority",
+          "writable": true,
+          "signer": true,
           "relations": [
             "dao"
-          ],
-          "signer": true,
-          "writable": true
+          ]
         },
         {
           "name": "data_only_config",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -580,27 +330,26 @@
                 "path": "dao"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "dao"
         },
         {
           "name": "tree_authority",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
         },
         {
           "name": "merkle_tree",
@@ -608,6 +357,7 @@
         },
         {
           "name": "collection",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -630,49 +380,12 @@
                 "path": "data_only_config"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "token_account",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -719,17 +432,50 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
           "name": "master_edition",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -764,17 +510,17 @@
                   110
                 ]
               }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "name": "metadata",
-          "pda": {
+            ],
             "program": {
               "kind": "account",
               "path": "token_metadata_program"
-            },
+            }
+          }
+        },
+        {
+          "name": "metadata",
+          "writable": true,
+          "pda": {
             "seeds": [
               {
                 "kind": "const",
@@ -797,37 +543,40 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
       "args": [
@@ -839,28 +588,29 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        19,
-        81,
-        219,
-        30,
-        10,
-        34,
-        12,
-        80
-      ],
-      "name": "initialize_data_only_v0"
+      ]
     },
     {
+      "name": "initialize_maker_v0",
+      "discriminator": [
+        204,
+        26,
+        62,
+        134,
+        112,
+        201,
+        162,
+        160
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "maker",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -882,14 +632,14 @@
                 "path": "args.name"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "dao"
         },
         {
           "name": "collection",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -912,16 +662,12 @@
                 "path": "maker"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "metadata",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -944,17 +690,17 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "name": "master_edition",
-          "pda": {
+            ],
             "program": {
               "kind": "account",
               "path": "token_metadata_program"
-            },
+            }
+          }
+        },
+        {
+          "name": "master_edition",
+          "writable": true,
+          "pda": {
             "seeds": [
               {
                 "kind": "const",
@@ -989,50 +735,17 @@
                   110
                 ]
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
           "name": "token_account",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -1079,25 +792,61 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
@@ -1109,38 +858,39 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        204,
-        26,
-        62,
-        134,
-        112,
-        201,
-        162,
-        160
-      ],
-      "name": "initialize_maker_v0"
+      ]
     },
     {
+      "name": "initialize_rewardable_entity_config_v0",
+      "discriminator": [
+        174,
+        50,
+        32,
+        15,
+        143,
+        7,
+        11,
+        152
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "sub_dao"
         },
         {
           "name": "authority",
+          "signer": true,
           "relations": [
             "sub_dao"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "rewardable_entity_config",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1181,12 +931,11 @@
                 "path": "args.symbol"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -1198,25 +947,95 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        174,
-        50,
-        32,
-        15,
-        143,
-        7,
-        11,
-        152
-      ],
-      "name": "initialize_rewardable_entity_config_v0"
+      ]
     },
     {
+      "name": "initialize_shared_merkle_v0",
+      "discriminator": [
+        240,
+        179,
+        229,
+        143,
+        243,
+        41,
+        126,
+        253
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "shared_merkle",
           "writable": true
+        },
+        {
+          "name": "tree_authority",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "merkle_tree"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+        },
+        {
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
+        },
+        {
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeSharedMerkleArgsV0"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "issue_data_only_entity_v0",
+      "discriminator": [
+        191,
+        96,
+        245,
+        46,
+        63,
+        73,
+        207,
+        17
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
         },
         {
           "name": "ecc_verifier",
@@ -1230,11 +1049,8 @@
         },
         {
           "name": "collection_metadata",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -1257,17 +1073,16 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
           "name": "collection_master_edition",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -1302,11 +1117,16 @@
                   110
                 ]
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
           }
         },
         {
           "name": "data_only_config",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1335,8 +1155,7 @@
                 "path": "dao"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "entity_creator",
@@ -1377,32 +1196,33 @@
         },
         {
           "name": "tree_authority",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
         },
         {
           "name": "recipient"
         },
         {
           "name": "merkle_tree",
+          "writable": true,
           "relations": [
             "data_only_config"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "data_only_escrow",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1431,16 +1251,11 @@
                 "path": "data_only_config"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "bubblegum_signer",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -1461,28 +1276,32 @@
                   105
                 ]
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
           }
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -1494,25 +1313,25 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        191,
-        96,
-        245,
-        46,
-        63,
-        73,
-        207,
-        17
-      ],
-      "name": "issue_data_only_entity_v0"
+      ]
     },
     {
+      "name": "issue_entity_v0",
+      "discriminator": [
+        232,
+        194,
+        122,
+        68,
+        167,
+        246,
+        119,
+        197
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "ecc_verifier",
@@ -1520,10 +1339,10 @@
         },
         {
           "name": "issuing_authority",
+          "signer": true,
           "relations": [
             "maker"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "collection",
@@ -1533,11 +1352,8 @@
         },
         {
           "name": "collection_metadata",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -1560,17 +1376,16 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
           "name": "collection_master_edition",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -1605,7 +1420,11 @@
                   110
                 ]
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
           }
         },
         {
@@ -1654,37 +1473,33 @@
         },
         {
           "name": "tree_authority",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
         },
         {
           "name": "recipient"
         },
         {
           "name": "merkle_tree",
+          "writable": true,
           "relations": [
             "maker"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "bubblegum_signer",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -1705,28 +1520,32 @@
                   105
                 ]
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
           }
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -1738,32 +1557,32 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        232,
-        194,
-        122,
-        68,
-        167,
-        246,
-        119,
-        197
-      ],
-      "name": "issue_entity_v0"
+      ]
     },
     {
+      "name": "issue_iot_operations_fund_v0",
+      "discriminator": [
+        222,
+        131,
+        120,
+        163,
+        230,
+        187,
+        91,
+        209
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "authority",
+          "signer": true,
           "relations": [
             "dao"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "dao"
@@ -1807,44 +1626,8 @@
         },
         {
           "name": "recipient_account",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -1891,9 +1674,45 @@
                 "kind": "account",
                 "path": "mint"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
           "name": "mint",
@@ -1901,11 +1720,8 @@
         },
         {
           "name": "metadata",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -1928,17 +1744,17 @@
                 "kind": "account",
                 "path": "mint"
               }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "name": "master_edition",
-          "pda": {
+            ],
             "program": {
               "kind": "account",
               "path": "token_metadata_program"
-            },
+            }
+          }
+        },
+        {
+          "name": "master_edition",
+          "writable": true,
+          "pda": {
             "seeds": [
               {
                 "kind": "const",
@@ -1973,46 +1789,49 @@
                   110
                 ]
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [],
-      "discriminator": [
-        222,
-        131,
-        120,
-        163,
-        230,
-        187,
-        91,
-        209
-      ],
-      "name": "issue_iot_operations_fund_v0"
+      "args": []
     },
     {
+      "name": "issue_not_emitted_entity_v0",
+      "discriminator": [
+        60,
+        112,
+        240,
+        206,
+        80,
+        101,
+        94,
+        210
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "authority",
@@ -2057,11 +1876,8 @@
         },
         {
           "name": "recipient",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "no_emit_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -2079,50 +1895,17 @@
                   100
                 ]
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "no_emit_program"
+            }
+          }
         },
         {
           "name": "recipient_account",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -2169,9 +1952,45 @@
                 "kind": "account",
                 "path": "mint"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
           "name": "mint",
@@ -2179,11 +1998,8 @@
         },
         {
           "name": "metadata",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -2206,17 +2022,17 @@
                 "kind": "account",
                 "path": "mint"
               }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "name": "master_edition",
-          "pda": {
+            ],
             "program": {
               "kind": "account",
               "path": "token_metadata_program"
-            },
+            }
+          }
+        },
+        {
+          "name": "master_edition",
+          "writable": true,
+          "pda": {
             "seeds": [
               {
                 "kind": "const",
@@ -2251,53 +2067,56 @@
                   110
                 ]
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
           "name": "instructions"
         },
         {
-          "address": "noEmmgLmQdk6DLiPV8CSwQv3qQDyGEhz9m5A4zhtByv",
-          "name": "no_emit_program"
+          "name": "no_emit_program",
+          "address": "noEmmgLmQdk6DLiPV8CSwQv3qQDyGEhz9m5A4zhtByv"
         }
       ],
-      "args": [],
-      "discriminator": [
-        60,
-        112,
-        240,
-        206,
-        80,
-        101,
-        94,
-        210
-      ],
-      "name": "issue_not_emitted_entity_v0"
+      "args": []
     },
     {
+      "name": "issue_program_entity_v0",
+      "discriminator": [
+        70,
+        97,
+        114,
+        226,
+        33,
+        150,
+        80,
+        217
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "program_approver",
@@ -2315,11 +2134,8 @@
         },
         {
           "name": "collection_metadata",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -2342,17 +2158,16 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
           "name": "collection_master_edition",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -2387,7 +2202,11 @@
                   110
                 ]
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
           }
         },
         {
@@ -2432,34 +2251,33 @@
         },
         {
           "name": "tree_authority",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
         },
         {
           "name": "recipient"
         },
         {
           "name": "merkle_tree",
-          "writable": true
+          "writable": true,
+          "relations": [
+            "shared_merkle"
+          ]
         },
         {
           "name": "bubblegum_signer",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -2480,28 +2298,37 @@
                   105
                 ]
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
           }
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "shared_merkle",
+          "writable": true,
+          "optional": true
         }
       ],
       "args": [
@@ -2513,30 +2340,30 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        70,
-        97,
-        114,
-        226,
-        33,
-        150,
-        80,
-        217
-      ],
-      "name": "issue_program_entity_v0"
+      ]
     },
     {
+      "name": "onboard_data_only_iot_hotspot_v0",
+      "discriminator": [
+        98,
+        179,
+        127,
+        51,
+        58,
+        191,
+        174,
+        188
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dc_fee_payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "iot_info",
@@ -2544,8 +2371,8 @@
         },
         {
           "name": "hotspot_owner",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "merkle_tree",
@@ -2555,44 +2382,8 @@
         },
         {
           "name": "dc_burner",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -2639,9 +2430,45 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
           "name": "rewardable_entity_config"
@@ -2690,26 +2517,22 @@
         },
         {
           "name": "sub_dao",
+          "writable": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc_mint",
+          "writable": true,
           "relations": [
             "dao",
             "dc"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "data_credits_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -2722,32 +2545,36 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            }
           }
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
-          "name": "data_credits_program"
+          "name": "data_credits_program",
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR",
-          "name": "helium_sub_daos_program"
+          "name": "helium_sub_daos_program",
+          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR"
         }
       ],
       "args": [
@@ -2759,30 +2586,30 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        98,
-        179,
-        127,
-        51,
-        58,
-        191,
-        174,
-        188
-      ],
-      "name": "onboard_data_only_iot_hotspot_v0"
+      ]
     },
     {
+      "name": "onboard_data_only_mobile_hotspot_v0",
+      "discriminator": [
+        30,
+        189,
+        229,
+        219,
+        123,
+        119,
+        62,
+        152
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dc_fee_payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "mobile_info",
@@ -2790,8 +2617,8 @@
         },
         {
           "name": "hotspot_owner",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "merkle_tree",
@@ -2854,25 +2681,25 @@
         },
         {
           "name": "sub_dao",
+          "writable": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc_mint",
+          "writable": true,
           "relations": [
             "dao",
             "dc"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dnt_mint",
+          "writable": true,
           "relations": [
             "sub_dao"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dnt_price"
@@ -2880,10 +2707,6 @@
         {
           "name": "dc",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "data_credits_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -2896,32 +2719,36 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            }
           }
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
-          "name": "data_credits_program"
+          "name": "data_credits_program",
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR",
-          "name": "helium_sub_daos_program"
+          "name": "helium_sub_daos_program",
+          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR"
         }
       ],
       "args": [
@@ -2933,37 +2760,37 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        30,
-        189,
-        229,
-        219,
-        123,
-        119,
-        62,
-        152
-      ],
-      "name": "onboard_data_only_mobile_hotspot_v0"
+      ]
     },
     {
+      "name": "onboard_iot_hotspot_v0",
+      "discriminator": [
+        45,
+        24,
+        129,
+        38,
+        14,
+        65,
+        7,
+        15
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dc_fee_payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "issuing_authority",
+          "signer": true,
           "relations": [
             "maker"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "iot_info",
@@ -2971,8 +2798,8 @@
         },
         {
           "name": "hotspot_owner",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "merkle_tree",
@@ -3043,26 +2870,22 @@
         },
         {
           "name": "sub_dao",
+          "writable": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc_mint",
+          "writable": true,
           "relations": [
             "dao",
             "dc"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "data_credits_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -3075,32 +2898,36 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            }
           }
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
-          "name": "data_credits_program"
+          "name": "data_credits_program",
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR",
-          "name": "helium_sub_daos_program"
+          "name": "helium_sub_daos_program",
+          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR"
         }
       ],
       "args": [
@@ -3112,37 +2939,37 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        45,
-        24,
-        129,
-        38,
-        14,
-        65,
-        7,
-        15
-      ],
-      "name": "onboard_iot_hotspot_v0"
+      ]
     },
     {
+      "name": "onboard_mobile_hotspot_v0",
+      "discriminator": [
+        23,
+        144,
+        210,
+        155,
+        8,
+        203,
+        90,
+        207
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dc_fee_payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "issuing_authority",
+          "signer": true,
           "relations": [
             "maker"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "mobile_info",
@@ -3150,8 +2977,8 @@
         },
         {
           "name": "hotspot_owner",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "merkle_tree",
@@ -3220,25 +3047,25 @@
         },
         {
           "name": "sub_dao",
+          "writable": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc_mint",
+          "writable": true,
           "relations": [
             "dao",
             "dc"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dnt_mint",
+          "writable": true,
           "relations": [
             "sub_dao"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dnt_price"
@@ -3246,10 +3073,6 @@
         {
           "name": "dc",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "data_credits_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -3262,32 +3085,36 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            }
           }
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
-          "name": "data_credits_program"
+          "name": "data_credits_program",
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR",
-          "name": "helium_sub_daos_program"
+          "name": "helium_sub_daos_program",
+          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR"
         }
       ],
       "args": [
@@ -3299,41 +3126,42 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        23,
-        144,
-        210,
-        155,
-        8,
-        203,
-        90,
-        207
-      ],
-      "name": "onboard_mobile_hotspot_v0"
+      ]
     },
     {
+      "name": "revoke_maker_v0",
+      "discriminator": [
+        121,
+        23,
+        18,
+        110,
+        43,
+        111,
+        32,
+        254
+      ],
       "accounts": [
         {
           "name": "refund",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "rewardable_entity_config"
         },
         {
           "name": "authority",
+          "signer": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "maker"
         },
         {
           "name": "maker_approval",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -3364,46 +3192,46 @@
                 "path": "maker"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [],
-      "discriminator": [
-        121,
-        23,
-        18,
-        110,
-        43,
-        111,
-        32,
-        254
-      ],
-      "name": "revoke_maker_v0"
+      "args": []
     },
     {
+      "name": "revoke_program_v0",
+      "discriminator": [
+        166,
+        120,
+        44,
+        143,
+        5,
+        63,
+        121,
+        210
+      ],
       "accounts": [
         {
           "name": "refund",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dao"
         },
         {
           "name": "authority",
+          "signer": true,
           "relations": [
             "dao"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "program_approval",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -3436,12 +3264,11 @@
                 "path": "args.program_id"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -3453,45 +3280,45 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        166,
-        120,
-        44,
-        143,
-        5,
-        63,
-        121,
-        210
-      ],
-      "name": "revoke_program_v0"
+      ]
     },
     {
+      "name": "set_entity_active_v0",
+      "discriminator": [
+        234,
+        186,
+        204,
+        28,
+        91,
+        88,
+        246,
+        244
+      ],
       "accounts": [
         {
           "name": "active_device_authority",
+          "signer": true,
           "relations": [
             "sub_dao"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "rewardable_entity_config"
         },
         {
           "name": "sub_dao",
+          "writable": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "info",
           "writable": true
         },
         {
-          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR",
-          "name": "helium_sub_daos_program"
+          "name": "helium_sub_daos_program",
+          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR"
         }
       ],
       "args": [
@@ -3503,32 +3330,32 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        234,
-        186,
-        204,
-        28,
-        91,
-        88,
-        246,
-        244
-      ],
-      "name": "set_entity_active_v0"
+      ]
     },
     {
+      "name": "set_maker_tree_v0",
+      "discriminator": [
+        226,
+        10,
+        222,
+        243,
+        102,
+        205,
+        13,
+        221
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "update_authority",
+          "signer": true,
           "relations": [
             "maker"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "maker",
@@ -3536,39 +3363,39 @@
         },
         {
           "name": "tree_authority",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
         },
         {
           "name": "merkle_tree",
           "writable": true
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         }
       ],
       "args": [
@@ -3580,32 +3407,32 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        226,
-        10,
-        222,
-        243,
-        102,
-        205,
-        13,
-        221
-      ],
-      "name": "set_maker_tree_v0"
+      ]
     },
     {
+      "name": "swap_maker_stake",
+      "discriminator": [
+        162,
+        124,
+        76,
+        168,
+        191,
+        177,
+        62,
+        203
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "update_authority",
+          "signer": true,
           "relations": [
             "maker"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "maker"
@@ -3674,44 +3501,8 @@
         },
         {
           "name": "new_stake_source",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -3758,50 +3549,50 @@
                 "kind": "account",
                 "path": "hnt_mint"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
           "name": "original_stake_destination",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -3848,13 +3639,7 @@
                 "kind": "account",
                 "path": "dnt_mint"
               }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "name": "original_stake",
-          "pda": {
+            ],
             "program": {
               "kind": "const",
               "value": [
@@ -3891,7 +3676,13 @@
                 248,
                 89
               ]
-            },
+            }
+          }
+        },
+        {
+          "name": "original_stake",
+          "writable": true,
+          "pda": {
             "seeds": [
               {
                 "kind": "account",
@@ -3938,13 +3729,7 @@
                 "kind": "account",
                 "path": "dnt_mint"
               }
-            ]
-          },
-          "writable": true
-        },
-        {
-          "name": "new_escrow",
-          "pda": {
+            ],
             "program": {
               "kind": "const",
               "value": [
@@ -3981,7 +3766,13 @@
                 248,
                 89
               ]
-            },
+            }
+          }
+        },
+        {
+          "name": "new_escrow",
+          "writable": true,
+          "pda": {
             "seeds": [
               {
                 "kind": "account",
@@ -4028,54 +3819,168 @@
                 "kind": "account",
                 "path": "hnt_mint"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "SysvarRent111111111111111111111111111111111",
-          "name": "rent"
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
         }
       ],
-      "args": [],
-      "discriminator": [
-        162,
-        124,
-        76,
-        168,
-        191,
-        177,
-        62,
-        203
-      ],
-      "name": "swap_maker_stake"
+      "args": []
     },
     {
+      "name": "swap_shared_merkle_tree_v0",
+      "discriminator": [
+        205,
+        234,
+        100,
+        86,
+        228,
+        42,
+        225,
+        52
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "shared_merkle",
           "writable": true
+        },
+        {
+          "name": "tree_authority",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "shared_merkle.merkle_tree",
+                "account": "SharedMerkleV0"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
+        },
+        {
+          "name": "new_tree_authority",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "new_merkle_tree"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
+        },
+        {
+          "name": "new_merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
+        },
+        {
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "temp_backfill_mobile_info",
+      "discriminator": [
+        208,
+        2,
+        249,
+        124,
+        145,
+        231,
+        18,
+        13
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
         },
         {
           "name": "mobile_info",
           "writable": true
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -4087,66 +3992,30 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        208,
-        2,
-        249,
-        124,
-        145,
-        231,
-        18,
-        13
-      ],
-      "name": "temp_backfill_mobile_info"
+      ]
     },
     {
+      "name": "temp_pay_mobile_onboarding_fee_v0",
+      "discriminator": [
+        117,
+        84,
+        64,
+        76,
+        137,
+        31,
+        188,
+        28
+      ],
       "accounts": [
         {
           "name": "dc_fee_payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dc_burner",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            },
             "seeds": [
               {
                 "kind": "account",
@@ -4193,19 +4062,55 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
         },
         {
           "name": "rewardable_entity_config"
         },
         {
           "name": "sub_dao",
+          "writable": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dao",
@@ -4216,19 +4121,15 @@
         },
         {
           "name": "dc_mint",
+          "writable": true,
           "relations": [
             "dao",
             "dc"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "data_credits_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -4241,7 +4142,11 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            }
           }
         },
         {
@@ -4252,40 +4157,40 @@
           "writable": true
         },
         {
-          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
-          "name": "data_credits_program"
+          "name": "data_credits_program",
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR",
-          "name": "helium_sub_daos_program"
+          "name": "helium_sub_daos_program",
+          "address": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR"
         }
       ],
-      "args": [],
-      "discriminator": [
-        117,
-        84,
-        64,
-        76,
-        137,
-        31,
-        188,
-        28
-      ],
-      "name": "temp_pay_mobile_onboarding_fee_v0"
+      "args": []
     },
     {
+      "name": "temp_standardize_entity",
+      "discriminator": [
+        215,
+        228,
+        150,
+        66,
+        70,
+        57,
+        43,
+        45
+      ],
       "accounts": [
         {
           "name": "key_to_asset"
@@ -4296,8 +4201,8 @@
         },
         {
           "name": "maker",
-          "optional": true,
-          "writable": true
+          "writable": true,
+          "optional": true
         },
         {
           "name": "data_only_config"
@@ -4305,16 +4210,16 @@
         {
           "name": "tree_authority",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
           }
         },
         {
@@ -4326,11 +4231,8 @@
         },
         {
           "name": "collection_metadata",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "token_metadata_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -4353,9 +4255,12 @@
                 "kind": "account",
                 "path": "collection"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "token_metadata_program"
+            }
+          }
         },
         {
           "name": "leaf_owner"
@@ -4365,24 +4270,24 @@
           "signer": true
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-          "name": "token_metadata_program"
+          "name": "token_metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -4394,25 +4299,25 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        215,
-        228,
-        150,
-        66,
-        70,
-        57,
-        43,
-        45
-      ],
-      "name": "temp_standardize_entity"
+      ]
     },
     {
+      "name": "update_data_only_tree_v0",
+      "discriminator": [
+        214,
+        52,
+        30,
+        65,
+        215,
+        38,
+        122,
+        102
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "data_only_config",
@@ -4420,39 +4325,40 @@
         },
         {
           "name": "old_tree_authority",
+          "writable": true,
           "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "data_only_config.merkle_tree",
+                "account": "DataOnlyConfigV0"
+              }
+            ],
             "program": {
               "kind": "account",
               "path": "bubblegum_program"
-            },
-            "seeds": [
-              {
-                "account": "DataOnlyConfigV0",
-                "kind": "account",
-                "path": "data_only_config.merkle_tree"
-              }
-            ]
-          },
-          "writable": true
+            }
+          }
         },
         {
           "name": "new_tree_authority",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "new_merkle_tree"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
         },
         {
           "name": "data_only_escrow",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -4481,54 +4387,53 @@
                 "path": "data_only_config"
               }
             ]
-          },
-          "writable": true
+          }
         },
         {
           "name": "new_merkle_tree",
           "writable": true
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         }
       ],
-      "args": [],
-      "discriminator": [
-        214,
-        52,
-        30,
-        65,
-        215,
-        38,
-        122,
-        102
-      ],
-      "name": "update_data_only_tree_v0"
+      "args": []
     },
     {
+      "name": "update_iot_info_v0",
+      "discriminator": [
+        211,
+        235,
+        205,
+        29,
+        109,
+        86,
+        153,
+        39
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "dc_fee_payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "iot_info",
@@ -4536,8 +4441,8 @@
         },
         {
           "name": "hotspot_owner",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "merkle_tree"
@@ -4545,16 +4450,16 @@
         {
           "name": "tree_authority",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
           }
         },
         {
@@ -4578,19 +4483,15 @@
         },
         {
           "name": "dc_mint",
+          "writable": true,
           "relations": [
             "dao",
             "dc"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "data_credits_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -4603,32 +4504,36 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            }
           }
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
-          "name": "data_credits_program"
+          "name": "data_credits_program",
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -4640,25 +4545,25 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        211,
-        235,
-        205,
-        29,
-        109,
-        86,
-        153,
-        39
-      ],
-      "name": "update_iot_info_v0"
+      ]
     },
     {
+      "name": "update_maker_tree_v0",
+      "discriminator": [
+        149,
+        158,
+        98,
+        186,
+        64,
+        211,
+        52,
+        17
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "maker",
@@ -4666,56 +4571,56 @@
         },
         {
           "name": "tree_authority",
+          "writable": true,
           "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "maker.merkle_tree",
+                "account": "MakerV0"
+              }
+            ],
             "program": {
               "kind": "account",
               "path": "bubblegum_program"
-            },
-            "seeds": [
-              {
-                "account": "MakerV0",
-                "kind": "account",
-                "path": "maker.merkle_tree"
-              }
-            ]
-          },
-          "writable": true
+            }
+          }
         },
         {
           "name": "new_tree_authority",
+          "writable": true,
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "new_merkle_tree"
               }
-            ]
-          },
-          "writable": true
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
+          }
         },
         {
           "name": "new_merkle_tree",
           "writable": true
         },
         {
-          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-          "name": "log_wrapper"
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         }
       ],
       "args": [
@@ -4727,20 +4632,20 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        149,
-        158,
-        98,
-        186,
-        64,
-        211,
-        52,
-        17
-      ],
-      "name": "update_maker_tree_v0"
+      ]
     },
     {
+      "name": "update_maker_v0",
+      "discriminator": [
+        94,
+        227,
+        240,
+        133,
+        67,
+        224,
+        25,
+        109
+      ],
       "accounts": [
         {
           "name": "maker",
@@ -4748,10 +4653,10 @@
         },
         {
           "name": "update_authority",
+          "signer": true,
           "relations": [
             "maker"
-          ],
-          "signer": true
+          ]
         }
       ],
       "args": [
@@ -4763,20 +4668,20 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        94,
-        227,
-        240,
-        133,
-        67,
-        224,
-        25,
-        109
-      ],
-      "name": "update_maker_v0"
+      ]
     },
     {
+      "name": "update_mobile_info_v0",
+      "discriminator": [
+        207,
+        104,
+        82,
+        157,
+        193,
+        229,
+        73,
+        153
+      ],
       "accounts": [
         {
           "name": "payer",
@@ -4792,8 +4697,8 @@
         },
         {
           "name": "hotspot_owner",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "merkle_tree"
@@ -4801,16 +4706,16 @@
         {
           "name": "tree_authority",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "bubblegum_program"
-            },
             "seeds": [
               {
                 "kind": "account",
                 "path": "merkle_tree"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "bubblegum_program"
+            }
           }
         },
         {
@@ -4834,19 +4739,15 @@
         },
         {
           "name": "dc_mint",
+          "writable": true,
           "relations": [
             "dao",
             "dc"
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "dc",
           "pda": {
-            "program": {
-              "kind": "account",
-              "path": "data_credits_program"
-            },
             "seeds": [
               {
                 "kind": "const",
@@ -4859,32 +4760,36 @@
                 "kind": "account",
                 "path": "dc_mint"
               }
-            ]
+            ],
+            "program": {
+              "kind": "account",
+              "path": "data_credits_program"
+            }
           }
         },
         {
-          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
-          "name": "bubblegum_program"
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
         },
         {
-          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
-          "name": "compression_program"
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
         },
         {
-          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
-          "name": "data_credits_program"
+          "name": "data_credits_program",
+          "address": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT"
         },
         {
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-          "name": "token_program"
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-          "name": "associated_token_program"
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -4896,40 +4801,40 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        207,
-        104,
-        82,
-        157,
-        193,
-        229,
-        73,
-        153
-      ],
-      "name": "update_mobile_info_v0"
+      ]
     },
     {
+      "name": "update_rewardable_entity_config_v0",
+      "discriminator": [
+        52,
+        85,
+        169,
+        134,
+        138,
+        116,
+        78,
+        18
+      ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "writable": true
+          "writable": true,
+          "signer": true
         },
         {
           "name": "authority",
+          "signer": true,
           "relations": [
             "rewardable_entity_config"
-          ],
-          "signer": true
+          ]
         },
         {
           "name": "rewardable_entity_config",
           "writable": true
         },
         {
-          "address": "11111111111111111111111111111111",
-          "name": "system_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -4941,37 +4846,301 @@
             }
           }
         }
-      ],
-      "discriminator": [
-        52,
-        85,
-        169,
-        134,
-        138,
-        116,
-        78,
-        18
-      ],
-      "name": "update_rewardable_entity_config_v0"
+      ]
     }
   ],
-  "metadata": {
-    "description": "Created with Anchor",
-    "name": "helium_entity_manager",
-    "spec": "0.1.0",
-    "version": "0.2.14"
-  },
+  "accounts": [
+    {
+      "name": "DaoV0",
+      "discriminator": [
+        101,
+        75,
+        232,
+        141,
+        239,
+        45,
+        29,
+        205
+      ]
+    },
+    {
+      "name": "DataCreditsV0",
+      "discriminator": [
+        171,
+        162,
+        190,
+        96,
+        54,
+        214,
+        214,
+        162
+      ]
+    },
+    {
+      "name": "DataOnlyConfigV0",
+      "discriminator": [
+        30,
+        122,
+        56,
+        9,
+        66,
+        106,
+        63,
+        188
+      ]
+    },
+    {
+      "name": "IotHotspotInfoV0",
+      "discriminator": [
+        121,
+        208,
+        53,
+        245,
+        199,
+        166,
+        246,
+        79
+      ]
+    },
+    {
+      "name": "KeyToAssetV0",
+      "discriminator": [
+        234,
+        40,
+        244,
+        64,
+        154,
+        171,
+        29,
+        177
+      ]
+    },
+    {
+      "name": "MakerApprovalV0",
+      "discriminator": [
+        32,
+        228,
+        124,
+        23,
+        19,
+        132,
+        142,
+        91
+      ]
+    },
+    {
+      "name": "MakerV0",
+      "discriminator": [
+        97,
+        196,
+        103,
+        146,
+        176,
+        33,
+        71,
+        235
+      ]
+    },
+    {
+      "name": "MobileHotspotInfoV0",
+      "discriminator": [
+        121,
+        200,
+        116,
+        209,
+        41,
+        241,
+        228,
+        184
+      ]
+    },
+    {
+      "name": "PriceUpdateV2",
+      "discriminator": [
+        34,
+        241,
+        35,
+        99,
+        157,
+        126,
+        244,
+        205
+      ]
+    },
+    {
+      "name": "ProgramApprovalV0",
+      "discriminator": [
+        57,
+        60,
+        120,
+        143,
+        46,
+        126,
+        59,
+        206
+      ]
+    },
+    {
+      "name": "RewardableEntityConfigV0",
+      "discriminator": [
+        185,
+        154,
+        130,
+        233,
+        9,
+        161,
+        150,
+        13
+      ]
+    },
+    {
+      "name": "SharedMerkleV0",
+      "discriminator": [
+        167,
+        31,
+        247,
+        169,
+        82,
+        231,
+        24,
+        220
+      ]
+    },
+    {
+      "name": "SubDaoV0",
+      "discriminator": [
+        19,
+        5,
+        31,
+        112,
+        144,
+        214,
+        82,
+        128
+      ]
+    },
+    {
+      "name": "TreeConfig",
+      "discriminator": [
+        122,
+        245,
+        175,
+        248,
+        171,
+        34,
+        0,
+        207
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidEccCompact",
+      "msg": "Invalid ecc compcat"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidStringLength",
+      "msg": "Invalid string length, your string was likely too long"
+    },
+    {
+      "code": 6002,
+      "name": "StringNotAlphanumeric",
+      "msg": "The string was not alphanumeric"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidMetadataProgram",
+      "msg": "Metadata Program Mismatch"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidDataIncrease",
+      "msg": "The realloc increase was too large"
+    },
+    {
+      "code": 6005,
+      "name": "NoGenesis",
+      "msg": "Genesis endpoints are currently disabled"
+    },
+    {
+      "code": 6006,
+      "name": "TreeNotFull",
+      "msg": "The tree can only be replaced when it is close to full"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidTreeSpace",
+      "msg": "The provided tree is an invalid size"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidSeeds",
+      "msg": "Invalid seeds provided"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidSettings",
+      "msg": "Invalid settings provided"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidDcFee",
+      "msg": "Invalid DC fee"
+    },
+    {
+      "code": 6011,
+      "name": "OnboardingFeeAlreadySet",
+      "msg": "Onboarding fee has already been set for this account"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidAccountAddress",
+      "msg": "Account doesn't matched expected address"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidSymbol",
+      "msg": "Invalid symbol, must be 'IOT' or 'MOBILE'"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidDeviceType",
+      "msg": "Mobile device type not found"
+    },
+    {
+      "code": 6015,
+      "name": "PythError",
+      "msg": "Error loading Pyth data"
+    },
+    {
+      "code": 6016,
+      "name": "PythPriceNotFound",
+      "msg": "Pyth price is not available"
+    },
+    {
+      "code": 6017,
+      "name": "PythPriceFeedStale",
+      "msg": "Pyth price is stale"
+    },
+    {
+      "code": 6018,
+      "name": "ArithmeticError",
+      "msg": "Arithmetic error"
+    }
+  ],
   "types": [
     {
       "name": "ApproveProgramArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "program_id",
             "type": "pubkey"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
@@ -4980,6 +5149,7 @@
         "kind": "enum",
         "variants": [
           {
+            "name": "IotConfig",
             "fields": [
               {
                 "name": "min_gain",
@@ -4997,10 +5167,10 @@
                 "name": "dataonly_location_staking_fee",
                 "type": "u64"
               }
-            ],
-            "name": "IotConfig"
+            ]
           },
           {
+            "name": "MobileConfig",
             "fields": [
               {
                 "name": "full_location_staking_fee",
@@ -5010,10 +5180,10 @@
                 "name": "dataonly_location_staking_fee",
                 "type": "u64"
               }
-            ],
-            "name": "MobileConfig"
+            ]
           },
           {
+            "name": "MobileConfigV1",
             "fields": [
               {
                 "name": "fees_by_device",
@@ -5025,10 +5195,10 @@
                   }
                 }
               }
-            ],
-            "name": "MobileConfigV1"
+            ]
           },
           {
+            "name": "MobileConfigV2",
             "fields": [
               {
                 "name": "fees_by_device",
@@ -5040,8 +5210,7 @@
                   }
                 }
               }
-            ],
-            "name": "MobileConfigV2"
+            ]
           }
         ]
       }
@@ -5049,6 +5218,7 @@
     {
       "name": "Creator",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "address",
@@ -5062,13 +5232,13 @@
             "name": "share",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "DaoV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "hnt_mint",
@@ -5151,13 +5321,13 @@
               ]
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "DataCreditsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "dc_mint",
@@ -5187,13 +5357,13 @@
             "name": "account_payer_bump",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "DataOnlyConfigV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "authority",
@@ -5235,8 +5405,7 @@
             "name": "new_tree_fee_lamports",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
@@ -5256,6 +5425,7 @@
     {
       "name": "DeviceFeesV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "device_type",
@@ -5273,13 +5443,13 @@
             "name": "location_staking_fee",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "DeviceFeesV1",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "device_type",
@@ -5310,13 +5480,13 @@
               ]
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "EmissionScheduleItem",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "start_unix_time",
@@ -5326,13 +5496,13 @@
             "name": "emissions_per_epoch",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "InitializeDataOnlyArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "authority",
@@ -5362,13 +5532,13 @@
             "name": "metadata_url",
             "type": "string"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "InitializeMakerArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "update_authority",
@@ -5386,13 +5556,13 @@
             "name": "metadata_url",
             "type": "string"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "InitializeRewardableEntityConfigArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "symbol",
@@ -5410,13 +5580,25 @@
             "name": "staking_requirement",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
+      }
+    },
+    {
+      "name": "InitializeSharedMerkleArgsV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proof_size",
+            "type": "u8"
+          }
+        ]
       }
     },
     {
       "name": "IotHotspotInfoV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "asset",
@@ -5460,37 +5642,37 @@
             "name": "dc_onboarding_fee_paid",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "IssueDataOnlyEntityArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "entity_key",
             "type": "bytes"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "IssueEntityArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "entity_key",
             "type": "bytes"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "IssueProgramEntityArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "entity_key",
@@ -5524,8 +5706,7 @@
               "option": "string"
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
@@ -5545,6 +5726,7 @@
     {
       "name": "KeyToAssetV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "dao",
@@ -5570,13 +5752,13 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "MakerApprovalV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "rewardable_entity_config",
@@ -5590,13 +5772,13 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "MakerV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "update_authority",
@@ -5630,33 +5812,33 @@
             "name": "dao",
             "type": "pubkey"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "MetadataArgs",
       "type": {
+        "kind": "struct",
         "fields": [
           {
+            "name": "name",
             "docs": [
               "The name of the asset"
             ],
-            "name": "name",
             "type": "string"
           },
           {
+            "name": "symbol",
             "docs": [
               "The symbol for the asset"
             ],
-            "name": "symbol",
             "type": "string"
           },
           {
+            "name": "uri",
             "docs": [
               "URI pointing to JSON representing the asset"
             ],
-            "name": "uri",
             "type": "string"
           },
           {
@@ -5669,8 +5851,7 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
@@ -5679,6 +5860,7 @@
         "kind": "enum",
         "variants": [
           {
+            "name": "WifiInfoV0",
             "fields": [
               {
                 "name": "antenna",
@@ -5700,10 +5882,10 @@
                 "name": "electrical_down_tilt",
                 "type": "u16"
               }
-            ],
-            "name": "WifiInfoV0"
+            ]
           },
           {
+            "name": "CbrsInfoV0",
             "fields": [
               {
                 "name": "radio_infos",
@@ -5715,8 +5897,7 @@
                   }
                 }
               }
-            ],
-            "name": "CbrsInfoV0"
+            ]
           }
         ]
       }
@@ -5744,6 +5925,7 @@
     {
       "name": "MobileHotspotInfoV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "asset",
@@ -5793,13 +5975,13 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "OnboardDataOnlyIotHotspotArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "data_hash",
@@ -5850,13 +6032,13 @@
               "option": "i32"
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "OnboardDataOnlyMobileHotspotArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "data_hash",
@@ -5895,13 +6077,13 @@
               "option": "u64"
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "OnboardIotHotspotArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "data_hash",
@@ -5952,13 +6134,13 @@
               "option": "i32"
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "OnboardMobileHotspotArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "data_hash",
@@ -6015,13 +6197,13 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "PercentItem",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "start_unix_time",
@@ -6031,8 +6213,7 @@
             "name": "percent",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
@@ -6041,12 +6222,13 @@
         "kind": "c"
       },
       "type": {
+        "kind": "struct",
         "fields": [
           {
+            "name": "feed_id",
             "docs": [
               "`FeedId` but avoid the type alias because of compatibility issues with Anchor's `idl-build` feature."
             ],
-            "name": "feed_id",
             "type": {
               "array": [
                 "u8",
@@ -6067,13 +6249,14 @@
             "type": "i32"
           },
           {
+            "name": "publish_time",
             "docs": [
               "The timestamp of this price update in seconds"
             ],
-            "name": "publish_time",
             "type": "i64"
           },
           {
+            "name": "prev_publish_time",
             "docs": [
               "The timestamp of the previous price update. This field is intended to allow users to",
               "identify the single unique price update for any moment in time:",
@@ -6088,7 +6271,6 @@
               "where the aggregation was unsuccesful. This problem will go away once all publishers have",
               "migrated over to a recent version of pyth-agent."
             ],
-            "name": "prev_publish_time",
             "type": "i64"
           },
           {
@@ -6099,11 +6281,11 @@
             "name": "ema_conf",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
+      "name": "PriceUpdateV2",
       "docs": [
         "A price update account. This account is used by the Pyth Receiver program to store a verified price update from a Pyth price feed.",
         "It contains:",
@@ -6112,8 +6294,8 @@
         "- `price_message`: The actual price update.",
         "- `posted_slot`: The slot at which this price update was posted."
       ],
-      "name": "PriceUpdateV2",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "write_authority",
@@ -6139,13 +6321,13 @@
             "name": "posted_slot",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "ProgramApprovalV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "dao",
@@ -6159,13 +6341,13 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "RadioInfoV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "radio_id",
@@ -6175,13 +6357,13 @@
             "name": "elevation",
             "type": "i32"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "RecentProposal",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "proposal",
@@ -6191,25 +6373,25 @@
             "name": "ts",
             "type": "i64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "RevokeProgramArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "program_id",
             "type": "pubkey"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "RewardableEntityConfigV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "authority",
@@ -6239,13 +6421,13 @@
             "name": "staking_requirement",
             "type": "u64"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "SetEntityActiveArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "is_active",
@@ -6255,13 +6437,13 @@
             "name": "entity_key",
             "type": "bytes"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "SetMakerTreeArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "max_depth",
@@ -6271,13 +6453,37 @@
             "name": "max_buffer_size",
             "type": "u32"
           }
-        ],
-        "kind": "struct"
+        ]
+      }
+    },
+    {
+      "name": "SharedMerkleV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proof_size",
+            "type": "u8"
+          },
+          {
+            "name": "price_per_mint",
+            "type": "u64"
+          },
+          {
+            "name": "merkle_tree",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          }
+        ]
       }
     },
     {
       "name": "SubDaoV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "dao",
@@ -6296,10 +6502,10 @@
             "type": "pubkey"
           },
           {
+            "name": "delegator_pool",
             "docs": [
               "DEPRECATED: use dao.delegator_pool instead. But some people still need to claim old DNT rewards"
             ],
-            "name": "delegator_pool",
             "type": "pubkey"
           },
           {
@@ -6364,13 +6570,13 @@
             "name": "active_device_authority",
             "type": "pubkey"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "TempBackfillMobileInfoArgs",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "location",
@@ -6388,13 +6594,13 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "TempStandardizeEntityArgs",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "root",
@@ -6417,13 +6623,13 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "TreeConfig",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "tree_creator",
@@ -6453,13 +6659,13 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "UpdateIotInfoArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "location",
@@ -6510,13 +6716,13 @@
             "name": "index",
             "type": "u32"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "UpdateMakerArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "issuing_authority",
@@ -6530,13 +6736,13 @@
               "option": "pubkey"
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "UpdateMakerTreeArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "max_depth",
@@ -6546,13 +6752,13 @@
             "name": "max_buffer_size",
             "type": "u32"
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "UpdateMobileInfoArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "location",
@@ -6601,13 +6807,13 @@
               }
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
       "name": "UpdateRewardableEntityConfigArgsV0",
       "type": {
+        "kind": "struct",
         "fields": [
           {
             "name": "new_authority",
@@ -6631,11 +6837,11 @@
               "option": "u64"
             }
           }
-        ],
-        "kind": "struct"
+        ]
       }
     },
     {
+      "name": "VerificationLevel",
       "docs": [
         "Pyth price updates are bridged to all blockchains via Wormhole.",
         "Using the price updates on another chain requires verifying the signatures of the Wormhole guardians.",
@@ -6649,18 +6855,17 @@
         "# Warning",
         "Using partially verified price updates is dangerous, as it lowers the threshold of guardians that need to collude to produce a malicious price update."
       ],
-      "name": "VerificationLevel",
       "type": {
         "kind": "enum",
         "variants": [
           {
+            "name": "Partial",
             "fields": [
               {
                 "name": "num_signatures",
                 "type": "u8"
               }
-            ],
-            "name": "Partial"
+            ]
           },
           {
             "name": "Full"

@@ -1,7 +1,7 @@
 use crate::cmd::*;
 use helium_lib::{
     dc,
-    keypair::Pubkey,
+    keypair::{Pubkey, Signer},
     token::{Token, TokenAmount},
 };
 
@@ -32,10 +32,10 @@ pub struct Cmd {
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = opts.load_wallet()?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
 
         let client = opts.client()?;
-        let payee = self.payee.as_ref().unwrap_or(&wallet.public_key);
+        let payee = self.payee.unwrap_or(keypair.pubkey());
         let amount = match (self.hnt, self.dc) {
             (Some(hnt), None) => TokenAmount::from_f64(Token::Hnt, hnt),
             (None, Some(dc)) => TokenAmount::from_u64(Token::Dc, dc),
@@ -43,8 +43,7 @@ impl Cmd {
         };
         let transaction_opts = self.commit.transaction_opts(&client);
 
-        let keypair = wallet.decrypt(password.as_bytes())?;
-        let (tx, _) = dc::mint(&client, amount, payee, &keypair, &transaction_opts).await?;
+        let (tx, _) = dc::mint(&client, amount, &payee, &keypair, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

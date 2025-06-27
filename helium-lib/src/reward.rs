@@ -218,7 +218,6 @@ pub fn distribute_rewards_instruction_for_destination(
     token: ClaimableToken,
     ld_account: &lazy_distributor::accounts::LazyDistributorV0,
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
-    asset: &asset::Asset,
     destination_account: &Pubkey,
     payer: &Pubkey,
 ) -> Result<Instruction, Error> {
@@ -232,7 +231,7 @@ pub fn distribute_rewards_instruction_for_destination(
             system_program: solana_sdk::system_program::ID,
             token_program: anchor_spl::token::ID,
             circuit_breaker_program: circuit_breaker::ID,
-            owner: asset.ownership.owner,
+            owner: *destination_account,
             circuit_breaker: lazy_distributor_circuit_breaker(ld_account),
             recipient: token.recipient_key_from_kta(kta),
             destination_account: Token::from(token).associated_token_adress(destination_account),
@@ -349,7 +348,6 @@ pub fn claim_instructions_for_destination(
         common.token,
         common.ld_account,
         common.kta,
-        &common.asset,
         destination,
         common.payer,
     )?;
@@ -578,6 +576,22 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
             claim_ix.map(Some)
         })
         .try_collect()
+}
+
+pub async fn pending_amounts<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
+    client: &C,
+    token: ClaimableToken,
+    lifetime_rewards: Option<&HashMap<String, Vec<OracleReward>>>,
+    encoded_entity_keys: &[E],
+) -> Result<HashMap<String, TokenAmount>, Error> {
+    pending(client, token, lifetime_rewards, encoded_entity_keys)
+        .map_ok(|pending| {
+            pending
+                .into_iter()
+                .map(|(key, oracle_reward)| (key, oracle_reward.reward))
+                .collect()
+        })
+        .await
 }
 
 pub async fn pending<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
@@ -974,11 +988,10 @@ pub mod recipient {
             for_ktas(client, token, &ktas).await
         }
 
-        pub async fn update_instruction(
+        pub fn update_instruction(
             token: ClaimableToken,
             kta: &helium_entity_manager::accounts::KeyToAssetV0,
-            asset: &asset::Asset,
-            asset_proof: &asset::AssetProof,
+            asset_with_proof: &(asset::Asset, asset::AssetProof),
             destination: &Pubkey,
         ) -> Result<Instruction, Error> {
             use lazy_distributor::{
@@ -1001,6 +1014,7 @@ pub mod recipient {
                 }
             }
 
+            let (asset, asset_proof) = asset_with_proof;
             let mut accounts = mk_accounts(
                 asset.ownership.owner,
                 token,
@@ -1030,7 +1044,7 @@ pub mod recipient {
         }
 
         pub async fn update_message<
-            C: AsRef<SolanaRpcClient> + AsRef<DasClient>,
+            C: AsRef<SolanaRpcClient> + AsRef<DasClient> + GetAnchorAccount,
             E: AsEntityKey,
         >(
             client: &C,
@@ -1041,22 +1055,41 @@ pub mod recipient {
             opts: &TransactionOpts,
         ) -> Result<(message::VersionedMessage, u64), Error> {
             let kta = kta::for_entity_key(entity_key).await?;
-            let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
-            let ix = update_instruction(token, &kta, &asset, &asset_proof, destination).await?;
-            let ixs = &[
-                priority_fee::compute_budget_instruction(200_000),
-                priority_fee::compute_price_instruction_for_accounts(
-                    client,
-                    &ix.accounts,
-                    opts.fee_range(),
-                )
-                .await?,
-                ix,
-            ];
-            message::mk_message(client, ixs, &opts.lut_addresses, owner).await
+            let asset_with_proof = asset::for_kta_with_proof(client, &kta).await?;
+
+            let mut ix_accounts = vec![];
+            let init_ix = if recipient::for_kta(client, token, &kta).await?.is_none() {
+                let init_ix = init_instruction(token, &kta, &asset_with_proof, owner)?;
+                ix_accounts.extend_from_slice(&init_ix.accounts);
+                Some(init_ix)
+            } else {
+                None
+            };
+            let update_ix = update_instruction(token, &kta, &asset_with_proof, destination)?;
+            ix_accounts.extend_from_slice(&update_ix.accounts);
+            let ixs = [
+                Some(priority_fee::compute_budget_instruction(200_000)),
+                Some(
+                    priority_fee::compute_price_instruction_for_accounts(
+                        client,
+                        &ix_accounts,
+                        opts.fee_range(),
+                    )
+                    .await?,
+                ),
+                init_ix,
+                Some(update_ix),
+            ]
+            .into_iter()
+            .flatten()
+            .collect_vec();
+            message::mk_message(client, &ixs, &opts.lut_addresses, owner).await
         }
 
-        pub async fn update<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+        pub async fn update<
+            E: AsEntityKey,
+            C: AsRef<SolanaRpcClient> + AsRef<DasClient> + GetAnchorAccount,
+        >(
             client: &C,
             token: ClaimableToken,
             entity_key: &E,

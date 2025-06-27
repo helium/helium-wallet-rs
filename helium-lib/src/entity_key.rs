@@ -87,7 +87,9 @@ impl From<EntityKeyEncoding> for KeySerialization {
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct EncodedEntityKey {
     #[cfg_attr(feature="clap", clap(long, default_value_t = EntityKeyEncoding::UTF8))]
+    /// Encoding of entity key
     pub encoding: EntityKeyEncoding,
+    /// Entity key of asset
     pub entity_key: String,
 }
 

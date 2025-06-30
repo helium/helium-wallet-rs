@@ -497,8 +497,10 @@ pub mod config {
 
         pub async fn stream_info(
             &mut self,
-        ) -> Result<BoxStream<Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>, Error>
-        {
+        ) -> Result<
+            BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
+            Error,
+        > {
             match self {
                 Self::Iot(client) => client.stream_info().await,
                 Self::Mobile(client) => client.stream_info().await,
@@ -584,7 +586,7 @@ pub mod config {
             pub async fn stream_info(
                 &mut self,
             ) -> Result<
-                BoxStream<Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
+                BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
                 let mut req = GatewayInfoStreamReqV1 {
@@ -736,7 +738,7 @@ pub mod config {
             pub async fn stream_info(
                 &mut self,
             ) -> Result<
-                BoxStream<Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
+                BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
                 let mut req = GatewayInfoStreamReqV2 {

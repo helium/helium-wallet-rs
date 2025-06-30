@@ -51,8 +51,8 @@ sha2 = { workspace = true }
 clap = { workspace = true, optional = true }
 helium-mnemonic = { path = "../helium-mnemonic", optional = true }
 bytemuck = "1"
-# solana-transaction-utils = { path = "../../tuktuk/solana-transaction-utils" }
-solana-transaction-utils = "0.3"
+solana-transaction-utils = { version = ">= 0.4" }
+tuktuk-sdk = { git = "https://github.com/helium/tuktuk.git", branch = "main" }
 
 [dev-dependencies]
 rand = "0.8"

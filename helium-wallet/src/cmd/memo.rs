@@ -15,8 +15,7 @@ pub struct Cmd {
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let password = get_wallet_password(false)?;
-        let wallet = opts.load_wallet()?;
-        let keypair = wallet.decrypt(password.as_bytes())?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
         let (tx, _) =

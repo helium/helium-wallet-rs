@@ -5,7 +5,7 @@ use crate::{
 use helium_lib::{
     b64,
     client::{self, SolanaRpcClient},
-    keypair::Keypair,
+    keypair::{Keypair, Pubkey},
     message, priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
@@ -55,6 +55,15 @@ pub struct Opts {
 }
 
 impl Opts {
+    pub fn maybe_wallet_key(&self, wallet: Option<Pubkey>) -> Result<Pubkey> {
+        let pubkey = if let Some(pubkey) = wallet {
+            pubkey
+        } else {
+            self.load_wallet()?.public_key
+        };
+        Ok(pubkey)
+    }
+
     pub fn load_wallet(&self) -> Result<Wallet> {
         let mut files_iter = self.files.iter();
         let mut first_wallet = match files_iter.next() {

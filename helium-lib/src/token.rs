@@ -177,16 +177,14 @@ pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
         .await?
         .value
     {
-        Some(account) if account.owner == solana_sdk::system_program::ID => {
-            Ok(Some(Token::Sol.to_balance(*pubkey, account.lamports)))
-        }
-        Some(account) => {
+        Some(account) if account.owner == anchor_spl::token::spl_token::ID => {
             let token_account =
                 anchor_spl::token::TokenAccount::try_deserialize(&mut account.data.as_slice())?;
             let token = Token::from_mint(token_account.mint)
                 .ok_or_else(|| DecodeError::other("Invalid mint"))?;
             Ok(Some(token.to_balance(*pubkey, token_account.amount)))
         }
+        Some(account) => Ok(Some(Token::Sol.to_balance(*pubkey, account.lamports))),
         None => Ok(None),
     }
 }
@@ -385,7 +383,7 @@ impl Token {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Default)]
 pub struct TokenBalance {
     #[serde(with = "serde_pubkey")]
     pub address: Pubkey,
@@ -453,7 +451,7 @@ impl serde::Serialize for TokenAmount {
 impl Default for TokenAmount {
     fn default() -> Self {
         Self {
-            token: Token::Dc,
+            token: Token::Sol,
             amount: 0,
         }
     }

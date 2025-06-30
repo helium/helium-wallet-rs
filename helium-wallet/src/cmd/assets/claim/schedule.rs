@@ -21,6 +21,7 @@ impl Cmd {
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum Command {
     Init(InitCmd),
+    Requeue(RequeueCmd),
     Info(InfoCmd),
     Close(CloseCmd),
     Wallet(ClaimWalletCmd),
@@ -33,6 +34,7 @@ impl Command {
             Self::Wallet(cmd) => cmd.run(opts).await,
             Self::One(cmd) => cmd.run(opts).await,
             Self::Init(cmd) => cmd.run(opts).await,
+            Self::Requeue(cmd) => cmd.run(opts).await,
             Self::Info(cmd) => cmd.run(opts).await,
             Self::Close(cmd) => cmd.run(opts).await,
         }
@@ -98,6 +100,36 @@ impl InitCmd {
             0,
             (&self.schedule, SCHEDULE_NAME),
             fund,
+            &keypair,
+            &transaction_opts,
+        )
+        .await?;
+
+        print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
+    }
+}
+
+/// Requeue the scedule for this wallet
+///
+/// Use this command to restart the schedule once it is re-funded after running out of SOL.
+#[derive(Clone, Debug, clap::Args)]
+pub struct RequeueCmd {
+    #[command(flatten)]
+    commit: CommitOpts,
+}
+
+impl RequeueCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let client = opts.client()?;
+        let transaction_opts = self.commit.transaction_opts(&client);
+
+        let password = get_wallet_password(false)?;
+        let keypair = opts.load_keypair(password.as_bytes())?;
+        let (tx, _) = schedule::requeue(
+            &client,
+            &queue::TASK_QUEUE_ID,
+            0,
+            SCHEDULE_NAME,
             &keypair,
             &transaction_opts,
         )

@@ -139,6 +139,90 @@ pub async fn init<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccoun
     Ok((txn, block_height))
 }
 
+pub fn requeue_instruction(
+    task_queue_key: &Pubkey,
+    task_queue: &TaskQueueV0,
+    cron_id: u32,
+    name: &str,
+    payer: &Pubkey,
+) -> Result<Instruction, Error> {
+    fn mk_accounts(
+        task_queue_key: &Pubkey,
+        task_id: u16,
+        job_id: u32,
+        name: &str,
+        payer: &Pubkey,
+    ) -> impl ToAccountMetas {
+        let queue_authority = tuktuk::task_queue::queue_authority_key(&hpl_crons::ID);
+        let task_queue_authority =
+            queue::task_queue_authority_key(task_queue_key, &queue_authority);
+        let user_authority = *payer;
+        let authority = entity_cron_authority_key(&user_authority);
+        let cron_job = tuktuk::cron::cron_job_key(&authority, job_id);
+        hpl_crons::client::accounts::RequeueEntityClaimCronV0 {
+            payer: *payer,
+            queue_authority,
+            task_queue_authority,
+            user_authority,
+            authority,
+            user_cron_jobs: tuktuk::cron::user_cron_jobs_key(&authority),
+            cron_job,
+            cron_job_name_mapping: tuktuk::cron::name_mapping_key(&authority, name),
+            task_queue: *task_queue_key,
+            task: tuktuk::task::key(task_queue_key, task_id),
+            task_return_account_1: tuktuk::cron::task_return_account_1_key(&cron_job),
+            task_return_account_2: tuktuk::cron::task_return_account_2_key(&cron_job),
+            cron_program: tuktuk_program::cron::ID,
+            tuktuk_program: tuktuk_program::tuktuk::ID,
+            system_program: solana_sdk::system_program::ID,
+        }
+    }
+
+    let task_id = tuktuk::task_queue::next_available_task_ids_from(task_queue, 1, 0)?[0];
+    let accounts = mk_accounts(task_queue_key, task_id, cron_id, name, payer);
+    let ix = Instruction {
+        program_id: hpl_crons::ID,
+        accounts: accounts.to_account_metas(None),
+        data: hpl_crons::client::args::RequeueEntityClaimCronV0 {}.data(),
+    };
+    Ok(ix)
+}
+
+pub async fn requeue<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+    client: &C,
+    task_queue_key: &Pubkey,
+    cron_id: u32,
+    name: &str,
+    keypair: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let task_queue = client.anchor_account(task_queue_key).await?;
+
+    let ix = requeue_instruction(
+        task_queue_key,
+        &task_queue,
+        cron_id,
+        name,
+        &keypair.pubkey(),
+    )?;
+
+    let ixs = [
+        priority_fee::compute_budget_instruction(100_000),
+        priority_fee::compute_price_instruction_for_accounts(
+            client,
+            &ix.accounts,
+            opts.fee_range(),
+        )
+        .await?,
+        ix,
+    ];
+
+    let (msg, block_height) =
+        message::mk_message(client, &ixs, &opts.lut_addresses, &keypair.pubkey()).await?;
+    let txn = mk_transaction(msg, &[keypair])?;
+    Ok((txn, block_height))
+}
+
 pub const CU_CLOSE: u32 = 60_000;
 
 pub fn close_instruction(cron_id: u32, name: &str, payer: &Pubkey) -> Result<Instruction, Error> {

@@ -10,7 +10,7 @@ pub struct Cmd {
     /// Public Helium payer key to delegate to
     payer: String,
 
-    /// Amount of DC to delgate
+    /// Amount of DC to delegate
     dc: u64,
 
     /// Commit the delegation

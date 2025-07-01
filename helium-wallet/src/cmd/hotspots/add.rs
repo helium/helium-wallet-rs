@@ -69,7 +69,7 @@ struct IotCmd {
 
     /// The elevation for the asserted IoT Hotspot in meters above ground level.
     ///
-    /// Defaults to the last assserted value. For negative values use '=', for
+    /// Defaults to the last asserted value. For negative values use '=', for
     /// example: "--elevation=-xx".
     #[arg(long)]
     elevation: Option<i32>,
@@ -277,7 +277,7 @@ struct MobileCert {
     /// Overwrite existing files
     #[arg(long)]
     force: bool,
-    /// Ouptut path prefix
+    /// Output path prefix
     ///
     /// On success, the certification will be stored in <output>/<hotspot>.cer
     /// and the private key in <output>/<hotspot>.pk

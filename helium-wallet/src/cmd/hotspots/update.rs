@@ -42,7 +42,7 @@ pub struct Cmd {
 
     /// The elevation for the asserted Hotspot in meters above ground level.
     ///
-    /// Defaults to the last assserted value. For negative values use '=', for
+    /// Defaults to the last asserted value. For negative values use '=', for
     /// example: "--elevation=-xx".
     #[arg(long)]
     elevation: Option<i32>,

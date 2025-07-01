@@ -10,7 +10,7 @@ use helium_wallet::{
 static START: std::sync::Once = std::sync::Once::new();
 
 fn init() {
-    START.call_once(|| sodiumoxide::init().expect("Failed to intialize sodium"))
+    START.call_once(|| sodiumoxide::init().expect("Failed to initialize sodium"))
 }
 
 #[derive(Debug, Parser)]

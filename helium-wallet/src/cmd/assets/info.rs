@@ -1,11 +1,9 @@
 use crate::cmd::*;
-use helium_lib::{asset, dao::SubDao, entity_key, keypair};
+use helium_lib::{asset, entity_key, keypair};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Get details for a given asset
 pub struct Cmd {
-    /// Subdao for command
-    subdao: SubDao,
     /// Display raw asset data
     #[arg(long)]
     raw: bool,

@@ -5,12 +5,13 @@ use crate::{
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
     message, priority_fee,
-    solana_sdk::{commitment_config::CommitmentConfig, signer::Signer, system_instruction},
+    solana_sdk::{account::Account, signer::Signer, system_instruction},
     transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt, TryStreamExt};
+use itertools::Itertools;
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
 #[derive(Debug, thiserror::Error)]
@@ -171,22 +172,26 @@ pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
     client: &C,
     pubkey: &Pubkey,
 ) -> Result<Option<TokenBalance>, Error> {
-    match client
-        .as_ref()
-        .get_account_with_commitment(pubkey, CommitmentConfig::confirmed())
-        .await?
-        .value
-    {
-        Some(account) if account.owner == solana_sdk::system_program::ID => {
-            Ok(Some(Token::Sol.to_balance(*pubkey, account.lamports)))
-        }
-        Some(account) => {
+    let solana_client = client.as_ref();
+    to_token_balance(
+        *pubkey,
+        solana_client
+            .get_account_with_commitment(pubkey, solana_client.commitment())
+            .await?
+            .value,
+    )
+}
+
+fn to_token_balance(pubkey: Pubkey, value: Option<Account>) -> Result<Option<TokenBalance>, Error> {
+    match value {
+        Some(account) if account.owner == anchor_spl::token::spl_token::ID => {
             let token_account =
                 anchor_spl::token::TokenAccount::try_deserialize(&mut account.data.as_slice())?;
             let token = Token::from_mint(token_account.mint)
                 .ok_or_else(|| DecodeError::other("Invalid mint"))?;
-            Ok(Some(token.to_balance(*pubkey, token_account.amount)))
+            Ok(Some(token.to_balance(pubkey, token_account.amount)))
         }
+        Some(account) => Ok(Some(Token::Sol.to_balance(pubkey, account.lamports))),
         None => Ok(None),
     }
 }
@@ -194,13 +199,26 @@ pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
 pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
     client: &C,
     pubkeys: &[Pubkey],
-) -> Result<Vec<TokenBalance>, Error> {
-    stream::iter(pubkeys)
-        .map(|pubkey| balance_for_address(client, pubkey))
-        .buffered(10)
-        .filter_map(|result| async { result.transpose() })
+) -> Result<Vec<Option<TokenBalance>>, Error> {
+    let maybe_accounts = stream::iter(pubkeys.to_owned())
+        .chunks(100)
+        .map(|key_chunk| async move {
+            client
+                .as_ref()
+                .get_multiple_accounts(key_chunk.as_slice())
+                .await
+        })
+        .buffered(5)
+        .try_collect::<Vec<Vec<Option<Account>>>>()
+        .await?
+        .into_iter()
+        .flatten()
+        .collect_vec();
+    pubkeys
+        .iter()
+        .zip_eq(maybe_accounts)
+        .map(|(pubkey, maybe_account)| to_token_balance(*pubkey, maybe_account))
         .try_collect()
-        .await
 }
 
 pub mod price {
@@ -385,7 +403,7 @@ impl Token {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Default)]
 pub struct TokenBalance {
     #[serde(with = "serde_pubkey")]
     pub address: Pubkey,
@@ -396,12 +414,14 @@ pub struct TokenBalance {
 #[derive(Debug, serde::Serialize)]
 pub struct TokenBalanceMap(HashMap<Token, TokenBalance>);
 
-impl From<Vec<TokenBalance>> for TokenBalanceMap {
-    fn from(value: Vec<TokenBalance>) -> Self {
+impl From<Vec<Option<TokenBalance>>> for TokenBalanceMap {
+    fn from(value: Vec<Option<TokenBalance>>) -> Self {
         Self(
             value
                 .into_iter()
-                .map(|balance| (balance.amount.token, balance))
+                .filter_map(|maybe_balance| {
+                    maybe_balance.map(|balance| (balance.amount.token, balance))
+                })
                 .collect(),
         )
     }
@@ -453,7 +473,7 @@ impl serde::Serialize for TokenAmount {
 impl Default for TokenAmount {
     fn default() -> Self {
         Self {
-            token: Token::Dc,
+            token: Token::Sol,
             amount: 0,
         }
     }

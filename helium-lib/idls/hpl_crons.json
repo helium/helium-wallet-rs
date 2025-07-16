@@ -1,29 +1,239 @@
 {
+  "accounts": [
+    {
+      "discriminator": [
+        69,
+        161,
+        189,
+        23,
+        250,
+        59,
+        67,
+        157
+      ],
+      "name": "CronJobV0"
+    },
+    {
+      "discriminator": [
+        101,
+        75,
+        232,
+        141,
+        239,
+        45,
+        29,
+        205
+      ],
+      "name": "DaoV0"
+    },
+    {
+      "discriminator": [
+        251,
+        212,
+        32,
+        100,
+        102,
+        1,
+        247,
+        81
+      ],
+      "name": "DelegatedPositionV0"
+    },
+    {
+      "discriminator": [
+        116,
+        40,
+        63,
+        51,
+        6,
+        212,
+        146,
+        37
+      ],
+      "name": "DelegationClaimBotV0"
+    },
+    {
+      "discriminator": [
+        191,
+        238,
+        188,
+        151,
+        33,
+        56,
+        222,
+        53
+      ],
+      "name": "EpochTrackerV0"
+    },
+    {
+      "discriminator": [
+        234,
+        40,
+        244,
+        64,
+        154,
+        171,
+        29,
+        177
+      ],
+      "name": "KeyToAssetV0"
+    },
+    {
+      "discriminator": [
+        243,
+        189,
+        126,
+        191,
+        59,
+        72,
+        255,
+        68
+      ],
+      "name": "OrganizationV0"
+    },
+    {
+      "discriminator": [
+        152,
+        131,
+        154,
+        46,
+        158,
+        42,
+        31,
+        233
+      ],
+      "name": "PositionV0"
+    },
+    {
+      "discriminator": [
+        162,
+        41,
+        210,
+        200,
+        205,
+        177,
+        228,
+        11
+      ],
+      "name": "ProposalConfigV0"
+    },
+    {
+      "discriminator": [
+        254,
+        194,
+        16,
+        171,
+        214,
+        20,
+        192,
+        81
+      ],
+      "name": "ProposalV0"
+    },
+    {
+      "discriminator": [
+        83,
+        225,
+        185,
+        120,
+        185,
+        31,
+        200,
+        178
+      ],
+      "name": "ProxyMarkerV0"
+    },
+    {
+      "discriminator": [
+        169,
+        38,
+        51,
+        69,
+        190,
+        118,
+        10,
+        130
+      ],
+      "name": "ResolutionSettingsV0"
+    },
+    {
+      "discriminator": [
+        19,
+        5,
+        31,
+        112,
+        144,
+        214,
+        82,
+        128
+      ],
+      "name": "SubDaoV0"
+    },
+    {
+      "discriminator": [
+        206,
+        37,
+        171,
+        34,
+        162,
+        191,
+        47,
+        50
+      ],
+      "name": "TaskQueueAuthorityV0"
+    },
+    {
+      "discriminator": [
+        150,
+        24,
+        232,
+        159,
+        105,
+        32,
+        161,
+        17
+      ],
+      "name": "TaskQueueV0"
+    },
+    {
+      "discriminator": [
+        83,
+        205,
+        59,
+        215,
+        144,
+        234,
+        43,
+        70
+      ],
+      "name": "VoteMarkerV0"
+    }
+  ],
   "address": "hcrLPFgFUY6sCUKzqLWxXx5bntDiDCrAZVcrXfx9AHu",
-  "metadata": {
-    "name": "hpl_crons",
-    "version": "0.1.0",
-    "spec": "0.1.0",
-    "description": "Created with Anchor"
-  },
+  "errors": [
+    {
+      "code": 6000,
+      "msg": "Task already exists",
+      "name": "TaskAlreadyExists"
+    },
+    {
+      "code": 6001,
+      "msg": "Cron job not removed from queue",
+      "name": "CronJobNotRemovedFromQueue"
+    },
+    {
+      "code": 6002,
+      "msg": "Proposal is not in voting state",
+      "name": "NotVoting"
+    }
+  ],
   "instructions": [
     {
-      "name": "add_entity_to_cron_v0",
-      "discriminator": [
-        97,
-        170,
-        185,
-        241,
-        66,
-        182,
-        205,
-        240
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true
+          "signer": true,
+          "writable": true
         },
         {
           "name": "user_authority",
@@ -81,12 +291,12 @@
           "writable": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         },
         {
-          "name": "cron_program",
-          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM"
+          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM",
+          "name": "cron_program"
         }
       ],
       "args": [
@@ -98,25 +308,25 @@
             }
           }
         }
-      ]
+      ],
+      "discriminator": [
+        97,
+        170,
+        185,
+        241,
+        66,
+        182,
+        205,
+        240
+      ],
+      "name": "add_entity_to_cron_v0"
     },
     {
-      "name": "add_wallet_to_entity_cron_v0",
-      "discriminator": [
-        82,
-        211,
-        149,
-        182,
-        33,
-        248,
-        38,
-        221
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true
+          "signer": true,
+          "writable": true
         },
         {
           "name": "user_authority",
@@ -174,12 +384,12 @@
           "writable": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         },
         {
-          "name": "cron_program",
-          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM"
+          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM",
+          "name": "cron_program"
         }
       ],
       "args": [
@@ -191,31 +401,30 @@
             }
           }
         }
-      ]
+      ],
+      "discriminator": [
+        82,
+        211,
+        149,
+        182,
+        33,
+        248,
+        38,
+        221
+      ],
+      "name": "add_wallet_to_entity_cron_v0"
     },
     {
-      "name": "close_delegation_claim_bot_v0",
-      "discriminator": [
-        179,
-        253,
-        116,
-        240,
-        158,
-        179,
-        143,
-        119
-      ],
       "accounts": [
         {
           "name": "rent_refund",
-          "writable": true,
           "relations": [
             "delegation_claim_bot"
-          ]
+          ],
+          "writable": true
         },
         {
           "name": "delegation_claim_bot",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -252,7 +461,8 @@
                 "path": "delegated_position"
               }
             ]
-          }
+          },
+          "writable": true
         },
         {
           "name": "task_queue",
@@ -286,33 +496,306 @@
           "name": "position_token_account"
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         }
       ],
-      "args": []
+      "args": [],
+      "discriminator": [
+        179,
+        253,
+        116,
+        240,
+        158,
+        179,
+        143,
+        119
+      ],
+      "name": "close_delegation_claim_bot_v0"
     },
     {
-      "name": "init_delegation_claim_bot_v0",
-      "discriminator": [
-        89,
-        208,
-        67,
-        221,
-        116,
-        150,
-        125,
-        124
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "rent_refund",
+          "writable": true
+        },
+        {
+          "name": "user_authority",
           "signer": true
         },
         {
+          "name": "authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121,
+                  95,
+                  99,
+                  114,
+                  111,
+                  110,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user_authority"
+              }
+            ]
+          },
+          "relations": [
+            "cron_job"
+          ]
+        },
+        {
+          "name": "user_cron_jobs",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "cron_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  99,
+                  114,
+                  111,
+                  110,
+                  95,
+                  106,
+                  111,
+                  98,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "cron_job",
+          "writable": true
+        },
+        {
+          "name": "cron_job_name_mapping",
+          "writable": true
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        },
+        {
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
+        },
+        {
+          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM",
+          "name": "cron_program"
+        },
+        {
+          "name": "task_return_account_1",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                9,
+                47,
+                165,
+                13,
+                189,
+                205,
+                94,
+                28,
+                48,
+                145,
+                65,
+                48,
+                140,
+                173,
+                139,
+                113,
+                33,
+                56,
+                230,
+                106,
+                235,
+                228,
+                113,
+                19,
+                59,
+                9,
+                148,
+                43,
+                37,
+                230,
+                128,
+                162
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  115,
+                  107,
+                  95,
+                  114,
+                  101,
+                  116,
+                  117,
+                  114,
+                  110,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  95,
+                  49
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cron_job"
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "task_return_account_2",
+          "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                9,
+                47,
+                165,
+                13,
+                189,
+                205,
+                94,
+                28,
+                48,
+                145,
+                65,
+                48,
+                140,
+                173,
+                139,
+                113,
+                33,
+                56,
+                230,
+                106,
+                235,
+                228,
+                113,
+                19,
+                59,
+                9,
+                148,
+                43,
+                37,
+                230,
+                128,
+                162
+              ]
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  115,
+                  107,
+                  95,
+                  114,
+                  101,
+                  116,
+                  117,
+                  114,
+                  110,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  95,
+                  50
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cron_job"
+              }
+            ]
+          },
+          "writable": true
+        }
+      ],
+      "args": [],
+      "discriminator": [
+        224,
+        5,
+        69,
+        48,
+        156,
+        173,
+        52,
+        119
+      ],
+      "name": "close_entity_claim_cron_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
           "name": "delegation_claim_bot",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -349,7 +832,8 @@
                 "path": "delegated_position"
               }
             ]
-          }
+          },
+          "writable": true
         },
         {
           "name": "task_queue"
@@ -377,29 +861,29 @@
           "name": "position_token_account"
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         }
       ],
-      "args": []
+      "args": [],
+      "discriminator": [
+        89,
+        208,
+        67,
+        221,
+        116,
+        150,
+        125,
+        124
+      ],
+      "name": "init_delegation_claim_bot_v0"
     },
     {
-      "name": "init_entity_claim_cron_v0",
-      "discriminator": [
-        37,
-        187,
-        240,
-        226,
-        194,
-        89,
-        213,
-        57
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true
+          "signer": true,
+          "writable": true
         },
         {
           "name": "queue_authority",
@@ -431,6 +915,10 @@
         {
           "name": "task_queue_authority",
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -465,11 +953,7 @@
                 "kind": "account",
                 "path": "queue_authority"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
+            ]
           }
         },
         {
@@ -515,8 +999,11 @@
         },
         {
           "name": "user_cron_jobs",
-          "writable": true,
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "cron_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -541,12 +1028,9 @@
                 "kind": "account",
                 "path": "authority"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "cron_program"
-            }
-          }
+            ]
+          },
+          "writable": true
         },
         {
           "name": "cron_job",
@@ -566,8 +1050,11 @@
         },
         {
           "name": "task_return_account_1",
-          "writable": true,
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "cron_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -599,17 +1086,17 @@
                 "kind": "account",
                 "path": "cron_job"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "cron_program"
-            }
-          }
+            ]
+          },
+          "writable": true
         },
         {
           "name": "task_return_account_2",
-          "writable": true,
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "cron_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -641,24 +1128,21 @@
                 "kind": "account",
                 "path": "cron_job"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "cron_program"
-            }
-          }
+            ]
+          },
+          "writable": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         },
         {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
         },
         {
-          "name": "cron_program",
-          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM"
+          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM",
+          "name": "cron_program"
         }
       ],
       "args": [
@@ -670,29 +1154,28 @@
             }
           }
         }
-      ]
+      ],
+      "discriminator": [
+        37,
+        187,
+        240,
+        226,
+        194,
+        89,
+        213,
+        57
+      ],
+      "name": "init_entity_claim_cron_v0"
     },
     {
-      "name": "init_epoch_tracker",
-      "discriminator": [
-        44,
-        33,
-        73,
-        242,
-        202,
-        156,
-        162,
-        152
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true
+          "signer": true,
+          "writable": true
         },
         {
           "name": "epoch_tracker",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -718,7 +1201,8 @@
                 "path": "dao"
               }
             ]
-          }
+          },
+          "writable": true
         },
         {
           "name": "dao"
@@ -727,31 +1211,31 @@
           "name": "authority"
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         }
       ],
-      "args": []
+      "args": [],
+      "discriminator": [
+        44,
+        33,
+        73,
+        242,
+        202,
+        156,
+        162,
+        152
+      ],
+      "name": "init_epoch_tracker"
     },
     {
-      "name": "queue_delegation_claim_v0",
-      "discriminator": [
-        122,
-        22,
-        157,
-        231,
-        109,
-        200,
-        155,
-        2
-      ],
       "accounts": [
         {
           "name": "rent_refund",
-          "writable": true,
           "relations": [
             "delegation_claim_bot"
-          ]
+          ],
+          "writable": true
         },
         {
           "name": "delegation_claim_bot",
@@ -759,37 +1243,7 @@
         },
         {
           "name": "payer",
-          "writable": true,
-          "signer": true,
           "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  117,
-                  115,
-                  116,
-                  111,
-                  109
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "task_queue"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  104,
-                  101,
-                  108,
-                  105,
-                  117,
-                  109
-                ]
-              }
-            ],
             "program": {
               "kind": "const",
               "value": [
@@ -826,14 +1280,79 @@
                 43,
                 21
               ]
-            }
-          }
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  115,
+                  116,
+                  111,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task_queue"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  101,
+                  108,
+                  105,
+                  117,
+                  109
+                ]
+              }
+            ]
+          },
+          "signer": true,
+          "writable": true
         },
         {
           "name": "position_claim_payer",
-          "writable": true,
-          "signer": true,
           "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                13,
+                76,
+                70,
+                9,
+                57,
+                241,
+                194,
+                170,
+                222,
+                60,
+                41,
+                201,
+                147,
+                62,
+                217,
+                203,
+                139,
+                89,
+                45,
+                87,
+                176,
+                98,
+                76,
+                21,
+                182,
+                104,
+                119,
+                57,
+                144,
+                219,
+                43,
+                21
+              ]
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -863,52 +1382,17 @@
                   110
                 ]
               }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                13,
-                76,
-                70,
-                9,
-                57,
-                241,
-                194,
-                170,
-                222,
-                60,
-                41,
-                201,
-                147,
-                62,
-                217,
-                203,
-                139,
-                89,
-                45,
-                87,
-                176,
-                98,
-                76,
-                21,
-                182,
-                104,
-                119,
-                57,
-                144,
-                219,
-                43,
-                21
-              ]
-            }
-          }
+            ]
+          },
+          "signer": true,
+          "writable": true
         },
         {
           "name": "task_queue",
-          "writable": true,
           "relations": [
             "delegation_claim_bot"
-          ]
+          ],
+          "writable": true
         },
         {
           "name": "delegated_position",
@@ -955,6 +1439,43 @@
         {
           "name": "delegator_ata",
           "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
             "seeds": [
               {
                 "kind": "account",
@@ -1001,49 +1522,11 @@
                 "kind": "account",
                 "path": "hnt_mint"
               }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
+            ]
           }
         },
         {
           "name": "task_return_account",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1071,14 +1554,26 @@
                 ]
               }
             ]
-          }
+          },
+          "writable": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         }
       ],
       "args": [],
+      "discriminator": [
+        122,
+        22,
+        157,
+        231,
+        109,
+        200,
+        155,
+        2
+      ],
+      "name": "queue_delegation_claim_v0",
       "returns": {
         "defined": {
           "name": "RunTaskReturnV0"
@@ -1086,51 +1581,10 @@
       }
     },
     {
-      "name": "queue_end_epoch",
-      "discriminator": [
-        63,
-        134,
-        90,
-        159,
-        249,
-        131,
-        56,
-        181
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true,
           "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  117,
-                  115,
-                  116,
-                  111,
-                  109
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "task_queue"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  104,
-                  101,
-                  108,
-                  105,
-                  117,
-                  109
-                ]
-              }
-            ],
             "program": {
               "kind": "const",
               "value": [
@@ -1167,12 +1621,41 @@
                 43,
                 21
               ]
-            }
-          }
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  115,
+                  116,
+                  111,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task_queue"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  104,
+                  101,
+                  108,
+                  105,
+                  117,
+                  109
+                ]
+              }
+            ]
+          },
+          "signer": true,
+          "writable": true
         },
         {
           "name": "epoch_tracker",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1198,7 +1681,8 @@
                 "path": "dao"
               }
             ]
-          }
+          },
+          "writable": true
         },
         {
           "name": "dao"
@@ -1211,7 +1695,6 @@
         },
         {
           "name": "task_return_account",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1239,17 +1722,29 @@
                 ]
               }
             ]
-          }
+          },
+          "writable": true
         },
         {
           "name": "task_queue"
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         }
       ],
       "args": [],
+      "discriminator": [
+        63,
+        134,
+        90,
+        159,
+        249,
+        131,
+        56,
+        181
+      ],
+      "name": "queue_end_epoch",
       "returns": {
         "defined": {
           "name": "RunTaskReturnV0"
@@ -1257,22 +1752,11 @@
       }
     },
     {
-      "name": "queue_proxy_vote_v0",
-      "discriminator": [
-        101,
-        198,
-        108,
-        0,
-        198,
-        167,
-        210,
-        107
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true
+          "signer": true,
+          "writable": true
         },
         {
           "name": "voter",
@@ -1285,8 +1769,44 @@
         },
         {
           "name": "pda_wallet",
-          "writable": true,
           "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                13,
+                76,
+                70,
+                9,
+                57,
+                241,
+                194,
+                170,
+                222,
+                60,
+                41,
+                201,
+                147,
+                62,
+                217,
+                203,
+                139,
+                89,
+                45,
+                87,
+                176,
+                98,
+                76,
+                21,
+                182,
+                104,
+                119,
+                57,
+                144,
+                219,
+                43,
+                21
+              ]
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -1322,7 +1842,522 @@
                 "kind": "account",
                 "path": "voter"
               }
-            ],
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "queue_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "task_queue",
+          "writable": true
+        },
+        {
+          "name": "task_queue_authority",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  115,
+                  107,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task_queue"
+              },
+              {
+                "kind": "account",
+                "path": "queue_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "QueueProxyVoteArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        101,
+        198,
+        108,
+        0,
+        198,
+        167,
+        210,
+        107
+      ],
+      "name": "queue_proxy_vote_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "marker"
+        },
+        {
+          "name": "queue_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "task_queue",
+          "writable": true
+        },
+        {
+          "name": "task_queue_authority",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  115,
+                  107,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task_queue"
+              },
+              {
+                "kind": "account",
+                "path": "queue_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "QueueRelinquishExpiredProxyVoteMarkerArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        32,
+        151,
+        77,
+        67,
+        105,
+        39,
+        253,
+        18
+      ],
+      "name": "queue_relinquish_expired_proxy_vote_marker_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "voter",
+          "relations": [
+            "marker"
+          ],
+          "signer": true
+        },
+        {
+          "name": "marker"
+        },
+        {
+          "name": "position"
+        },
+        {
+          "name": "queue_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "task_queue",
+          "writable": true
+        },
+        {
+          "name": "task_queue_authority",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  115,
+                  107,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task_queue"
+              },
+              {
+                "kind": "account",
+                "path": "queue_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "QueueRelinquishExpiredVoteMarkerArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        167,
+        205,
+        171,
+        209,
+        26,
+        162,
+        106,
+        92
+      ],
+      "name": "queue_relinquish_expired_vote_marker_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "namespace"
+        },
+        {
+          "name": "proposal"
+        },
+        {
+          "name": "proposal_config",
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "state_controller",
+          "relations": [
+            "proposal_config"
+          ]
+        },
+        {
+          "name": "queue_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          },
+          "writable": true
+        },
+        {
+          "name": "task_queue",
+          "writable": true
+        },
+        {
+          "name": "task_queue_authority",
+          "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  115,
+                  107,
+                  95,
+                  113,
+                  117,
+                  101,
+                  117,
+                  101,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task_queue"
+              },
+              {
+                "kind": "account",
+                "path": "queue_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
+        },
+        {
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "QueueResolveProposalArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        156,
+        74,
+        208,
+        50,
+        116,
+        209,
+        179,
+        223
+      ],
+      "name": "queue_resolve_proposal_v0"
+    },
+    {
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "writable": true
+        },
+        {
+          "name": "wallet"
+        },
+        {
+          "name": "pda_wallet",
+          "pda": {
             "program": {
               "kind": "const",
               "value": [
@@ -1359,522 +2394,7 @@
                 43,
                 21
               ]
-            }
-          }
-        },
-        {
-          "name": "queue_authority",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "task_queue",
-          "writable": true
-        },
-        {
-          "name": "task_queue_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  97,
-                  115,
-                  107,
-                  95,
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "task_queue"
-              },
-              {
-                "kind": "account",
-                "path": "queue_authority"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
-          }
-        },
-        {
-          "name": "task",
-          "writable": true
-        },
-        {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "args",
-          "type": {
-            "defined": {
-              "name": "QueueProxyVoteArgsV0"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "queue_relinquish_expired_proxy_vote_marker_v0",
-      "discriminator": [
-        32,
-        151,
-        77,
-        67,
-        105,
-        39,
-        253,
-        18
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "marker"
-        },
-        {
-          "name": "queue_authority",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "task_queue",
-          "writable": true
-        },
-        {
-          "name": "task_queue_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  97,
-                  115,
-                  107,
-                  95,
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "task_queue"
-              },
-              {
-                "kind": "account",
-                "path": "queue_authority"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
-          }
-        },
-        {
-          "name": "task",
-          "writable": true
-        },
-        {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "args",
-          "type": {
-            "defined": {
-              "name": "QueueRelinquishExpiredProxyVoteMarkerArgsV0"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "queue_relinquish_expired_vote_marker_v0",
-      "discriminator": [
-        167,
-        205,
-        171,
-        209,
-        26,
-        162,
-        106,
-        92
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "voter",
-          "signer": true,
-          "relations": [
-            "marker"
-          ]
-        },
-        {
-          "name": "marker"
-        },
-        {
-          "name": "position"
-        },
-        {
-          "name": "queue_authority",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "task_queue",
-          "writable": true
-        },
-        {
-          "name": "task_queue_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  97,
-                  115,
-                  107,
-                  95,
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "task_queue"
-              },
-              {
-                "kind": "account",
-                "path": "queue_authority"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
-          }
-        },
-        {
-          "name": "task",
-          "writable": true
-        },
-        {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "args",
-          "type": {
-            "defined": {
-              "name": "QueueRelinquishExpiredVoteMarkerArgsV0"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "queue_resolve_proposal_v0",
-      "discriminator": [
-        156,
-        74,
-        208,
-        50,
-        116,
-        209,
-        179,
-        223
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "namespace"
-        },
-        {
-          "name": "proposal"
-        },
-        {
-          "name": "proposal_config",
-          "relations": [
-            "proposal"
-          ]
-        },
-        {
-          "name": "state_controller",
-          "relations": [
-            "proposal_config"
-          ]
-        },
-        {
-          "name": "queue_authority",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "task_queue",
-          "writable": true
-        },
-        {
-          "name": "task_queue_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  116,
-                  97,
-                  115,
-                  107,
-                  95,
-                  113,
-                  117,
-                  101,
-                  117,
-                  101,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "task_queue"
-              },
-              {
-                "kind": "account",
-                "path": "queue_authority"
-              }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
-          }
-        },
-        {
-          "name": "task",
-          "writable": true
-        },
-        {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "args",
-          "type": {
-            "defined": {
-              "name": "QueueResolveProposalArgsV0"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "queue_wallet_claim_v0",
-      "discriminator": [
-        109,
-        105,
-        65,
-        33,
-        3,
-        31,
-        131,
-        143
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "wallet"
-        },
-        {
-          "name": "pda_wallet",
-          "writable": true,
-          "pda": {
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -1911,49 +2431,12 @@
                 "kind": "account",
                 "path": "wallet"
               }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                13,
-                76,
-                70,
-                9,
-                57,
-                241,
-                194,
-                170,
-                222,
-                60,
-                41,
-                201,
-                147,
-                62,
-                217,
-                203,
-                139,
-                89,
-                45,
-                87,
-                176,
-                98,
-                76,
-                21,
-                182,
-                104,
-                119,
-                57,
-                144,
-                219,
-                43,
-                21
-              ]
-            }
-          }
+            ]
+          },
+          "writable": true
         },
         {
           "name": "queue_authority",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1977,7 +2460,8 @@
                 ]
               }
             ]
-          }
+          },
+          "writable": true
         },
         {
           "name": "task_queue",
@@ -1986,6 +2470,10 @@
         {
           "name": "task_queue_authority",
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -2020,11 +2508,7 @@
                 "kind": "account",
                 "path": "queue_authority"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
+            ]
           }
         },
         {
@@ -2032,12 +2516,12 @@
           "writable": true
         },
         {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         }
       ],
       "args": [
@@ -2049,20 +2533,20 @@
             }
           }
         }
-      ]
+      ],
+      "discriminator": [
+        109,
+        105,
+        65,
+        33,
+        3,
+        31,
+        131,
+        143
+      ],
+      "name": "queue_wallet_claim_v0"
     },
     {
-      "name": "remove_entity_from_cron_v0",
-      "discriminator": [
-        191,
-        93,
-        2,
-        172,
-        127,
-        3,
-        1,
-        16
-      ],
       "accounts": [
         {
           "name": "rent_refund",
@@ -2121,12 +2605,12 @@
           "writable": true
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         },
         {
-          "name": "cron_program",
-          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM"
+          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM",
+          "name": "cron_program"
         }
       ],
       "args": [
@@ -2138,25 +2622,25 @@
             }
           }
         }
-      ]
+      ],
+      "discriminator": [
+        191,
+        93,
+        2,
+        172,
+        127,
+        3,
+        1,
+        16
+      ],
+      "name": "remove_entity_from_cron_v0"
     },
     {
-      "name": "requeue_entity_claim_cron_v0",
-      "discriminator": [
-        60,
-        59,
-        27,
-        121,
-        20,
-        239,
-        72,
-        250
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true
+          "signer": true,
+          "writable": true
         },
         {
           "name": "queue_authority",
@@ -2188,6 +2672,10 @@
         {
           "name": "task_queue_authority",
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -2222,11 +2710,7 @@
                 "kind": "account",
                 "path": "queue_authority"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
+            ]
           }
         },
         {
@@ -2275,8 +2759,11 @@
         },
         {
           "name": "user_cron_jobs",
-          "writable": true,
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "cron_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -2301,12 +2788,9 @@
                 "kind": "account",
                 "path": "authority"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "cron_program"
-            }
-          }
+            ]
+          },
+          "writable": true
         },
         {
           "name": "cron_job",
@@ -2327,6 +2811,10 @@
         {
           "name": "task_return_account_1",
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "cron_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -2358,16 +2846,16 @@
                 "kind": "account",
                 "path": "cron_job"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "cron_program"
-            }
+            ]
           }
         },
         {
           "name": "task_return_account_2",
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "cron_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -2399,30 +2887,42 @@
                 "kind": "account",
                 "path": "cron_job"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "cron_program"
-            }
+            ]
           }
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         },
         {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
         },
         {
-          "name": "cron_program",
-          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM"
+          "address": "cronAjRZnJn3MTP3B9kE62NWDrjSuAPVXf9c4hu4grM",
+          "name": "cron_program"
         }
       ],
-      "args": []
+      "args": [],
+      "discriminator": [
+        60,
+        59,
+        27,
+        121,
+        20,
+        239,
+        72,
+        250
+      ],
+      "name": "requeue_entity_claim_cron_v0"
     },
     {
-      "name": "requeue_entity_claim_v0",
+      "accounts": [
+        {
+          "name": "key_to_asset"
+        }
+      ],
+      "args": [],
       "discriminator": [
         215,
         250,
@@ -2433,12 +2933,7 @@
         53,
         49
       ],
-      "accounts": [
-        {
-          "name": "key_to_asset"
-        }
-      ],
-      "args": [],
+      "name": "requeue_entity_claim_v0",
       "returns": {
         "defined": {
           "name": "RunTaskReturnV0"
@@ -2446,7 +2941,12 @@
       }
     },
     {
-      "name": "requeue_proxy_vote_v0",
+      "accounts": [
+        {
+          "name": "marker"
+        }
+      ],
+      "args": [],
       "discriminator": [
         22,
         156,
@@ -2457,12 +2957,7 @@
         110,
         46
       ],
-      "accounts": [
-        {
-          "name": "marker"
-        }
-      ],
-      "args": [],
+      "name": "requeue_proxy_vote_v0",
       "returns": {
         "defined": {
           "name": "RunTaskReturnV0"
@@ -2470,17 +2965,42 @@
       }
     },
     {
-      "name": "requeue_wallet_claim_v0",
-      "discriminator": [
-        48,
-        114,
-        134,
-        49,
-        174,
-        15,
-        84,
-        209
+      "accounts": [
+        {
+          "name": "marker"
+        },
+        {
+          "name": "position"
+        }
       ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "RequeueRelinquishExpiredVoteMarkerArgsV0"
+            }
+          }
+        }
+      ],
+      "discriminator": [
+        196,
+        161,
+        195,
+        228,
+        119,
+        198,
+        34,
+        241
+      ],
+      "name": "requeue_relinquish_expired_vote_marker_v0",
+      "returns": {
+        "defined": {
+          "name": "RunTaskReturnV0"
+        }
+      }
+    },
+    {
       "accounts": [
         {
           "name": "wallet"
@@ -2496,6 +3016,17 @@
           }
         }
       ],
+      "discriminator": [
+        48,
+        114,
+        134,
+        49,
+        174,
+        15,
+        84,
+        209
+      ],
+      "name": "requeue_wallet_claim_v0",
       "returns": {
         "defined": {
           "name": "RunTaskReturnV0"
@@ -2503,22 +3034,11 @@
       }
     },
     {
-      "name": "start_delegation_claim_bot_v0",
-      "discriminator": [
-        200,
-        178,
-        58,
-        123,
-        12,
-        155,
-        106,
-        155
-      ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
-          "signer": true
+          "signer": true,
+          "writable": true
         },
         {
           "name": "queue_authority",
@@ -2553,14 +3073,18 @@
         },
         {
           "name": "task_queue",
-          "writable": true,
           "relations": [
             "delegation_claim_bot"
-          ]
+          ],
+          "writable": true
         },
         {
           "name": "task_queue_authority",
           "pda": {
+            "program": {
+              "kind": "account",
+              "path": "tuktuk_program"
+            },
             "seeds": [
               {
                 "kind": "const",
@@ -2595,11 +3119,7 @@
                 "kind": "account",
                 "path": "queue_authority"
               }
-            ],
-            "program": {
-              "kind": "account",
-              "path": "tuktuk_program"
-            }
+            ]
           }
         },
         {
@@ -2640,6 +3160,43 @@
         {
           "name": "delegator_ata",
           "pda": {
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            },
             "seeds": [
               {
                 "kind": "account",
@@ -2686,53 +3243,16 @@
                 "kind": "account",
                 "path": "hnt_mint"
               }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
+            ]
           }
         },
         {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
+          "address": "11111111111111111111111111111111",
+          "name": "system_program"
         },
         {
-          "name": "tuktuk_program",
-          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+          "name": "tuktuk_program"
         }
       ],
       "args": [
@@ -2744,27 +3264,27 @@
             }
           }
         }
-      ]
+      ],
+      "discriminator": [
+        200,
+        178,
+        58,
+        123,
+        12,
+        155,
+        106,
+        155
+      ],
+      "name": "start_delegation_claim_bot_v0"
     },
     {
-      "name": "update_epoch_tracker",
-      "discriminator": [
-        113,
-        183,
-        131,
-        98,
-        216,
-        58,
-        50,
-        59
-      ],
       "accounts": [
         {
           "name": "authority",
-          "signer": true,
           "relations": [
             "epoch_tracker"
-          ]
+          ],
+          "signer": true
         },
         {
           "name": "epoch_tracker",
@@ -2780,265 +3300,54 @@
             }
           }
         }
-      ]
-    }
-  ],
-  "accounts": [
-    {
-      "name": "CronJobV0",
+      ],
       "discriminator": [
-        69,
-        161,
-        189,
-        23,
-        250,
-        59,
-        67,
-        157
-      ]
-    },
-    {
-      "name": "DaoV0",
-      "discriminator": [
-        101,
-        75,
-        232,
-        141,
-        239,
-        45,
-        29,
-        205
-      ]
-    },
-    {
-      "name": "DelegatedPositionV0",
-      "discriminator": [
-        251,
-        212,
-        32,
-        100,
-        102,
-        1,
-        247,
-        81
-      ]
-    },
-    {
-      "name": "DelegationClaimBotV0",
-      "discriminator": [
-        116,
-        40,
-        63,
-        51,
-        6,
-        212,
-        146,
-        37
-      ]
-    },
-    {
-      "name": "EpochTrackerV0",
-      "discriminator": [
-        191,
-        238,
-        188,
-        151,
-        33,
-        56,
-        222,
-        53
-      ]
-    },
-    {
-      "name": "KeyToAssetV0",
-      "discriminator": [
-        234,
-        40,
-        244,
-        64,
-        154,
-        171,
-        29,
-        177
-      ]
-    },
-    {
-      "name": "OrganizationV0",
-      "discriminator": [
-        243,
-        189,
-        126,
-        191,
-        59,
-        72,
-        255,
-        68
-      ]
-    },
-    {
-      "name": "PositionV0",
-      "discriminator": [
-        152,
+        113,
+        183,
         131,
-        154,
-        46,
-        158,
-        42,
-        31,
-        233
-      ]
-    },
-    {
-      "name": "ProposalConfigV0",
-      "discriminator": [
-        162,
-        41,
-        210,
-        200,
-        205,
-        177,
-        228,
-        11
-      ]
-    },
-    {
-      "name": "ProposalV0",
-      "discriminator": [
-        254,
-        194,
-        16,
-        171,
-        214,
-        20,
-        192,
-        81
-      ]
-    },
-    {
-      "name": "ProxyMarkerV0",
-      "discriminator": [
-        83,
-        225,
-        185,
-        120,
-        185,
-        31,
-        200,
-        178
-      ]
-    },
-    {
-      "name": "ResolutionSettingsV0",
-      "discriminator": [
-        169,
-        38,
-        51,
-        69,
-        190,
-        118,
-        10,
-        130
-      ]
-    },
-    {
-      "name": "SubDaoV0",
-      "discriminator": [
-        19,
-        5,
-        31,
-        112,
-        144,
-        214,
-        82,
-        128
-      ]
-    },
-    {
-      "name": "TaskQueueAuthorityV0",
-      "discriminator": [
-        206,
-        37,
-        171,
-        34,
-        162,
-        191,
-        47,
-        50
-      ]
-    },
-    {
-      "name": "TaskQueueV0",
-      "discriminator": [
-        150,
-        24,
-        232,
-        159,
-        105,
-        32,
-        161,
-        17
-      ]
-    },
-    {
-      "name": "VoteMarkerV0",
-      "discriminator": [
-        83,
-        205,
-        59,
-        215,
-        144,
-        234,
-        43,
-        70
-      ]
+        98,
+        216,
+        58,
+        50,
+        59
+      ],
+      "name": "update_epoch_tracker"
     }
   ],
-  "errors": [
-    {
-      "code": 6000,
-      "name": "TaskAlreadyExists",
-      "msg": "Task already exists"
-    },
-    {
-      "code": 6001,
-      "name": "CronJobNotRemovedFromQueue",
-      "msg": "Cron job not removed from queue"
-    },
-    {
-      "code": 6002,
-      "name": "NotVoting",
-      "msg": "Proposal is not in voting state"
-    }
-  ],
+  "metadata": {
+    "description": "Created with Anchor",
+    "name": "hpl_crons",
+    "spec": "0.1.0",
+    "version": "0.1.1"
+  },
   "types": [
     {
       "name": "AddEntityToCronArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "index",
             "type": "u32"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "AddWalletToEntityCronArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "index",
             "type": "u32"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "Choice",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "weight",
@@ -3054,13 +3363,13 @@
               "option": "string"
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "CompiledInstructionV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "program_id_index",
@@ -3074,13 +3383,13 @@
             "name": "data",
             "type": "bytes"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "CompiledTransactionV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "num_rw_signers",
@@ -3118,13 +3427,13 @@
               }
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "CronJobV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "id",
@@ -3182,13 +3491,13 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "DaoV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "hnt_mint",
@@ -3264,20 +3573,20 @@
               "array": [
                 {
                   "defined": {
-                    "name": "helium_sub_daos::state::RecentProposal"
+                    "name": "RecentProposal"
                   }
                 },
                 4
               ]
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "DelegatedPositionV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "mint",
@@ -3324,18 +3633,18 @@
             "type": {
               "vec": {
                 "defined": {
-                  "name": "helium_sub_daos::state::RecentProposal"
+                  "name": "RecentProposal"
                 }
               }
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "DelegationClaimBotV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "delegated_position",
@@ -3361,13 +3670,13 @@
             "name": "queued",
             "type": "bool"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "EmissionScheduleItem",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "start_unix_time",
@@ -3377,13 +3686,13 @@
             "name": "emissions_per_epoch",
             "type": "u64"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "EpochTrackerV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "authority",
@@ -3401,19 +3710,20 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "InitEntityClaimCronArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "schedule",
             "type": "string"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
@@ -3433,7 +3743,6 @@
     {
       "name": "KeyToAssetV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "dao",
@@ -3459,13 +3768,13 @@
               }
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "Lockup",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "start_ts",
@@ -3483,7 +3792,8 @@
               }
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
@@ -3509,7 +3819,6 @@
     {
       "name": "OrganizationV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "num_proposals",
@@ -3539,13 +3848,13 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "PercentItem",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "start_unix_time",
@@ -3555,13 +3864,13 @@
             "name": "percent",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "PositionV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "registrar",
@@ -3612,18 +3921,18 @@
             "type": {
               "vec": {
                 "defined": {
-                  "name": "voter_stake_registry::state::position::RecentProposal"
+                  "name": "RecentProposal"
                 }
               }
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "ProposalConfigV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "vote_controller",
@@ -3645,7 +3954,8 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
@@ -3660,16 +3970,15 @@
             "name": "Cancelled"
           },
           {
-            "name": "Voting",
             "fields": [
               {
                 "name": "start_ts",
                 "type": "i64"
               }
-            ]
+            ],
+            "name": "Voting"
           },
           {
-            "name": "Resolved",
             "fields": [
               {
                 "name": "choices",
@@ -3681,10 +3990,10 @@
                 "name": "end_ts",
                 "type": "i64"
               }
-            ]
+            ],
+            "name": "Resolved"
           },
           {
-            "name": "Custom",
             "fields": [
               {
                 "name": "name",
@@ -3694,7 +4003,8 @@
                 "name": "bin",
                 "type": "bytes"
               }
-            ]
+            ],
+            "name": "Custom"
           }
         ]
       }
@@ -3702,7 +4012,6 @@
     {
       "name": "ProposalV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "namespace",
@@ -3764,17 +4073,17 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
-      "name": "ProxyMarkerV0",
       "docs": [
         "Marker to indicate that a proxy intends to vote this way on a proposal,",
         "all votes of proxies are permissionless based on this marker"
       ],
+      "name": "ProxyMarkerV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "voter",
@@ -3798,25 +4107,25 @@
             "name": "rent_refund",
             "type": "pubkey"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "QueueProxyVoteArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "free_task_id",
             "type": "u16"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "QueueRelinquishExpiredProxyVoteMarkerArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "free_task_id",
@@ -3826,13 +4135,13 @@
             "name": "trigger_ts",
             "type": "i64"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "QueueRelinquishExpiredVoteMarkerArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "free_task_id",
@@ -3842,67 +4151,95 @@
             "name": "trigger_ts",
             "type": "i64"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "QueueResolveProposalArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "free_task_id",
             "type": "u16"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "QueueWalletClaimArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "free_task_id",
             "type": "u16"
           }
-        ]
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "RecentProposal",
+      "type": {
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "RemoveEntityFromCronArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "index",
             "type": "u32"
           }
-        ]
+        ],
+        "kind": "struct"
+      }
+    },
+    {
+      "name": "RequeueRelinquishExpiredVoteMarkerArgsV0",
+      "type": {
+        "fields": [
+          {
+            "name": "trigger_ts",
+            "type": "i64"
+          }
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "RequeueWalletClaimArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "batch_number",
             "type": "u16"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
-      "name": "ResolutionNode",
       "docs": [
         "Allow building complex operations to decide resolution."
       ],
+      "name": "ResolutionNode",
       "type": {
         "kind": "enum",
         "variants": [
           {
-            "name": "Resolved",
             "fields": [
               {
                 "name": "choices",
@@ -3910,61 +4247,62 @@
                   "vec": "u16"
                 }
               }
-            ]
+            ],
+            "name": "Resolved"
           },
           {
-            "name": "EndTimestamp",
             "fields": [
               {
                 "name": "end_ts",
                 "type": "i64"
               }
-            ]
+            ],
+            "name": "EndTimestamp"
           },
           {
-            "name": "OffsetFromStartTs",
             "fields": [
               {
                 "name": "offset",
                 "type": "i64"
               }
-            ]
+            ],
+            "name": "OffsetFromStartTs"
           },
           {
-            "name": "ChoiceVoteWeight",
             "fields": [
               {
                 "name": "weight_threshold",
                 "type": "u128"
               }
-            ]
+            ],
+            "name": "ChoiceVoteWeight"
           },
           {
-            "name": "ChoicePercentage",
             "fields": [
               {
                 "name": "percentage",
                 "type": "i32"
               }
-            ]
+            ],
+            "name": "ChoicePercentage"
           },
           {
-            "name": "Top",
             "fields": [
               {
                 "name": "n",
                 "type": "u16"
               }
-            ]
+            ],
+            "name": "Top"
           },
           {
-            "name": "NumResolved",
             "fields": [
               {
                 "name": "n",
                 "type": "u16"
               }
-            ]
+            ],
+            "name": "NumResolved"
           },
           {
             "name": "And"
@@ -3973,31 +4311,31 @@
             "name": "Or"
           },
           {
-            "name": "Not",
             "fields": [
               {
                 "name": "choice_name",
                 "type": "string"
               }
-            ]
+            ],
+            "name": "Not"
           },
           {
-            "name": "TotalWeight",
             "fields": [
               {
                 "name": "weight_threshold",
                 "type": "u128"
               }
-            ]
+            ],
+            "name": "TotalWeight"
           },
           {
-            "name": "ChoicePercentageOfCurrent",
             "fields": [
               {
                 "name": "percentage",
                 "type": "i32"
               }
-            ]
+            ],
+            "name": "ChoicePercentageOfCurrent"
           }
         ]
       }
@@ -4005,7 +4343,6 @@
     {
       "name": "ResolutionSettingsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "name",
@@ -4023,18 +4360,18 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
-      "name": "ResolutionStrategy",
       "docs": [
         "Reverse polish notation calculator",
         "https://en.wikipedia.org/wiki/Reverse_Polish_notation",
         "Do this to have a flat structure since rust doesn't like unbounded nesting of types"
       ],
+      "name": "ResolutionStrategy",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "nodes",
@@ -4046,13 +4383,13 @@
               }
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "RunTaskReturnV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "tasks",
@@ -4070,25 +4407,25 @@
               "vec": "pubkey"
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "StartDelegationClaimBotArgsV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "task_id",
             "type": "u16"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "SubDaoV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "dao",
@@ -4107,10 +4444,10 @@
             "type": "pubkey"
           },
           {
-            "name": "delegator_pool",
             "docs": [
               "DEPRECATED: use dao.delegator_pool instead. But some people still need to claim old DNT rewards"
             ],
+            "name": "delegator_pool",
             "type": "pubkey"
           },
           {
@@ -4175,13 +4512,13 @@
             "name": "active_device_authority",
             "type": "pubkey"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "TaskQueueAuthorityV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "task_queue",
@@ -4195,13 +4532,13 @@
             "name": "bump_seed",
             "type": "u8"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "TaskQueueV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "tuktuk_config",
@@ -4265,13 +4602,13 @@
             "name": "stale_task_age",
             "type": "u32"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "TaskReturnV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "trigger",
@@ -4303,7 +4640,8 @@
             "name": "description",
             "type": "string"
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
@@ -4312,17 +4650,16 @@
         "kind": "enum",
         "variants": [
           {
-            "name": "CompiledV0",
             "fields": [
               {
                 "defined": {
                   "name": "CompiledTransactionV0"
                 }
               }
-            ]
+            ],
+            "name": "CompiledV0"
           },
           {
-            "name": "RemoteV0",
             "fields": [
               {
                 "name": "url",
@@ -4332,7 +4669,8 @@
                 "name": "signer",
                 "type": "pubkey"
               }
-            ]
+            ],
+            "name": "RemoteV0"
           }
         ]
       }
@@ -4346,10 +4684,10 @@
             "name": "Now"
           },
           {
-            "name": "Timestamp",
             "fields": [
               "i64"
-            ]
+            ],
+            "name": "Timestamp"
           }
         ]
       }
@@ -4357,7 +4695,6 @@
     {
       "name": "UpdateEpochTrackerArgs",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "epoch",
@@ -4371,13 +4708,13 @@
               "option": "pubkey"
             }
           }
-        ]
+        ],
+        "kind": "struct"
       }
     },
     {
       "name": "VoteMarkerV0",
       "type": {
-        "kind": "struct",
         "fields": [
           {
             "name": "voter",
@@ -4410,11 +4747,11 @@
             "type": "u8"
           },
           {
-            "name": "_deprecated_relinquished",
             "docs": [
               "Whether this vote has been cleared on the position after proposal expired",
               "DEPRECATED. New votes will have markers closed after the vote completes."
             ],
+            "name": "_deprecated_relinquished",
             "type": "bool"
           },
           {
@@ -4425,39 +4762,8 @@
             "name": "rent_refund",
             "type": "pubkey"
           }
-        ]
-      }
-    },
-    {
-      "name": "helium_sub_daos::state::RecentProposal",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "proposal",
-            "type": "pubkey"
-          },
-          {
-            "name": "ts",
-            "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "voter_stake_registry::state::position::RecentProposal",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "proposal",
-            "type": "pubkey"
-          },
-          {
-            "name": "ts",
-            "type": "i64"
-          }
-        ]
+        ],
+        "kind": "struct"
       }
     }
   ]

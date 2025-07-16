@@ -131,7 +131,7 @@ pub fn entropy_to_mnemonic(entropy: &[u8]) -> Result<Vec<String>, MnmemonicError
     let working_entropy = if front == back { front } else { entropy };
     let working_bits = working_entropy.len() * 8;
 
-    if working_bits % ENTROPY_MULTIPLE != 0
+    if !working_bits.is_multiple_of(ENTROPY_MULTIPLE)
         || !(MIN_ENTROPY_BITS..=MAX_ENTROPY_BITS).contains(&working_bits)
     {
         return Err(MnmemonicError::InvalidEntropyLen(entropy.len()));

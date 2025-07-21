@@ -395,8 +395,11 @@ pub mod config {
         hotspot::{HotspotInfo, HotspotMode, MobileDeviceType},
     };
     use helium_proto::{
-        services::{Channel, Endpoint, Uri},
-        Message,
+        prost::Message,
+        tonic::{
+            transport::{Channel, Endpoint, Uri},
+            Code,
+        },
     };
     use std::{collections::HashMap, time::Duration};
     use stream::BoxStream;
@@ -558,7 +561,7 @@ pub mod config {
                         inner.verify(&self.address)?;
                         info_from_res(inner)
                     }
-                    Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
+                    Err(status) if status.code() == Code::NotFound => Ok(None),
                     Err(err) => Err(err.into()),
                 }
             }
@@ -696,7 +699,7 @@ pub mod config {
                         inner.verify(&self.address)?;
                         info_from_res(inner)
                     }
-                    Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
+                    Err(status) if status.code() == Code::NotFound => Ok(None),
                     Err(err) => Err(err.into()),
                 }
             }

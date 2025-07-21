@@ -18,9 +18,9 @@ pub enum Error {
     #[error("cert client: {0}")]
     Cert(#[from] cert::ClientError),
     #[error("grpc: {0}")]
-    Grpc(Box<tonic::Status>),
+    Grpc(Box<helium_proto::tonic::Status>),
     #[error("service: {0}")]
-    Service(#[from] helium_proto::services::Error),
+    Service(#[from] helium_proto::tonic::transport::Error),
     #[error("price client: {0}")]
     Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]
@@ -61,8 +61,8 @@ impl From<anchor_client::ClientError> for Error {
     }
 }
 
-impl From<tonic::Status> for Error {
-    fn from(value: tonic::Status) -> Self {
+impl From<helium_proto::tonic::Status> for Error {
+    fn from(value: helium_proto::tonic::Status) -> Self {
         Self::Grpc(Box::new(value))
     }
 }
@@ -98,7 +98,7 @@ impl Error {
 #[derive(Debug, Error)]
 pub enum EncodeError {
     #[error("proto: {0}")]
-    Proto(#[from] helium_proto::EncodeError),
+    Proto(#[from] helium_proto::prost::EncodeError),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
     #[error("bincode: {0}")]
@@ -128,7 +128,9 @@ pub enum DecodeError {
     #[error("base64: {0}")]
     Base64(#[from] base64::DecodeError), // decode
     #[error("proto: {0}")]
-    Proto(#[from] helium_proto::DecodeError), // decode
+    Proto(#[from] helium_proto::prost::DecodeError), // decode
+    #[error("proto enum: {0}")]
+    ProtoEnum(#[from] helium_proto::prost::UnknownEnumValue),
     #[error("base58: {0}")]
     Bs58(#[from] solana_sdk::bs58::decode::Error), // decode
     #[error("signature: {0}")]

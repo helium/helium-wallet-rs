@@ -31,7 +31,10 @@ pub use anchor_client::solana_client;
 pub use anchor_lang;
 pub use anchor_spl;
 pub use solana_program;
-pub use solana_sdk;
+pub mod solana_sdk {
+    pub use solana_sdk::*;
+    pub use solana_system_interface::instruction as system_instruction;
+}
 pub use solana_sdk::bs58;
 pub use tuktuk_sdk;
 

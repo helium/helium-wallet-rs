@@ -19,7 +19,7 @@ chrono = { version = "0", features = ["serde"] }
 serde = "1"
 serde_json = "1"
 rust_decimal = { version = "1", features = ["serde-float"] }
-helium-crypto = { git = "https://github.com/helium/helium-crypto-rs", branch = "mj/update-crypto-deps" }
+helium-crypto = "0.9.3"
 helium-proto = { git = "https://github.com/helium/proto", branch = "master", features = [
   "services",
 ] }

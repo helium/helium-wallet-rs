@@ -3,7 +3,7 @@ use base64::{
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
     Engine,
 };
-use helium_proto::Message;
+use helium_proto::prost::Message;
 
 pub fn encode<T: AsRef<[u8]>>(v: T) -> String {
     STANDARD.encode(v.as_ref())

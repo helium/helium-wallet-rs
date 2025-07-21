@@ -21,7 +21,7 @@ use crate::{
     TransactionOpts,
 };
 use helium_crypto::{PublicKey, Sign};
-use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
+use helium_proto::{prost::Message, BlockchainTxn, BlockchainTxnAddGatewayV1, Txn};
 use serde::{Deserialize, Serialize};
 
 mod iot {

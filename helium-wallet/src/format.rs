@@ -149,7 +149,7 @@ impl Sharded {
             self.key_shares = key_shares;
         } else if self.key_shares.len() < self.recovery_threshold as usize {
             // Otherwise validate that we can reconstruct the key
-            bail!("not enouth keyshares to recover key");
+            bail!("not enough keyshares to recover key");
         } else {
             // Reconstruct shared key
             let key_share_vecs: Vec<Vec<u8>> =

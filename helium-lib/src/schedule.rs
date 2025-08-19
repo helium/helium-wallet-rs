@@ -8,7 +8,7 @@ use crate::{
     message, priority_fee,
     programs::hpl_crons::{self, accounts::CronJobV0, types::RemoveEntityFromCronArgsV0},
     queue,
-    solana_sdk::{instruction::Instruction, signer::Signer, system_instruction},
+    solana_sdk::{instruction::Instruction, signer::Signer},
     transaction::{mk_transaction, VersionedTransaction},
     tuktuk_sdk::{
         tuktuk,
@@ -114,7 +114,9 @@ pub async fn init<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccoun
 
     let payer = keypair.pubkey();
     let cron_job_key = cron_job_key_for_wallet(&payer, cron_id);
-    let fund_ix = fund.map(|amount| system_instruction::transfer(&payer, &cron_job_key, amount));
+    let fund_ix = fund.map(|amount| {
+        solana_system_interface::instruction::transfer(&payer, &cron_job_key, amount)
+    });
 
     let ixs = [
         Some(priority_fee::compute_budget_instruction(500_000)),

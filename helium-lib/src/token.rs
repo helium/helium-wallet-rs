@@ -35,6 +35,7 @@ lazy_static::lazy_static! {
 
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
+    static ref USDC_MINT: Pubkey = Pubkey::from_str("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v").unwrap();
 }
 
 /// Number of Compute Units need to execute SetComputeUnitLimit and
@@ -321,6 +322,7 @@ pub enum Token {
     Mobile,
     Iot,
     Dc,
+    Usdc,
 }
 
 impl std::fmt::Display for Token {
@@ -331,6 +333,7 @@ impl std::fmt::Display for Token {
             Token::Mobile => "mobile",
             Token::Iot => "iot",
             Token::Dc => "dc",
+            Token::Usdc => "usdc",
         };
         f.write_str(str)
     }
@@ -345,6 +348,7 @@ impl FromStr for Token {
             "mobile" => Ok(Token::Mobile),
             "iot" => Ok(Token::Iot),
             "dc" => Ok(Token::Dc),
+            "usdc" => Ok(Token::Usdc),
             _ => Err(TokenError::InvalidToken(s.to_string())),
         }
     }
@@ -358,6 +362,7 @@ impl Token {
             mint if mint == *DC_MINT => Token::Dc,
             mint if mint == *MOBILE_MINT => Token::Mobile,
             mint if mint == *SOL_MINT => Token::Sol,
+            mint if mint == *USDC_MINT => Token::Usdc,
             _ => return None,
         };
 
@@ -365,7 +370,14 @@ impl Token {
     }
 
     pub fn all() -> Vec<Self> {
-        vec![Self::Hnt, Self::Iot, Self::Mobile, Self::Dc, Self::Sol]
+        vec![
+            Self::Hnt,
+            Self::Iot,
+            Self::Mobile,
+            Self::Dc,
+            Self::Sol,
+            Self::Usdc,
+        ]
     }
 
     fn from_allowed(s: &str, allowed: &[Self]) -> StdResult<Self, TokenError> {
@@ -377,7 +389,10 @@ impl Token {
     }
 
     pub fn transferrable_value_parser(s: &str) -> StdResult<Self, TokenError> {
-        Self::from_allowed(s, &[Self::Iot, Self::Mobile, Self::Hnt, Self::Sol])
+        Self::from_allowed(
+            s,
+            &[Self::Iot, Self::Mobile, Self::Hnt, Self::Sol, Self::Usdc],
+        )
     }
 
     pub fn pricekey_value_parser(s: &str) -> StdResult<Self, TokenError> {
@@ -407,7 +422,7 @@ impl Token {
     }
 }
 
-#[derive(Debug, serde::Serialize, Default)]
+#[derive(Debug, serde::Serialize, Default, Clone, Copy)]
 pub struct TokenBalance {
     #[serde(with = "serde_pubkey")]
     pub address: Pubkey,
@@ -415,8 +430,20 @@ pub struct TokenBalance {
     pub amount: TokenAmount,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Clone, Default)]
 pub struct TokenBalanceMap(HashMap<Token, TokenBalance>);
+
+impl AsRef<HashMap<Token, TokenBalance>> for TokenBalanceMap {
+    fn as_ref(&self) -> &HashMap<Token, TokenBalance> {
+        &self.0
+    }
+}
+
+impl AsMut<HashMap<Token, TokenBalance>> for TokenBalanceMap {
+    fn as_mut(&mut self) -> &mut HashMap<Token, TokenBalance> {
+        &mut self.0
+    }
+}
 
 impl From<Vec<Option<TokenBalance>>> for TokenBalanceMap {
     fn from(value: Vec<Option<TokenBalance>>) -> Self {
@@ -505,6 +532,7 @@ impl Token {
             Self::Iot | Self::Mobile => 6,
             Self::Dc => 0,
             Self::Sol => 9,
+            Self::Usdc => 6,
         }
     }
 
@@ -515,6 +543,7 @@ impl Token {
             Self::Iot => &IOT_MINT,
             Self::Dc => &DC_MINT,
             Self::Sol => &SOL_MINT,
+            Self::Usdc => &USDC_MINT,
         }
     }
 

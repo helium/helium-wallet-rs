@@ -506,7 +506,7 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
                     .map(|reward| (ticket, reward.oracle.url.as_str()))
             })
             .chunk_by(|(_ticket, oracle_url)| *oracle_url);
-        // Then stream over these chunks getting sign instrucitons for each
+        // Then stream over these chunks getting sign instructions for each
         stream::iter(oracle_chunks.into_iter().map(|(url, chunk)| {
             // For ecah chunk collect the entity string and the kta keys to fetch
             let (entity_key_strings, kta_keys): (Vec<String>, Vec<Pubkey>) = chunk

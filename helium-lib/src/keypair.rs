@@ -93,7 +93,7 @@ impl Default for Keypair {
 impl TryFrom<&[u8; 64]> for Keypair {
     type Error = DecodeError;
     fn try_from(value: &[u8; 64]) -> std::result::Result<Self, Self::Error> {
-        solana_sdk::signer::keypair::Keypair::from_bytes(value)
+        solana_sdk::signer::keypair::Keypair::try_from(value.as_slice())
             .map_err(|_| DecodeError::other("invalid keypair data"))
             .map(Self)
     }
@@ -122,7 +122,7 @@ impl Keypair {
     }
 
     pub fn secret(&self) -> Vec<u8> {
-        let mut result = self.0.secret().to_bytes().to_vec();
+        let mut result = self.0.secret_bytes().to_vec();
         result.extend_from_slice(self.pubkey().as_ref());
         result
     }
@@ -136,7 +136,7 @@ impl Keypair {
     /// too many modules.
     #[cfg(feature = "mnemonic")]
     pub fn phrase(&self) -> Result<String, helium_mnemonic::MnmemonicError> {
-        let words = helium_mnemonic::entropy_to_mnemonic(self.0.secret().as_bytes())?;
+        let words = helium_mnemonic::entropy_to_mnemonic(self.0.secret_bytes())?;
         Ok(words.join(" "))
     }
 

@@ -5,7 +5,7 @@ use crate::{
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Keypair, Pubkey},
     message, priority_fee,
-    solana_sdk::{account::Account, signer::Signer, system_instruction},
+    solana_sdk::{account::Account, signer::Signer},
     transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
@@ -107,7 +107,11 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     for (payee, token_amount) in transfers {
         match token_amount.token.mint() {
             spl_mint if spl_mint == Token::Sol.mint() => {
-                let ix = system_instruction::transfer(payer, payee, token_amount.amount);
+                let ix = solana_system_interface::instruction::transfer(
+                    payer,
+                    payee,
+                    token_amount.amount,
+                );
                 ixs_accounts.extend_from_slice(&ix.accounts);
                 ixs.push(ix);
                 cu_budget += SYS_PROGRAM_TRANSFER_CU;
@@ -223,10 +227,10 @@ pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
 
 pub mod price {
     use super::*;
-    use pyth_solana_receiver_sdk::price_update::{self, PriceUpdateV2};
+    use crate::programs::helium_entity_manager::accounts::PriceUpdateV2;
     use rust_decimal::prelude::*;
 
-    pub use pyth_solana_receiver_sdk::price_update::FeedId;
+    pub type FeedId = [u8; 32];
     pub const DC_PER_USD: i64 = 100_000;
 
     #[derive(Debug, thiserror::Error)]
@@ -253,8 +257,8 @@ pub mod price {
     }
 
     pub fn feed_from_hex(str: &str) -> Result<FeedId, PriceError> {
-        let feed_id =
-            price_update::get_feed_id_from_hex(str).map_err(|_| PriceError::InvalidFeed)?;
+        let mut feed_id = [0; 32];
+        hex::decode_to_slice(str, &mut feed_id).map_err(|_| PriceError::InvalidFeed)?;
         Ok(feed_id)
     }
 

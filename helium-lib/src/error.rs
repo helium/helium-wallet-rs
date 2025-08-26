@@ -19,8 +19,6 @@ pub enum Error {
     Cert(#[from] cert::ClientError),
     #[error("grpc: {0}")]
     Grpc(Box<tonic::Status>),
-    #[error("service: {0}")]
-    Service(#[from] helium_proto::services::Error),
     #[error("price client: {0}")]
     Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]

@@ -129,6 +129,8 @@ pub enum DecodeError {
     Base64(#[from] base64::DecodeError), // decode
     #[error("proto: {0}")]
     Proto(#[from] helium_proto::DecodeError), // decode
+    #[error("prost: {0}")]
+    Enum(#[from] helium_proto::UnknownEnumValue), // decode
     #[error("base58: {0}")]
     Bs58(#[from] solana_sdk::bs58::decode::Error), // decode
     #[error("signature: {0}")]

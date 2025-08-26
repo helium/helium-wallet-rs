@@ -19,8 +19,6 @@ pub enum Error {
     Cert(#[from] cert::ClientError),
     #[error("grpc: {0}")]
     Grpc(Box<tonic::Status>),
-    #[error("service: {0}")]
-    Service(#[from] helium_proto::services::Error),
     #[error("price client: {0}")]
     Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]
@@ -129,6 +127,8 @@ pub enum DecodeError {
     Base64(#[from] base64::DecodeError), // decode
     #[error("proto: {0}")]
     Proto(#[from] helium_proto::DecodeError), // decode
+    #[error("prost: {0}")]
+    Enum(#[from] helium_proto::UnknownEnumValue), // decode
     #[error("base58: {0}")]
     Bs58(#[from] solana_sdk::bs58::decode::Error), // decode
     #[error("signature: {0}")]

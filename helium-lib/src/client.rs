@@ -394,12 +394,10 @@ pub mod config {
         dao::SubDao,
         hotspot::{HotspotInfo, HotspotMode, MobileDeviceType},
     };
-    use helium_proto::{
-        services::{Channel, Endpoint, Uri},
-        Message,
-    };
+    use helium_proto::Message;
     use std::{collections::HashMap, time::Duration};
     use stream::BoxStream;
+    use tonic::transport::{Channel, Endpoint, Uri};
 
     pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
     pub const RPC_TIMEOUT: Duration = Duration::from_secs(5);

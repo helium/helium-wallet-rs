@@ -40,7 +40,7 @@ reqwest = { version = "0.11", default-features = false, features = [
 ] }
 spl-associated-token-account = { version = "6", features = ["no-entrypoint"] }
 spl-memo = "6"
-tonic = { version = "0.10", features = ["tls", "tls-roots"] }
+tonic = { version = "0.14", features = ["tls-native-roots"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 lazy_static = "1"

@@ -2305,7 +2305,7 @@ version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9573bd6431a816f79f0129b05d3329c76cc43bd5b650a2fd1bde4fbffd3a803"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "bs58",
  "byteorder",
  "ed25519-compact",
@@ -2330,7 +2330,7 @@ dependencies = [
  "anchor-spl",
  "angry-purple-tiger",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bincode",
  "bytemuck",
  "chrono",
@@ -2668,7 +2668,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tokio",
  "tower-service",
  "tracing",
@@ -3878,7 +3878,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck 0.5.0",
- "itertools 0.10.5",
+ "itertools 0.14.0",
  "log",
  "multimap",
  "once_cell",
@@ -3900,7 +3900,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -8759,7 +8759,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0978bf7171b3d90bac376700cb56d606feb40f251a475a5d6634613564460b22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

@@ -19,6 +19,8 @@ pub enum Error {
     Cert(#[from] cert::ClientError),
     #[error("grpc: {0}")]
     Grpc(Box<tonic::Status>),
+    #[error("transport: {0}")]
+    Transport(#[from] tonic::transport::Error),
     #[error("price client: {0}")]
     Price(#[from] token::price::PriceError),
     #[error("rest client: {0}")]

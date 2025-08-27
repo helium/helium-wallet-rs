@@ -397,7 +397,7 @@ pub mod config {
     use helium_proto::Message;
     use std::{collections::HashMap, time::Duration};
     use stream::BoxStream;
-    use tonic::transport::{Channel, Endpoint, Uri};
+    use tonic::transport::{Channel, ClientTlsConfig, Endpoint, Uri};
 
     pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
     pub const RPC_TIMEOUT: Duration = Duration::from_secs(5);
@@ -441,16 +441,28 @@ pub mod config {
         };
     }
 
-    fn channel_for_uri(uri: &str) -> Result<Channel, DecodeError> {
+    fn channel_for_uri(uri: &str) -> Result<Channel, Error> {
         let uri: Uri = uri
             .parse()
             .map_err(|_| DecodeError::other(format!("invalid config url: {uri}")))?;
-        let channel = Endpoint::from(uri)
+        let domain = uri
+            .host()
+            .ok_or_else(|| DecodeError::other(format!("no host in url: {uri}")))? // &str
+            .to_owned();
+        let is_tls = uri.scheme_str() == Some("https");
+        let endpoint = Endpoint::from(uri)
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(RPC_TIMEOUT)
-            .tcp_keepalive(Some(RPC_TCP_KEEPALIVE))
-            .connect_lazy();
-        Ok(channel)
+            .tcp_keepalive(Some(RPC_TCP_KEEPALIVE));
+        let endpoint = if is_tls {
+            let tls_config = ClientTlsConfig::new()
+                .domain_name(domain)
+                .with_native_roots();
+            endpoint.tls_config(tls_config)?
+        } else {
+            endpoint
+        };
+        Ok(endpoint.connect_lazy())
     }
 
     #[derive(Clone)]

@@ -541,6 +541,8 @@ pub enum HotspotInfo {
         device_type: MobileDeviceType,
         #[serde(skip_serializing_if = "Option::is_none", default)]
         deployment_info: Option<MobileDeploymentInfo>,
+        #[serde(skip_serializing_if = "is_zero", default)]
+        updated_at: u64,
     },
 }
 
@@ -832,6 +834,7 @@ impl From<helium_entity_manager::accounts::MobileHotspotInfoV0> for HotspotInfo 
             location_asserts: value.num_location_asserts,
             device_type: value.device_type.into(),
             deployment_info: value.deployment_info.map(MobileDeploymentInfo::from),
+            updated_at: 0,
         }
     }
 }
@@ -877,6 +880,16 @@ impl From<mobile_config::gateway_metadata_v2::DeploymentInfo> for MobileDeployme
                         .collect(),
                 }
             }
+        }
+    }
+}
+
+impl From<mobile_config::DeploymentInfo> for MobileDeploymentInfo {
+    fn from(value: mobile_config::DeploymentInfo) -> Self {
+        Self::WifiInfo {
+            antenna: value.antenna,
+            elevation: value.elevation as i32,
+            azimuth: value.azimuth as u16,
         }
     }
 }

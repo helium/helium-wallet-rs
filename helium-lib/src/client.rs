@@ -400,7 +400,7 @@ pub mod config {
     use tonic::transport::{Channel, ClientTlsConfig, Endpoint, Uri};
 
     pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-    pub const RPC_TIMEOUT: Duration = Duration::from_secs(5);
+    pub const RPC_TIMEOUT: Duration = Duration::from_secs(10);
     pub const RPC_TCP_KEEPALIVE: Duration = Duration::from_secs(100);
 
     trait MessageSign {

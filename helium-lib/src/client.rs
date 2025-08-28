@@ -400,7 +400,7 @@ pub mod config {
     use tonic::transport::{Channel, ClientTlsConfig, Endpoint, Uri};
 
     pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-    pub const RPC_TIMEOUT: Duration = Duration::from_secs(5);
+    pub const RPC_TIMEOUT: Duration = Duration::from_secs(10);
     pub const RPC_TCP_KEEPALIVE: Duration = Duration::from_secs(100);
 
     trait MessageSign {
@@ -505,15 +505,16 @@ pub mod config {
             }
         }
 
-        pub async fn stream_info(
+        pub async fn stream_info_since(
             &mut self,
+            updated_since: u64,
         ) -> Result<
             BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
             Error,
         > {
             match self {
-                Self::Iot(client) => client.stream_info().await,
-                Self::Mobile(client) => client.stream_info().await,
+                Self::Iot(client) => client.stream_info_since(updated_since).await,
+                Self::Mobile(client) => client.stream_info_since(updated_since).await,
             }
         }
     }
@@ -566,7 +567,7 @@ pub mod config {
                     Ok(resp) => {
                         let inner = resp.into_inner();
                         inner.verify(&self.address)?;
-                        info_from_res(inner)
+                        info_from_res_v1(inner)
                     }
                     Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
                     Err(err) => Err(err.into()),
@@ -593,8 +594,9 @@ pub mod config {
                 Ok(map)
             }
 
-            pub async fn stream_info(
+            pub async fn stream_info_since(
                 &mut self,
+                _updated_since: u64,
             ) -> Result<
                 BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
@@ -622,7 +624,7 @@ pub mod config {
             }
         }
 
-        fn info_from_res(res: GatewayInfoResV1) -> Result<Option<HotspotInfo>, Error> {
+        fn info_from_res_v1(res: GatewayInfoResV1) -> Result<Option<HotspotInfo>, Error> {
             let Some(info) = res.info else {
                 return Ok(None);
             };
@@ -658,15 +660,17 @@ pub mod config {
     pub mod mobile {
         use super::*;
         use helium_proto::services::mobile_config::{
-            DeviceType, GatewayClient, GatewayInfoBatchReqV1, GatewayInfoReqV1, GatewayInfoResV2,
-            GatewayInfoStreamReqV2, GatewayInfoStreamResV2, GatewayInfoV2,
+            DeviceType, DeviceTypeV2, GatewayClient, GatewayInfoBatchReqV1, GatewayInfoReqV1,
+            GatewayInfoResV2, GatewayInfoStreamReqV3, GatewayInfoStreamResV2,
+            GatewayInfoStreamResV3, GatewayInfoV2, GatewayInfoV3,
         };
 
         impl_message_sign!(GatewayInfoReqV1);
-        impl_message_sign!(GatewayInfoStreamReqV2);
+        impl_message_sign!(GatewayInfoStreamReqV3);
         impl_message_sign!(GatewayInfoBatchReqV1);
         impl_message_verify!(GatewayInfoResV2);
         impl_message_verify!(GatewayInfoStreamResV2);
+        impl_message_verify!(GatewayInfoStreamResV3);
 
         #[derive(Clone)]
         pub struct Client {
@@ -704,7 +708,7 @@ pub mod config {
                     Ok(resp) => {
                         let inner = resp.into_inner();
                         inner.verify(&self.address)?;
-                        info_from_res(inner)
+                        info_from_res_v2(inner)
                     }
                     Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
                     Err(err) => Err(err.into()),
@@ -731,7 +735,7 @@ pub mod config {
                             let infos: Vec<(helium_crypto::PublicKey, HotspotInfo)> = res
                                 .gateways
                                 .into_iter()
-                                .map(info_from_info)
+                                .map(info_from_info_v2)
                                 .filter_map_ok(|(address, maybe_info)| {
                                     maybe_info.map(|info| (address, info))
                                 })
@@ -745,19 +749,21 @@ pub mod config {
                 Ok(result.into_iter().collect())
             }
 
-            pub async fn stream_info(
+            pub async fn stream_info_since(
                 &mut self,
+                updated_since: u64,
             ) -> Result<
                 BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
-                let mut req = GatewayInfoStreamReqV2 {
+                let mut req = GatewayInfoStreamReqV3 {
                     signer: self.keypair.public_key().into(),
                     batch_size: 1000,
+                    min_updated_at: updated_since,
                     ..Default::default()
                 };
                 req.sign(&self.keypair)?;
-                let streaming = self.client.info_stream_v2(req).await?.into_inner();
+                let streaming = self.client.info_stream_v3(req).await?.into_inner();
                 let streaming = streaming
                     .map_err(Error::from)
                     .and_then(|res| {
@@ -767,21 +773,21 @@ pub mod config {
                             Ok(res)
                         }
                     })
-                    .map_ok(|res| stream::iter(res.gateways).map(info_from_info))
+                    .map_ok(|res| stream::iter(res.gateways).map(info_from_info_v3))
                     .try_flatten();
 
                 Ok(streaming.boxed())
             }
         }
 
-        fn info_from_res(res: GatewayInfoResV2) -> Result<Option<HotspotInfo>, Error> {
+        fn info_from_res_v2(res: GatewayInfoResV2) -> Result<Option<HotspotInfo>, Error> {
             let Some(info) = res.info else {
                 return Ok(None);
             };
-            info_from_info(info).map(|(_, maybe_info)| maybe_info)
+            info_from_info_v2(info).map(|(_, maybe_info)| maybe_info)
         }
 
-        fn info_from_info(
+        fn info_from_info_v2(
             info: GatewayInfoV2,
         ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
             let address = info.address.try_into()?;
@@ -806,6 +812,38 @@ pub mod config {
                     location: metadata.location.parse().ok(),
                     location_asserts: 0,
                     deployment_info: metadata.deployment_info.map(Into::into),
+                    updated_at: info.updated_at,
+                }),
+            ))
+        }
+
+        fn info_from_info_v3(
+            info: GatewayInfoV3,
+        ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
+            let address = info.address.try_into()?;
+            let Some(metadata) = info.metadata else {
+                return Ok((address, None));
+            };
+
+            let (device_type, mode) = match DeviceTypeV2::try_from(info.device_type)
+                .map_err(DecodeError::from)?
+            {
+                DeviceTypeV2::Indoor => (MobileDeviceType::WifiIndoor, HotspotMode::Full),
+                DeviceTypeV2::Outdoor => (MobileDeviceType::WifiOutdoor, HotspotMode::Full),
+                DeviceTypeV2::DataOnly => (MobileDeviceType::WifiDataOnly, HotspotMode::DataOnly),
+            };
+
+            Ok((
+                address,
+                Some(HotspotInfo::Mobile {
+                    device_type,
+                    mode,
+                    location: metadata
+                        .location_info
+                        .and_then(|info| info.location.parse().ok()),
+                    location_asserts: info.num_location_asserts as u16,
+                    deployment_info: metadata.deployment_info.map(Into::into),
+                    updated_at: info.updated_at,
                 }),
             ))
         }

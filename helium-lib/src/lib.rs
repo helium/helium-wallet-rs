@@ -51,6 +51,10 @@ impl Zero for u16 {
     const ZERO: Self = 0;
 }
 
+impl Zero for u64 {
+    const ZERO: Self = 0;
+}
+
 impl Zero for rust_decimal::Decimal {
     const ZERO: Self = rust_decimal::Decimal::ZERO;
 }

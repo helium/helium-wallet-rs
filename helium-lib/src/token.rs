@@ -426,7 +426,6 @@ impl Token {
 pub struct TokenBalance {
     #[serde(with = "serde_pubkey")]
     pub address: Pubkey,
-    #[serde(serialize_with = "crate::token::serde_amount_value")]
     pub amount: TokenAmount,
 }
 
@@ -473,17 +472,6 @@ impl From<&TokenAmount> for f64 {
     }
 }
 
-pub fn serde_amount_value<S>(value: &TokenAmount, serializer: S) -> StdResult<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    if value.token.decimals() == 0 {
-        serializer.serialize_u64(value.amount)
-    } else {
-        serializer.serialize_f64(value.into())
-    }
-}
-
 impl serde::Serialize for TokenAmount {
     fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
     where
@@ -498,6 +486,79 @@ impl serde::Serialize for TokenAmount {
             amount.serialize_field("amount", &f64::from(self))?;
         }
         amount.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for TokenAmount {
+    fn deserialize<D>(deserializer: D) -> StdResult<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            Token,
+            Amount,
+        }
+
+        struct TokenAmountVisitor;
+
+        impl<'de> Visitor<'de> for TokenAmountVisitor {
+            type Value = TokenAmount;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct TokenAmount")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> StdResult<TokenAmount, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut token: Option<Token> = None;
+                let mut amount_value: Option<serde_json::Value> = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Token => {
+                            if token.is_some() {
+                                return Err(de::Error::duplicate_field("token"));
+                            }
+                            token = Some(map.next_value()?);
+                        }
+                        Field::Amount => {
+                            if amount_value.is_some() {
+                                return Err(de::Error::duplicate_field("amount"));
+                            }
+                            amount_value = Some(map.next_value::<serde_json::Value>()?);
+                        }
+                    }
+                }
+
+                let token = token.ok_or_else(|| de::Error::missing_field("token"))?;
+                let amount_value =
+                    amount_value.ok_or_else(|| de::Error::missing_field("amount"))?;
+
+                let token_amount = if token.decimals() == 0 {
+                    let amount = amount_value
+                        .as_u64()
+                        .ok_or_else(|| de::Error::custom("expected integer for 0-decimal token"))?;
+                    TokenAmount::from_u64(token, amount)
+                } else {
+                    let amount = amount_value
+                        .as_f64()
+                        .ok_or_else(|| de::Error::custom("expected float for decimal token"))?;
+                    TokenAmount::from_f64(token, amount)
+                };
+
+                Ok(token_amount)
+            }
+        }
+
+        const FIELDS: &[&str] = &["token", "amount"];
+        deserializer.deserialize_struct("TokenAmount", FIELDS, TokenAmountVisitor)
     }
 }
 
@@ -574,5 +635,79 @@ impl Token {
             address,
             amount: TokenAmount::from_u64(self, amount),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_token_amount_serde_roundtrip_zero_decimals() {
+        let original = TokenAmount::from_u64(Token::Dc, 100);
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: TokenAmount = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+        assert!(json.contains("\"amount\":100"));
+    }
+
+    #[test]
+    fn test_token_amount_serde_roundtrip_with_decimals() {
+        let original = TokenAmount::from_f64(Token::Hnt, 1.5);
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: TokenAmount = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+        assert!(json.contains("\"amount\":1.5"));
+    }
+
+    #[test]
+    fn test_token_balance_serialization() {
+        let balance = TokenBalance {
+            address: Pubkey::new_unique(),
+            amount: TokenAmount::from_f64(Token::Mobile, 10.5),
+        };
+        let json = serde_json::to_string(&balance).unwrap();
+        assert!(json.contains("\"amount\":{\"token\":\"mobile\",\"amount\":10.5}"));
+    }
+
+    #[test]
+    fn test_token_amount_deserialize_invalid_type_for_zero_decimal() {
+        let json = r#"{"token":"dc","amount":1.5}"#;
+        let result = serde_json::from_str::<TokenAmount>(json);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected integer for 0-decimal token"));
+    }
+
+    #[test]
+    fn test_token_amount_deserialize_invalid_type_for_decimal() {
+        let json = r#"{"token":"hnt","amount":"invalid"}"#;
+        let result = serde_json::from_str::<TokenAmount>(json);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected float for decimal token"));
+    }
+
+    #[test]
+    fn test_token_amount_deserialize_missing_fields() {
+        let json = r#"{"token":"hnt"}"#;
+        let result = serde_json::from_str::<TokenAmount>(json);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing field `amount`"));
+
+        let json = r#"{"amount":1.5}"#;
+        let result = serde_json::from_str::<TokenAmount>(json);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("missing field `token`"));
     }
 }

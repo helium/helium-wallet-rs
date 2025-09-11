@@ -2323,14 +2323,14 @@ dependencies = [
 
 [[package]]
 name = "helium-lib"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anchor-client",
  "anchor-lang",
  "anchor-spl",
  "angry-purple-tiger",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.21.7",
  "bincode",
  "bytemuck",
  "chrono",
@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "helium-wallet"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "aes-gcm",
  "anyhow",

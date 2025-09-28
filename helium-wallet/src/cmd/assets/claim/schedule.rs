@@ -109,7 +109,7 @@ impl InitCmd {
     }
 }
 
-/// Requeue the scedule for this wallet
+/// Requeue the schedule for this wallet
 ///
 /// Use this command to restart the schedule once it is re-funded after running out of SOL.
 #[derive(Clone, Debug, clap::Args)]

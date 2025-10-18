@@ -177,7 +177,7 @@ pub mod canopy {
         Ok(canopy_depth as usize)
     }
 
-    // The following functions and struct definitions were copied copied from https://github.com/solana-labs/solana-program-library/tree/264ca72de06b0c2b45c0b15d298000fe3f82db2e/libraries/concurrent-merkle-tree/src.
+    // The following functions and struct definitions were copied from https://github.com/solana-labs/solana-program-library/tree/264ca72de06b0c2b45c0b15d298000fe3f82db2e/libraries/concurrent-merkle-tree/src.
     // Concurrent merkle trees were changed since the legacy types we use here and of course the libraries
     // have increasing issues maintaining backwards compatibility
     fn merkle_tree_get_size(header: &ConcurrentMerkleTreeHeader) -> Result<usize, Error> {

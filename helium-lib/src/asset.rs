@@ -132,6 +132,10 @@ pub fn bubblegum_signer() -> Pubkey {
 }
 
 pub mod canopy {
+    use crate::spl_account_compression::types::{
+        ConcurrentMerkleTreeHeader, ConcurrentMerkleTreeHeaderData,
+    };
+
     use super::*;
 
     async fn get_heights() -> Result<HashMap<Pubkey, usize>, Error> {
@@ -155,14 +159,117 @@ pub mod canopy {
     }
 
     pub async fn height_for_tree<C: AsRef<SolanaRpcClient>>(
-        _client: &C,
+        client: &C,
         tree: &Pubkey,
     ) -> Result<usize, Error> {
-        get_heights()
-            .await?
-            .get(tree)
-            .copied()
-            .ok_or_else(Error::account_not_found)
+        use crate::anchor_lang::AnchorDeserialize;
+        if let Some(size) = get_heights().await?.get(tree).copied() {
+            return Ok(size);
+        }
+        let tree_account = client.as_ref().get_account(tree).await?;
+        let header = ConcurrentMerkleTreeHeader::deserialize(&mut &tree_account.data[..])
+            .map_err(|_| DecodeError::other("invalid merkle tree header"))?;
+        let merkle_tree_size = merkle_tree_get_size(&header)?;
+        let canopy_size = tree_account.data.len()
+            - std::mem::size_of::<ConcurrentMerkleTreeHeader>()
+            - merkle_tree_size;
+        let canopy_depth = (canopy_size / 32 + 1).ilog2();
+        Ok(canopy_depth as usize)
+    }
+
+    // The following functions and struct definitions were copied from https://github.com/solana-labs/solana-program-library/tree/264ca72de06b0c2b45c0b15d298000fe3f82db2e/libraries/concurrent-merkle-tree/src.
+    // Concurrent merkle trees were changed since the legacy types we use here and of course the libraries
+    // have increasing issues maintaining backwards compatibility
+    fn merkle_tree_get_size(header: &ConcurrentMerkleTreeHeader) -> Result<usize, Error> {
+        // Note: max_buffer_size MUST be a power of 2
+        match (get_max_depth(header), get_max_buffer_size(header)) {
+            (3, 8) => Ok(size_of::<ConcurrentMerkleTree<3, 8>>()),
+            (5, 8) => Ok(size_of::<ConcurrentMerkleTree<5, 8>>()),
+            (6, 16) => Ok(size_of::<ConcurrentMerkleTree<6, 16>>()),
+            (7, 16) => Ok(size_of::<ConcurrentMerkleTree<7, 16>>()),
+            (8, 16) => Ok(size_of::<ConcurrentMerkleTree<8, 16>>()),
+            (9, 16) => Ok(size_of::<ConcurrentMerkleTree<9, 16>>()),
+            (10, 32) => Ok(size_of::<ConcurrentMerkleTree<10, 32>>()),
+            (11, 32) => Ok(size_of::<ConcurrentMerkleTree<11, 32>>()),
+            (12, 32) => Ok(size_of::<ConcurrentMerkleTree<12, 32>>()),
+            (13, 32) => Ok(size_of::<ConcurrentMerkleTree<13, 32>>()),
+            (14, 64) => Ok(size_of::<ConcurrentMerkleTree<14, 64>>()),
+            (14, 256) => Ok(size_of::<ConcurrentMerkleTree<14, 256>>()),
+            (14, 1024) => Ok(size_of::<ConcurrentMerkleTree<14, 1024>>()),
+            (14, 2048) => Ok(size_of::<ConcurrentMerkleTree<14, 2048>>()),
+            (15, 64) => Ok(size_of::<ConcurrentMerkleTree<15, 64>>()),
+            (16, 64) => Ok(size_of::<ConcurrentMerkleTree<16, 64>>()),
+            (17, 64) => Ok(size_of::<ConcurrentMerkleTree<17, 64>>()),
+            (18, 64) => Ok(size_of::<ConcurrentMerkleTree<18, 64>>()),
+            (19, 64) => Ok(size_of::<ConcurrentMerkleTree<19, 64>>()),
+            (20, 64) => Ok(size_of::<ConcurrentMerkleTree<20, 64>>()),
+            (20, 256) => Ok(size_of::<ConcurrentMerkleTree<20, 256>>()),
+            (20, 1024) => Ok(size_of::<ConcurrentMerkleTree<20, 1024>>()),
+            (20, 2048) => Ok(size_of::<ConcurrentMerkleTree<20, 2048>>()),
+            (24, 64) => Ok(size_of::<ConcurrentMerkleTree<24, 64>>()),
+            (24, 256) => Ok(size_of::<ConcurrentMerkleTree<24, 256>>()),
+            (24, 512) => Ok(size_of::<ConcurrentMerkleTree<24, 512>>()),
+            (24, 1024) => Ok(size_of::<ConcurrentMerkleTree<24, 1024>>()),
+            (24, 2048) => Ok(size_of::<ConcurrentMerkleTree<24, 2048>>()),
+            (26, 512) => Ok(size_of::<ConcurrentMerkleTree<26, 512>>()),
+            (26, 1024) => Ok(size_of::<ConcurrentMerkleTree<26, 1024>>()),
+            (26, 2048) => Ok(size_of::<ConcurrentMerkleTree<26, 2048>>()),
+            (30, 512) => Ok(size_of::<ConcurrentMerkleTree<30, 512>>()),
+            (30, 1024) => Ok(size_of::<ConcurrentMerkleTree<30, 1024>>()),
+            (30, 2048) => Ok(size_of::<ConcurrentMerkleTree<30, 2048>>()),
+            _ => Err(DecodeError::other("invalid merkle tree configuration").into()),
+        }
+    }
+
+    fn get_max_depth(header: &ConcurrentMerkleTreeHeader) -> u32 {
+        match header.header {
+            ConcurrentMerkleTreeHeaderData::V1(header) => header.max_depth,
+        }
+    }
+
+    fn get_max_buffer_size(header: &ConcurrentMerkleTreeHeader) -> u32 {
+        match header.header {
+            ConcurrentMerkleTreeHeaderData::V1(header) => header.max_buffer_size,
+        }
+    }
+
+    /// Stores the path of nodes changed in a tree by a Merkle tree operation
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    #[repr(C)]
+    struct ChangeLog<const MAX_DEPTH: usize> {
+        /// Historical root value before Path was applied
+        pub root: Node,
+        /// Nodes of off-chain merkle tree
+        pub path: [Node; MAX_DEPTH],
+        /// Bitmap of node parity (used when hashing)
+        pub index: u32,
+        pub _padding: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct ConcurrentMerkleTree<const MAX_DEPTH: usize, const MAX_BUFFER_SIZE: usize> {
+        pub sequence_number: u64,
+        /// Index of most recent root & changes
+        pub active_index: u64,
+        /// Number of active changes we are tracking
+        pub buffer_size: u64,
+        /// Proof for respective root
+        pub change_logs: [ChangeLog<MAX_DEPTH>; MAX_BUFFER_SIZE],
+        pub rightmost_proof: Path<MAX_DEPTH>,
+    }
+
+    /// Abstract type for 32 byte leaf data
+    type Node = [u8; 32];
+
+    /// Represents a proof to perform a Merkle tree operation on the leaf at `index`
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    #[repr(C)]
+    struct Path<const MAX_DEPTH: usize> {
+        pub proof: [Node; MAX_DEPTH],
+        pub leaf: Node,
+        pub index: u32,
+        pub _padding: u32,
     }
 }
 

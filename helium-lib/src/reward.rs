@@ -276,7 +276,7 @@ pub fn distribute_rewards_instruction_for_owner(
         merkle_tree: asset.compression.tree,
     }
     .to_account_metas(None);
-    accounts.append(&mut asset_proof.proof(Some(3))?);
+    accounts.extend(asset_proof.proof()?);
 
     let ix = Instruction {
         accounts,
@@ -854,7 +854,7 @@ pub mod recipient {
             kta,
         )
         .to_account_metas(None);
-        accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
+        accounts.extend(asset_proof.proof()?);
 
         let ix = Instruction {
             program_id: lazy_distributor::ID,
@@ -1023,7 +1023,7 @@ pub mod recipient {
                 kta,
             )
             .to_account_metas(None);
-            accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
+            accounts.extend(asset_proof.proof()?);
 
             let data = UpdateCompressionDestinationV0 {
                 args: UpdateCompressionDestinationArgsV0 {

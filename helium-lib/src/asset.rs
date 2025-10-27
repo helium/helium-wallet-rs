@@ -391,9 +391,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-    let remaining_accounts = asset_proof
-        .proof_for_tree(client, &asset_proof.tree_id)
-        .await?;
+    let remaining_accounts = asset_proof.proof(Some(3))?;
     let ix = transfer_instruction(recipient, &asset, &asset_proof, &remaining_accounts)?;
 
     let ixs = &[
@@ -432,9 +430,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-    let remaining_accounts = asset_proof
-        .proof_for_tree(client, &asset_proof.tree_id)
-        .await?;
+    let remaining_accounts = asset_proof.proof(Some(3))?;
 
     let burn = BurnAccounts {
         leaf_owner: asset.ownership.owner,
@@ -609,15 +605,6 @@ impl AssetProof {
                     .map_err(Error::from)
             })
             .collect()
-    }
-
-    pub async fn proof_for_tree<C: AsRef<SolanaRpcClient>>(
-        &self,
-        client: &C,
-        tree: &Pubkey,
-    ) -> Result<Vec<AccountMeta>, Error> {
-        let height = canopy::height_for_tree(client, tree).await?;
-        self.proof(Some(height))
     }
 }
 

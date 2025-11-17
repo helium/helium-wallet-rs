@@ -23,7 +23,7 @@ where
         let msg = self.without_signature();
 
         msg.encode(&mut buf)?;
-        verifier.verify(&buf, &self.signature())?;
+        verifier.verify(&buf, self.signature())?;
 
         Ok(())
     }

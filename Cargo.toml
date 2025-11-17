@@ -7,7 +7,7 @@ repository = "https://github.com/helium/helium-wallet-rs"
 [workspace]
 members = [
   "helium-wallet",
-  "helium-lib",
+  "helium-lib", "helium-proto-crypto",
   # "helium-mnemonic"
 ]
 resolver = "2"

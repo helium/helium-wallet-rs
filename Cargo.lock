@@ -2301,9 +2301,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helium-crypto"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9573bd6431a816f79f0129b05d3329c76cc43bd5b650a2fd1bde4fbffd3a803"
+checksum = "f3ae6081be123db88474f4c5f12f9b0d3d90b9f5ce15171dee64fe92e3cae2dd"
 dependencies = [
  "base64 0.22.1",
  "bs58",
@@ -2330,7 +2330,7 @@ dependencies = [
  "anchor-spl",
  "angry-purple-tiger",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bincode",
  "bytemuck",
  "chrono",
@@ -2391,6 +2391,16 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+]
+
+[[package]]
+name = "helium-proto-crypto"
+version = "0.1.0"
+dependencies = [
+ "helium-crypto",
+ "msg-signature",
+ "prost",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3257,6 +3267,23 @@ dependencies = [
  "libc",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "msg-signature"
+version = "0.1.0"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmove-msg-verify#b7e2a24241a06b2afe02d1944a732c4ccb3c2014"
+dependencies = [
+ "msg-signature-macro",
+]
+
+[[package]]
+name = "msg-signature-macro"
+version = "0.1.0"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmove-msg-verify#b7e2a24241a06b2afe02d1944a732c4ccb3c2014"
+dependencies = [
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]

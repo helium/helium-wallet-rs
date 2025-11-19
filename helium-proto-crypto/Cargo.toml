@@ -7,7 +7,7 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
-helium-crypto = "0.9.4"
-thiserror = "1.0.69"
-prost = "0.14.1"
-msg-signature = { git = "https://github.com/helium/proto", branch = "connor/move-msg-verify" }
+helium-crypto = { workspace = true }
+thiserror = { workspace = true }
+prost = { workspace = true }
+msg-signature = { workspace = true }

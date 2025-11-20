@@ -176,7 +176,7 @@ pub fn direct_update_instruction(
     }
 
     let mut accounts = mk_accounts(update.subdao(), kta, asset, owner);
-    accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
+    accounts.extend(asset_proof.proof()?);
 
     use helium_entity_manager::{
         client::args::{

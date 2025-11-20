@@ -68,7 +68,7 @@ mod iot {
 
         let mut onboard_accounts =
             mk_accounts(config_account, owner, hotspot_key).to_account_metas(None);
-        onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
+        onboard_accounts.extend(asset_proof.proof()?);
 
         let onboard_ix = solana_sdk::instruction::Instruction {
             program_id: helium_entity_manager::ID,
@@ -137,7 +137,7 @@ mod mobile {
 
         let mut onboard_accounts =
             mk_accounts(config_account, owner, hotspot_key).to_account_metas(None);
-        onboard_accounts.extend_from_slice(&asset_proof.proof(Some(3))?);
+        onboard_accounts.extend(asset_proof.proof()?);
 
         let onboard_ix = solana_sdk::instruction::Instruction {
             program_id: helium_entity_manager::ID,

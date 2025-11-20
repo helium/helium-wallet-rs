@@ -10,7 +10,7 @@ use crate::{
     kta, message,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
-    solana_sdk::instruction::{AccountMeta, Instruction},
+    solana_sdk::{account::Account, instruction::Instruction},
     spl_account_compression,
     transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
@@ -58,7 +58,7 @@ pub async fn for_ktas<C: AsRef<DasClient>>(
     get_many(client, &pubkeys).await
 }
 
-pub async fn for_kta_with_proof<C: AsRef<DasClient>>(
+pub async fn for_kta_with_proof<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
     client: &C,
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
 ) -> Result<(Asset, AssetProof), Error> {
@@ -86,7 +86,7 @@ pub async fn get_many<C: AsRef<DasClient>>(
     Ok(assets)
 }
 
-pub async fn get_with_proof<C: AsRef<DasClient>>(
+pub async fn get_with_proof<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
     client: &C,
     pubkey: &Pubkey,
 ) -> Result<(Asset, AssetProof), Error> {
@@ -132,11 +132,10 @@ pub fn bubblegum_signer() -> Pubkey {
 }
 
 pub mod canopy {
+    use super::*;
     use crate::spl_account_compression::types::{
         ConcurrentMerkleTreeHeader, ConcurrentMerkleTreeHeaderData,
     };
-
-    use super::*;
 
     async fn get_heights() -> Result<HashMap<Pubkey, usize>, Error> {
         const KNOWN_CANOPY_HEIGHT_URL: &str = "https://entities.nft.helium.io/v2/merkles";
@@ -158,23 +157,76 @@ pub mod canopy {
             .try_collect()
     }
 
-    pub async fn height_for_tree<C: AsRef<SolanaRpcClient>>(
-        client: &C,
-        tree: &Pubkey,
-    ) -> Result<usize, Error> {
+    fn height_from_account(account: &Account) -> Result<usize, Error> {
         use crate::anchor_lang::AnchorDeserialize;
-        if let Some(size) = get_heights().await?.get(tree).copied() {
-            return Ok(size);
-        }
-        let tree_account = client.as_ref().get_account(tree).await?;
-        let header = ConcurrentMerkleTreeHeader::deserialize(&mut &tree_account.data[..])
+        let header = ConcurrentMerkleTreeHeader::deserialize(&mut &account.data[..])
             .map_err(|_| DecodeError::other("invalid merkle tree header"))?;
         let merkle_tree_size = merkle_tree_get_size(&header)?;
-        let canopy_size = tree_account.data.len()
+        let canopy_size = account.data.len()
             - std::mem::size_of::<ConcurrentMerkleTreeHeader>()
             - merkle_tree_size;
         let canopy_depth = (canopy_size / 32 + 1).ilog2();
         Ok(canopy_depth as usize)
+    }
+
+    pub async fn height<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        tree: &Pubkey,
+    ) -> Result<usize, Error> {
+        if let Some(size) = get_heights().await?.get(tree).copied() {
+            return Ok(size);
+        }
+        let tree_account = client.as_ref().get_account(tree).await?;
+        height_from_account(&tree_account)
+    }
+
+    pub async fn heights<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        trees: &[Pubkey],
+    ) -> Result<HashMap<Pubkey, usize>, Error> {
+        let known_heights = get_heights().await?;
+
+        let mut result = HashMap::new();
+        let missing_trees: Vec<Pubkey> = trees
+            .iter()
+            .filter_map(|tree| {
+                if let Some(&height) = known_heights.get(tree) {
+                    result.insert(*tree, height);
+                    None
+                } else {
+                    Some(*tree)
+                }
+            })
+            .collect();
+
+        if missing_trees.is_empty() {
+            return Ok(result);
+        }
+
+        let rpc_client: &SolanaRpcClient = client.as_ref();
+        let fetched_heights = stream::iter(missing_trees)
+            .chunks(100)
+            .map(|tree_chunk| async move {
+                let accounts = rpc_client.get_multiple_accounts(&tree_chunk).await?;
+                tree_chunk
+                    .into_iter()
+                    .zip(accounts)
+                    .map(|(tree, maybe_account)| {
+                        let account = maybe_account.ok_or_else(Error::account_not_found)?;
+                        let height = height_from_account(&account)?;
+                        Ok((tree, height))
+                    })
+                    .collect::<Result<Vec<(Pubkey, usize)>, Error>>()
+            })
+            .buffered(5)
+            .try_collect::<Vec<Vec<(Pubkey, usize)>>>()
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<HashMap<Pubkey, usize>>();
+
+        result.extend(fetched_heights);
+        Ok(result)
     }
 
     // The following functions and struct definitions were copied from https://github.com/solana-labs/solana-program-library/tree/264ca72de06b0c2b45c0b15d298000fe3f82db2e/libraries/concurrent-merkle-tree/src.
@@ -276,32 +328,43 @@ pub mod canopy {
 pub mod proof {
     use super::*;
 
-    pub async fn get<C: AsRef<DasClient>>(
+    pub async fn get<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
         client: &C,
         pubkey: &Pubkey,
     ) -> Result<AssetProof, Error> {
-        let asset_proof_response: AssetProof = client.as_ref().get_asset_proof(pubkey).await?;
-        Ok(asset_proof_response)
+        let das_client: &DasClient = client.as_ref();
+        let mut asset_proof: AssetProof = das_client.get_asset_proof(pubkey).await?;
+        let mut heights = canopy::heights(client, &[asset_proof.tree_id]).await?;
+        asset_proof.canopy_height = heights.remove(&asset_proof.tree_id);
+        Ok(asset_proof)
     }
 
-    pub async fn get_many<C: AsRef<DasClient>>(
+    pub async fn get_many<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
         client: &C,
         pubkeys: &[Pubkey],
     ) -> Result<Vec<AssetProof>, Error> {
-        let proofs = stream::iter(pubkeys.to_vec())
-            .chunks(1000)
-            .map(|key_chunk| async move {
-                client
-                    .as_ref()
-                    .get_asset_proof_batch(key_chunk.as_slice())
-                    .await
-            })
-            .buffered(5)
-            .try_collect::<Vec<Vec<AssetProof>>>()
-            .await?
-            .into_iter()
-            .flatten()
-            .collect_vec();
+        let das_client: &DasClient = client.as_ref();
+        let mut proofs =
+            stream::iter(pubkeys.to_vec())
+                .chunks(1000)
+                .map(|key_chunk| async move {
+                    das_client.get_asset_proof_batch(key_chunk.as_slice()).await
+                })
+                .buffered(5)
+                .try_collect::<Vec<Vec<AssetProof>>>()
+                .await?
+                .into_iter()
+                .flatten()
+                .collect_vec();
+
+        let tree_ids: Vec<Pubkey> = proofs.iter().map(|proof| proof.tree_id).unique().collect();
+
+        let mut heights = canopy::heights(client, &tree_ids).await?;
+
+        for proof in &mut proofs {
+            proof.canopy_height = heights.remove(&proof.tree_id);
+        }
+
         Ok(proofs)
     }
 }
@@ -343,7 +406,6 @@ pub fn transfer_instruction(
     recipient: &Pubkey,
     asset: &Asset,
     asset_proof: &AssetProof,
-    remaining_accounts: &[AccountMeta],
 ) -> Result<Instruction, Error> {
     use bubblegum::client::{
         accounts::Transfer as TransferAccounts, args::Transfer as TransferArgs,
@@ -360,7 +422,7 @@ pub fn transfer_instruction(
         system_program: solana_sdk::system_program::id(),
     }
     .to_account_metas(None);
-    accounts.extend_from_slice(remaining_accounts);
+    accounts.extend(asset_proof.proof()?);
 
     let data = TransferArgs {
         creator_hash: asset.compression.creator_hash,
@@ -391,8 +453,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-    let remaining_accounts = asset_proof.proof(Some(3))?;
-    let ix = transfer_instruction(recipient, &asset, &asset_proof, &remaining_accounts)?;
+    let ix = transfer_instruction(recipient, &asset, &asset_proof)?;
 
     let ixs = &[
         compute_budget_instruction(200_000),
@@ -430,7 +491,6 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
 
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-    let remaining_accounts = asset_proof.proof(Some(3))?;
 
     let burn = BurnAccounts {
         leaf_owner: asset.ownership.owner,
@@ -456,10 +516,8 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         data: args.data(),
     };
 
-    // burn.instruction_with_remaining_accounts(args, &remaining_accounts);
-
     let mut priority_fee_accounts = ix.accounts.clone();
-    priority_fee_accounts.extend_from_slice(&remaining_accounts);
+    priority_fee_accounts.extend(asset_proof.proof()?);
 
     let ixs = &[
         compute_budget_instruction(100_000),
@@ -552,6 +610,8 @@ pub struct AssetProof {
     pub root: Pubkey,
     #[serde(with = "serde_pubkey")]
     pub tree_id: Pubkey,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canopy_height: Option<usize>,
 }
 
 impl Asset {
@@ -587,13 +647,10 @@ impl Asset {
 }
 
 impl AssetProof {
-    pub fn proof(
-        &self,
-        len: Option<usize>,
-    ) -> Result<Vec<solana_program::instruction::AccountMeta>, Error> {
+    pub fn proof(&self) -> Result<Vec<solana_program::instruction::AccountMeta>, Error> {
         self.proof
             .iter()
-            .take(len.unwrap_or(self.proof.len()))
+            .take(self.canopy_height.unwrap_or(self.proof.len()))
             .map(|s| {
                 Pubkey::from_str(s)
                     .map_err(DecodeError::from)

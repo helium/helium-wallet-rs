@@ -517,6 +517,28 @@ pub mod config {
                 Self::Mobile(client) => client.stream_info_since(updated_since).await,
             }
         }
+
+        pub async fn stream_batch_info_since(
+            &mut self,
+            updated_since: u64,
+            batch_size: u32,
+        ) -> Result<
+            BoxStream<'_, Result<Vec<(helium_crypto::PublicKey, Option<HotspotInfo>)>, Error>>,
+            Error,
+        > {
+            match self {
+                Self::Iot(client) => {
+                    client
+                        .stream_batch_info_since(updated_since, batch_size)
+                        .await
+                }
+                Self::Mobile(client) => {
+                    client
+                        .stream_batch_info_since(updated_since, batch_size)
+                        .await
+                }
+            }
+        }
     }
 
     pub mod iot {
@@ -578,20 +600,19 @@ pub mod config {
                 &mut self,
                 addresses: &[helium_crypto::PublicKey],
             ) -> Result<HashMap<helium_crypto::PublicKey, HotspotInfo>, Error> {
-                let map = stream::iter(addresses.to_vec())
-                    .map(|address| (address, self.clone()))
-                    .map(move |(address, mut client)| async move {
-                        let info = client.info(&address).await?;
-                        let tuple = info.map(|info| (address, info));
-                        Ok::<_, Error>(tuple)
+                stream::iter(addresses)
+                    .map(|address| {
+                        let address = address.clone();
+                        let mut client = self.clone();
+                        async move {
+                            let info = client.info(&address).await?;
+                            Ok::<_, Error>(info.map(|info| (address, info)))
+                        }
                     })
                     .buffered(10)
                     .try_filter_map(|maybe_tuple| async move { Ok(maybe_tuple) })
-                    .try_collect::<Vec<(helium_crypto::PublicKey, HotspotInfo)>>()
-                    .await?
-                    .into_iter()
-                    .collect();
-                Ok(map)
+                    .try_collect()
+                    .await
             }
 
             pub async fn stream_info_since(
@@ -601,24 +622,39 @@ pub mod config {
                 BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
+                let streaming = self.stream_batch_info_since(_updated_since, 1000).await?;
+                let streaming = streaming
+                    .map_ok(|batch| stream::iter(batch.into_iter().map(Ok)))
+                    .try_flatten();
+
+                Ok(streaming.boxed())
+            }
+
+            pub async fn stream_batch_info_since(
+                &mut self,
+                _updated_since: u64,
+                batch_size: u32,
+            ) -> Result<
+                BoxStream<'_, Result<Vec<(helium_crypto::PublicKey, Option<HotspotInfo>)>, Error>>,
+                Error,
+            > {
                 let mut req = GatewayInfoStreamReqV1 {
                     signer: self.keypair.public_key().into(),
-                    batch_size: 1000,
+                    batch_size,
                     signature: vec![],
                 };
                 req.sign(&self.keypair)?;
                 let streaming = self.client.info_stream(req).await?.into_inner();
-                let streaming = streaming
-                    .map_err(Error::from)
-                    .and_then(|res| {
-                        let address = self.address.clone();
-                        async move {
-                            res.verify(&address)?;
-                            Ok(res)
-                        }
-                    })
-                    .map_ok(|res| stream::iter(res.gateways).map(info_from_info))
-                    .try_flatten();
+                let streaming = streaming.map_err(Error::from).and_then(|res| {
+                    let address = self.address.clone();
+                    async move {
+                        res.verify(&address)?;
+                        res.gateways
+                            .into_iter()
+                            .map(info_from_info)
+                            .collect::<Result<Vec<_>, _>>()
+                    }
+                });
 
                 Ok(streaming.boxed())
             }
@@ -726,27 +762,29 @@ pub mod config {
                     signature: vec![],
                 };
                 req.sign(&self.keypair)?;
-                let mut result = Vec::with_capacity(addresses.len());
-                let mut stream = self.client.info_batch_v2(req).await?.into_inner();
-                loop {
-                    match stream.try_next().await {
-                        Ok(Some(res)) => {
-                            res.verify(&self.address)?;
-                            let infos: Vec<(helium_crypto::PublicKey, HotspotInfo)> = res
-                                .gateways
+
+                let address = self.address.clone();
+                self.client
+                    .info_batch_v2(req)
+                    .await?
+                    .into_inner()
+                    .map_err(Error::from)
+                    .and_then(move |res| {
+                        let address = address.clone();
+                        async move {
+                            res.verify(&address)?;
+                            res.gateways
                                 .into_iter()
                                 .map(info_from_info_v2)
                                 .filter_map_ok(|(address, maybe_info)| {
                                     maybe_info.map(|info| (address, info))
                                 })
-                                .try_collect()?;
-                            result.extend_from_slice(&infos);
+                                .collect::<Result<Vec<_>, _>>()
                         }
-                        Ok(None) => break,
-                        Err(err) => return Err(err.into()),
-                    }
-                }
-                Ok(result.into_iter().collect())
+                    })
+                    .try_concat()
+                    .await
+                    .map(|vec| vec.into_iter().collect())
             }
 
             pub async fn stream_info_since(
@@ -756,25 +794,40 @@ pub mod config {
                 BoxStream<'_, Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error>>,
                 Error,
             > {
+                let streaming = self.stream_batch_info_since(updated_since, 1000).await?;
+                let streaming = streaming
+                    .map_ok(|batch| stream::iter(batch.into_iter().map(Ok)))
+                    .try_flatten();
+
+                Ok(streaming.boxed())
+            }
+
+            pub async fn stream_batch_info_since(
+                &mut self,
+                updated_since: u64,
+                batch_size: u32,
+            ) -> Result<
+                BoxStream<'_, Result<Vec<(helium_crypto::PublicKey, Option<HotspotInfo>)>, Error>>,
+                Error,
+            > {
                 let mut req = GatewayInfoStreamReqV3 {
                     signer: self.keypair.public_key().into(),
-                    batch_size: 1000,
+                    batch_size,
                     min_updated_at: updated_since,
                     ..Default::default()
                 };
                 req.sign(&self.keypair)?;
                 let streaming = self.client.info_stream_v3(req).await?.into_inner();
-                let streaming = streaming
-                    .map_err(Error::from)
-                    .and_then(|res| {
-                        let address = self.address.clone();
-                        async move {
-                            res.verify(&address)?;
-                            Ok(res)
-                        }
-                    })
-                    .map_ok(|res| stream::iter(res.gateways).map(info_from_info_v3))
-                    .try_flatten();
+                let streaming = streaming.map_err(Error::from).and_then(|res| {
+                    let address = self.address.clone();
+                    async move {
+                        res.verify(&address)?;
+                        res.gateways
+                            .into_iter()
+                            .map(info_from_info_v3)
+                            .collect::<Result<Vec<_>, _>>()
+                    }
+                });
 
                 Ok(streaming.boxed())
             }

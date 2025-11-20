@@ -600,7 +600,7 @@ pub mod config {
                 &mut self,
                 addresses: &[helium_crypto::PublicKey],
             ) -> Result<HashMap<helium_crypto::PublicKey, HotspotInfo>, Error> {
-                stream::iter(addresses)
+                stream::iter(addresses.to_vec())
                     .map(|address| {
                         let address = address.clone();
                         let mut client = self.clone();

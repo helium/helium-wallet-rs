@@ -27,7 +27,7 @@ helium-proto = { git = "https://github.com/helium/proto", branch = "master", fea
 clap = { version = "4", features = ["derive"] }
 thiserror = "2.0.17"
 prost = "0.14.1"
-msg-signature = { path = "/Users/connormckenzie/Helium/proto/msg-signature" }
+msg-signature = { git = "https://github.com/helium/proto", branch = "connor/msg-sign-trait" }
 
 [patch.crates-io]
 anchor-lang = { git = "https://github.com/madninja/anchor.git", branch = "madninja/const_pubkey" }

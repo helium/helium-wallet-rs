@@ -3272,6 +3272,7 @@ dependencies = [
 [[package]]
 name = "msg-signature"
 version = "0.1.0"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#c323a52533dc21b2759328eb7c6b81557aff1e83"
 dependencies = [
  "msg-signature-macro",
 ]
@@ -3279,6 +3280,7 @@ dependencies = [
 [[package]]
 name = "msg-signature-macro"
 version = "0.1.0"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#c323a52533dc21b2759328eb7c6b81557aff1e83"
 dependencies = [
  "quote",
  "syn 2.0.106",

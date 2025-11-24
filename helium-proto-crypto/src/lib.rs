@@ -1,30 +1,5 @@
-use helium_crypto::{PublicKey, Verify};
-use msg_signature::MsgHasSignature;
+mod msg_verify;
+mod msg_sign;
 
-#[derive(thiserror::Error, Debug)]
-pub enum MsgVerifyError {
-    #[error("prost encode error: {0}")]
-    Prost(#[from] prost::EncodeError),
-
-    #[error("crypto error: {0}")]
-    Crypto(#[from] helium_crypto::Error),
-}
-
-pub trait MsgVerify {
-    fn verify(&self, verifier: &PublicKey) -> Result<(), MsgVerifyError>;
-}
-
-impl<T> MsgVerify for T
-where
-    T: MsgHasSignature + prost::Message,
-{
-    fn verify(&self, verifier: &PublicKey) -> Result<(), MsgVerifyError> {
-        let mut buf = vec![];
-        let msg = self.without_signature();
-
-        msg.encode(&mut buf)?;
-        verifier.verify(&buf, self.signature())?;
-
-        Ok(())
-    }
-}
+pub use msg_verify::{MsgVerify, MsgVerifyError};
+pub use msg_sign::MsgSign;

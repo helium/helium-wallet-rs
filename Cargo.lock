@@ -2379,13 +2379,13 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#9e39f9cc761df71d61f1191894f32671d12b234e"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#c323a52533dc21b2759328eb7c6b81557aff1e83"
 dependencies = [
  "bytes",
+ "msg-signature",
  "prost",
  "prost-build",
  "serde",
- "serde_json",
  "strum",
  "strum_macros",
  "tonic",

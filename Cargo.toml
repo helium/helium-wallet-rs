@@ -21,7 +21,7 @@ serde = "1"
 serde_json = "1"
 rust_decimal = { version = "1", features = ["serde-float"] }
 helium-crypto = { version = "0.9" }
-helium-proto = { git = "https://github.com/helium/proto", branch = "master", features = [
+helium-proto = { git = "https://github.com/helium/proto", branch = "connor/msg-sign-trait", features = [
   "services",
 ] }
 clap = { version = "4", features = ["derive"] }

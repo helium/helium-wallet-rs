@@ -2379,7 +2379,7 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#c323a52533dc21b2759328eb7c6b81557aff1e83"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#fc81b0bbb669721a609acd1d085df6b9a21727c6"
 dependencies = [
  "bytes",
  "msg-signature",
@@ -2678,7 +2678,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tokio",
  "tower-service",
  "tracing",
@@ -3272,7 +3272,7 @@ dependencies = [
 [[package]]
 name = "msg-signature"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#c323a52533dc21b2759328eb7c6b81557aff1e83"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#fc81b0bbb669721a609acd1d085df6b9a21727c6"
 dependencies = [
  "msg-signature-macro",
 ]
@@ -3280,7 +3280,7 @@ dependencies = [
 [[package]]
 name = "msg-signature-macro"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#c323a52533dc21b2759328eb7c6b81557aff1e83"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#fc81b0bbb669721a609acd1d085df6b9a21727c6"
 dependencies = [
  "quote",
  "syn 2.0.106",
@@ -3905,7 +3905,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck 0.5.0",
- "itertools 0.10.5",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -3927,7 +3927,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",

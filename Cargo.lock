@@ -2305,7 +2305,7 @@ version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3ae6081be123db88474f4c5f12f9b0d3d90b9f5ce15171dee64fe92e3cae2dd"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "bs58",
  "byteorder",
  "ed25519-compact",
@@ -2330,7 +2330,7 @@ dependencies = [
  "anchor-spl",
  "angry-purple-tiger",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.21.7",
  "bincode",
  "bytemuck",
  "chrono",
@@ -2379,13 +2379,13 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#9e39f9cc761df71d61f1191894f32671d12b234e"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#478d82da17663465693b1cb2b12010e44253c03d"
 dependencies = [
  "bytes",
+ "msg-signature",
  "prost",
  "prost-build",
  "serde",
- "serde_json",
  "strum",
  "strum_macros",
  "tonic",
@@ -3272,7 +3272,7 @@ dependencies = [
 [[package]]
 name = "msg-signature"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmove-msg-verify#36b53382806360bb85502035549cf3cbbc82114b"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#478d82da17663465693b1cb2b12010e44253c03d"
 dependencies = [
  "msg-signature-macro",
 ]
@@ -3280,7 +3280,7 @@ dependencies = [
 [[package]]
 name = "msg-signature-macro"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmove-msg-verify#36b53382806360bb85502035549cf3cbbc82114b"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#478d82da17663465693b1cb2b12010e44253c03d"
 dependencies = [
  "quote",
  "syn 2.0.106",
@@ -3905,7 +3905,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck 0.5.0",
- "itertools 0.14.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -3927,7 +3927,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -8786,7 +8786,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0978bf7171b3d90bac376700cb56d606feb40f251a475a5d6634613564460b22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

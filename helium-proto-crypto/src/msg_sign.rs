@@ -12,7 +12,7 @@ where
     fn sign(&mut self, signing_key: &Keypair) -> Result<(), helium_crypto::Error> {
         self.clear_signature();
         let signature = signing_key.sign(&self.encode_to_vec())?;
-        self.set_signature(&signature);
+        self.set_signature(signature);
 
         Ok(())
     }

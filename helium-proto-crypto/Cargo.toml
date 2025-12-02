@@ -1,0 +1,13 @@
+[package]
+name = "helium-proto-crypto"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+helium-crypto = { workspace = true }
+thiserror = { workspace = true }
+prost = { workspace = true }
+msg-signature = { workspace = true }

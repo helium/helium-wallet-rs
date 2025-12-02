@@ -21,13 +21,13 @@ serde = "1"
 serde_json = "1"
 rust_decimal = { version = "1", features = ["serde-float"] }
 helium-crypto = { version = "0.9" }
-helium-proto = { git = "https://github.com/helium/proto", branch = "connor/msg-sign-trait", features = [
+helium-proto = { git = "https://github.com/helium/proto", branch = "connor/move-msg-verify", features = [
   "services",
 ] }
 clap = { version = "4", features = ["derive"] }
 thiserror = "2.0.17"
 prost = "0.14.1"
-msg-signature = { git = "https://github.com/helium/proto", branch = "connor/msg-sign-trait" }
+msg-signature = { git = "https://github.com/helium/proto", branch = "connor/move-msg-verify" }
 
 [patch.crates-io]
 anchor-lang = { git = "https://github.com/madninja/anchor.git", branch = "madninja/const_pubkey" }

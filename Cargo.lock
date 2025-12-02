@@ -2379,7 +2379,7 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#478d82da17663465693b1cb2b12010e44253c03d"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmove-msg-verify#baa293f57a1e5423e2a2e114cec699e36b572ba0"
 dependencies = [
  "bytes",
  "msg-signature",
@@ -3272,7 +3272,7 @@ dependencies = [
 [[package]]
 name = "msg-signature"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#478d82da17663465693b1cb2b12010e44253c03d"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmove-msg-verify#baa293f57a1e5423e2a2e114cec699e36b572ba0"
 dependencies = [
  "msg-signature-macro",
 ]
@@ -3280,7 +3280,7 @@ dependencies = [
 [[package]]
 name = "msg-signature-macro"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=connor%2Fmsg-sign-trait#478d82da17663465693b1cb2b12010e44253c03d"
+source = "git+https://github.com/helium/proto?branch=connor%2Fmove-msg-verify#baa293f57a1e5423e2a2e114cec699e36b572ba0"
 dependencies = [
  "quote",
  "syn 2.0.106",

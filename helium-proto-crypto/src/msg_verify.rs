@@ -19,10 +19,9 @@ where
     T: MsgHasSignature + prost::Message,
 {
     fn verify(&self, verifier: &PublicKey) -> Result<(), MsgVerifyError> {
-        let mut buf = vec![];
         let msg = self.without_signature();
 
-        msg.encode(&mut buf)?;
+        let buf = msg.encode_to_vec();
         verifier.verify(&buf, self.signature())?;
 
         Ok(())

@@ -448,8 +448,7 @@ mod tests {
     fn roundtrip_issue_token() {
         let gw_keypair = helium_crypto::Keypair::generate(Default::default(), &mut OsRng);
         let issue_token = issue_token(&gw_keypair).expect("issue token");
-        let gw_pubkey =
-            helium_crypto::PublicKey::try_from(issue_token.hotspot.key).expect("hotspot key");
+        let gw_pubkey = issue_token.hotspot.key;
         let decoded = issue_token_to_add_tx(&issue_token.token).expect("decoded issue token");
         let decoded_gw_pubkey =
             helium_crypto::PublicKey::try_from(decoded.gateway).expect("decoded hotspot key");

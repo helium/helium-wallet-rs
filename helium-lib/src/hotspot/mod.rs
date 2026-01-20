@@ -542,7 +542,11 @@ pub enum HotspotInfo {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         deployment_info: Option<MobileDeploymentInfo>,
         #[serde(skip_serializing_if = "is_zero", default)]
+        created_at: u64,
+        #[serde(skip_serializing_if = "is_zero", default)]
         updated_at: u64,
+        #[serde(skip_serializing_if = "is_zero", default)]
+        location_changed_at: u64,
     },
 }
 
@@ -834,7 +838,9 @@ impl From<helium_entity_manager::accounts::MobileHotspotInfoV0> for HotspotInfo 
             location_asserts: value.num_location_asserts,
             device_type: value.device_type.into(),
             deployment_info: value.deployment_info.map(MobileDeploymentInfo::from),
-            updated_at: 0,
+            created_at: 0,          // Not available in on-chain account
+            updated_at: 0,          // Not available in on-chain account
+            location_changed_at: 0, // Not available in on-chain account
         }
     }
 }

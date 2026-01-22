@@ -844,9 +844,6 @@ pub mod config {
             info: GatewayInfoV2,
         ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
             let address = info.address.try_into()?;
-            let Some(metadata) = info.metadata else {
-                return Ok((address, None));
-            };
 
             let (device_type, mode) = match DeviceType::try_from(info.device_type)
                 .map_err(DecodeError::from)?
@@ -857,14 +854,24 @@ pub mod config {
                 DeviceType::WifiDataOnly => (MobileDeviceType::WifiDataOnly, HotspotMode::DataOnly),
             };
 
+            let (location, deployment_info) = info
+                .metadata
+                .map(|metadata| {
+                    (
+                        metadata.location.parse().ok(),
+                        metadata.deployment_info.map(Into::into),
+                    )
+                })
+                .unwrap_or((None, None));
+
             Ok((
                 address,
                 Some(HotspotInfo::Mobile {
                     device_type,
                     mode,
-                    location: metadata.location.parse().ok(),
+                    location,
                     location_asserts: 0,
-                    deployment_info: metadata.deployment_info.map(Into::into),
+                    deployment_info,
                     created_at: info.created_at,
                     updated_at: info.updated_at,
                     location_changed_at: 0, // Not available in V2
@@ -876,9 +883,6 @@ pub mod config {
             info: GatewayInfoV3,
         ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
             let address = info.address.try_into()?;
-            let Some(metadata) = info.metadata else {
-                return Ok((address, None));
-            };
 
             let (device_type, mode) = match DeviceTypeV2::try_from(info.device_type)
                 .map_err(DecodeError::from)?
@@ -888,10 +892,20 @@ pub mod config {
                 DeviceTypeV2::DataOnly => (MobileDeviceType::WifiDataOnly, HotspotMode::DataOnly),
             };
 
-            let (location, location_changed_at) = metadata
-                .location_info
-                .map(|loc| (loc.location.parse().ok(), loc.location_changed_at))
-                .unwrap_or((None, 0));
+            let (location, location_changed_at, deployment_info) = info
+                .metadata
+                .map(|metadata| {
+                    let (location, location_changed_at) = metadata
+                        .location_info
+                        .map(|loc| (loc.location.parse().ok(), loc.location_changed_at))
+                        .unwrap_or((None, 0));
+                    (
+                        location,
+                        location_changed_at,
+                        metadata.deployment_info.map(Into::into),
+                    )
+                })
+                .unwrap_or((None, 0, None));
 
             Ok((
                 address,
@@ -900,7 +914,7 @@ pub mod config {
                     mode,
                     location,
                     location_asserts: info.num_location_asserts as u16,
-                    deployment_info: metadata.deployment_info.map(Into::into),
+                    deployment_info,
                     created_at: info.created_at,
                     updated_at: info.updated_at,
                     location_changed_at,

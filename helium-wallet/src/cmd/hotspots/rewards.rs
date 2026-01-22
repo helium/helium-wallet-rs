@@ -141,23 +141,116 @@ impl ClaimCmd {
     }
 }
 
-/// Get or set the recipient for hotspot rewards
+/// Manage the recipient for hotspot rewards
 #[derive(Debug, Clone, clap::Args)]
 pub struct RecipientCmd {
+    #[command(subcommand)]
+    cmd: RecipientSubcommand,
+}
+
+impl RecipientCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        self.cmd.run(opts).await
+    }
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum RecipientSubcommand {
+    Get(RecipientGetCmd),
+    Init(RecipientInitCmd),
+    Update(RecipientUpdateCmd),
+}
+
+impl RecipientSubcommand {
+    pub async fn run(&self, opts: Opts) -> Result {
+        match self {
+            Self::Get(cmd) => cmd.run(opts).await,
+            Self::Init(cmd) => cmd.run(opts).await,
+            Self::Update(cmd) => cmd.run(opts).await,
+        }
+    }
+}
+
+/// Get the current reward recipient destination for a hotspot
+///
+/// Returns the wallet address where rewards for this hotspot will be sent
+#[derive(Debug, Clone, clap::Args)]
+pub struct RecipientGetCmd {
     /// Token for command
     #[clap(long, default_value_t)]
     pub token: reward::ClaimableToken,
-    /// The hotspot to get or set the reward recipient for
+    /// The hotspot to get the reward recipient for
     pub hotspot: helium_crypto::PublicKey,
-    /// The new destination to send rewards to, if set
-    pub destination: Option<helium_lib::keypair::Pubkey>,
-    /// Commit the new destination if set
+}
+
+impl From<&RecipientGetCmd> for crate::cmd::assets::rewards::RecipientGetCmd {
+    fn from(value: &RecipientGetCmd) -> Self {
+        Self {
+            token: value.token,
+            entity_key: EncodedEntityKey::from(&value.hotspot),
+        }
+    }
+}
+
+impl RecipientGetCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let cmd = crate::cmd::assets::rewards::RecipientGetCmd::from(self);
+        cmd.run(opts).await
+    }
+}
+
+/// Initialize the recipient for a hotspot
+///
+/// Creates the on-chain recipient account for a hotspot. This is required before
+/// rewards can be claimed or a custom destination can be set. The recipient will
+/// default to the hotspot owner's wallet.
+#[derive(Debug, Clone, clap::Args)]
+pub struct RecipientInitCmd {
+    /// Token for command
+    #[clap(long, default_value_t)]
+    pub token: reward::ClaimableToken,
+    /// The hotspot to initialize the reward recipient for
+    pub hotspot: helium_crypto::PublicKey,
     #[command(flatten)]
     pub commit: CommitOpts,
 }
 
-impl From<&RecipientCmd> for crate::cmd::assets::rewards::RecipientCmd {
-    fn from(value: &RecipientCmd) -> Self {
+impl From<&RecipientInitCmd> for crate::cmd::assets::rewards::RecipientInitCmd {
+    fn from(value: &RecipientInitCmd) -> Self {
+        Self {
+            token: value.token,
+            entity_key: EncodedEntityKey::from(&value.hotspot),
+            commit: value.commit.clone(),
+        }
+    }
+}
+
+impl RecipientInitCmd {
+    pub async fn run(&self, opts: Opts) -> Result {
+        let cmd = crate::cmd::assets::rewards::RecipientInitCmd::from(self);
+        cmd.run(opts).await
+    }
+}
+
+/// Update the reward recipient destination for a hotspot
+///
+/// Changes where rewards for this hotspot will be sent. The recipient account will
+/// be initialized if it doesn't already exist.
+#[derive(Debug, Clone, clap::Args)]
+pub struct RecipientUpdateCmd {
+    /// Token for command
+    #[clap(long, default_value_t)]
+    pub token: reward::ClaimableToken,
+    /// The hotspot to update the reward recipient for
+    pub hotspot: helium_crypto::PublicKey,
+    /// The new destination wallet address to send rewards to
+    pub destination: helium_lib::keypair::Pubkey,
+    #[command(flatten)]
+    pub commit: CommitOpts,
+}
+
+impl From<&RecipientUpdateCmd> for crate::cmd::assets::rewards::RecipientUpdateCmd {
+    fn from(value: &RecipientUpdateCmd) -> Self {
         Self {
             token: value.token,
             entity_key: EncodedEntityKey::from(&value.hotspot),
@@ -167,9 +260,9 @@ impl From<&RecipientCmd> for crate::cmd::assets::rewards::RecipientCmd {
     }
 }
 
-impl RecipientCmd {
+impl RecipientUpdateCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let cmd = crate::cmd::assets::rewards::RecipientCmd::from(self);
+        let cmd = crate::cmd::assets::rewards::RecipientUpdateCmd::from(self);
         cmd.run(opts).await
     }
 }

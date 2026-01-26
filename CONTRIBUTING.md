@@ -17,12 +17,22 @@ our way or a bug to report:
 ## Pre-commit checks
 
 We use pre-commit to run the same Rust hygiene checks as CI. After
-installing `pre-commit`, run:
+installing `pre-commit` (e.g. `brew install pre-commit`), run:
 
 ```sh
 pre-commit install
 pre-commit run --all-files
 ```
+
+To also run checks on `git push`, install the pre-push hook:
+
+```sh
+pre-commit install --hook-type pre-push
+```
+
+Security note: pre-commit can fetch and run hooks from third-party
+repositories. This repo only uses local hooks, but if you add external
+hooks, verify the source and pin to trusted versions.
 
 This project is intended to be a safe, welcoming space for
 collaboration, and contributors are expected to adhere to the

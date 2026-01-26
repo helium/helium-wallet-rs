@@ -14,6 +14,16 @@ our way or a bug to report:
   detail as you can. At the very least you'll include steps to
   reproduce the problem.
 
+## Pre-commit checks
+
+We use pre-commit to run the same Rust hygiene checks as CI. After
+installing `pre-commit`, run:
+
+```sh
+pre-commit install
+pre-commit run --all-files
+```
+
 This project is intended to be a safe, welcoming space for
 collaboration, and contributors are expected to adhere to the
 [Contributor Covenant Code of

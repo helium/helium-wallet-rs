@@ -44,7 +44,7 @@ jobs:
 
       - name: Build | Test
         run: |
-          cargo test
+          cargo test --locked
 
   build:
     runs-on: ${{ matrix.os }}

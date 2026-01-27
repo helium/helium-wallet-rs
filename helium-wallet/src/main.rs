@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
+
 use clap::Parser;
 use helium_wallet::{
     cmd::{

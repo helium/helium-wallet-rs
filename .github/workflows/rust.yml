@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [master]
 
+# Restrict permissions to minimum required (principle of least privilege)
+permissions:
+  contents: read
+
 env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
@@ -17,6 +21,8 @@ env:
 jobs:
   hygiene:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Setup | Cancel Previous Runs
         uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1
@@ -130,6 +136,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/helium-wallet')
     needs: [hygiene, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for creating releases
     steps:
       - name: Setup | Cancel Previous Runs
         uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1

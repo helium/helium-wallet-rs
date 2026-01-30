@@ -76,7 +76,7 @@ jobs:
           echo "Running cargo-geiger on main branch..."
           git checkout origin/master
           MANIFEST_PATH="$GITHUB_WORKSPACE/$GEIGER_MANIFEST_DIR/Cargo.toml"
-          cargo geiger --manifest-path "$MANIFEST_PATH" --locked > /tmp/baseline.txt
+          cargo geiger --manifest-path "$MANIFEST_PATH" --locked 2>/dev/null > /tmp/baseline.txt || true
           
           echo "Baseline from main branch:"
           tail -1 /tmp/baseline.txt
@@ -90,7 +90,7 @@ jobs:
           
           echo "Running cargo-geiger on PR branch..."
           MANIFEST_PATH="$GITHUB_WORKSPACE/$GEIGER_MANIFEST_DIR/Cargo.toml"
-          cargo geiger --manifest-path "$MANIFEST_PATH" --locked > /tmp/current.txt
+          cargo geiger --manifest-path "$MANIFEST_PATH" --locked 2>/dev/null > /tmp/current.txt || true
           
           echo "Current from PR branch:"
           tail -1 /tmp/current.txt

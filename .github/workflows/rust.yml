@@ -25,7 +25,7 @@ jobs:
       contents: read
     steps:
       - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1
+        uses: styfle/cancel-workflow-action@85880fa0301c86cca9da44039ee3bb12d3bedbfa # v0.12.1
         with:
           access_token: ${{ github.token }}
 
@@ -35,6 +35,7 @@ jobs:
       - name: Setup | Rust
         uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # stable
         with:
+          toolchain: stable
           components: clippy, rustfmt
 
       - name: Setup | Tools
@@ -62,7 +63,7 @@ jobs:
 
     steps:
       - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1
+        uses: styfle/cancel-workflow-action@85880fa0301c86cca9da44039ee3bb12d3bedbfa # v0.12.1
         with:
           access_token: ${{ github.token }}
 
@@ -85,6 +86,8 @@ jobs:
 
       - name: Setup | Rust
         uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # stable
+        with:
+          toolchain: stable
 
       - name: Setup | Rust Cache
         uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # v2.7.5
@@ -140,7 +143,7 @@ jobs:
       contents: write  # Required for creating releases
     steps:
       - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1
+        uses: styfle/cancel-workflow-action@85880fa0301c86cca9da44039ee3bb12d3bedbfa # v0.12.1
         with:
           access_token: ${{ github.token }}
 

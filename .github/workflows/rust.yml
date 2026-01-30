@@ -19,23 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.12.1
+        uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1
         with:
           access_token: ${{ github.token }}
 
       - name: Setup | Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup | Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # stable
         with:
           components: clippy, rustfmt
 
       - name: Setup | Tools
-        run: sudo apt-get install -y protobuf-compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Setup | Cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # v2.7.5
 
       - name: Build | Hygiene
         run: |
@@ -54,12 +56,12 @@ jobs:
 
     steps:
       - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.12.1
+        uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1
         with:
           access_token: ${{ github.token }}
 
       - name: Setup | Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -76,10 +78,10 @@ jobs:
           fi
 
       - name: Setup | Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # stable
 
       - name: Setup | Rust Cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # v2.7.5
         with:
           key: ${{ matrix.os }}
 
@@ -118,7 +120,7 @@ jobs:
           fi
 
       - name: Build | Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: ${{ env.NAME }}
           if-no-files-found: error
@@ -130,17 +132,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup | Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.12.1
+        uses: styfle/cancel-workflow-action@b173b6ec0100793c1e2b3b7db1c8db27854e6fdd # v0.12.1
         with:
           access_token: ${{ github.token }}
 
       - name: Setup | Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           path: helium-wallet-*
 
       - name: Release | Artifacts
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

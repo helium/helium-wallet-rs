@@ -1,0 +1,194 @@
+name: Geiger
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  geiger:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GEIGER_MANIFEST_DIR: helium-wallet
+      CARGO_BINARY: cargo-geiger
+      CARGO_BINARY_VERSION: 0.13.0
+      UNSAFE_THRESHOLD: 20  # Fail if unsafe code increases by more than this
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup | Rust
+        uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # stable
+        with:
+          toolchain: stable
+
+      - name: Setup | Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Setup | Cache
+        uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # v2.7.5
+
+      - name: Setup | Restore cargo binary from cache
+        id: cache-binary
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: /home/runner/.cargo/bin/${{ env.CARGO_BINARY }}
+          key: ${{ runner.os }}-${{ env.CARGO_BINARY }}-${{ env.CARGO_BINARY_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CARGO_BINARY }}-
+
+      - name: Setup | Check cache status
+        run: |
+          if [ "${{ steps.cache-binary.outputs.cache-hit }}" == "true" ]; then
+            echo "✓ Cache hit! ${CARGO_BINARY} binary restored from cache"
+            ls -lh /home/runner/.cargo/bin/${CARGO_BINARY}
+          else
+            echo "✗ Cache miss - will install ${CARGO_BINARY}"
+          fi
+
+      - name: Setup | Install cargo binary
+        if: steps.cache-binary.outputs.cache-hit != 'true'
+        run: |
+          echo "Cache miss - installing ${CARGO_BINARY} ${CARGO_BINARY_VERSION} (this will take ~3-5 minutes)..."
+          cargo install ${CARGO_BINARY} --version ${CARGO_BINARY_VERSION} --locked
+
+      - name: Setup | Save cargo binary to cache
+        if: always() && steps.cache-binary.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: /home/runner/.cargo/bin/${{ env.CARGO_BINARY }}
+          key: ${{ runner.os }}-${{ env.CARGO_BINARY }}-${{ env.CARGO_BINARY_VERSION }}
+
+      - name: Geiger | Run on main branch (baseline)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Fetching main branch for baseline..."
+          git fetch origin master --depth=1
+          
+          echo "Running cargo-geiger on main branch..."
+          git checkout origin/master
+          MANIFEST_PATH="$GITHUB_WORKSPACE/$GEIGER_MANIFEST_DIR/Cargo.toml"
+          cargo geiger --manifest-path "$MANIFEST_PATH" --locked 2>/dev/null > /tmp/baseline.txt || true
+          
+          echo "Baseline from main branch:"
+          tail -1 /tmp/baseline.txt
+
+      - name: Geiger | Run on PR branch (current)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Switching to PR branch..."
+          git checkout ${{ github.sha }}
+          
+          echo "Running cargo-geiger on PR branch..."
+          MANIFEST_PATH="$GITHUB_WORKSPACE/$GEIGER_MANIFEST_DIR/Cargo.toml"
+          cargo geiger --manifest-path "$MANIFEST_PATH" --locked 2>/dev/null > /tmp/current.txt || true
+          
+          echo "Current from PR branch:"
+          tail -1 /tmp/current.txt
+
+      - name: Geiger | Compare unsafe counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # Debug: Show the actual output
+          echo "=== Baseline output (last 5 lines) ==="
+          tail -5 /tmp/baseline.txt
+          echo ""
+          echo "=== Current output (last 5 lines) ==="
+          tail -5 /tmp/current.txt
+          echo ""
+          
+          # Extract unsafe expressions count (2nd column is the key metric)
+          # Default format: "functions expressions impls traits methods"
+          # Example: "0/0  1/1  0/0  0/0  0/0"
+          # Get last non-empty line, extract 2nd column (expressions), get numerator
+          baseline_unsafe=$(grep -v '^$' /tmp/baseline.txt | tail -1 | awk '{print $2}' | cut -d'/' -f1 | tr -d '\n' | tr -d ' ')
+          current_unsafe=$(grep -v '^$' /tmp/current.txt | tail -1 | awk '{print $2}' | cut -d'/' -f1 | tr -d '\n' | tr -d ' ')
+          
+          echo "=== Extracted values ==="
+          echo "baseline_unsafe: '$baseline_unsafe'"
+          echo "current_unsafe: '$current_unsafe'"
+          echo ""
+          
+          # Validate extraction
+          if [ -z "$baseline_unsafe" ] || [ -z "$current_unsafe" ]; then
+            echo "❌ ERROR: Failed to extract unsafe counts from geiger output"
+            echo "This usually means the output format changed or parsing failed."
+            exit 1
+          fi
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔒 Unsafe Code Analysis Results"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Baseline (main):  $baseline_unsafe unsafe items"
+          echo "Current (PR):     $current_unsafe unsafe items"
+          echo "Threshold:        ±$UNSAFE_THRESHOLD items"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          if [ "$current_unsafe" -gt "$baseline_unsafe" ]; then
+            delta=$((current_unsafe - baseline_unsafe))
+            percent=$(awk "BEGIN {printf \"%.1f\", ($delta / $baseline_unsafe) * 100}")
+            
+            if [ "$delta" -gt "$UNSAFE_THRESHOLD" ]; then
+              echo ""
+              echo "❌ FAILED: Unsafe code increased by $delta items (+${percent}%)"
+              echo ""
+              echo "This exceeds the threshold of $UNSAFE_THRESHOLD items."
+              echo ""
+              echo "⚠️  Possible causes:"
+              echo "  • New dependency with significant unsafe code"
+              echo "  • Major version bump with architectural changes"
+              echo "  • Feature flag enabling unsafe functionality"
+              echo "  • FFI bindings or low-level optimizations"
+              echo ""
+              echo "📋 Required actions:"
+              echo "  1. Identify which dependency/code added unsafe items"
+              echo "  2. Review the unsafe code for correctness and necessity"
+              echo "  3. Document safety invariants and justification"
+              echo "  4. Consider alternatives with less unsafe code"
+              echo "  5. Get security team review if adding new dependencies"
+              echo ""
+              exit 1
+            else
+              echo ""
+              echo "⚠️  WARNING: Unsafe code increased by $delta items (+${percent}%)"
+              echo ""
+              echo "This is below the threshold of $UNSAFE_THRESHOLD items, so the check passes."
+              echo "However, please review the unsafe code additions carefully."
+              echo ""
+              echo "✅ PASSED (with warning)"
+            fi
+            
+          elif [ "$current_unsafe" -lt "$baseline_unsafe" ]; then
+            delta=$((baseline_unsafe - current_unsafe))
+            percent=$(awk "BEGIN {printf \"%.1f\", ($delta / $baseline_unsafe) * 100}")
+            echo ""
+            echo "🎉 EXCELLENT: Unsafe code decreased by $delta items (-${percent}%)"
+            echo ""
+            echo "Great work improving code safety! This PR makes the codebase safer."
+            echo ""
+            echo "Possible improvements:"
+            echo "  ✓ Removed unnecessary unsafe code"
+            echo "  ✓ Replaced unsafe operations with safe alternatives"
+            echo "  ✓ Upgraded to dependencies with better safety"
+            echo "  ✓ Refactored to reduce unsafe surface area"
+            echo ""
+            echo "✅ PASSED with celebration! 🚀"
+            
+          else
+            echo ""
+            echo "✅ PASSED: No change in unsafe code count"
+            echo ""
+            echo "The unsafe code footprint remains stable."
+          fi

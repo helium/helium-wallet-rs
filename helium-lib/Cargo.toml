@@ -27,6 +27,7 @@ helium-crypto = { workspace = true }
 itertools = "0.14"
 jsonrpc_client = { version = "0.7", features = ["reqwest"] }
 futures = "*"
+futures-timer = "3"
 tracing = "0"
 base64 = { workspace = true }
 solana-sdk = "2.2.1"

@@ -1,5 +1,6 @@
 use crate::{anchor_client, anchor_lang, client, hotspot::cert, onboarding, solana_client, token};
-use std::{array::TryFromSliceError, num::TryFromIntError};
+use solana_sdk::signature::Signature;
+use std::{array::TryFromSliceError, num::TryFromIntError, time::Duration};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -33,8 +34,12 @@ pub enum Error {
     Solana(Box<solana_client::client_error::ClientError>),
     #[error("instruction: {0}")]
     Instruction(#[from] solana_sdk::instruction::InstructionError),
+    /// Transaction building/packing errors from solana-transaction-utils
     #[error("transaction: {0}")]
     Transaction(#[from] solana_transaction_utils::error::Error),
+    /// Transaction confirmation errors (polling for finalization)
+    #[error("confirmation: {0}")]
+    Confirmation(#[from] ConfirmationError),
     #[error("message: {0}")]
     Cmopile(#[from] solana_sdk::message::CompileError),
     #[error("signing: {0}")]
@@ -150,5 +155,83 @@ pub enum DecodeError {
 impl DecodeError {
     pub fn other<S: ToString>(reason: S) -> Self {
         Self::Decode(reason.to_string())
+    }
+}
+
+/// Errors related to transaction confirmation polling
+#[derive(Debug, Error)]
+pub enum ConfirmationError {
+    /// Transaction signature not found on-chain (may have been dropped or never sent)
+    #[error("signature {signature} not found: {reason}")]
+    NotFound {
+        signature: Signature,
+        reason: String,
+    },
+
+    /// Transaction failed on-chain with a program error
+    #[error("transaction {signature} failed: {error}")]
+    Failed { signature: Signature, error: String },
+
+    /// Confirmation polling timed out before reaching finalized status
+    #[error("timeout after {duration:?} waiting for {count} signatures")]
+    Timeout { duration: Duration, count: usize },
+
+    /// Multiple signatures failed to confirm
+    #[error(
+        "batch confirmation failed: {succeeded} succeeded, {failed} failed, {not_found} not found"
+    )]
+    BatchFailed {
+        succeeded: usize,
+        failed: usize,
+        not_found: usize,
+    },
+}
+
+impl ConfirmationError {
+    /// Create a NotFound error for a signature that wasn't found on-chain
+    pub fn not_found(signature: Signature, reason: impl Into<String>) -> Self {
+        Self::NotFound {
+            signature,
+            reason: reason.into(),
+        }
+    }
+
+    /// Create a Failed error for a transaction that failed on-chain
+    pub fn failed(signature: Signature, error: impl Into<String>) -> Self {
+        Self::Failed {
+            signature,
+            error: error.into(),
+        }
+    }
+
+    /// Create a Timeout error when confirmation polling exceeded the deadline
+    pub fn timeout(duration: Duration, count: usize) -> Self {
+        Self::Timeout { duration, count }
+    }
+
+    /// Create a BatchFailed error summarizing batch confirmation results
+    pub fn batch_failed(succeeded: usize, failed: usize, not_found: usize) -> Self {
+        Self::BatchFailed {
+            succeeded,
+            failed,
+            not_found,
+        }
+    }
+}
+
+impl Error {
+    /// Helper to create a confirmation not found error
+    pub fn confirmation_not_found(signature: Signature, reason: impl Into<String>) -> Self {
+        ConfirmationError::not_found(signature, reason).into()
+    }
+
+    /// Helper to create a confirmation failed error
+    pub fn confirmation_failed(signature: Signature, error: impl Into<String>) -> Self {
+        ConfirmationError::failed(signature, error).into()
+    }
+
+    /// Helper to create a confirmation timeout error
+    pub fn confirmation_timeout(duration: Duration, count: usize) -> Self {
+        ConfirmationError::timeout(duration, count).into()
     }
 }

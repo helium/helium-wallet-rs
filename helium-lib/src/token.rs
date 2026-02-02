@@ -51,8 +51,8 @@ const SYS_PROGRAM_TRANSFER_CU: u32 = 200;
 /// Number of Compute Units needed to execute an SPL_CreateIdempotent
 /// instruction in its worst case; the case in which it must actually create
 /// an ATA.
-/// (Actual value: 23552, observed on-chain 2024-07)
-const SPL_CREATE_IDEMPOTENT_CU: u32 = 24000;
+/// (Actual value: 30998, observed on-chain 2025-01)
+const SPL_CREATE_IDEMPOTENT_CU: u32 = 32000;
 
 /// Number of Compute Units needed to execute an SPL_TransferChecked instruction.
 /// (Actual value: 6199, observed on-chain 2025-02-09)

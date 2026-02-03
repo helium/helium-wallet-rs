@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
+
 use bitvec::prelude::*;
 use lazy_static::lazy_static;
 use sha2::{Digest, Sha256};

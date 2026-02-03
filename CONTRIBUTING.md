@@ -48,8 +48,31 @@ pre-commit install --hook-type pre-push
 ### Security checks
 
 This repo uses TruffleHog to scan for hardcoded secrets before each commit.
-The hook will fail if verified secrets are detected. If you need to exclude
-specific files from scanning, contact a maintainer.
+The hook will fail if any potential secrets are detected (including both 
+verified and unverified patterns).
+
+**If you encounter a false positive:**
+- Ensure the flagged content is not a real secret
+- Consider using environment variables or a secure secret manager instead
+- For legitimate test fixtures or example keys that need to be committed, see exclusions below
+
+**Excluding files from secret scanning:**
+
+If you have legitimate test data or examples that trigger false positives, you can exclude them:
+
+1. Create a `.trufflehog-exclude` file in the repo root with glob patterns:
+   ```
+   # Exclude test fixtures
+   **/tests/fixtures/**
+   **/examples/**
+   
+   # Exclude specific files
+   path/to/test-data.json
+   ```
+
+2. Update `.pre-commit-config.yaml` to use the exclusion file by adding `--exclude-paths=.trufflehog-exclude` to the TruffleHog entry
+
+3. Get approval from a maintainer before excluding paths from security scanning
 
 **Security note**: pre-commit can fetch and run hooks from third-party
 repositories. This repo uses TruffleHog from the official trufflesecurity

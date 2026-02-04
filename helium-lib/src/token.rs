@@ -58,6 +58,10 @@ const SPL_CREATE_IDEMPOTENT_CU: u32 = 32000;
 /// (Actual value: 6199, observed on-chain 2025-02-09)
 const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
 
+/// Number of Compute Units needed to execute an SPL CloseAccount instruction.
+/// (Estimated value based on similar operations)
+const SPL_CLOSE_ACCOUNT_CU: u32 = 3000;
+
 pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
@@ -171,6 +175,76 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     let (msg, block_height) = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
     let txn = mk_transaction(msg, &[keypair])?;
     Ok((txn, block_height))
+}
+
+/// Build a message to close multiple token accounts and return rent to destination.
+/// All accounts must have zero balance (caller is responsible for validation).
+pub async fn close_accounts_message<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    accounts: &[Pubkey],
+    destination: &Pubkey,
+    owner: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
+    if accounts.is_empty() {
+        return Err(DecodeError::other("no accounts to close").into());
+    }
+
+    let mut ixs = vec![];
+    let mut ixs_accounts = vec![];
+    let mut cu_budget: u32 = SYS_PROGRAM_SETUP_CU;
+
+    for account in accounts {
+        let ix = anchor_spl::token::spl_token::instruction::close_account(
+            &anchor_spl::token::spl_token::id(),
+            account,
+            destination,
+            owner,
+            &[],
+        )?;
+        ixs_accounts.extend_from_slice(&ix.accounts);
+        ixs.push(ix);
+        cu_budget += SPL_CLOSE_ACCOUNT_CU;
+    }
+
+    let final_ixs = &[
+        &[
+            priority_fee::compute_budget_instruction(cu_budget),
+            priority_fee::compute_price_instruction_for_accounts(client, &ixs_accounts, opts.fee_range())
+                .await?,
+        ],
+        ixs.as_slice(),
+    ]
+    .concat();
+
+    message::mk_message(client, final_ixs, &opts.lut_addresses, owner).await
+}
+
+/// Close multiple token accounts in a single transaction.
+/// All accounts must have zero balance.
+pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    accounts: &[Pubkey],
+    destination: &Pubkey,
+    owner: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (msg, block_height) =
+        close_accounts_message(client, accounts, destination, &owner.pubkey(), opts).await?;
+    let txn = mk_transaction(msg, &[owner])?;
+    Ok((txn, block_height))
+}
+
+/// Close a single token account and return rent to destination.
+/// Account must have zero balance.
+pub async fn close_account<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    account: &Pubkey,
+    destination: &Pubkey,
+    owner: &Keypair,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    close_accounts(client, &[*account], destination, owner, opts).await
 }
 
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
@@ -378,6 +452,11 @@ impl Token {
             Self::Sol,
             Self::Usdc,
         ]
+    }
+
+    /// Tokens that can be transferred (excludes DC)
+    pub fn transferrable() -> Vec<Self> {
+        vec![Self::Hnt, Self::Iot, Self::Mobile, Self::Sol, Self::Usdc]
     }
 
     fn from_allowed(s: &str, allowed: &[Self]) -> StdResult<Self, TokenError> {

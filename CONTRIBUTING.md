@@ -16,8 +16,23 @@ our way or a bug to report:
 
 ## Pre-commit checks
 
-We use pre-commit to run the same Rust hygiene checks as CI. After
-installing `pre-commit` (e.g. `brew install pre-commit`), run:
+We use pre-commit to run Rust hygiene checks and security scans. 
+
+### Prerequisites
+
+1. Install `pre-commit`:
+   ```sh
+   brew install pre-commit
+   ```
+
+2. Install `trufflehog` for secret scanning:
+   ```sh
+   brew install trufflesecurity/trufflehog/trufflehog
+   ```
+
+### Setup
+
+After installing the prerequisites, run:
 
 ```sh
 pre-commit install
@@ -30,9 +45,38 @@ To also run checks on `git push`, install the pre-push hook:
 pre-commit install --hook-type pre-push
 ```
 
-Security note: pre-commit can fetch and run hooks from third-party
-repositories. This repo only uses local hooks, but if you add external
-hooks, verify the source and pin to trusted versions.
+### Security checks
+
+This repo uses TruffleHog to scan for hardcoded secrets before each commit.
+The hook will fail if any potential secrets are detected (including both 
+verified and unverified patterns).
+
+**If you encounter a false positive:**
+- Ensure the flagged content is not a real secret
+- Consider using environment variables or a secure secret manager instead
+- For legitimate test fixtures or example keys that need to be committed, see exclusions below
+
+**Excluding files from secret scanning:**
+
+If you have legitimate test data or examples that trigger false positives, you can exclude them:
+
+1. Create a `.trufflehog-exclude` file in the repo root with glob patterns:
+   ```
+   # Exclude test fixtures
+   **/tests/fixtures/**
+   **/examples/**
+   
+   # Exclude specific files
+   path/to/test-data.json
+   ```
+
+2. Update `.pre-commit-config.yaml` to use the exclusion file by adding `--exclude-paths=.trufflehog-exclude` to the TruffleHog entry
+
+3. Get approval from a maintainer before excluding paths from security scanning
+
+**Security note**: pre-commit can fetch and run hooks from third-party
+repositories. This repo uses TruffleHog from the official trufflesecurity
+repository, pinned to a specific version for security.
 
 This project is intended to be a safe, welcoming space for
 collaboration, and contributors are expected to adhere to the

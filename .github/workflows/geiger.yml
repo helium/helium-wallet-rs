@@ -16,7 +16,7 @@ jobs:
       GEIGER_MANIFEST_DIR: helium-wallet
       CARGO_BINARY: cargo-geiger
       CARGO_BINARY_VERSION: 0.13.0
-      UNSAFE_THRESHOLD: 600  # Raised for cargo update (tokio 1.47→1.49, libc, hashbrown updates)
+      UNSAFE_THRESHOLD_PERCENT: 10  # Fail if unsafe code increases by more than this percentage
 
     steps:
       - name: Setup | Checkout
@@ -133,18 +133,21 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "Baseline (main):  $baseline_unsafe unsafe items"
           echo "Current (PR):     $current_unsafe unsafe items"
-          echo "Threshold:        ±$UNSAFE_THRESHOLD items"
+          echo "Threshold:        ${UNSAFE_THRESHOLD_PERCENT}% increase"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
+
           if [ "$current_unsafe" -gt "$baseline_unsafe" ]; then
             delta=$((current_unsafe - baseline_unsafe))
             percent=$(awk "BEGIN {printf \"%.1f\", ($delta / $baseline_unsafe) * 100}")
-            
-            if [ "$delta" -gt "$UNSAFE_THRESHOLD" ]; then
+
+            # Compare percentage increase against threshold
+            exceeds_threshold=$(awk "BEGIN {print ($percent > $UNSAFE_THRESHOLD_PERCENT) ? 1 : 0}")
+
+            if [ "$exceeds_threshold" -eq 1 ]; then
               echo ""
               echo "❌ FAILED: Unsafe code increased by $delta items (+${percent}%)"
               echo ""
-              echo "This exceeds the threshold of $UNSAFE_THRESHOLD items."
+              echo "This exceeds the threshold of ${UNSAFE_THRESHOLD_PERCENT}%."
               echo ""
               echo "⚠️  Possible causes:"
               echo "  • New dependency with significant unsafe code"
@@ -164,7 +167,7 @@ jobs:
               echo ""
               echo "⚠️  WARNING: Unsafe code increased by $delta items (+${percent}%)"
               echo ""
-              echo "This is below the threshold of $UNSAFE_THRESHOLD items, so the check passes."
+              echo "This is below the threshold of ${UNSAFE_THRESHOLD_PERCENT}%, so the check passes."
               echo "However, please review the unsafe code additions carefully."
               echo ""
               echo "✅ PASSED (with warning)"

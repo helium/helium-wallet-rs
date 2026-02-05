@@ -2336,6 +2336,7 @@ dependencies = [
  "chrono",
  "clap",
  "futures",
+ "futures-timer",
  "h3o",
  "helium-crypto",
  "helium-mnemonic",

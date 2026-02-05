@@ -210,8 +210,12 @@ pub async fn close_accounts_message<C: AsRef<SolanaRpcClient>>(
     let final_ixs = &[
         &[
             priority_fee::compute_budget_instruction(cu_budget),
-            priority_fee::compute_price_instruction_for_accounts(client, &ixs_accounts, opts.fee_range())
-                .await?,
+            priority_fee::compute_price_instruction_for_accounts(
+                client,
+                &ixs_accounts,
+                opts.fee_range(),
+            )
+            .await?,
         ],
         ixs.as_slice(),
     ]

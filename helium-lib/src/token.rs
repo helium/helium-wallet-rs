@@ -177,42 +177,70 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-/// Build a message to close multiple token accounts and return rent to destination.
-/// All accounts must have zero balance (caller is responsible for validation).
+/// Build a message to close multiple accounts and return funds to destination.
+///
+/// Supports both SPL token accounts and the owner's system account:
+/// - SPL token accounts (any account != owner): closed via `spl_token::close_account`.
+///   Must have zero token balance (caller is responsible for validation).
+/// - System account (owner's own pubkey in the list): drained via `system_program::transfer`
+///   of the full SOL balance to destination.
+///
+/// When the owner's system account is included, `fee_payer` must differ from `owner`
+/// so the system account can be fully drained to zero.
 pub async fn close_accounts_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &[Pubkey],
     destination: &Pubkey,
     owner: &Pubkey,
+    fee_payer: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
     if accounts.is_empty() {
         return Err(DecodeError::other("no accounts to close").into());
     }
-
-    let mut ixs = vec![];
-    let mut ixs_accounts = vec![];
-    let mut cu_budget: u32 = SYS_PROGRAM_SETUP_CU;
-
-    for account in accounts {
-        let ix = anchor_spl::token::spl_token::instruction::close_account(
-            &anchor_spl::token::spl_token::id(),
-            account,
-            destination,
-            owner,
-            &[],
-        )?;
-        ixs_accounts.extend_from_slice(&ix.accounts);
-        ixs.push(ix);
-        cu_budget += SPL_CLOSE_ACCOUNT_CU;
+    if accounts.contains(owner) && fee_payer == owner {
+        return Err(DecodeError::other(
+            "fee_payer must differ from owner when closing the system account",
+        )
+        .into());
     }
+
+    // Build SPL token close instructions
+    let spl_ixs: Vec<_> = accounts
+        .iter()
+        .filter(|account| *account != owner)
+        .map(|account| {
+            anchor_spl::token::spl_token::instruction::close_account(
+                &anchor_spl::token::spl_token::id(),
+                account,
+                destination,
+                owner,
+                &[],
+            )
+            .map_err(Error::from)
+        })
+        .try_collect()?;
+
+    // Build system transfer if owner's system account is in the list
+    let system_ix = if accounts.contains(owner) {
+        let balance = client.as_ref().get_balance(owner).await?;
+        (balance > 0)
+            .then(|| solana_system_interface::instruction::transfer(owner, destination, balance))
+    } else {
+        None
+    };
+
+    let cu_budget = SYS_PROGRAM_SETUP_CU
+        + spl_ixs.len() as u32 * SPL_CLOSE_ACCOUNT_CU
+        + system_ix.as_ref().map_or(0, |_| SYS_PROGRAM_TRANSFER_CU);
+    let ixs = spl_ixs.into_iter().chain(system_ix).collect_vec();
 
     let final_ixs = &[
         &[
             priority_fee::compute_budget_instruction(cu_budget),
-            priority_fee::compute_price_instruction_for_accounts(
+            priority_fee::compute_price_instruction_for_instructions(
                 client,
-                &ixs_accounts,
+                &ixs,
                 opts.fee_range(),
             )
             .await?,
@@ -221,34 +249,52 @@ pub async fn close_accounts_message<C: AsRef<SolanaRpcClient>>(
     ]
     .concat();
 
-    message::mk_message(client, final_ixs, &opts.lut_addresses, owner).await
+    message::mk_message(client, final_ixs, &opts.lut_addresses, fee_payer).await
 }
 
-/// Close multiple token accounts in a single transaction.
-/// All accounts must have zero balance.
+/// Close multiple accounts in a single transaction.
+///
+/// Supports both SPL token accounts and the owner's system account.
+/// When closing the system account (owner's pubkey in the list), provide a
+/// separate `fee_payer` so the owner's account can be fully drained to zero.
+/// SPL token accounts must have zero balance.
 pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &[Pubkey],
     destination: &Pubkey,
     owner: &Keypair,
+    fee_payer: &Keypair,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) =
-        close_accounts_message(client, accounts, destination, &owner.pubkey(), opts).await?;
-    let txn = mk_transaction(msg, &[owner])?;
+    let (msg, block_height) = close_accounts_message(
+        client,
+        accounts,
+        destination,
+        &owner.pubkey(),
+        &fee_payer.pubkey(),
+        opts,
+    )
+    .await?;
+    let signers: Vec<&Keypair> = if fee_payer.pubkey() == owner.pubkey() {
+        vec![owner]
+    } else {
+        vec![fee_payer, owner]
+    };
+    let txn = mk_transaction(msg, &signers)?;
     Ok((txn, block_height))
 }
 
-/// Close a single token account and return rent to destination.
-/// Account must have zero balance.
+/// Close a single account and return funds to destination.
+/// Supports both SPL token accounts and the owner's system account.
 pub async fn close_account<C: AsRef<SolanaRpcClient>>(
     client: &C,
     account: &Pubkey,
     destination: &Pubkey,
     owner: &Keypair,
+    fee_payer: &Keypair,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    close_accounts(client, &[*account], destination, owner, opts).await
+    close_accounts(client, &[*account], destination, owner, fee_payer, opts).await
 }
 
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(

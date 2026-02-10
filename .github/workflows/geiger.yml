@@ -3,6 +3,7 @@ name: Geiger
 on:
   pull_request:
     branches: [master]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -12,15 +13,30 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     env:
       GEIGER_MANIFEST_DIR: helium-wallet
       CARGO_BINARY: cargo-geiger
       CARGO_BINARY_VERSION: 0.13.0
-      UNSAFE_THRESHOLD_PERCENT: 10  # Fail if unsafe code increases by more than this percentage
+      UNSAFE_THRESHOLD: 20  # Fail if unsafe code increases by more than this
 
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check for bypass label
+        id: check-label
+        run: |
+          if gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json labels --jq '.labels[].name' 2>/dev/null | grep -qx 'geiger-reviewed'; then
+            echo "bypass=true" >> $GITHUB_OUTPUT
+            echo "✓ Found 'geiger-reviewed' label - Geiger will run in informational mode"
+          else
+            echo "bypass=false" >> $GITHUB_OUTPUT
+            echo "✗ No bypass label - Geiger will enforce threshold"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+        if: github.event_name == 'pull_request'
 
       - name: Setup | Rust
         uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a # stable
@@ -97,6 +113,8 @@ jobs:
 
       - name: Geiger | Compare unsafe counts
         shell: bash
+        env:
+          GEIGER_BYPASS: ${{ steps.check-label.outputs.bypass }}
         run: |
           set -euo pipefail
           
@@ -133,21 +151,18 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "Baseline (main):  $baseline_unsafe unsafe items"
           echo "Current (PR):     $current_unsafe unsafe items"
-          echo "Threshold:        ${UNSAFE_THRESHOLD_PERCENT}% increase"
+          echo "Threshold:        ±$UNSAFE_THRESHOLD items"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           if [ "$current_unsafe" -gt "$baseline_unsafe" ]; then
             delta=$((current_unsafe - baseline_unsafe))
             percent=$(awk "BEGIN {printf \"%.1f\", ($delta / $baseline_unsafe) * 100}")
 
-            # Compare percentage increase against threshold
-            exceeds_threshold=$(awk "BEGIN {print ($percent > $UNSAFE_THRESHOLD_PERCENT) ? 1 : 0}")
-
-            if [ "$exceeds_threshold" -eq 1 ]; then
+            if [ "$delta" -gt "$UNSAFE_THRESHOLD" ]; then
               echo ""
               echo "❌ FAILED: Unsafe code increased by $delta items (+${percent}%)"
               echo ""
-              echo "This exceeds the threshold of ${UNSAFE_THRESHOLD_PERCENT}%."
+              echo "This exceeds the threshold of $UNSAFE_THRESHOLD items."
               echo ""
               echo "⚠️  Possible causes:"
               echo "  • New dependency with significant unsafe code"
@@ -162,12 +177,18 @@ jobs:
               echo "  4. Consider alternatives with less unsafe code"
               echo "  5. Get security team review if adding new dependencies"
               echo ""
-              exit 1
+              
+              if [ "$GEIGER_BYPASS" == "true" ]; then
+                echo "⚠️  Normally this would FAIL, but 'geiger-reviewed' label is present"
+                echo "✅ PASSED (bypassed by manual review)"
+              else
+                exit 1
+              fi
             else
               echo ""
               echo "⚠️  WARNING: Unsafe code increased by $delta items (+${percent}%)"
               echo ""
-              echo "This is below the threshold of ${UNSAFE_THRESHOLD_PERCENT}%, so the check passes."
+              echo "This is below the threshold of $UNSAFE_THRESHOLD items, so the check passes."
               echo "However, please review the unsafe code additions carefully."
               echo ""
               echo "✅ PASSED (with warning)"

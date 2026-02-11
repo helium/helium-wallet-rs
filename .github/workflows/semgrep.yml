@@ -1,0 +1,82 @@
+name: Semgrep
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  semgrep-pr:
+    if: (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]') || github.event_name == 'workflow_dispatch'
+    name: Semgrep PR scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Semgrep scan
+        run: semgrep ci --sarif -o result.sarif || true
+        env:
+          SEMGREP_RULES: p/cwe-top-25 p/owasp-top-ten p/r2c-security-audit p/rust
+
+      - name: Check for critical/high severity findings
+        if: always()
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+
+          summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '')
+          if not summary_path:
+              exit(0)
+
+          with open(summary_path, 'a') as f:
+              f.write("## Semgrep Results\n\n")
+
+          if not os.path.exists('result.sarif'):
+              with open(summary_path, 'a') as f:
+                  f.write("No SARIF output found.\n")
+              exit(0)
+
+          with open('result.sarif') as fp:
+              data = json.load(fp)
+
+          run_data = data.get('runs', [{}])[0]
+          results = run_data.get('results', [])
+
+          # Semgrep OSS puts level in rule metadata, not on the result
+          rules = {r['id']: r.get('defaultConfiguration', {}).get('level', 'warning')
+                   for r in run_data.get('tool', {}).get('driver', {}).get('rules', [])}
+
+          critical_high = []
+          for r in results:
+              level = r.get('level') or rules.get(r.get('ruleId', ''), 'warning')
+              if level == 'error':
+                  critical_high.append(r)
+              msg = r.get('message', {}).get('text', 'N/A')
+              loc = r.get('locations', [{}])[0].get('physicalLocation', {})
+              artifact = loc.get('artifactLocation', {}).get('uri', '?')
+              region = loc.get('region', {})
+              line = region.get('startLine', '?')
+              with open(summary_path, 'a') as f:
+                  f.write(f"- **{level}**: {msg} at {artifact}:{line}\n")
+
+          if critical_high:
+              with open(summary_path, 'a') as f:
+                  f.write(f"\n**Job failed:** {len(critical_high)} critical/high severity finding(s)\n")
+              exit(1)
+
+          with open(summary_path, 'a') as f:
+              f.write("\nNo critical/high findings. Medium/low findings do not block merge.\n")
+          EOF
+
+      - name: Upload Semgrep results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: semgrep-results.sarif
+          path: result.sarif

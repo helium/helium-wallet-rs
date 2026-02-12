@@ -102,7 +102,7 @@ mod base {
         let estimate = if num_recent_fees == 0 {
             *fee_range.start()
         } else if num_recent_fees.is_multiple_of(2) {
-            // If the number of samples is even, taken the mean of the two median fees
+            // If the number of samples is even, take the mean of the two median fees
             (max_per_slot[mid - 1] + max_per_slot[mid]) / 2
         } else {
             max_per_slot[mid]

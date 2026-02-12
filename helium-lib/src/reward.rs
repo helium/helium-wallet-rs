@@ -144,7 +144,7 @@ fn time_decay_previous_value(
         u128::from(window.last_aggregated_value)
             .checked_mul(
                 // (window_size_seconds - min(window_size_seconds, time_elapsed)) / window_size_seconds
-                // = (1 -  min((time_elapsed / window_size_seconds), 1))
+                // = (1 - min((time_elapsed / window_size_seconds), 1))
                 u128::from(config.window_size_seconds.checked_sub(std::cmp::min(
                     u64::try_from(time_elapsed).ok()?,
                     config.window_size_seconds,
@@ -482,7 +482,7 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
             let mut oracle_reward = lifetime_rewards.remove(ticket.key_str())?.pop()?;
             let pending_reward = pending_map.get(ticket.key_str())?;
             let max_pending = pending_reward.reward.amount;
-            // ensyre that the requested claim amount is the lower of max_claim and the pending amount
+            // ensure that the requested claim amount is the lower of max_claim and the pending amount
             let to_claim = ticket
                 .amount
                 .unwrap_or(max_pending)
@@ -496,7 +496,7 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
         })
         .collect();
     let mut oracle_ixns: HashMap<String, Instruction> = {
-        // Do a shuffle to get rewards for tickets grouped bu oracle urls, while excluding tickets with no
+        // Do a shuffle to get rewards for tickets grouped by oracle urls, while excluding tickets with no
         // rewards
         let oracle_chunks = tickets
             .iter()
@@ -508,7 +508,7 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
             .chunk_by(|(_ticket, oracle_url)| *oracle_url);
         // Then stream over these chunks getting sign instructions for each
         stream::iter(oracle_chunks.into_iter().map(|(url, chunk)| {
-            // For ecah chunk collect the entity string and the kta keys to fetch
+            // For each chunk collect the entity string and the kta keys to fetch
             let (entity_key_strings, kta_keys): (Vec<String>, Vec<Pubkey>) = chunk
                 .into_iter()
                 .map(|(ticket, _)| (ticket.encoded_entity_key.to_string(), ticket.kta_key))

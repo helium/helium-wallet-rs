@@ -150,12 +150,21 @@ impl CommitOpts {
                 skip_preflight: self.skip_preflight,
                 ..Default::default()
             };
-            client
+            let signature = client
                 .as_ref()
                 .send_transaction_with_config(&versioned_tx, config)
                 .await
-                .map(Into::into)
-                .map_err(context_err)
+                .map_err(context_err)?;
+            let res = match client
+                .as_ref()
+                .confirm_transaction(&signature)
+                .await
+                .map_err(context_err)?
+            {
+                true => CommitResponse::Signature(signature),
+                false => CommitResponse::None,
+            };
+            Ok(res)
         } else {
             client
                 .as_ref()

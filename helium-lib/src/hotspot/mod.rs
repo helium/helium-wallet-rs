@@ -6,7 +6,7 @@ use crate::{
     data_credits,
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
-    keypair::{pubkey, serde_pubkey, Keypair, Pubkey},
+    keypair::{pubkey, serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
     kta, message, onboarding, priority_fee,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
@@ -547,6 +547,11 @@ pub enum HotspotInfo {
         updated_at: u64,
         #[serde(skip_serializing_if = "is_zero", default)]
         location_changed_at: u64,
+        #[serde(with = "serde_opt_pubkey")]
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        owner: Option<Pubkey>,
+        #[serde(skip_serializing_if = "is_zero", default)]
+        owner_changed_at: u64,
     },
 }
 
@@ -841,6 +846,8 @@ impl From<helium_entity_manager::accounts::MobileHotspotInfoV0> for HotspotInfo 
             created_at: 0,          // Not available in on-chain account
             updated_at: 0,          // Not available in on-chain account
             location_changed_at: 0, // Not available in on-chain account
+            owner: None,
+            owner_changed_at: 0,
         }
     }
 }

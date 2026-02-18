@@ -697,16 +697,16 @@ pub mod config {
         use super::*;
         use helium_proto::services::mobile_config::{
             DeviceType, DeviceTypeV2, GatewayClient, GatewayInfoBatchReqV1, GatewayInfoReqV1,
-            GatewayInfoResV2, GatewayInfoStreamReqV3, GatewayInfoStreamResV2,
-            GatewayInfoStreamResV3, GatewayInfoV2, GatewayInfoV3,
+            GatewayInfoResV2, GatewayInfoStreamReqV4, GatewayInfoStreamResV2,
+            GatewayInfoStreamResV4, GatewayInfoV2, GatewayInfoV4,
         };
 
         impl_message_sign!(GatewayInfoReqV1);
-        impl_message_sign!(GatewayInfoStreamReqV3);
+        impl_message_sign!(GatewayInfoStreamReqV4);
         impl_message_sign!(GatewayInfoBatchReqV1);
         impl_message_verify!(GatewayInfoResV2);
         impl_message_verify!(GatewayInfoStreamResV2);
-        impl_message_verify!(GatewayInfoStreamResV3);
+        impl_message_verify!(GatewayInfoStreamResV4);
 
         #[derive(Clone)]
         pub struct Client {
@@ -810,21 +810,21 @@ pub mod config {
                 BoxStream<'_, Result<Vec<(helium_crypto::PublicKey, Option<HotspotInfo>)>, Error>>,
                 Error,
             > {
-                let mut req = GatewayInfoStreamReqV3 {
+                let mut req = GatewayInfoStreamReqV4 {
                     signer: self.keypair.public_key().into(),
                     batch_size,
                     min_updated_at: updated_since,
                     ..Default::default()
                 };
                 req.sign(&self.keypair)?;
-                let streaming = self.client.info_stream_v3(req).await?.into_inner();
+                let streaming = self.client.info_stream_v4(req).await?.into_inner();
                 let streaming = streaming.map_err(Error::from).and_then(|res| {
                     let address = self.address.clone();
                     async move {
                         res.verify(&address)?;
                         res.gateways
                             .into_iter()
-                            .map(info_from_info_v3)
+                            .map(info_from_info_v4)
                             .collect::<Result<Vec<_>, _>>()
                     }
                 });
@@ -875,13 +875,16 @@ pub mod config {
                     created_at: info.created_at,
                     updated_at: info.updated_at,
                     location_changed_at: 0, // Not available in V2
+                    owner: None,
+                    owner_changed_at: 0,
                 }),
             ))
         }
 
-        fn info_from_info_v3(
-            info: GatewayInfoV3,
+        fn info_from_info_v4(
+            info: GatewayInfoV4,
         ) -> Result<(helium_crypto::PublicKey, Option<HotspotInfo>), Error> {
+            use std::str::FromStr;
             let address = info.address.try_into()?;
 
             let (device_type, mode) = match DeviceTypeV2::try_from(info.device_type)
@@ -907,6 +910,12 @@ pub mod config {
                 })
                 .unwrap_or((None, 0, None));
 
+            let owner = if info.owner.is_empty() {
+                None
+            } else {
+                Some(Pubkey::from_str(&info.owner).map_err(DecodeError::from)?)
+            };
+
             Ok((
                 address,
                 Some(HotspotInfo::Mobile {
@@ -918,6 +927,8 @@ pub mod config {
                     created_at: info.created_at,
                     updated_at: info.updated_at,
                     location_changed_at,
+                    owner,
+                    owner_changed_at: info.owner_changed_at,
                 }),
             ))
         }

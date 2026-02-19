@@ -181,9 +181,9 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
 ///
 /// Supports both SPL token accounts and the owner's system account:
 /// - SPL token accounts (any account != owner): closed via `spl_token::close_account`.
-///   Must have zero token balance (caller is responsible for validation).
+/// Must have zero token balance (caller is responsible for validation).
 /// - System account (owner's own pubkey in the list): drained via `system_program::transfer`
-///   of the full SOL balance to destination.
+/// of the full SOL balance to destination.
 ///
 /// When the owner's system account is included, `fee_payer` must differ from `owner`
 /// so the system account can be fully drained to zero.

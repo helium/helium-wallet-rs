@@ -37,6 +37,7 @@ pub use anchor_spl;
 pub use solana_program;
 pub use solana_sdk;
 pub use solana_sdk::bs58;
+pub use solana_transaction_status;
 pub use tuktuk_sdk;
 
 pub(crate) trait Zero {

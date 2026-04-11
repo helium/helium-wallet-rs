@@ -5,6 +5,7 @@ use crate::{
     transaction::VersionedTransaction,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;
 
@@ -134,11 +135,11 @@ impl Client {
             .header("x-api-key", &self.api_key)
             .json(&swap_request)
             .send()
-            .await
-            .map_err(JupiterError::from)?;
+            .map_err(JupiterError::from)
+            .await?;
 
         let swap_response: SwapResponse = match resp.status().as_u16() {
-            200 => resp.json().await.map_err(JupiterError::from)?,
+            200 => resp.json().map_err(JupiterError::from).await?,
             status => {
                 let message = resp
                     .text()
@@ -151,9 +152,9 @@ impl Client {
         // Decode base64 → bincode → VersionedTransaction
         let tx_bytes = BASE64
             .decode(&swap_response.swap_transaction)
-            .map_err(|e| JupiterError::transaction_decode(e))?;
+            .map_err(JupiterError::transaction_decode)?;
         let mut txn: VersionedTransaction =
-            bincode::deserialize(&tx_bytes).map_err(|e| JupiterError::transaction_decode(e))?;
+            bincode::deserialize(&tx_bytes).map_err(JupiterError::transaction_decode)?;
 
         // Update to a fresh blockhash and re-sign
         let solana_client = client.as_ref();

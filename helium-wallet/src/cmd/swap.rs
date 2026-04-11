@@ -1,4 +1,5 @@
 use crate::cmd::*;
+use futures::TryFutureExt;
 use helium_lib::{jupiter, token::Token};
 
 #[derive(Debug, Clone, clap::Args)]
@@ -33,8 +34,8 @@ impl Cmd {
 
         let quote = jupiter_client
             .quote(input_mint, output_mint, raw_amount)
-            .await
-            .map_err(|e| anyhow!("Quote failed: {e}"))?;
+            .map_err(|e| anyhow!("Quote failed: {e}"))
+            .await?;
 
         let (tx, _) = jupiter_client.swap(&client, &quote, &keypair).await?;
 

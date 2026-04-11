@@ -12,6 +12,7 @@ pub mod ed25519_instruction;
 pub mod entity_key;
 pub mod error;
 pub mod hotspot;
+pub mod jupiter;
 pub mod keypair;
 pub mod kta;
 pub mod memo;

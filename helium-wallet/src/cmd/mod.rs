@@ -34,6 +34,7 @@ pub mod memo;
 pub mod price;
 pub mod router;
 pub mod sign;
+pub mod swap;
 pub mod transfer;
 pub mod upgrade;
 

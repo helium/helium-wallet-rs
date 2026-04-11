@@ -1,5 +1,4 @@
 use crate::cmd::*;
-use futures::TryFutureExt;
 use helium_lib::{jupiter, token::Token};
 
 #[derive(Debug, Clone, clap::Args)]
@@ -21,11 +20,15 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
+        if self.amount <= 0.0 || !self.amount.is_finite() {
+            bail!("swap amount must be a positive finite number");
+        }
+
         let password = get_wallet_password(false)?;
         let keypair = opts.load_keypair(password.as_bytes())?;
         let client = opts.client()?;
 
-        let jupiter_client = jupiter::Client::from_env().map_err(|e| anyhow!("Jupiter: {e}"))?;
+        let jupiter_client = jupiter::Client::from_env()?;
 
         let input_mint = self.input_token.mint();
         let output_mint = self.output_token.mint();
@@ -34,7 +37,6 @@ impl Cmd {
 
         let quote = jupiter_client
             .quote(input_mint, output_mint, raw_amount)
-            .map_err(|e| anyhow!("Quote failed: {e}"))
             .await?;
 
         let (tx, _) = jupiter_client.swap(&client, &quote, &keypair).await?;

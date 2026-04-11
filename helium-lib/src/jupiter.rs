@@ -1,16 +1,15 @@
 use crate::{
     client::SolanaRpcClient,
-    error::Error,
     keypair::{Keypair, Pubkey},
     transaction::VersionedTransaction,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;
 
 pub const DEFAULT_API_URL: &str = "https://api.jup.ag/swap/v6";
 pub const DEFAULT_SLIPPAGE_BPS: u16 = 100;
+const MAX_ERROR_BODY_LEN: usize = 200;
 
 #[derive(Debug, thiserror::Error)]
 pub enum JupiterError {
@@ -25,6 +24,10 @@ pub enum JupiterError {
     },
     #[error("Failed to decode swap transaction: {0}")]
     TransactionDecode(String),
+    #[error("Solana RPC error: {0}")]
+    Solana(String),
+    #[error("Transaction signing failed: {0}")]
+    Signing(String),
     #[error("Jupiter configuration error: {0}")]
     Config(String),
 }
@@ -37,14 +40,44 @@ impl JupiterError {
     pub fn transaction_decode(msg: impl std::fmt::Display) -> Self {
         Self::TransactionDecode(msg.to_string())
     }
+
+    pub fn solana(msg: impl std::fmt::Display) -> Self {
+        Self::Solana(msg.to_string())
+    }
+
+    pub fn signing(msg: impl std::fmt::Display) -> Self {
+        Self::Signing(msg.to_string())
+    }
+
+    fn api(status: u16, body: String) -> Self {
+        let message = if body.len() > MAX_ERROR_BODY_LEN {
+            format!("{}…", &body[..MAX_ERROR_BODY_LEN])
+        } else {
+            body
+        };
+        Self::Api { status, message }
+    }
 }
 
-#[derive(Debug, Clone)]
+/// Jupiter V6 swap API client.
+///
+/// NOTE: intentionally no `Debug` derive — `api_key` is a secret.
+#[derive(Clone)]
 pub struct Client {
     client: reqwest::Client,
     base_url: String,
     api_key: String,
     slippage_bps: u16,
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_url", &self.base_url)
+            .field("api_key", &"[redacted]")
+            .field("slippage_bps", &self.slippage_bps)
+            .finish()
+    }
 }
 
 impl Client {
@@ -61,10 +94,12 @@ impl Client {
         let api_key = std::env::var("JUP_API_KEY")
             .map_err(|_| JupiterError::config("JUP_API_KEY not configured"))?;
         let base_url = std::env::var("JUP_API_URL").unwrap_or_else(|_| DEFAULT_API_URL.to_string());
-        let slippage_bps = std::env::var("JUP_SLIPPAGE_BPS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_SLIPPAGE_BPS);
+        let slippage_bps = match std::env::var("JUP_SLIPPAGE_BPS") {
+            Ok(v) => v.parse::<u16>().map_err(|_| {
+                JupiterError::config(format!("JUP_SLIPPAGE_BPS={v:?} is not a valid u16"))
+            })?,
+            Err(_) => DEFAULT_SLIPPAGE_BPS,
+        };
         Ok(Self::new(api_key, base_url, slippage_bps))
     }
 
@@ -75,6 +110,17 @@ impl Client {
         output_mint: &Pubkey,
         amount: u64,
     ) -> Result<QuoteResponse, JupiterError> {
+        if amount == 0 {
+            return Err(JupiterError::config(
+                "swap amount must be greater than zero",
+            ));
+        }
+        if input_mint == output_mint {
+            return Err(JupiterError::config(
+                "input and output tokens must be different",
+            ));
+        }
+
         let url = format!("{}/quote", self.base_url);
         let resp = self
             .client
@@ -101,11 +147,11 @@ impl Client {
                 Ok(quote)
             }
             status => {
-                let message = resp
+                let body = resp
                     .text()
                     .await
                     .unwrap_or_else(|_| "unknown error".to_string());
-                Err(JupiterError::Api { status, message })
+                Err(JupiterError::api(status, body))
             }
         }
     }
@@ -116,12 +162,16 @@ impl Client {
     /// Returns a ready-to-send `VersionedTransaction` and the last valid
     /// block height, matching the helium-lib convention for transaction
     /// builders (`token::transfer`, `token::burn`, etc.).
+    ///
+    /// Note: the transaction's compute budget is set by Jupiter's
+    /// simulation — `TransactionOpts` is intentionally not accepted here,
+    /// unlike other helium-lib transaction builders.
     pub async fn swap<C: AsRef<SolanaRpcClient>>(
         &self,
         client: &C,
         quote: &QuoteResponse,
         keypair: &Keypair,
-    ) -> Result<(VersionedTransaction, u64), Error> {
+    ) -> Result<(VersionedTransaction, u64), JupiterError> {
         let swap_request = SwapRequest {
             user_public_key: keypair.pubkey().to_string(),
             quote_response: quote.clone(),
@@ -135,17 +185,16 @@ impl Client {
             .header("x-api-key", &self.api_key)
             .json(&swap_request)
             .send()
-            .map_err(JupiterError::from)
             .await?;
 
         let swap_response: SwapResponse = match resp.status().as_u16() {
-            200 => resp.json().map_err(JupiterError::from).await?,
+            200 => resp.json().await?,
             status => {
-                let message = resp
+                let body = resp
                     .text()
                     .await
                     .unwrap_or_else(|_| "unknown error".to_string());
-                return Err(JupiterError::Api { status, message }.into());
+                return Err(JupiterError::api(status, body));
             }
         };
 
@@ -160,9 +209,11 @@ impl Client {
         let solana_client = client.as_ref();
         let (blockhash, last_valid_block_height) = solana_client
             .get_latest_blockhash_with_commitment(solana_client.commitment())
-            .await?;
+            .await
+            .map_err(JupiterError::solana)?;
         txn.message.set_recent_blockhash(blockhash);
-        let txn = VersionedTransaction::try_new(txn.message, &[keypair])?;
+        let txn = VersionedTransaction::try_new(txn.message, &[keypair])
+            .map_err(JupiterError::signing)?;
 
         Ok((txn, last_valid_block_height))
     }
@@ -194,7 +245,7 @@ pub struct QuoteResponse {
     pub price_impact_pct: String,
     pub slippage_bps: u16,
     #[serde(default)]
-    pub route_plan: Vec<RoutePlan>,
+    pub(crate) route_plan: Vec<RoutePlan>,
     /// All other fields are captured for pass-through to the /swap endpoint.
     #[serde(flatten)]
     pub extra: serde_json::Value,
@@ -202,7 +253,7 @@ pub struct QuoteResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RoutePlan {
+pub(crate) struct RoutePlan {
     #[serde(default)]
     pub swap_info: SwapInfo,
     pub percent: u8,
@@ -210,7 +261,7 @@ pub struct RoutePlan {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SwapInfo {
+pub(crate) struct SwapInfo {
     pub label: Option<String>,
     pub input_mint: Option<String>,
     pub output_mint: Option<String>,
@@ -224,12 +275,41 @@ mod tests {
 
     #[test]
     fn test_from_env_missing_api_key() {
-        // Ensure JUP_API_KEY is not set
         std::env::remove_var("JUP_API_KEY");
         let result = Client::from_env();
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(err, JupiterError::Config(_)));
+        assert!(matches!(result.unwrap_err(), JupiterError::Config(_)));
+    }
+
+    #[test]
+    fn test_from_env_invalid_slippage() {
+        std::env::set_var("JUP_API_KEY", "test-key");
+        std::env::set_var("JUP_SLIPPAGE_BPS", "not-a-number");
+        let result = Client::from_env();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), JupiterError::Config(_)));
+        std::env::remove_var("JUP_API_KEY");
+        std::env::remove_var("JUP_SLIPPAGE_BPS");
+    }
+
+    #[test]
+    fn test_debug_redacts_api_key() {
+        let client = Client::new("secret-key-123", DEFAULT_API_URL, 100);
+        let debug = format!("{client:?}");
+        assert!(!debug.contains("secret-key-123"));
+        assert!(debug.contains("[redacted]"));
+    }
+
+    #[test]
+    fn test_error_body_truncation() {
+        let long_body = "x".repeat(500);
+        let err = JupiterError::api(500, long_body);
+        match err {
+            JupiterError::Api { message, .. } => {
+                assert!(message.len() <= MAX_ERROR_BODY_LEN + "…".len());
+            }
+            _ => panic!("expected Api variant"),
+        }
     }
 
     #[test]

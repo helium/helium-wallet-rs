@@ -36,25 +36,21 @@ impl Cmd {
             .await
             .map_err(|e| anyhow!("Quote failed: {e}"))?;
 
-        let in_amount = helium_lib::token::TokenAmount::from_u64(
-            self.input_token,
-            quote.in_amount.parse().unwrap_or(0),
-        );
-        let out_amount = helium_lib::token::TokenAmount::from_u64(
-            self.output_token,
-            quote.out_amount.parse().unwrap_or(0),
-        );
-        let in_f64 = f64::from(&in_amount);
-        let out_f64 = f64::from(&out_amount);
-        let input_token = self.input_token;
-        let output_token = self.output_token;
-        let slippage_bps = quote.slippage_bps;
-        let price_impact_pct = &quote.price_impact_pct;
-
-        eprintln!("Swap: {in_f64} {input_token} → ~{out_f64} {output_token} (slippage: {slippage_bps}bps, impact: {price_impact_pct}%)");
-
         let (tx, _) = jupiter_client.swap(&client, &quote, &keypair).await?;
 
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        let response = self.commit.maybe_commit(tx, &client).await?;
+        let mut json = response.to_json();
+        if let serde_json::Value::Object(ref mut map) = json {
+            map.insert("in_amount".to_string(), quote.in_amount.into());
+            map.insert("out_amount".to_string(), quote.out_amount.into());
+            map.insert("input_mint".to_string(), quote.input_mint.into());
+            map.insert("output_mint".to_string(), quote.output_mint.into());
+            map.insert("slippage_bps".to_string(), quote.slippage_bps.into());
+            map.insert(
+                "price_impact_pct".to_string(),
+                quote.price_impact_pct.into(),
+            );
+        }
+        print_json(&json)
     }
 }

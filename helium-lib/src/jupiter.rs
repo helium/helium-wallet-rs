@@ -282,7 +282,8 @@ pub struct OrderResponse {
 pub(crate) struct RoutePlan {
     #[serde(default)]
     pub swap_info: SwapInfo,
-    pub percent: u8,
+    #[serde(default)]
+    pub percent: f64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -406,6 +407,7 @@ mod tests {
         assert_eq!(order.slippage_bps, 100);
         assert_eq!(order.transaction, "base64encodedtx");
         assert_eq!(order.route_plan.len(), 1);
+        assert!((order.route_plan[0].percent - 100.0).abs() < f64::EPSILON);
         assert!(order.error_message.is_none());
     }
 

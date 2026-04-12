@@ -61,12 +61,16 @@ impl JupiterError {
 
 /// Jupiter V6 swap API client.
 ///
+/// Works with or without an API key:
+/// - Without key: keyless access at 0.5 RPS (suitable for CLI use)
+/// - With `JUP_API_KEY`: higher rate limits per your plan (required for automated/production use)
+///
 /// NOTE: intentionally no `Debug` derive — `api_key` is a secret.
 #[derive(Clone)]
 pub struct Client {
     client: reqwest::Client,
     base_url: String,
-    api_key: String,
+    api_key: Option<String>,
     slippage_bps: u16,
 }
 
@@ -74,25 +78,40 @@ impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_url", &self.base_url)
-            .field("api_key", &"[redacted]")
+            .field(
+                "api_key",
+                &if self.api_key.is_some() {
+                    "[redacted]"
+                } else {
+                    "[none]"
+                },
+            )
             .field("slippage_bps", &self.slippage_bps)
             .finish()
     }
 }
 
 impl Client {
-    pub fn new(api_key: impl Into<String>, base_url: impl Into<String>, slippage_bps: u16) -> Self {
+    pub fn new(
+        api_key: Option<impl Into<String>>,
+        base_url: impl Into<String>,
+        slippage_bps: u16,
+    ) -> Self {
         Self {
             client: reqwest::Client::new(),
             base_url: base_url.into(),
-            api_key: api_key.into(),
+            api_key: api_key.map(Into::into),
             slippage_bps,
         }
     }
 
+    /// Create a client from environment variables.
+    ///
+    /// `JUP_API_KEY` is optional — omit for keyless access (0.5 RPS).
+    /// `JUP_API_URL` defaults to `https://api.jup.ag/swap/v6`.
+    /// `JUP_SLIPPAGE_BPS` defaults to 100 (1%).
     pub fn from_env() -> Result<Self, JupiterError> {
-        let api_key = std::env::var("JUP_API_KEY")
-            .map_err(|_| JupiterError::config("JUP_API_KEY not configured"))?;
+        let api_key = std::env::var("JUP_API_KEY").ok();
         let base_url = std::env::var("JUP_API_URL").unwrap_or_else(|_| DEFAULT_API_URL.to_string());
         let slippage_bps = match std::env::var("JUP_SLIPPAGE_BPS") {
             Ok(v) => v.parse::<u16>().map_err(|_| {
@@ -101,6 +120,18 @@ impl Client {
             Err(_) => DEFAULT_SLIPPAGE_BPS,
         };
         Ok(Self::new(api_key, base_url, slippage_bps))
+    }
+
+    /// Whether this client has an API key configured.
+    pub fn has_api_key(&self) -> bool {
+        self.api_key.is_some()
+    }
+
+    fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.api_key {
+            Some(key) => req.header("x-api-key", key),
+            None => req,
+        }
     }
 
     /// Get a swap quote from Jupiter.
@@ -122,18 +153,13 @@ impl Client {
         }
 
         let url = format!("{}/quote", self.base_url);
-        let resp = self
-            .client
-            .get(&url)
-            .query(&[
-                ("inputMint", input_mint.to_string()),
-                ("outputMint", output_mint.to_string()),
-                ("amount", amount.to_string()),
-                ("slippageBps", self.slippage_bps.to_string()),
-            ])
-            .header("x-api-key", &self.api_key)
-            .send()
-            .await?;
+        let req = self.client.get(&url).query(&[
+            ("inputMint", input_mint.to_string()),
+            ("outputMint", output_mint.to_string()),
+            ("amount", amount.to_string()),
+            ("slippageBps", self.slippage_bps.to_string()),
+        ]);
+        let resp = self.apply_auth(req).send().await?;
 
         match resp.status().as_u16() {
             200 => {
@@ -180,10 +206,7 @@ impl Client {
 
         let url = format!("{}/swap", self.base_url);
         let resp = self
-            .client
-            .post(&url)
-            .header("x-api-key", &self.api_key)
-            .json(&swap_request)
+            .apply_auth(self.client.post(&url).json(&swap_request))
             .send()
             .await?;
 
@@ -273,31 +296,57 @@ pub(crate) struct SwapInfo {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_from_env_missing_api_key() {
-        std::env::remove_var("JUP_API_KEY");
-        let result = Client::from_env();
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), JupiterError::Config(_)));
-    }
+    /// Mutex to serialize env-dependent tests (env vars are process-global).
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    #[test]
-    fn test_from_env_invalid_slippage() {
-        std::env::set_var("JUP_API_KEY", "test-key");
-        std::env::set_var("JUP_SLIPPAGE_BPS", "not-a-number");
-        let result = Client::from_env();
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), JupiterError::Config(_)));
+    fn clean_env() {
         std::env::remove_var("JUP_API_KEY");
+        std::env::remove_var("JUP_API_URL");
         std::env::remove_var("JUP_SLIPPAGE_BPS");
     }
 
     #[test]
+    fn test_from_env_no_api_key_succeeds() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clean_env();
+        let client = Client::from_env().unwrap();
+        assert!(!client.has_api_key());
+    }
+
+    #[test]
+    fn test_from_env_with_api_key() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clean_env();
+        std::env::set_var("JUP_API_KEY", "test-key");
+        let client = Client::from_env().unwrap();
+        assert!(client.has_api_key());
+        clean_env();
+    }
+
+    #[test]
+    fn test_from_env_invalid_slippage() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clean_env();
+        std::env::set_var("JUP_SLIPPAGE_BPS", "not-a-number");
+        let result = Client::from_env();
+        clean_env();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), JupiterError::Config(_)));
+    }
+
+    #[test]
     fn test_debug_redacts_api_key() {
-        let client = Client::new("secret-key-123", DEFAULT_API_URL, 100);
+        let client = Client::new(Some("secret-key-123"), DEFAULT_API_URL, 100);
         let debug = format!("{client:?}");
         assert!(!debug.contains("secret-key-123"));
         assert!(debug.contains("[redacted]"));
+    }
+
+    #[test]
+    fn test_debug_no_api_key() {
+        let client = Client::new(None::<String>, DEFAULT_API_URL, 100);
+        let debug = format!("{client:?}");
+        assert!(debug.contains("[none]"));
     }
 
     #[test]

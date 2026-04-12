@@ -1,4 +1,6 @@
-use crate::{anchor_client, anchor_lang, client, hotspot::cert, onboarding, solana_client, token};
+use crate::{
+    anchor_client, anchor_lang, client, hotspot::cert, jupiter, onboarding, solana_client, token,
+};
 use solana_sdk::signature::Signature;
 use std::{array::TryFromSliceError, num::TryFromIntError, time::Duration};
 use thiserror::Error;
@@ -52,6 +54,8 @@ pub enum Error {
     Encode(#[from] EncodeError),
     #[error("tuktuk: {0}")]
     Tuktuk(#[from] tuktuk_sdk::error::Error),
+    #[error("jupiter: {0}")]
+    Jupiter(#[from] jupiter::JupiterError),
 }
 
 impl From<solana_client::client_error::ClientError> for Error {

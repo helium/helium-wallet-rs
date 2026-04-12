@@ -26,7 +26,7 @@ h3o = { version = "0", features = ["serde"] }
 helium-crypto = { workspace = true }
 itertools = "0.14"
 jsonrpc_client = { version = "0.7", features = ["reqwest"] }
-futures = "*"
+futures.workspace = true
 futures-timer = "3"
 tracing = "0"
 base64 = { workspace = true }

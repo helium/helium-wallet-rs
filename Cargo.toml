@@ -26,6 +26,7 @@ helium-proto = { git = "https://github.com/helium/proto", branch = "master", fea
 ] }
 clap = { version = "4", features = ["derive"] }
 thiserror = "2.0.17"
+futures = "0"
 prost = "0.14.1"
 msg-signature = { git = "https://github.com/helium/proto", branch = "master" }
 

@@ -35,23 +35,21 @@ impl Cmd {
         let raw_amount =
             helium_lib::token::TokenAmount::from_f64(self.input_token, self.amount).amount;
 
-        let quote = jupiter_client
-            .quote(input_mint, output_mint, raw_amount)
+        let (tx, _, order) = jupiter_client
+            .swap(&client, input_mint, output_mint, raw_amount, &keypair)
             .await?;
-
-        let (tx, _) = jupiter_client.swap(&client, &quote, &keypair).await?;
 
         let response = self.commit.maybe_commit(tx, &client).await?;
         let mut json = response.to_json();
         if let serde_json::Value::Object(ref mut map) = json {
-            map.insert("in_amount".to_string(), quote.in_amount.into());
-            map.insert("out_amount".to_string(), quote.out_amount.into());
-            map.insert("input_mint".to_string(), quote.input_mint.into());
-            map.insert("output_mint".to_string(), quote.output_mint.into());
-            map.insert("slippage_bps".to_string(), quote.slippage_bps.into());
+            map.insert("in_amount".to_string(), order.in_amount.into());
+            map.insert("out_amount".to_string(), order.out_amount.into());
+            map.insert("input_mint".to_string(), order.input_mint.into());
+            map.insert("output_mint".to_string(), order.output_mint.into());
+            map.insert("slippage_bps".to_string(), order.slippage_bps.into());
             map.insert(
                 "price_impact_pct".to_string(),
-                quote.price_impact_pct.into(),
+                order.price_impact_pct.into(),
             );
         }
         print_json(&json)

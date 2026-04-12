@@ -7,7 +7,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;
 
-pub const DEFAULT_API_URL: &str = "https://api.jup.ag/swap/v6";
+pub const DEFAULT_API_URL: &str = "https://api.jup.ag/swap/v2";
 pub const DEFAULT_SLIPPAGE_BPS: u16 = 100;
 const MAX_ERROR_BODY_LEN: usize = 200;
 
@@ -17,6 +17,8 @@ pub enum JupiterError {
     Request(#[from] reqwest::Error),
     #[error("Jupiter API error (HTTP {status}): {message}")]
     Api { status: u16, message: String },
+    #[error("Jupiter swap error: {0}")]
+    SwapError(String),
     #[error("Jupiter quote returned no routes for {input_mint} → {output_mint}")]
     NoRoutes {
         input_mint: String,
@@ -50,7 +52,9 @@ impl JupiterError {
     }
 
     fn api(status: u16, body: String) -> Self {
-        let message = if body.len() > MAX_ERROR_BODY_LEN {
+        let message = if body.is_empty() {
+            format!("empty response (HTTP {status})")
+        } else if body.len() > MAX_ERROR_BODY_LEN {
             format!("{}…", &body[..MAX_ERROR_BODY_LEN])
         } else {
             body
@@ -59,7 +63,7 @@ impl JupiterError {
     }
 }
 
-/// Jupiter V6 swap API client.
+/// Jupiter swap API client (V2).
 ///
 /// Works with or without an API key:
 /// - Without key: keyless access at 0.5 RPS (suitable for CLI use)
@@ -108,7 +112,7 @@ impl Client {
     /// Create a client from environment variables.
     ///
     /// `JUP_API_KEY` is optional — omit for keyless access (0.5 RPS).
-    /// `JUP_API_URL` defaults to `https://api.jup.ag/swap/v6`.
+    /// `JUP_API_URL` defaults to `https://api.jup.ag/swap/v2`.
     /// `JUP_SLIPPAGE_BPS` defaults to 100 (1%).
     pub fn from_env() -> Result<Self, JupiterError> {
         let api_key = std::env::var("JUP_API_KEY").ok();
@@ -134,13 +138,19 @@ impl Client {
         }
     }
 
-    /// Get a swap quote from Jupiter.
-    pub async fn quote(
+    /// Get a swap order from Jupiter: quote + assembled transaction in one call.
+    ///
+    /// Returns an `OrderResponse` containing the quote data and a base64-encoded
+    /// transaction ready to be decoded, signed, and sent.
+    ///
+    /// The `taker` is the wallet public key that will sign and pay for the swap.
+    pub async fn order(
         &self,
         input_mint: &Pubkey,
         output_mint: &Pubkey,
         amount: u64,
-    ) -> Result<QuoteResponse, JupiterError> {
+        taker: &Pubkey,
+    ) -> Result<OrderResponse, JupiterError> {
         if amount == 0 {
             return Err(JupiterError::config(
                 "swap amount must be greater than zero",
@@ -152,25 +162,30 @@ impl Client {
             ));
         }
 
-        let url = format!("{}/quote", self.base_url);
+        let url = format!("{}/order", self.base_url);
         let req = self.client.get(&url).query(&[
             ("inputMint", input_mint.to_string()),
             ("outputMint", output_mint.to_string()),
             ("amount", amount.to_string()),
             ("slippageBps", self.slippage_bps.to_string()),
+            ("taker", taker.to_string()),
         ]);
         let resp = self.apply_auth(req).send().await?;
 
         match resp.status().as_u16() {
             200 => {
-                let quote: QuoteResponse = resp.json().await?;
-                if quote.route_plan.is_empty() {
+                let order: OrderResponse = resp.json().await?;
+                // Check for inline error from Jupiter
+                if let Some(error_msg) = &order.error_message {
+                    return Err(JupiterError::SwapError(error_msg.clone()));
+                }
+                if order.route_plan.is_empty() {
                     return Err(JupiterError::NoRoutes {
                         input_mint: input_mint.to_string(),
                         output_mint: output_mint.to_string(),
                     });
                 }
-                Ok(quote)
+                Ok(order)
             }
             status => {
                 let body = resp
@@ -182,48 +197,37 @@ impl Client {
         }
     }
 
-    /// Get a swap transaction from Jupiter, deserialize it, update the
-    /// blockhash, and sign with the provided keypair.
+    /// Get a swap order and build a signed transaction ready to send.
     ///
-    /// Returns a ready-to-send `VersionedTransaction` and the last valid
-    /// block height, matching the helium-lib convention for transaction
-    /// builders (`token::transfer`, `token::burn`, etc.).
+    /// Combines `order()` with transaction decoding, blockhash update, and signing.
+    /// Returns the signed transaction, last valid block height, and the order
+    /// response (for quote data like amounts, rate, price impact).
     ///
-    /// Note: the transaction's compute budget is set by Jupiter's
-    /// simulation — `TransactionOpts` is intentionally not accepted here,
-    /// unlike other helium-lib transaction builders.
+    /// Note: the transaction's compute budget is set by Jupiter's simulation —
+    /// `TransactionOpts` is intentionally not accepted here.
     pub async fn swap<C: AsRef<SolanaRpcClient>>(
         &self,
         client: &C,
-        quote: &QuoteResponse,
+        input_mint: &Pubkey,
+        output_mint: &Pubkey,
+        amount: u64,
         keypair: &Keypair,
-    ) -> Result<(VersionedTransaction, u64), JupiterError> {
-        let swap_request = SwapRequest {
-            user_public_key: keypair.pubkey().to_string(),
-            quote_response: quote.clone(),
-            wrap_and_unwrap_sol: true,
-        };
-
-        let url = format!("{}/swap", self.base_url);
-        let resp = self
-            .apply_auth(self.client.post(&url).json(&swap_request))
-            .send()
+    ) -> Result<(VersionedTransaction, u64, OrderResponse), JupiterError> {
+        let order = self
+            .order(input_mint, output_mint, amount, &keypair.pubkey())
             .await?;
 
-        let swap_response: SwapResponse = match resp.status().as_u16() {
-            200 => resp.json().await?,
-            status => {
-                let body = resp
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "unknown error".to_string());
-                return Err(JupiterError::api(status, body));
-            }
-        };
+        if order.transaction.is_empty() {
+            return Err(JupiterError::SwapError(
+                order
+                    .error_message
+                    .unwrap_or_else(|| "no transaction returned".to_string()),
+            ));
+        }
 
         // Decode base64 → bincode → VersionedTransaction
         let tx_bytes = BASE64
-            .decode(&swap_response.swap_transaction)
+            .decode(&order.transaction)
             .map_err(JupiterError::transaction_decode)?;
         let mut txn: VersionedTransaction =
             bincode::deserialize(&tx_bytes).map_err(JupiterError::transaction_decode)?;
@@ -238,29 +242,20 @@ impl Client {
         let txn = VersionedTransaction::try_new(txn.message, &[keypair])
             .map_err(JupiterError::signing)?;
 
-        Ok((txn, last_valid_block_height))
+        Ok((txn, last_valid_block_height, order))
     }
 }
 
-// ---- Jupiter API request/response types ----
+// ---- Jupiter API response types ----
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SwapRequest {
-    user_public_key: String,
-    quote_response: QuoteResponse,
-    wrap_and_unwrap_sol: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SwapResponse {
-    swap_transaction: String,
-}
-
+/// Response from the Jupiter V2 `/order` endpoint.
+///
+/// Contains both the quote data (amounts, route, price impact) and the
+/// assembled transaction. The transaction may be empty if there was an
+/// error (check `error_message`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QuoteResponse {
+pub struct OrderResponse {
     pub input_mint: String,
     pub output_mint: String,
     pub in_amount: String,
@@ -269,7 +264,15 @@ pub struct QuoteResponse {
     pub slippage_bps: u16,
     #[serde(default)]
     pub(crate) route_plan: Vec<RoutePlan>,
-    /// All other fields are captured for pass-through to the /swap endpoint.
+    #[serde(default)]
+    pub transaction: String,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub error_code: Option<i32>,
+    #[serde(default)]
+    pub error_message: Option<String>,
+    /// All other fields captured for forward compatibility.
     #[serde(flatten)]
     pub extra: serde_json::Value,
 }
@@ -362,7 +365,18 @@ mod tests {
     }
 
     #[test]
-    fn test_quote_response_deserialization() {
+    fn test_empty_error_body() {
+        let err = JupiterError::api(404, String::new());
+        match err {
+            JupiterError::Api { message, .. } => {
+                assert!(message.contains("empty response"));
+            }
+            _ => panic!("expected Api variant"),
+        }
+    }
+
+    #[test]
+    fn test_order_response_deserialization() {
         let json = serde_json::json!({
             "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
             "inAmount": "100000000",
@@ -372,6 +386,7 @@ mod tests {
             "swapMode": "ExactIn",
             "slippageBps": 100,
             "priceImpactPct": "0.01",
+            "transaction": "base64encodedtx",
             "routePlan": [{
                 "swapInfo": {
                     "ammKey": "abc123",
@@ -379,31 +394,39 @@ mod tests {
                     "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
                     "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
                     "inAmount": "100000000",
-                    "outAmount": "450000",
-                    "feeAmount": "100",
-                    "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+                    "outAmount": "450000"
                 },
                 "percent": 100
             }]
         });
 
-        let quote: QuoteResponse = serde_json::from_value(json).unwrap();
-        assert_eq!(
-            quote.input_mint,
-            "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux"
-        );
-        assert_eq!(
-            quote.output_mint,
-            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-        );
-        assert_eq!(quote.in_amount, "100000000");
-        assert_eq!(quote.out_amount, "450000");
-        assert_eq!(quote.slippage_bps, 100);
-        assert_eq!(quote.route_plan.len(), 1);
-        assert_eq!(quote.route_plan[0].swap_info.label.as_deref(), Some("Orca"));
-        assert_eq!(quote.route_plan[0].percent, 100);
-        // Extra fields are captured
-        assert!(quote.extra.get("swapMode").is_some());
-        assert!(quote.extra.get("otherAmountThreshold").is_some());
+        let order: OrderResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(order.in_amount, "100000000");
+        assert_eq!(order.out_amount, "450000");
+        assert_eq!(order.slippage_bps, 100);
+        assert_eq!(order.transaction, "base64encodedtx");
+        assert_eq!(order.route_plan.len(), 1);
+        assert!(order.error_message.is_none());
+    }
+
+    #[test]
+    fn test_order_response_with_error() {
+        let json = serde_json::json!({
+            "inputMint": "abc",
+            "outputMint": "def",
+            "inAmount": "100",
+            "outAmount": "0",
+            "priceImpactPct": "0",
+            "slippageBps": 100,
+            "transaction": "",
+            "routePlan": [],
+            "error": "Insufficient funds",
+            "errorCode": 1,
+            "errorMessage": "Insufficient funds"
+        });
+
+        let order: OrderResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(order.error_message.as_deref(), Some("Insufficient funds"));
+        assert!(order.transaction.is_empty());
     }
 }

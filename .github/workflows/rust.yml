@@ -62,8 +62,6 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86-64-linux
-          - os: macos-13
-            target: x86-64-macos
           - os: macos-14
             target: arm64-macos
 

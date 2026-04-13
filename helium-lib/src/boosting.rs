@@ -22,7 +22,7 @@ pub trait StartBoostingHex {
     fn activation_ts(&self) -> DateTime<Utc>;
 }
 
-/// Build a message that activates hex boosting for a set of hexes.
+/// Builds a message that activates hex boosting for a set of hexes.
 pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     keypair: &Keypair,

@@ -16,7 +16,7 @@ the `helium-wallet` CLI and available for integration into other Rust projects.
 | `entity_key` | Entity key management for hotspots |
 | `error` | Error types (`Error`, `DecodeError`, `EncodeError`, `ConfirmationError`, `JupiterError`) |
 | `hotspot` | Hotspot CRUD, transfer, and onboarding (submodules: `dataonly`, `info`, `cert`) |
-| `jupiter` | Token swaps via Jupiter V6 API |
+| `jupiter` | Token swaps via Jupiter V2 API |
 | `keypair` | Solana keypair wrappers with optional BIP39 mnemonic support |
 | `kta` | KeyToAsset (KTA) lookups |
 | `memo` | Memo encoding/decoding |

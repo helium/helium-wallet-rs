@@ -17,7 +17,7 @@ pub const COMMON_LUT: Pubkey = pubkey!("43eY9L2spbM2b1MPDFFBStUiFGt29ziZ1nc1xbpz
 
 pub use solana_sdk::message::VersionedMessage;
 
-/// Fetch and deserialize address lookup table accounts from on-chain.
+/// Fetches and deserializes address lookup table accounts from on-chain.
 pub async fn get_lut_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     addresses: &[Pubkey],
@@ -54,7 +54,7 @@ pub fn mk_raw_message(
     Ok(msg)
 }
 
-/// Build a versioned message with a fresh blockhash, resolving LUT addresses on-chain.
+/// Builds a versioned message with a fresh blockhash, resolving LUT addresses on-chain.
 pub async fn mk_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     ixs: &[Instruction],

@@ -56,7 +56,7 @@ impl SignatureStatus {
     }
 }
 
-/// Build a signed versioned transaction from a message and signers.
+/// Builds a signed versioned transaction from a message and signers.
 pub fn mk_transaction<T: Signers + ?Sized>(
     msg: message::VersionedMessage,
     signers: &T,

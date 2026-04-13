@@ -63,7 +63,7 @@ const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
 /// (Estimated value based on similar operations)
 const SPL_CLOSE_ACCOUNT_CU: u32 = 3000;
 
-/// Build a versioned message that burns a token amount from the payer's account.
+/// Builds a versioned message that burns a token amount from the payer's account.
 pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
@@ -91,7 +91,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, &[ix], &opts.lut_addresses, payer).await
 }
 
-/// Burn a token amount from the keypair's account, returning a signed transaction.
+/// Burns a token amount from the keypair's account, returning a signed transaction.
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
@@ -103,7 +103,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-/// Build a versioned message that transfers tokens to one or more recipients.
+/// Builds a versioned message that transfers tokens to one or more recipients.
 pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
@@ -182,7 +182,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-/// Build a message to close multiple accounts and return funds to destination.
+/// Builds a message to close multiple accounts and return funds to destination.
 ///
 /// Supports both SPL token accounts and the owner's system account:
 /// - SPL token accounts (any account != owner): closed via `spl_token::close_account`.
@@ -302,7 +302,7 @@ pub async fn close_account<C: AsRef<SolanaRpcClient>>(
     close_accounts(client, &[*account], destination, owner, fee_payer, opts).await
 }
 
-/// Fetch the token balance for a single account address.
+/// Fetches the token balance for a single account address.
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
     client: &C,
     pubkey: &Pubkey,
@@ -331,7 +331,7 @@ fn to_token_balance(pubkey: Pubkey, value: Option<Account>) -> Result<Option<Tok
     }
 }
 
-/// Fetch token balances for multiple account addresses in batched RPC calls.
+/// Fetches token balances for multiple account addresses in batched RPC calls.
 pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
     client: &C,
     pubkeys: &[Pubkey],

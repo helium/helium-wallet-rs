@@ -12,7 +12,7 @@ use helium_crypto::PublicKey;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
-/// Fetch an existing certificate for a hotspot.
+/// Fetches an existing certificate for a hotspot.
 pub async fn get<C: AsRef<Client>>(
     client: C,
     hotspot: PublicKey,
@@ -21,7 +21,7 @@ pub async fn get<C: AsRef<Client>>(
     get_or_create(client, None, hotspot, keypair, false).await
 }
 
-/// Fetch or create a location certificate for a hotspot.
+/// Fetches or creates a location certificate for a hotspot.
 pub async fn get_or_create<C: AsRef<Client>>(
     client: C,
     location_info: Option<LocationInfo>,

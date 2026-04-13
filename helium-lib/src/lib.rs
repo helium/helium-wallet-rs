@@ -13,11 +13,11 @@ pub mod b64;
 /// Solana RPC and DAS client wrappers.
 pub mod client;
 
-/// Hex boosting configuration for coverage areas.
+/// Hex boosting activation for mobile coverage areas.
 pub mod boosting;
 /// Helium DAO and sub-DAO account lookups.
 pub mod dao;
-/// Data Credit minting and delegation.
+/// Data Credit minting, delegation, and burning.
 pub mod dc;
 /// Ed25519 signature verification instructions.
 pub mod ed25519_instruction;
@@ -43,11 +43,11 @@ pub mod onboarding;
 pub mod priority_fee;
 /// Anchor program ID and account definitions.
 pub mod programs;
-/// Transaction queuing and batch submission.
+/// Reward claim queuing via task queues.
 pub mod queue;
 /// Reward claim and oracle interactions.
 pub mod reward;
-/// Reward schedule and epoch utilities.
+/// Cron-based scheduled reward claiming.
 pub mod schedule;
 /// Token operations: transfers, burns, balances, and prices.
 pub mod token;
@@ -105,7 +105,7 @@ use keypair::Pubkey;
 use solana_sdk::{instruction::Instruction, transaction::Transaction};
 use std::{ops::RangeInclusive, sync::Arc};
 
-/// Initialize the global KTA (key-to-asset) cache.
+/// Initializes the global KTA (key-to-asset) cache.
 ///
 /// Must be called before any KTA lookups. Requires an active Solana RPC client.
 pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
@@ -138,7 +138,7 @@ impl TransactionOpts {
     }
 }
 
-/// Create a transaction with a fresh blockhash, returning the transaction and block height.
+/// Creates a transaction with a fresh blockhash, returning the transaction and block height.
 pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(
     client: &C,
     ixs: &[Instruction],

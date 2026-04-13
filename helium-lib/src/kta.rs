@@ -10,13 +10,13 @@ use std::{
     sync::{Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-/// Initialize the global KTA cache with the given Solana RPC client.
+/// Initializes the global KTA cache with the given Solana RPC client.
 pub fn init(solana_client: Arc<SolanaRpcClient>) -> Result<(), Error> {
     let _ = CACHE.set(KtaCache::new(solana_client)?);
     Ok(())
 }
 
-/// Fetch a KeyToAsset account, using the cache when available.
+/// Fetches a KeyToAsset account, using the cache when available.
 pub async fn get(kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get(kta_key).await
@@ -28,7 +28,7 @@ pub fn get_cached(kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
     cache.get_cached(kta_key)
 }
 
-/// Fetch multiple KeyToAsset accounts, using the cache when available.
+/// Fetches multiple KeyToAsset accounts, using the cache when available.
 pub async fn get_many(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get_many(kta_keys).await

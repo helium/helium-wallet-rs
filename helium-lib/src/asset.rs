@@ -462,7 +462,7 @@ pub fn transfer_instruction(
     Ok(ix)
 }
 
-/// Get an unsigned transaction for an asset transfer
+/// Gets an unsigned transaction for an asset transfer.
 ///
 /// The asset is transferred from the owner to the given recipient
 /// Note that the owner is currently expected to sign this transaction and pay for
@@ -503,7 +503,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
-/// Get an unsigned burn transaction for an asset
+/// Gets an unsigned burn transaction for an asset.
 pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,

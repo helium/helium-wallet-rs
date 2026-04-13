@@ -130,12 +130,12 @@ pub fn compute_placeholder_instructions() -> [Instruction; 2] {
     ]
 }
 
-/// Create a `SetComputeUnitLimit` instruction.
+/// Creates a `SetComputeUnitLimit` instruction.
 pub fn compute_budget_instruction(compute_limit: u32) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(compute_limit)
 }
 
-/// Create a `SetComputeUnitPrice` instruction.
+/// Creates a `SetComputeUnitPrice` instruction.
 pub fn compute_price_instruction(priority_fee: u64) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee)
 }

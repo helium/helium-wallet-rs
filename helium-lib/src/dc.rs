@@ -15,7 +15,7 @@ use crate::{
     TransactionOpts,
 };
 
-/// Build a message that mints data credits by burning HNT.
+/// Builds a message that mints data credits by burning HNT.
 pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
@@ -89,7 +89,7 @@ pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
-/// Mint data credits by burning HNT and return a signed transaction.
+/// Mints data credits by burning HNT and returns a signed transaction.
 pub async fn mint<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
@@ -102,7 +102,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-/// Build a message that delegates data credits to a router/OUI.
+/// Builds a message that delegates data credits to a router/OUI.
 pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     subdao: SubDao,
@@ -154,7 +154,7 @@ pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, owner).await
 }
 
-/// Delegate data credits to a router/OUI and return a signed transaction.
+/// Delegates data credits to a router/OUI and returns a signed transaction.
 pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     client: &C,
     subdao: SubDao,
@@ -169,7 +169,7 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-/// Build a message that burns data credits without tracking.
+/// Builds a message that burns data credits without tracking.
 pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: u64,
@@ -212,7 +212,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, owner).await
 }
 
-/// Burn data credits and return a signed transaction.
+/// Burns data credits and returns a signed transaction.
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: u64,
@@ -224,7 +224,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-/// Build a message that burns delegated data credits for a router.
+/// Builds a message that burns delegated data credits for a router.
 pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
@@ -296,7 +296,7 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
-/// Burn delegated data credits and return a signed transaction.
+/// Burns delegated data credits and returns a signed transaction.
 pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,

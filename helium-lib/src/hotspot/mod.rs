@@ -86,6 +86,7 @@ pub async fn search<C: AsRef<DasClient>>(
         .and_then(HotspotPage::from_asset_page)
         .await
 }
+
 /// Derives the human-readable three-word animal name for a hotspot from its public key.
 pub fn name(hotspot_key: &helium_crypto::PublicKey) -> String {
     hotspot_key
@@ -288,7 +289,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok(tx)
 }
 
-/// Get an unsigned transaction for a Hotspot transfer.
+/// Gets an unsigned transaction for a hotspot transfer.
 ///
 /// The Hotspot is transferred from the owner of the Hotspot to the given recipient
 /// Note that the owner is currently expected to sign this transaction and pay for

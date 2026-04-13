@@ -60,7 +60,6 @@ Global options _precede_ the subcommand.
 | Option | Description |
 |---|---|
 | `-f` / `--file` | Wallet file(s). Repeat for sharded wallets or multiple wallets. Default: `wallet.key` |
-| `--format json\|table` | Output format |
 | `--url <URL>` | Solana RPC URL. Shortcuts: `m` (mainnet, default), `d` (devnet). Any full URL also accepted |
 
 ### Common Command Options
@@ -138,7 +137,7 @@ This command also serves as verification for sharded wallets -- pass at least K
 shard files:
 
 ```
-helium-wallet -f wallet.key.1 -f wallet.key.2 -f wallet.key.5 verify
+helium-wallet -f wallet.key.1 -f wallet.key.2 -f wallet.key.5 info
 ```
 
 ### `balance` -- Token Balances
@@ -149,7 +148,7 @@ helium-wallet balance
 
 Displays balances for HNT, MOBILE, IOT, DC, SOL, and USDC.
 
-### `transfer` (alias: `pay`) -- Send Tokens
+### `transfer` -- Send Tokens
 
 #### Single Payee
 
@@ -158,7 +157,7 @@ helium-wallet transfer one <address> <amount> <token>
 helium-wallet transfer one <address> <amount> <token> --commit
 ```
 
-Tokens: `hnt`, `mobile`, `iot`, `usdc`, `sol`, `dc`. HNT supports 8 decimal
+Tokens: `hnt`, `mobile`, `iot`, `usdc`, `sol`. HNT supports 8 decimal
 places; MOBILE and IOT support 6.
 
 #### Multiple Payees

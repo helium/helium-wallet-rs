@@ -108,7 +108,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          echo "NAME=helium-wallet-${TARGET}" >> $GITHUB_ENV
+          echo "NAME=helium-wallet-${TARGET,,}" >> $GITHUB_ENV
 
       - name: Build | Package
         shell: bash

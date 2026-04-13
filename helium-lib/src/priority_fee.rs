@@ -9,10 +9,17 @@ use crate::{
 use itertools::Itertools;
 use std::ops::RangeInclusive;
 
+/// Maximum number of writable accounts sampled for fee estimation.
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
+/// Floor for computed priority fees (micro-lamports per CU).
 pub const MIN_PRIORITY_FEE: u64 = 1;
+/// Ceiling for computed priority fees (micro-lamports per CU).
 pub const MAX_PRIORITY_FEE: u64 = 2500000;
 
+/// Estimate a priority fee for the given accounts, clamped to `fee_range`.
+///
+/// Uses the Helius priority-fee API on mainnet, falls back to median
+/// recent fees otherwise.
 pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
@@ -113,6 +120,8 @@ mod base {
     }
 }
 
+/// Return placeholder compute-budget and compute-price instructions for
+/// transaction size estimation.
 pub fn compute_placeholder_instructions() -> [Instruction; 2] {
     [
         // Set budget high, will be updated by client or simulation
@@ -121,14 +130,17 @@ pub fn compute_placeholder_instructions() -> [Instruction; 2] {
     ]
 }
 
+/// Create a `SetComputeUnitLimit` instruction.
 pub fn compute_budget_instruction(compute_limit: u32) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(compute_limit)
 }
 
+/// Create a `SetComputeUnitPrice` instruction.
 pub fn compute_price_instruction(priority_fee: u64) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee)
 }
 
+/// Estimate the priority fee for the given accounts and return the instruction.
 pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
@@ -138,6 +150,7 @@ pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     Ok(compute_price_instruction(priority_fee))
 }
 
+/// Estimate the priority fee from instruction account lists and return the instruction.
 pub async fn compute_price_instruction_for_instructions<C: AsRef<SolanaRpcClient>>(
     client: &C,
     instructions: &[Instruction],

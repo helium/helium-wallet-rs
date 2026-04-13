@@ -12,6 +12,7 @@ use helium_crypto::PublicKey;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::{self, Debug};
 
+/// Fetch an existing certificate for a hotspot.
 pub async fn get<C: AsRef<Client>>(
     client: C,
     hotspot: PublicKey,
@@ -20,6 +21,7 @@ pub async fn get<C: AsRef<Client>>(
     get_or_create(client, None, hotspot, keypair, false).await
 }
 
+/// Fetch or create a location certificate for a hotspot.
 pub async fn get_or_create<C: AsRef<Client>>(
     client: C,
     location_info: Option<LocationInfo>,
@@ -36,6 +38,7 @@ pub async fn get_or_create<C: AsRef<Client>>(
         .await
 }
 
+/// Signed request payload sent to the certificate service.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CertRequest {
     /// Base64 encoded version of a serialized LocationData
@@ -46,6 +49,7 @@ pub struct CertRequest {
     pub dry_run: bool,
 }
 
+/// Response containing location and RADSEC certificate information.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CertResponse {
     #[serde(flatten)]
@@ -54,6 +58,7 @@ pub struct CertResponse {
     pub cert: CertInfo,
 }
 
+/// RADSEC certificate details.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CertInfo {
     pub radsec_private_key: String,
@@ -63,6 +68,7 @@ pub struct CertInfo {
 }
 
 impl CertRequest {
+    /// Build a signed certificate request for the given location data.
     pub fn for_location(
         data: LocationData,
         keypair: &Keypair,
@@ -78,6 +84,7 @@ impl CertRequest {
     }
 }
 
+/// Location data payload embedded in a certificate request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocationData {
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -99,6 +106,7 @@ impl LocationData {
     }
 }
 
+/// Physical location details for certificate requests.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct LocationInfo {
     pub location_address: String,
@@ -106,6 +114,7 @@ pub struct LocationInfo {
     pub nas_ids: Vec<String>,
 }
 
+/// Errors from the certificate service client.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error(transparent)]
@@ -114,6 +123,7 @@ pub enum ClientError {
     Encode(#[from] crate::error::EncodeError),
 }
 
+/// HTTP request error with optional server error message.
 #[derive(Debug)]
 pub struct RequestError {
     pub error: reqwest::Error,
@@ -147,6 +157,7 @@ impl fmt::Display for RequestError {
     }
 }
 
+/// HTTP client for the hotspot certificate/location verification service.
 #[derive(Debug, Clone)]
 pub struct Client {
     inner: reqwest::Client,
@@ -161,6 +172,7 @@ impl Default for Client {
 }
 
 impl Client {
+    /// Create a certificate client with the given base URL and optional API token.
     pub fn new(url: &str, token: Option<String>) -> Result<Self, Error> {
         let inner = reqwest::Client::new();
         let base_url = url.parse().map_err(DecodeError::from)?;
@@ -171,6 +183,7 @@ impl Client {
         })
     }
 
+    /// POST JSON to the certificate service and deserialize the response.
     pub async fn post<T: Serialize + Sync, R: DeserializeOwned>(
         &self,
         path: &str,

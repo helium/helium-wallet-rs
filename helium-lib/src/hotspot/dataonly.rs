@@ -49,7 +49,7 @@ mod iot {
                 iot_info: SubDao::Iot.info_key(&entity_key),
                 hotspot_owner: *owner,
                 merkle_tree: config_account.merkle_tree,
-                dc_burner: Token::Dc.associated_token_adress(owner),
+                dc_burner: Token::Dc.associated_token_address(owner),
                 rewardable_entity_config: SubDao::Iot.rewardable_entity_config_key(),
                 data_only_config: data_only_config_key,
                 dao: dao.key(),
@@ -115,7 +115,7 @@ mod mobile {
                 mobile_info: SubDao::Mobile.info_key(&entity_key),
                 hotspot_owner: *owner,
                 merkle_tree: config_account.merkle_tree,
-                dc_burner: Token::Dc.associated_token_adress(owner),
+                dc_burner: Token::Dc.associated_token_address(owner),
                 rewardable_entity_config: SubDao::Mobile.rewardable_entity_config_key(),
                 data_only_config: data_only_config_key,
                 dao: dao.key(),
@@ -125,7 +125,7 @@ mod mobile {
                 dc: Dao::dc_key(),
                 dnt_mint: *Token::Mobile.mint(),
                 dnt_price: *Token::Mobile.price_key().unwrap(), // safe to unwrap
-                dnt_burner: Token::Mobile.associated_token_adress(owner),
+                dnt_burner: Token::Mobile.associated_token_address(owner),
                 compression_program: spl_account_compression::ID,
                 data_credits_program: data_credits::ID,
                 helium_sub_daos_program: helium_sub_daos::ID,
@@ -159,6 +159,11 @@ mod mobile {
     }
 }
 
+/// Builds an instruction to onboard a data-only hotspot for a specific sub-DAO.
+///
+/// Data-only hotspots are lighter-weight hotspots that transfer data but do not
+/// participate in Proof-of-Coverage. They are cheaper to onboard and require
+/// fewer DC fees than full hotspots.
 pub fn onboard_instruction(
     subdao: SubDao,
     hotspot_key: &helium_crypto::PublicKey,
@@ -188,6 +193,7 @@ pub fn onboard_instruction(
     }
 }
 
+/// Builds an unsigned transaction to onboard a data-only hotspot.
 pub async fn onboard_transaction<
     C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
 >(
@@ -230,6 +236,7 @@ pub async fn onboard_transaction<
     Ok((txn, block_height))
 }
 
+/// Signs and returns a transaction to onboard a data-only hotspot for a sub-DAO.
 pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     subdao: SubDao,
@@ -253,6 +260,7 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     Ok((txn, block_height))
 }
 
+/// Builds an unsigned transaction to issue (mint) a new data-only hotspot entity on-chain.
 pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     verifier: &str,
@@ -334,6 +342,7 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     Ok((signed_txn, block_height))
 }
 
+/// A newly issued data-only hotspot with its public key and animal name.
 #[derive(Debug, serde::Serialize)]
 pub struct IssueHotspot {
     key: PublicKey,
@@ -349,12 +358,14 @@ impl From<&helium_crypto::Keypair> for IssueHotspot {
     }
 }
 
+/// A base64-encoded add-gateway token paired with the hotspot it was generated for.
 #[derive(Debug, serde::Serialize)]
 pub struct IssueToken {
     hotspot: IssueHotspot,
     token: String,
 }
 
+/// Creates a signed add-gateway token from a gateway keypair for data-only hotspot issuance.
 pub fn issue_token(gw_keypair: &helium_crypto::Keypair) -> Result<IssueToken, Error> {
     let mut txn = BlockchainTxnAddGatewayV1 {
         gateway: gw_keypair.public_key().to_vec(),
@@ -377,6 +388,7 @@ pub fn issue_token(gw_keypair: &helium_crypto::Keypair) -> Result<IssueToken, Er
     })
 }
 
+/// Decodes a base64 add-gateway token back into its protobuf transaction.
 pub fn issue_token_to_add_tx(token: &str) -> Result<BlockchainTxnAddGatewayV1, Error> {
     let envelope: BlockchainTxn = b64::decode_message(token)?;
     match envelope.txn {
@@ -385,6 +397,7 @@ pub fn issue_token_to_add_tx(token: &str) -> Result<BlockchainTxnAddGatewayV1, E
     }
 }
 
+/// Signs and returns a transaction to issue a new data-only hotspot entity on-chain.
 pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     verifier: &str,

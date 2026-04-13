@@ -7,6 +7,7 @@ use crate::{
     transaction, TransactionOpts,
 };
 
+/// Build a message that records an on-chain memo.
 pub async fn memo_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     data: &str,
@@ -28,6 +29,7 @@ pub async fn memo_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, pubkey).await
 }
 
+/// Record an on-chain memo and return a signed transaction.
 pub async fn memo<C: AsRef<SolanaRpcClient>>(
     client: &C,
     data: &str,

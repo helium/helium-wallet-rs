@@ -5,6 +5,7 @@ use solana_sdk::signature::Signature;
 use std::{array::TryFromSliceError, num::TryFromIntError, time::Duration};
 use thiserror::Error;
 
+/// Main error type for helium-lib operations.
 #[derive(Error, Debug)]
 pub enum Error {
     #[cfg(feature = "mnemonic")]
@@ -77,10 +78,12 @@ impl From<tonic::Status> for Error {
 }
 
 impl Error {
+    /// Create an error indicating a Solana account was not found.
     pub fn account_not_found() -> Self {
         anchor_client::ClientError::AccountNotFound.into()
     }
 
+    /// Check whether this error represents a missing Solana account.
     pub fn is_account_not_found(&self) -> bool {
         use solana_client::{
             client_error::{
@@ -104,6 +107,7 @@ impl Error {
     }
 }
 
+/// Errors during data encoding (protobuf, JSON, bincode, etc.).
 #[derive(Debug, Error)]
 pub enum EncodeError {
     #[error("proto: {0}")]
@@ -124,6 +128,7 @@ impl EncodeError {
     }
 }
 
+/// Errors during data decoding (protobuf, base58, hex, etc.).
 #[derive(Debug, Error)]
 pub enum DecodeError {
     #[error("io: {0}")]

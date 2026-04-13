@@ -4,6 +4,7 @@ use crate::{
 };
 use sha2::{Digest, Sha256};
 
+/// The top-level Helium DAO. Currently only HNT.
 #[derive(
     Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, Default,
 )]
@@ -21,6 +22,7 @@ impl std::fmt::Display for Dao {
 }
 
 impl Dao {
+    /// Derive the on-chain PDA for this DAO.
     pub fn key(&self) -> Pubkey {
         let mint = match self {
             Self::Hnt => Token::Hnt.mint(),
@@ -30,6 +32,7 @@ impl Dao {
         dao_key
     }
 
+    /// Derive the data-only config PDA.
     pub fn dataonly_config_key(&self) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"data_only_config", self.key().as_ref()],
@@ -38,6 +41,7 @@ impl Dao {
         key
     }
 
+    /// Derive the data-only escrow PDA.
     pub fn dataonly_escrow_key(&self) -> Pubkey {
         let (data_only_escrow, _doe_bump) = Pubkey::find_program_address(
             &[b"data_only_escrow", self.dataonly_config_key().as_ref()],
@@ -46,6 +50,7 @@ impl Dao {
         data_only_escrow
     }
 
+    /// Derive the entity creator PDA for the helium entity manager.
     pub fn entity_creator_key(&self) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"entity_creator", self.key().as_ref()],
@@ -54,6 +59,7 @@ impl Dao {
         key
     }
 
+    /// Derive the KeyToAsset PDA for the given entity key.
     pub fn entity_key_to_kta_key<E: AsEntityKey + ?Sized>(&self, entity_key: &E) -> Pubkey {
         let hash = Sha256::digest(entity_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
@@ -63,16 +69,19 @@ impl Dao {
         key
     }
 
+    /// Derive the rewards oracle signer PDA.
     pub fn oracle_signer_key() -> Pubkey {
         let (key, _) = Pubkey::find_program_address(&[b"oracle_signer"], &rewards_oracle::ID);
         key
     }
 
+    /// Derive the DC account payer PDA.
     pub fn dc_account_payer() -> Pubkey {
         let (key, _) = Pubkey::find_program_address(&[b"account_payer"], &data_credits::ID);
         key
     }
 
+    /// Derive the data credits PDA.
     pub fn dc_key() -> Pubkey {
         let (key, _) =
             Pubkey::find_program_address(&[b"dc", Token::Dc.mint().as_ref()], &data_credits::ID);
@@ -80,6 +89,7 @@ impl Dao {
     }
 }
 
+/// A Helium sub-DAO (IoT or Mobile).
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
@@ -99,10 +109,12 @@ impl std::fmt::Display for SubDao {
 }
 
 impl SubDao {
+    /// Return all sub-DAO variants.
     pub const fn all() -> [SubDao; 2] {
         [SubDao::Iot, SubDao::Mobile]
     }
 
+    /// Derive the on-chain PDA for this sub-DAO.
     pub fn key(&self) -> Pubkey {
         let (subdao_key, _) = Pubkey::find_program_address(
             &[b"sub_dao", self.token().mint().as_ref()],
@@ -111,6 +123,7 @@ impl SubDao {
         subdao_key
     }
 
+    /// The native token for this sub-DAO.
     pub fn token(&self) -> Token {
         match self {
             Self::Iot => Token::Iot,
@@ -118,6 +131,7 @@ impl SubDao {
         }
     }
 
+    /// Derive the delegated DC PDA for a router key.
     pub fn delegated_dc_key<E: AsEntityKey>(&self, router_key: &E) -> Pubkey {
         let hash = Sha256::digest(router_key.as_entity_key());
         let (key, _) = Pubkey::find_program_address(
@@ -127,6 +141,7 @@ impl SubDao {
         key
     }
 
+    /// Derive the DC escrow PDA for a delegated DC account.
     pub fn escrow_key(&self, delegated_dc_key: &Pubkey) -> Pubkey {
         let (key, _) = Pubkey::find_program_address(
             &[b"escrow_dc_account", delegated_dc_key.as_ref()],
@@ -135,6 +150,7 @@ impl SubDao {
         key
     }
 
+    /// Derive the rewardable entity config PDA.
     pub fn rewardable_entity_config_key(&self) -> Pubkey {
         let suffix = match self {
             Self::Iot => b"IOT".as_ref(),
@@ -147,6 +163,7 @@ impl SubDao {
         key
     }
 
+    /// Derive the hotspot info PDA for the given entity key.
     pub fn info_key<E: AsEntityKey>(&self, entity_key: &E) -> Pubkey {
         let hash = Sha256::digest(entity_key.as_entity_key());
         let config_key = self.rewardable_entity_config_key();
@@ -161,6 +178,7 @@ impl SubDao {
         key
     }
 
+    /// Derive the sub-DAO config PDA (e.g. `iot_config` or `mobile_config`).
     pub fn config_key(&self) -> Pubkey {
         let prefix = match self {
             Self::Iot => "iot_config",
@@ -173,6 +191,7 @@ impl SubDao {
         key
     }
 
+    /// Derive the current epoch info PDA based on today's date.
     pub fn epoch_info_key(&self) -> Pubkey {
         const EPOCH_LENGTH: i64 = 60 * 60 * 24;
         let epoch = chrono::Utc::now().timestamp() / EPOCH_LENGTH;

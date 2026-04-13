@@ -14,6 +14,7 @@ use futures::stream::{self, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
+/// Errors from parsing or validating a token type.
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
     #[error("Invalid token type: {0}")]
@@ -62,6 +63,7 @@ const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
 /// (Estimated value based on similar operations)
 const SPL_CLOSE_ACCOUNT_CU: u32 = 3000;
 
+/// Build a versioned message that burns a token amount from the payer's account.
 pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
@@ -73,7 +75,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
             return Err(DecodeError::other("native token burn not supported").into());
         }
         spl_mint => {
-            let token_account = token_amount.token.associated_token_adress(payer);
+            let token_account = token_amount.token.associated_token_address(payer);
             anchor_spl::token::spl_token::instruction::burn_checked(
                 &anchor_spl::token::spl_token::id(),
                 &token_account,
@@ -89,6 +91,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, &[ix], &opts.lut_addresses, payer).await
 }
 
+/// Burn a token amount from the keypair's account, returning a signed transaction.
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
@@ -100,6 +103,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
+/// Build a versioned message that transfers tokens to one or more recipients.
 pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
@@ -122,8 +126,8 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                 cu_budget += SYS_PROGRAM_TRANSFER_CU;
             }
             spl_mint => {
-                let source_pubkey = token_amount.token.associated_token_adress(payer);
-                let destination_pubkey = token_amount.token.associated_token_adress(payee);
+                let source_pubkey = token_amount.token.associated_token_address(payer);
+                let destination_pubkey = token_amount.token.associated_token_address(payee);
                 let ix = spl_associated_token_account::instruction::create_associated_token_account_idempotent(
                     payer,
                     payee,
@@ -166,6 +170,7 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, final_ixs, &opts.lut_addresses, payer).await
 }
 
+/// Transfer tokens to one or more recipients, returning a signed transaction.
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
@@ -297,6 +302,7 @@ pub async fn close_account<C: AsRef<SolanaRpcClient>>(
     close_accounts(client, &[*account], destination, owner, fee_payer, opts).await
 }
 
+/// Fetch the token balance for a single account address.
 pub async fn balance_for_address<C: AsRef<SolanaRpcClient>>(
     client: &C,
     pubkey: &Pubkey,
@@ -325,6 +331,7 @@ fn to_token_balance(pubkey: Pubkey, value: Option<Account>) -> Result<Option<Tok
     }
 }
 
+/// Fetch token balances for multiple account addresses in batched RPC calls.
 pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
     client: &C,
     pubkeys: &[Pubkey],
@@ -350,14 +357,18 @@ pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
         .try_collect()
 }
 
+/// Pyth oracle price lookups for Helium tokens.
 pub mod price {
     use super::*;
     use crate::programs::helium_entity_manager::accounts::PriceUpdateV2;
     use rust_decimal::prelude::*;
 
+    /// Raw 32-byte Pyth price feed identifier.
     pub type FeedId = [u8; 32];
+    /// Number of Data Credits per USD.
     pub const DC_PER_USD: i64 = 100_000;
 
+    /// Errors from fetching or validating a token price.
     #[derive(Debug, thiserror::Error)]
     pub enum PriceError {
         #[error("invalid or unsupported token: {0}")]
@@ -374,6 +385,7 @@ pub mod price {
         PositiveExponent,
     }
 
+    /// A token price snapshot from the Pyth oracle.
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     pub struct Price {
         pub timestamp: DateTime<Utc>,
@@ -387,6 +399,7 @@ pub mod price {
         Ok(feed_id)
     }
 
+    /// Fetch the current price for a token, rejecting prices older than `max_age`.
     pub async fn get_with_max_age<C: AsRef<SolanaRpcClient>>(
         client: &C,
         token: Token,
@@ -430,22 +443,30 @@ pub mod price {
         })
     }
 
+    /// Fetch the current price for a token with a default 10-minute max age.
     pub async fn get<C: AsRef<SolanaRpcClient>>(client: &C, token: Token) -> Result<Price, Error> {
         get_with_max_age(client, token, Duration::minutes(10)).await
     }
 }
 
+/// Helium ecosystem tokens on Solana.
 #[derive(
     Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord,
 )]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum Token {
+    /// Native Solana token (lamports).
     Sol,
+    /// Helium Network Token -- the primary governance and staking token.
     Hnt,
+    /// MOBILE sub-DAO token for 5G/cellular coverage.
     Mobile,
+    /// IOT sub-DAO token for LoRaWAN coverage.
     Iot,
+    /// Data Credits -- non-transferable, burned to pay for network usage.
     Dc,
+    /// USD Coin stablecoin.
     Usdc,
 }
 
@@ -479,6 +500,7 @@ impl FromStr for Token {
 }
 
 impl Token {
+    /// Look up a token by its SPL mint address, returning `None` for unknown mints.
     pub fn from_mint(mint: Pubkey) -> Option<Self> {
         let token = match mint {
             mint if mint == *HNT_MINT => Token::Hnt,
@@ -493,6 +515,7 @@ impl Token {
         Some(token)
     }
 
+    /// All supported token types.
     pub fn all() -> Vec<Self> {
         vec![
             Self::Hnt,
@@ -528,17 +551,19 @@ impl Token {
         Self::from_allowed(s, &[Self::Iot, Self::Mobile, Self::Hnt])
     }
 
-    pub fn associated_token_adress(&self, address: &Pubkey) -> Pubkey {
+    /// Derive the associated token account address for a wallet. Returns the wallet itself for SOL.
+    pub fn associated_token_address(&self, address: &Pubkey) -> Pubkey {
         match self {
             Self::Sol => *address,
             _ => spl_associated_token_account::get_associated_token_address(address, self.mint()),
         }
     }
 
-    pub fn associated_token_adresses(address: &Pubkey) -> Vec<Pubkey> {
+    /// Derive associated token account addresses for all supported tokens.
+    pub fn associated_token_addresses(address: &Pubkey) -> Vec<Pubkey> {
         Self::all()
             .iter()
-            .map(|token| token.associated_token_adress(address))
+            .map(|token| token.associated_token_address(address))
             .collect::<Vec<_>>()
     }
 
@@ -551,6 +576,7 @@ impl Token {
     }
 }
 
+/// A token balance at a specific on-chain account address.
 #[derive(Debug, serde::Serialize, Default, Clone, Copy)]
 pub struct TokenBalance {
     #[serde(with = "serde_pubkey")]
@@ -558,6 +584,7 @@ pub struct TokenBalance {
     pub amount: TokenAmount,
 }
 
+/// Map of token type to balance, used for multi-token wallet summaries.
 #[derive(Debug, serde::Serialize, Clone, Default)]
 pub struct TokenBalanceMap(HashMap<Token, TokenBalance>);
 
@@ -586,6 +613,7 @@ impl From<Vec<Option<TokenBalance>>> for TokenBalanceMap {
     }
 }
 
+/// A token amount stored as raw integer units (e.g. lamports for SOL, bones for HNT).
 #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct TokenAmount {
     pub token: Token,
@@ -701,12 +729,14 @@ impl Default for TokenAmount {
 }
 
 impl TokenAmount {
+    /// Create a token amount from a human-readable decimal value (e.g. `1.5` HNT).
     pub fn from_f64<T: Into<Token>>(token: T, amount: f64) -> Self {
         let token = token.into();
         let amount = (amount * 10_usize.pow(token.decimals().into()) as f64) as u64;
         Self { token, amount }
     }
 
+    /// Create a token amount from raw integer units (e.g. lamports, bones).
     pub fn from_u64<T: Into<Token>>(token: T, amount: u64) -> Self {
         Self {
             token: token.into(),
@@ -716,6 +746,7 @@ impl TokenAmount {
 }
 
 impl Token {
+    /// Number of decimal places for this token (e.g. 8 for HNT, 9 for SOL, 0 for DC).
     pub fn decimals(&self) -> u8 {
         match self {
             Self::Hnt => 8,
@@ -726,6 +757,7 @@ impl Token {
         }
     }
 
+    /// The SPL mint address for this token (system program ID for SOL).
     pub fn mint(&self) -> &Pubkey {
         match self {
             Self::Hnt => &HNT_MINT,

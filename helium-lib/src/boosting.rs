@@ -10,13 +10,19 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 
+/// Parameters required to activate hex boosting for a mobile hotspot.
 pub trait StartBoostingHex {
+    /// The authority that can start boosting.
     fn start_authority(&self) -> Pubkey;
+    /// The boost configuration account.
     fn boost_config(&self) -> Pubkey;
+    /// The boosted hex account.
     fn boosted_hex(&self) -> Pubkey;
+    /// When the boost should become active.
     fn activation_ts(&self) -> DateTime<Utc>;
 }
 
+/// Build a message that activates hex boosting for a set of hexes.
 pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     keypair: &Keypair,
@@ -73,6 +79,7 @@ pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, &ixs, &opts.lut_addresses, &keypair.pubkey()).await
 }
 
+/// Activate hex boosting and return a signed transaction.
 pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
     client: &C,
     updates: impl IntoIterator<Item = impl StartBoostingHex>,

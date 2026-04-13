@@ -16,7 +16,7 @@ impl Cmd {
         let address = opts.maybe_wallet_key(self.address)?;
         let client = opts.client()?;
         let balances =
-            token::balance_for_addresses(&client, &Token::associated_token_adresses(&address))
+            token::balance_for_addresses(&client, &Token::associated_token_addresses(&address))
                 .await?;
         let json = json!({
             "address": address.to_string(),

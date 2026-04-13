@@ -31,7 +31,9 @@ pub mod cert;
 pub mod dataonly;
 pub mod info;
 
+/// The well-known creator address used to identify Helium hotspot compressed NFTs.
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
+/// The on-chain ECC verifier used to validate gateway signatures during data-only hotspot issuance.
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
 pub fn entity_key_from_kta(
@@ -49,6 +51,7 @@ pub fn entity_key_from_kta(
     Ok(helium_crypto::PublicKey::from_str(&key_str)?)
 }
 
+/// Returns all hotspots owned by the given wallet address.
 pub async fn for_owner<C: AsRef<DasClient>>(
     client: &C,
     owner: &Pubkey,
@@ -70,6 +73,7 @@ pub async fn for_owner<C: AsRef<DasClient>>(
         .try_collect()
 }
 
+/// Searches for hotspots using Digital Asset Standard (DAS) search parameters.
 pub async fn search<C: AsRef<DasClient>>(
     client: &C,
     params: DasSearchAssetsParams,
@@ -82,6 +86,7 @@ pub async fn search<C: AsRef<DasClient>>(
         .and_then(HotspotPage::from_asset_page)
         .await
 }
+/// Derives the human-readable three-word animal name for a hotspot from its public key.
 pub fn name(hotspot_key: &helium_crypto::PublicKey) -> String {
     hotspot_key
         .to_string()
@@ -91,6 +96,7 @@ pub fn name(hotspot_key: &helium_crypto::PublicKey) -> String {
         .to_string()
 }
 
+/// Fetches a single hotspot by its helium public key.
 pub async fn get<C: AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
@@ -100,6 +106,7 @@ pub async fn get<C: AsRef<DasClient>>(
     Hotspot::from_asset(asset).await
 }
 
+/// Fetches a hotspot along with its on-chain info for the specified sub-DAOs (IoT, Mobile).
 pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
     client: &C,
     subdaos: &[SubDao],
@@ -115,6 +122,7 @@ pub async fn get_with_info<C: AsRef<DasClient> + GetAnchorAccount>(
     Ok(hotspot)
 }
 
+/// Builds an instruction to update hotspot info directly on-chain (no onboarding server).
 pub fn direct_update_instruction(
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
     asset: &asset::Asset,
@@ -139,7 +147,7 @@ pub fn direct_update_instruction(
                     hotspot_owner: owner.to_owned(),
                     merkle_tree: asset.compression.tree,
                     tree_authority: asset::merkle_tree_authority(&asset.compression.tree),
-                    dc_burner: Token::Dc.associated_token_adress(owner),
+                    dc_burner: Token::Dc.associated_token_address(owner),
                     rewardable_entity_config: subdao.rewardable_entity_config_key(),
                     dao: Dao::Hnt.key(),
                     sub_dao: subdao.key(),
@@ -209,6 +217,7 @@ pub fn direct_update_instruction(
     Ok(ix)
 }
 
+/// Builds an unsigned transaction for a direct on-chain hotspot info update.
 pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
@@ -236,6 +245,9 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     Ok((txn, block_height))
 }
 
+/// Signs and returns a transaction to update hotspot info directly on-chain.
+///
+/// Unlike [`update`], this bypasses the onboarding server and submits directly to Solana.
 pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
@@ -251,6 +263,10 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
+/// Updates hotspot info, optionally routing through an onboarding server.
+///
+/// When `onboarding_server` is `Some`, the transaction is fetched from the server
+/// and partially signed. When `None`, falls back to [`direct_update`].
 pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     onboarding_server: Option<String>,
@@ -287,6 +303,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
 
+/// Signs and returns a transaction to transfer a hotspot to a new owner.
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
@@ -298,6 +315,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     asset::transfer(client, &kta.asset, recipient, keypair, opts).await
 }
 
+/// Builds an unsigned burn message for destroying a hotspot NFT.
 pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
@@ -307,6 +325,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     asset::burn_message(client, &kta.asset, opts).await
 }
 
+/// Signs and returns a transaction to permanently burn (destroy) a hotspot NFT.
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
@@ -317,11 +336,14 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     asset::burn(client, &kta.asset, keypair, opts).await
 }
 
+/// Whether a hotspot is a full hotspot (capable of PoC) or data-only.
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "kebab-case")]
 pub enum HotspotMode {
+    /// Full hotspot that participates in Proof-of-Coverage.
     Full,
+    /// Data-only hotspot that transfers data but does not participate in PoC.
     #[default]
     DataOnly,
 }
@@ -357,6 +379,7 @@ impl std::str::FromStr for HotspotMode {
     }
 }
 
+/// A paginated list of hotspots returned from a search query.
 #[derive(Serialize, Clone)]
 pub struct HotspotPage {
     pub total: u32,
@@ -387,16 +410,23 @@ impl HotspotPage {
     }
 }
 
+/// A Helium hotspot represented as a compressed NFT on Solana.
 #[derive(Debug, Serialize, Clone, Deserialize)]
 pub struct Hotspot {
+    /// The hotspot's helium-crypto public key (used to derive the animal name).
     pub key: helium_crypto::PublicKey,
+    /// The Solana compressed-NFT asset address.
     #[serde(with = "serde_pubkey")]
     pub asset: Pubkey,
+    /// Human-readable three-word animal name.
     pub name: String,
+    /// The Solana wallet that owns this hotspot.
     #[serde(with = "serde_pubkey")]
     pub owner: Pubkey,
+    /// Whether this hotspot NFT has been burned (destroyed).
     #[serde(skip_serializing_if = "std::ops::Not::not", default)]
     pub burnt: bool,
+    /// On-chain info per sub-DAO (IoT / Mobile), populated by [`get_with_info`].
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub info: Option<HashMap<SubDao, HotspotInfo>>,
 }
@@ -423,6 +453,7 @@ impl Hotspot {
     }
 }
 
+/// Latitude/longitude coordinates derived from an H3 cell index.
 #[derive(Serialize, Debug, Clone, Copy, Deserialize)]
 pub struct HotspotGeo {
     pub lat: f64,
@@ -439,6 +470,7 @@ impl From<h3o::CellIndex> for HotspotGeo {
     }
 }
 
+/// A hotspot's asserted location as both an H3 cell index and lat/lng coordinates.
 #[derive(Serialize, Debug, Clone, Copy, Deserialize)]
 pub struct HotspotLocation {
     #[serde(with = "serde_cell_index")]
@@ -516,9 +548,13 @@ pub mod serde_cell_index {
     }
 }
 
+/// On-chain hotspot metadata, varying by sub-DAO.
+///
+/// `Iot` includes gain/elevation for LoRaWAN; `Mobile` includes device type and deployment info.
 #[derive(Debug, Serialize, Clone, Hash, Deserialize)]
 #[serde(rename_all = "lowercase", tag = "sub_dao")]
 pub enum HotspotInfo {
+    /// IoT (LoRaWAN) hotspot info with antenna gain, elevation, and location.
     Iot {
         mode: HotspotMode,
         #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -531,6 +567,7 @@ pub enum HotspotInfo {
         #[serde(skip_serializing_if = "is_zero", default)]
         location_asserts: u16,
     },
+    /// Mobile (5G/WiFi) hotspot info with device type, deployment details, and ownership tracking.
     Mobile {
         mode: HotspotMode,
         #[serde(flatten)]
@@ -555,9 +592,11 @@ pub enum HotspotInfo {
     },
 }
 
+/// Deployment-specific info for a Mobile hotspot -- either WiFi or CBRS radio details.
 #[derive(Debug, Serialize, Clone, Hash, Deserialize)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum MobileDeploymentInfo {
+    /// WiFi access point deployment details (antenna type, elevation, azimuth).
     WifiInfo {
         #[serde(skip_serializing_if = "is_zero")]
         antenna: u32,
@@ -567,12 +606,14 @@ pub enum MobileDeploymentInfo {
         #[serde(skip_serializing_if = "is_zero", default)]
         azimuth: u16,
     },
+    /// CBRS small-cell deployment with one or more radio entries.
     CbrsInfo {
         #[serde(skip_serializing_if = "Vec::is_empty", default)]
         radio_infos: Vec<CbrsRadioInfo>,
     },
 }
 
+/// Information about a single CBRS radio in a Mobile hotspot deployment.
 #[derive(Debug, Serialize, Clone, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct CbrsRadioInfo {
@@ -592,6 +633,7 @@ impl From<mobile_config::CbrsRadioDeploymentInfo> for CbrsRadioInfo {
     }
 }
 
+/// A hotspot info update that has been committed on-chain, including block and timestamp metadata.
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub struct CommittedHotspotInfoUpdate {
@@ -603,9 +645,14 @@ pub struct CommittedHotspotInfoUpdate {
     pub update: HotspotInfoUpdate,
 }
 
+/// A pending update to hotspot on-chain info, scoped to a specific sub-DAO.
+///
+/// `Iot` updates may include gain, elevation, and location.
+/// `Mobile` updates include only location.
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum HotspotInfoUpdate {
+    /// IoT hotspot update with optional gain, elevation, and location fields.
     Iot {
         #[serde(skip_serializing_if = "Option::is_none")]
         gain: Option<Decimal>,
@@ -615,6 +662,7 @@ pub enum HotspotInfoUpdate {
         #[serde(skip_serializing_if = "Option::is_none")]
         location: Option<HotspotLocation>,
     },
+    /// Mobile hotspot update with an optional location change.
     Mobile {
         #[serde(flatten)]
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -722,14 +770,19 @@ impl HotspotInfoUpdate {
     }
 }
 
+/// The hardware type of a Mobile network hotspot.
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "snake_case")]
 pub enum MobileDeviceType {
+    /// CBRS small-cell radio.
     #[default]
     Cbrs,
+    /// Indoor WiFi access point.
     WifiIndoor,
+    /// Outdoor WiFi access point.
     WifiOutdoor,
+    /// Data-only WiFi access point (no PoC rewards).
     WifiDataOnly,
 }
 

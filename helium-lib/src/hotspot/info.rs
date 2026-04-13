@@ -35,6 +35,7 @@ use solana_transaction_status::{
 };
 use std::{collections::HashMap, str::FromStr};
 
+/// Fetches on-chain hotspot info for a single sub-DAO by its info account key.
 pub async fn get<C: GetAnchorAccount>(
     client: &C,
     subdao: SubDao,
@@ -54,6 +55,7 @@ pub async fn get<C: GetAnchorAccount>(
     Ok(hotspot_info)
 }
 
+/// Fetches on-chain hotspot info for multiple info account keys in a single sub-DAO.
 pub async fn get_many<C: GetAnchorAccount>(
     client: &C,
     subdao: SubDao,
@@ -89,6 +91,9 @@ async fn for_entity_key_in_subdao<C: GetAnchorAccount, E: AsEntityKey>(
     get(client, subdao, &info_key).await
 }
 
+/// Fetches hotspot info across multiple sub-DAOs for a given entity key.
+///
+/// Returns a map of sub-DAO to info for each sub-DAO the hotspot is registered in.
 pub async fn for_entity_key<C: GetAnchorAccount>(
     client: &C,
     subdaos: &[SubDao],
@@ -106,6 +111,7 @@ pub async fn for_entity_key<C: GetAnchorAccount>(
         .await
 }
 
+/// Pagination parameters for querying historical hotspot info updates from on-chain signatures.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct HotspotInfoUpdateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,6 +133,7 @@ impl From<HotspotInfoUpdateParams> for GetConfirmedSignaturesForAddress2Config {
     }
 }
 
+/// Retrieves historical hotspot info updates by scanning on-chain transaction history.
 pub async fn updates<C: AsRef<SolanaRpcClient>>(
     client: &C,
     account: &Pubkey,

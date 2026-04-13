@@ -12,39 +12,62 @@ use jsonrpc_client::{JsonRpcError, SendRequest};
 use std::{collections::HashMap, marker::Send, sync::Arc};
 use tracing::instrument;
 
+/// Mainnet onboarding server base URL.
 pub static ONBOARDING_URL_MAINNET: &str = "https://onboarding.dewi.org/api/v3";
+/// Devnet onboarding server base URL.
 pub static ONBOARDING_URL_DEVNET: &str = "https://onboarding.web.test-helium.com/api/v3";
 
+/// Mainnet ECC verifier URL.
 pub static VERIFIER_URL_MAINNET: &str = "https://ecc-verifier.web.helium.io";
+/// Devnet ECC verifier URL.
 pub static VERIFIER_URL_DEVNET: &str = "https://ecc-verifier.web.test-helium.com";
 
+/// Default mainnet Solana RPC endpoint.
 pub static SOLANA_URL_MAINNET: &str = "https://solana-rpc.web.helium.io:443";
+/// Default devnet Solana RPC endpoint.
 pub static SOLANA_URL_DEVNET: &str = "https://solana-rpc.web.test-helium.com";
+/// Environment variable to override the mainnet Solana RPC URL.
 pub static SOLANA_URL_MAINNET_ENV: &str = "SOLANA_MAINNET_URL";
+/// Environment variable to override the devnet Solana RPC URL.
 pub static SOLANA_URL_DEVNET_ENV: &str = "SOLANA_DEVNET_URL";
 
+/// Default mainnet certificate service URL.
 pub static CERT_URL_MAINNET: &str = "https://api.prod.ims.nova.xyz/api/wifi/brownfield/inventory";
+/// Default devnet certificate service URL.
 pub static CERT_URL_DEVNET: &str = "https://api.svt.ims.nova.xyz/api/wifi/brownfield/inventory";
+/// Environment variable to override the mainnet certificate URL.
 pub static CERT_URL_MAINNET_ENV: &str = "CERT_MAINNET_URL";
+/// Environment variable to override the devnet certificate URL.
 pub static CERT_URL_DEVNET_ENV: &str = "CERT_DEVNET_URL";
 
 pub use crate::hotspot::cert::Client as CertClient;
 pub use solana_client::nonblocking::rpc_client::RpcClient as SolanaRpcClient;
 
+/// Returns `true` if the given URL refers to a devnet endpoint.
 pub fn is_devnet(url: &str) -> bool {
     url == "d" || url.starts_with("devnet") || url.contains("test-helium")
 }
 
+/// Main Solana RPC client for helium-lib operations.
+///
+/// Wraps a Solana RPC client, a DAS (Digital Asset Standard) client, and a
+/// certificate service client behind shared handles.
 #[derive(Clone)]
 pub struct Client {
+    /// Solana JSON-RPC client.
     pub solana_client: Arc<SolanaRpcClient>,
+    /// Digital Asset Standard API client for compressed NFT lookups.
     pub das_client: Arc<DasClient>,
+    /// Certificate service client for hotspot location verification.
     pub cert_client: Arc<CertClient>,
 }
 
+/// Deserializes on-chain accounts into Anchor program types.
 #[async_trait::async_trait]
 pub trait GetAnchorAccount {
+    /// Fetch and deserialize a single account.
     async fn anchor_account<T: AccountDeserialize>(&self, pubkey: &Pubkey) -> Result<T, Error>;
+    /// Fetch and deserialize multiple accounts, returning `None` for missing ones.
     async fn anchor_accounts<T: AccountDeserialize + Send>(
         &self,
         pubkeys: &[Pubkey],
@@ -156,6 +179,7 @@ impl AsRef<CertClient> for Client {
     }
 }
 
+/// Parameters for the DAS `searchAssets` RPC method.
 #[derive(
     serde::Serialize, Default, Debug, Clone, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord,
 )]
@@ -180,6 +204,8 @@ pub struct DasSearchAssetsParams {
 }
 
 impl DasSearchAssetsParams {
+    /// Build search params that find assets owned by `owner_address` and
+    /// created by `creator_address`.
     pub fn for_owner(owner_address: Pubkey, creator_address: Pubkey) -> Self {
         Self {
             owner_address: Some(owner_address),
@@ -191,6 +217,7 @@ impl DasSearchAssetsParams {
     }
 }
 
+/// Errors from DAS RPC requests.
 #[derive(Debug, thiserror::Error)]
 pub enum DasClientError {
     #[error("jsonrpc: {0}")]
@@ -214,6 +241,7 @@ impl From<JsonRpcError> for DasClientError {
 }
 
 impl DasClientError {
+    /// Returns `true` if the error indicates a missing on-chain record.
     pub fn is_account_not_found(&self) -> bool {
         match self {
             Self::Rpc(jsonrpc_client::Error::JsonRpc(jsonrpc_client::JsonRpcError {
@@ -224,6 +252,7 @@ impl DasClientError {
         }
     }
 
+    /// Construct a `MissingKey` error for a response field that was expected but absent.
     pub fn missing_response_key<S: ToString>(v: S) -> Self {
         Self::MissingKey(v.to_string())
     }
@@ -234,6 +263,7 @@ pub trait DAS {}
 
 static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
+/// Digital Asset Standard API client for compressed NFT lookups.
 #[jsonrpc_client::implement(DAS)]
 #[derive(Debug, Clone)]
 pub struct DasClient {
@@ -249,6 +279,7 @@ impl Default for DasClient {
 }
 
 impl DasClient {
+    /// Create a DAS client targeting the given Solana RPC URL.
     pub fn with_base_url(url: &str) -> Result<Self, Error> {
         let client = reqwest::Client::new();
         let base_url = url.parse().map_err(DecodeError::from)?;
@@ -258,6 +289,7 @@ impl DasClient {
         })
     }
 
+    /// Fetch a single asset by its on-chain address.
     #[instrument(skip(self), level = "trace")]
     pub async fn get_asset(&self, address: &Pubkey) -> Result<asset::Asset, DasClientError> {
         let body = jsonrpc_client::Request::new_v2("getAsset")
@@ -272,6 +304,7 @@ impl DasClient {
         Ok(response)
     }
 
+    /// Fetch multiple assets in a single RPC call.
     #[instrument(skip(self), level = "trace")]
     pub async fn get_asset_batch(
         &self,
@@ -292,6 +325,7 @@ impl DasClient {
         Ok(response)
     }
 
+    /// Fetch the Merkle proof for a compressed asset.
     #[instrument(skip(self), level = "trace")]
     pub async fn get_asset_proof(
         &self,
@@ -309,6 +343,7 @@ impl DasClient {
         Ok(response)
     }
 
+    /// Fetch Merkle proofs for multiple compressed assets in one call.
     #[instrument(skip(self), level = "trace")]
     pub async fn get_asset_proof_batch(
         &self,
@@ -343,6 +378,7 @@ impl DasClient {
         Ok(result)
     }
 
+    /// Search for assets matching the given filter parameters.
     #[instrument(skip(self, params), level = "trace")]
     pub async fn search_assets(
         &self,
@@ -388,6 +424,7 @@ impl jsonrpc_client::SendRequest for DasClient {
     }
 }
 
+/// gRPC config service clients for querying IoT and Mobile hotspot metadata.
 pub mod config {
     use super::*;
     use crate::{
@@ -399,8 +436,11 @@ pub mod config {
     use stream::BoxStream;
     use tonic::transport::{Channel, ClientTlsConfig, Endpoint, Uri};
 
+    /// gRPC connection timeout.
     pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+    /// gRPC request timeout.
     pub const RPC_TIMEOUT: Duration = Duration::from_secs(10);
+    /// TCP keepalive interval for gRPC connections.
     pub const RPC_TCP_KEEPALIVE: Duration = Duration::from_secs(100);
 
     trait MessageSign {
@@ -465,13 +505,17 @@ pub mod config {
         Ok(endpoint.connect_lazy())
     }
 
+    /// Unified config client for either the IoT or Mobile sub-DAO.
     #[derive(Clone)]
     pub enum Client {
+        /// IoT config service client.
         Iot(iot::Client),
+        /// Mobile config service client.
         Mobile(mobile::Client),
     }
 
     impl Client {
+        /// Create a config client for the given sub-DAO.
         pub fn for_subdao(
             subdao: SubDao,
             config: &str,
@@ -485,6 +529,7 @@ pub mod config {
             Ok(result)
         }
 
+        /// Look up hotspot info for a single address.
         pub async fn info(
             &mut self,
             address: &helium_crypto::PublicKey,
@@ -495,6 +540,7 @@ pub mod config {
             }
         }
 
+        /// Look up hotspot info for multiple addresses.
         pub async fn batch_info(
             &mut self,
             addresses: &[helium_crypto::PublicKey],
@@ -505,6 +551,7 @@ pub mod config {
             }
         }
 
+        /// Stream hotspot info updated since the given unix timestamp.
         pub async fn stream_info_since(
             &mut self,
             updated_since: u64,
@@ -518,6 +565,7 @@ pub mod config {
             }
         }
 
+        /// Stream batches of hotspot info updated since the given unix timestamp.
         pub async fn stream_batch_info_since(
             &mut self,
             updated_since: u64,
@@ -541,6 +589,7 @@ pub mod config {
         }
     }
 
+    /// IoT config service gateway client.
     pub mod iot {
         use super::*;
         use helium_proto::services::iot_config::{
@@ -553,6 +602,7 @@ pub mod config {
         impl_message_verify!(GatewayInfoResV1);
         impl_message_verify!(GatewayInfoStreamResV1);
 
+        /// IoT gateway config service client.
         #[derive(Clone)]
         pub struct Client {
             keypair: Arc<helium_crypto::Keypair>,
@@ -561,6 +611,7 @@ pub mod config {
         }
 
         impl Client {
+            /// Connect to the IoT config service at the given URI.
             pub fn new(
                 uri: &str,
                 address: helium_crypto::PublicKey,
@@ -575,6 +626,7 @@ pub mod config {
                 })
             }
 
+            /// Look up a single IoT hotspot by its public key.
             pub async fn info(
                 &mut self,
                 address: &helium_crypto::PublicKey,
@@ -596,6 +648,7 @@ pub mod config {
                 }
             }
 
+            /// Look up IoT hotspot info for multiple public keys.
             pub async fn batch_info(
                 &mut self,
                 addresses: &[helium_crypto::PublicKey],
@@ -615,6 +668,7 @@ pub mod config {
                     .await
             }
 
+            /// Stream IoT hotspot info, one entry at a time.
             pub async fn stream_info_since(
                 &mut self,
                 _updated_since: u64,
@@ -630,6 +684,7 @@ pub mod config {
                 Ok(streaming.boxed())
             }
 
+            /// Stream IoT hotspot info in batches of `batch_size`.
             pub async fn stream_batch_info_since(
                 &mut self,
                 _updated_since: u64,
@@ -693,6 +748,7 @@ pub mod config {
         }
     }
 
+    /// Mobile config service gateway client.
     pub mod mobile {
         use super::*;
         use helium_proto::services::mobile_config::{
@@ -708,6 +764,7 @@ pub mod config {
         impl_message_verify!(GatewayInfoStreamResV2);
         impl_message_verify!(GatewayInfoStreamResV4);
 
+        /// Mobile gateway config service client.
         #[derive(Clone)]
         pub struct Client {
             keypair: Arc<helium_crypto::Keypair>,
@@ -716,6 +773,7 @@ pub mod config {
         }
 
         impl Client {
+            /// Connect to the Mobile config service at the given URI.
             pub fn new(
                 uri: &str,
                 address: helium_crypto::PublicKey,
@@ -730,6 +788,7 @@ pub mod config {
                 })
             }
 
+            /// Look up a single Mobile hotspot by its public key.
             pub async fn info(
                 &mut self,
                 address: &helium_crypto::PublicKey,
@@ -751,6 +810,7 @@ pub mod config {
                 }
             }
 
+            /// Look up Mobile hotspot info for multiple public keys.
             pub async fn batch_info(
                 &mut self,
                 addresses: &[helium_crypto::PublicKey],
@@ -787,6 +847,7 @@ pub mod config {
                     .map(|vec| vec.into_iter().collect())
             }
 
+            /// Stream Mobile hotspot info updated since the given unix timestamp.
             pub async fn stream_info_since(
                 &mut self,
                 updated_since: u64,
@@ -802,6 +863,7 @@ pub mod config {
                 Ok(streaming.boxed())
             }
 
+            /// Stream Mobile hotspot info in batches using the V4 protocol.
             pub async fn stream_batch_info_since(
                 &mut self,
                 updated_since: u64,

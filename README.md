@@ -7,79 +7,110 @@
 
 A [Helium](https://helium.com) wallet implementation in Rust.
 
-This is a simple wallet implementation that enables the creation and
-use of an encrypted wallet.
-
 **NOTE:** This wallet is _not_ the absolute safest way to create and
 store a private key. No guarantees are implied as to its safety and
 suitability for use as a wallet associated with Helium crypto-tokens.
+
+## Workspace
+
+| Crate | Description |
+|---|---|
+| `helium-wallet` | CLI binary for wallet operations |
+| `helium-lib` | Core Rust library for Helium/Solana blockchain interaction |
+| `helium-proto-crypto` | Protobuf message signing and verification |
 
 ## Installation
 
 ### From Binary
 
-Download the latest binary for your platform here from
+Download the latest binary for your platform from
 [Releases](https://github.com/helium/helium-wallet-rs/releases/latest). Unpack
-the zip file and place the `helium-wallet` binary in your `$PATH`
-somewhere.
+the zip file and place the `helium-wallet` binary in your `$PATH`.
+
+### Building from Source
+
+Requirements: Rust toolchain, C compiler, pkg-config, cmake, clang.
+
+Ubuntu 20.04 setup:
+
+```
+sudo apt update && sudo apt install build-essential pkg-config cmake clang
+curl https://sh.rustup.rs -sSf | sh
+source $HOME/.cargo/env
+```
+
+Build:
+
+```
+git clone https://github.com/helium/helium-wallet-rs
+cd helium-wallet-rs
+cargo build --release
+```
+
+The resulting `target/release/helium-wallet` is ready for use.
 
 ## Usage
 
-At any time use `-h` or `--help` to get more help for a command.
+Use `-h` or `--help` on any command for detailed help.
 
-### Global options
+### Global Options
 
-Global options _precede_ the actual command on the command line.
+Global options _precede_ the subcommand.
 
-The following global options are supported
+| Option | Description |
+|---|---|
+| `-f` / `--file` | Wallet file(s). Repeat for sharded wallets or multiple wallets. Default: `wallet.key` |
+| `--format json\|table` | Output format |
+| `--url <URL>` | Solana RPC URL. Shortcuts: `m` (mainnet, default), `d` (devnet). Any full URL also accepted |
 
-* `-f` / `--file` can be used once or multiple times to specify either
-  shard files for a wallet or multiple wallets if the command supports
-  it. If not specified a file called `wallet.key` is assumed to be the
-  wallet to use for the command.
+### Common Command Options
 
-* `--format json|table` can be used to set the output of the command
-  to either a tabular format or a json output.
+Most commands that submit transactions accept these options via `--commit`:
 
-### Create a wallet
+| Option | Description |
+|---|---|
+| `--commit` | Submit the transaction. Without this flag the transaction is simulated (dry run) |
+| `--skip-preflight` | Skip Solana preflight checks |
+| `--min-priority-fee <u64>` | Minimum priority fee in micro-lamports |
+| `--max-priority-fee <u64>` | Maximum priority fee in micro-lamports |
 
-```
-    helium-wallet create basic
-```
+## Commands
 
-The basic wallet will be stored in `wallet.key` after specifying an
-encryption password on the command line. Options exist to specify the
-wallet output file and to force overwriting an existing wallet.
+### `create` -- Create a Wallet
 
-Use the `--seed` option to use a previously generated
-seed phrase that will be used to construct the keys for the wallet.
-The app will prompt you to enter a space separated phrase. The CLI
-wallet accepts 12 word or 24 word seed phrases from both Helium
-mobile wallet apps as well as any valid 12 or 24 word BIP39 phrase.
-Note that this does not (yet) generate an
-[HD wallet](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki).
-
-### Create a sharded wallet
-
-Sharding wallet keys is supported via [Shamir's Secret
-Sharing](https://github.com/dsprenkels/sss).  A key can be broken into
-N shards such that recovering the original key needs K distinct
-shards. This can be done by passing options to `create`:
+#### Basic
 
 ```
-    helium-wallet create sharded -n 5 -k 3
+helium-wallet create basic
 ```
 
-This will create wallet.key.1 through wallet.key.5 (the base name of
-the wallet file can be supplied with the `-o` parameter).
+The wallet is stored in `wallet.key` after specifying an encryption password. Use
+`-o` to set a different output file and `--force` to overwrite an existing wallet.
 
-When keys are sharded using `verify` will require at least K distinct
-keys.
+Use the `--seed` option to restore from a previously generated seed phrase.
+The CLI accepts 12 or 24 word BIP39 phrases from Helium mobile wallets or any
+valid BIP39 word list.
 
-The `--seed` option described above can also be used to construct a
-sharded wallet.
+#### Sharded
 
-#### Implementation details
+Sharding is supported via [Shamir's Secret Sharing](https://github.com/dsprenkels/sss).
+A key is split into N shards requiring K shards to recover:
+
+```
+helium-wallet create sharded -n 5 -k 3
+```
+
+Creates `wallet.key.1` through `wallet.key.5`. Use `-o` to set the base name.
+
+The `--seed` option works with sharded wallets too.
+
+#### Keypair
+
+```
+helium-wallet create keypair
+```
+
+#### Implementation Details
 
 A ed25519 key is generated via libsodium. The provided password is run
 through PBKDF2, with a configurable number of iterations and a random
@@ -92,154 +123,193 @@ file along with the sharding information, the key share (if
 applicable), the AES initialization vector, the PBKDF2 salt and
 iteration count and the AES-GCM authentication tag.
 
-
-### Public Key
-
-```
-    helium-wallet info
-    helium-wallet -f my.key info
-    helium-wallet -f wallet.key.1 -f wallet.key.2 -f my.key info
-```
-
-The given wallets will be read and information about the wallet,
-including the public key, displayed. This command works for all wallet
-types.
-
-### Displaying
-
-Displaying information for one or more wallets without needing its
-password can be done using;
-
+### `info` -- Wallet Information
 
 ```
-    helium-wallet info
+helium-wallet info
+helium-wallet -f my.key info
+helium-wallet -f wallet.key.1 -f wallet.key.2 -f my.key info
 ```
 
-To display a QR code for the public key of the given wallet use:
+Displays the wallet address and key type. Use `--qr` to display a QR code for
+the public key (useful for receiving tokens from the mobile wallet).
+
+This command also serves as verification for sharded wallets -- pass at least K
+shard files:
 
 ```
-    helium-wallet info --qr
+helium-wallet -f wallet.key.1 -f wallet.key.2 -f wallet.key.5 verify
 ```
 
-This is useful for sending tokens to the wallet from the mobile
-wallet.
-
-### Verifying
-
-Verifying a wallet takes a password and one or more wallet files and
-attempts to decrypt the wallet.
-
-The wallet is assumed to be sharded if the first file given to the
-verify command is a sharded wallet. The rest of the given files then
-also have to be wallet shards. For a sharded wallet to be verified, at
-least `K` wallet files must be passed in, where `K` is the value given
-when creating the wallet.
+### `balance` -- Token Balances
 
 ```
-    helium-wallet verify
-    helium-wallet -f wallet.key verify
-    helium-wallet -f wallet.key.1 -f wallet.key.2 -f wallet.key.5 verify
+helium-wallet balance
 ```
 
-### Sending Tokens
+Displays balances for HNT, MOBILE, IOT, DC, SOL, and USDC.
+
+### `transfer` (alias: `pay`) -- Send Tokens
 
 #### Single Payee
-To send tokens to one other account use:
 
 ```
-    helium-wallet pay one <payee> <hnt>
-    helium-wallet pay one <payee> <hnt> --commit
+helium-wallet transfer one <address> <amount> <token>
+helium-wallet transfer one <address> <amount> <token> --commit
 ```
 
-Where `<payee>` is the wallet address for the wallet you want to
-send tokens to, `<hnt>` is the number of HNT you want to send. Since 1 HNT
-is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
-precision.
+Tokens: `hnt`, `mobile`, `iot`, `usdc`, `sol`, `dc`. HNT supports 8 decimal
+places; MOBILE and IOT support 6.
 
-The default behavior of the `pay` command is to print out what the
-intended payment is going to be _without_ submitting it to the
-blockchain.  In the second example the `--commit` option commits the
-actual payment to the API for processing by the blockchain.
-
-#### Multiple Payees in one transaction
-To send tokens to multiple other accounts use:
+#### Multiple Payees
 
 ```
-    helium-wallet pay multi <path to json file>
-    helium-wallet pay multi <path to json file> --commit
+helium-wallet transfer multi <path-to-json>
+helium-wallet transfer multi <path-to-json> --commit
 ```
 
-Example json file:
+JSON format:
 
-```
-[ { "address": "<adddress1>", "amount": <hnt1>, "memo": "<memo1>" }, { "address": "<adddress2>", "amount": <hnt2>, "memo": "<memo2>" } ]
-```
-
-Where `<address#>` is the wallet address for the wallet you want to
-send tokens to, `<hnt#>` is the number of HNT you want to send. Since 1 HNT
-is 100,000,000 bones the `hnt` value can go up to 8 decimal digits of
-precision. `<memo#>` is an 8 byte base 64 encoded message.
-
-The default behavior of the `pay` command is to print out what the
-intended payment is going to be _without_ submitting it to the
-blockchain.  In the second example the `--commit` option commits the
-actual payment to the API for processing by the blockchain.
-
-
-### Environment Variables
-
-The following environment variables are supported:
-
-* `SOLANA_MAINNET_URL` - The Solana RPC URL to use for mainnet. 
-  This will get used by default or when `--url m` is passed in.
-  The default mainnet URL is a rate limited API served by the Helium 
-  Foundation. Use a custom provider for repeated or large requests.  
-
-* `SOLANA_DEVNET_URL` - The Solana RPC URL to use for devnet. 
-  This will get used when `--url d` is passed in.
-
-* `HELIUM_WALLET_PASSWORD` - The password to use to decrypt the
-  wallet. Useful for scripting or other non-interactive commands, but
-  use with care.
-
-* `HELIUM_WALLET_SEED_WORDS` - Space separated list of seed words to use
-  when restoring a wallet from a mnemonic word list.
-
-* `HELIUM_WALLET_SECRET` - Solana style byte array form of the keypair secret.
-
-### Building from Source
-
-You will need a working Rust tool-chain installed to build this CLI
-from source. In addition, you will need some basic build tools.
-
-If you wish to build from source instead of downloading
-[a prebuilt release](https://github.com/helium/helium-wallet-rs/releases/latest)
-you can add setup a Ubuntu 20.04 environment with the following:
-
-```
-sudo apt update
-sudo apt upgrade
-git clone https://github.com/helium/helium-wallet-rs
-cd helium-wallet-rs
-curl https://sh.rustup.rs -sSf | sh
-## recommended option 1
-source $HOME/.cargo/env
-sudo apt install build-essential pkg-config cmake clang
+```json
+[
+  { "address": "<address1>", "amount": 1.6, "token": "hnt" },
+  { "address": "<address2>", "amount": "max" },
+  { "address": "<address3>", "amount": 3, "token": "mobile" }
+]
 ```
 
-Clone this repo:
+Fields: `address` (required), `amount` (required, number or `"max"`),
+`token` (optional, defaults to `hnt`), `memo` (optional, 8-byte base64).
+
+### `swap` -- Swap Tokens via Jupiter
+
+Swap between tokens using the Jupiter V2 API.
 
 ```
-git clone https://github.com/helium/helium-wallet-rs
+helium-wallet swap <input_token> <output_token> <amount>
+helium-wallet swap hnt usdc 10 --commit
+helium-wallet swap mobile hnt 1000 --slippage-bps 200 --commit
 ```
 
-and build it using cargo:
+| Argument | Description |
+|---|---|
+| `input_token` | Source token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
+| `output_token` | Destination token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
+| `amount` | Human-readable amount (e.g. `1.5` for 1.5 HNT) |
+| `--slippage-bps` | Slippage tolerance in basis points. Default: 100 (1%) |
+
+Output includes `in_amount`, `out_amount`, `price_impact_pct`, and the
+transaction signature (when `--commit` is used).
+
+Jupiter environment variables (see [Environment Variables](#environment-variables)):
+`JUP_API_KEY`, `JUP_API_URL`, `JUP_SLIPPAGE_BPS`.
+
+### `burn` -- Burn Tokens
 
 ```
-cd helium-wallet-rs
-cargo build --release
+helium-wallet burn <subdao> <amount>
+helium-wallet burn iot 100 --commit
 ```
 
-The resulting `target/release/helium-wallet` is ready for use. Place
-it somewhere in your `$PATH` or run it straight from the target
-folder.
+Burns subdao tokens (IOT or MOBILE).
+
+### `hotspots` -- Hotspot Management
+
+Subcommands: `add`, `list`, `info`, `update`, `transfer`, `burn`, `rewards`, `updates`.
+
+```
+helium-wallet hotspots list
+helium-wallet hotspots info <address>
+helium-wallet hotspots add <subcommand>
+helium-wallet hotspots update <address> [options] --commit
+helium-wallet hotspots transfer <address> <new-owner> --commit
+helium-wallet hotspots burn <address> --commit
+helium-wallet hotspots rewards <subcommand>
+helium-wallet hotspots updates <address>
+```
+
+### `dc` -- Data Credit Operations
+
+Subcommands: `price`, `mint`, `delegate`, `burn`.
+
+```
+helium-wallet dc price
+helium-wallet dc mint <hnt-amount> --commit
+helium-wallet dc delegate <address> --commit
+helium-wallet dc burn <amount> --commit
+```
+
+### `assets` -- Asset Management
+
+Subcommands: `rewards`, `info`, `burn`, `transfer`.
+
+```
+helium-wallet assets info <asset>
+helium-wallet assets rewards <subcommand>
+helium-wallet assets burn <asset> --commit
+helium-wallet assets transfer <asset> <address> --commit
+```
+
+### `sign` -- Sign and Verify
+
+```
+helium-wallet sign file <path>
+helium-wallet sign msg <message>
+helium-wallet sign verify file <path> --signature <sig>
+helium-wallet sign verify msg <message> --signature <sig>
+```
+
+### `price` -- Token Prices
+
+```
+helium-wallet price
+```
+
+### `export` -- Export Wallet
+
+```
+helium-wallet export
+```
+
+### `upgrade` -- Upgrade Wallet Format
+
+```
+helium-wallet upgrade
+```
+
+### `memo` -- Encode/Decode Memos
+
+```
+helium-wallet memo <subcommand>
+```
+
+### `router` -- Router Operations
+
+```
+helium-wallet router <subcommand>
+```
+
+## Environment Variables
+
+### Solana RPC
+
+| Variable | Description |
+|---|---|
+| `SOLANA_MAINNET_URL` | Solana RPC URL for mainnet (used by default or with `--url m`). The default is a rate-limited API served by the Helium Foundation; use a custom provider for repeated or large requests |
+| `SOLANA_DEVNET_URL` | Solana RPC URL for devnet (used with `--url d`) |
+
+### Wallet
+
+| Variable | Description |
+|---|---|
+| `HELIUM_WALLET_PASSWORD` | Wallet decryption password. Useful for scripting; use with care |
+| `HELIUM_WALLET_SEED_WORDS` | Space-separated seed words for restoring a wallet |
+| `HELIUM_WALLET_SECRET` | Solana-style byte array keypair secret |
+
+### Jupiter (Swap)
+
+| Variable | Default | Description |
+|---|---|---|
+| `JUP_API_KEY` | _(none)_ | Jupiter API key. Optional -- omit for keyless access at 0.5 RPS |
+| `JUP_API_URL` | `https://api.jup.ag/swap/v2` | Jupiter API base URL |
+| `JUP_SLIPPAGE_BPS` | `100` (1%) | Default slippage tolerance in basis points |

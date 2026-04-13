@@ -23,6 +23,7 @@ use itertools::{izip, Itertools};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display};
 
+/// A reward oracle that provides lifetime reward amounts for Helium entities.
 #[derive(Debug, Serialize, Clone)]
 pub struct Oracle {
     #[serde(with = "crate::keypair::serde_pubkey")]
@@ -39,6 +40,7 @@ impl From<lazy_distributor::types::OracleConfigV0> for Oracle {
     }
 }
 
+/// A reward amount reported by a specific oracle, identified by oracle index.
 #[derive(Debug, Serialize, Clone)]
 pub struct OracleReward {
     pub oracle: Oracle,
@@ -46,14 +48,18 @@ pub struct OracleReward {
     pub reward: TokenAmount,
 }
 
+/// Helium tokens that are eligible for reward claiming via the lazy distributor.
 #[derive(
     Debug, Clone, Copy, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, Default,
 )]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
 pub enum ClaimableToken {
+    /// IoT network token rewards.
     Iot,
+    /// Mobile network token rewards.
     Mobile,
+    /// HNT token rewards (default).
     #[default]
     Hnt,
 }
@@ -110,6 +116,10 @@ impl ClaimableToken {
     }
 }
 
+/// Fetches the on-chain lazy distributor account for a claimable token.
+///
+/// The lazy distributor is the mechanism that distributes Helium rewards on-chain
+/// using oracle-signed reward amounts.
 pub async fn lazy_distributor<C: GetAnchorAccount>(
     client: &C,
     token: ClaimableToken,
@@ -121,6 +131,9 @@ pub async fn lazy_distributor<C: GetAnchorAccount>(
         .await
 }
 
+/// Derives the circuit breaker PDA for a lazy distributor's rewards escrow.
+///
+/// The circuit breaker rate-limits reward distribution to prevent excessive payouts.
 pub fn lazy_distributor_circuit_breaker(
     ld_account: &lazy_distributor::accounts::LazyDistributorV0,
 ) -> Pubkey {
@@ -155,6 +168,7 @@ fn time_decay_previous_value(
     .ok()
 }
 
+/// Returns the maximum claimable amount, bounded by the circuit breaker's windowed threshold.
 pub async fn max_claim<C: GetAnchorAccount>(
     client: &C,
     token: ClaimableToken,
@@ -214,6 +228,7 @@ fn set_current_rewards_instruction(
     Ok(ix)
 }
 
+/// Builds an instruction to distribute rewards to a custom destination account.
 pub fn distribute_rewards_instruction_for_destination(
     token: ClaimableToken,
     ld_account: &lazy_distributor::accounts::LazyDistributorV0,
@@ -234,7 +249,7 @@ pub fn distribute_rewards_instruction_for_destination(
             owner: *destination_account,
             circuit_breaker: lazy_distributor_circuit_breaker(ld_account),
             recipient: token.recipient_key_from_kta(kta),
-            destination_account: Token::from(token).associated_token_adress(destination_account),
+            destination_account: Token::from(token).associated_token_address(destination_account),
         },
     }
     .to_account_metas(None);
@@ -248,6 +263,7 @@ pub fn distribute_rewards_instruction_for_destination(
     Ok(ix)
 }
 
+/// Builds an instruction to distribute rewards to the asset owner using a compression proof.
 pub fn distribute_rewards_instruction_for_owner(
     token: ClaimableToken,
     ld_account: &lazy_distributor::accounts::LazyDistributorV0,
@@ -270,7 +286,7 @@ pub fn distribute_rewards_instruction_for_owner(
             owner: asset.ownership.owner,
             circuit_breaker: lazy_distributor_circuit_breaker(ld_account),
             recipient: token.recipient_key_from_kta(kta),
-            destination_account: Token::from(token).associated_token_adress(&asset.ownership.owner),
+            destination_account: Token::from(token).associated_token_address(&asset.ownership.owner),
         },
         compression_program: spl_account_compression::ID,
         merkle_tree: asset.compression.tree,
@@ -295,6 +311,7 @@ pub fn distribute_rewards_instruction_for_owner(
     Ok(ix)
 }
 
+/// Claims pending rewards for a single entity. Returns `None` if no rewards are available.
 pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     token: ClaimableToken,
@@ -322,6 +339,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     Ok(Some((txn, block_height)))
 }
 
+/// Shared context needed to build claim instructions for a single entity.
 pub struct ClaimCommon<'a> {
     pub token: ClaimableToken,
     pub ld_account: &'a lazy_distributor::accounts::LazyDistributorV0,
@@ -333,6 +351,7 @@ pub struct ClaimCommon<'a> {
     pub oracle_ixn: Instruction,
 }
 
+/// Builds claim instructions that send rewards to a custom destination account.
 pub fn claim_instructions_for_destination(
     common: ClaimCommon,
     destination: &Pubkey,
@@ -355,6 +374,7 @@ pub fn claim_instructions_for_destination(
     Ok(ixs)
 }
 
+/// Builds claim instructions that send rewards to the compressed NFT owner.
 pub fn claim_instructions_for_owner(
     common: ClaimCommon,
     asset_proof: asset::AssetProof,
@@ -392,6 +412,7 @@ pub fn claim_instructions_for_owner(
     Ok(ixs)
 }
 
+/// A request to claim rewards for a specific entity, with an optional cap on the amount.
 pub struct ClaimTicket {
     pub amount: Option<u64>,
     pub encoded_entity_key: EncodedEntityKey,
@@ -436,6 +457,7 @@ impl AsEntityKey for ClaimTicket {
     }
 }
 
+/// Builds claim instructions for multiple entities in batch. Returns `None` entries for entities with no rewards.
 pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     token: ClaimableToken,
@@ -578,6 +600,7 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
         .try_collect()
 }
 
+/// Returns pending (unclaimed) reward amounts for multiple entities as a simplified map.
 pub async fn pending_amounts<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     client: &C,
     token: ClaimableToken,
@@ -594,6 +617,9 @@ pub async fn pending_amounts<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
         .await
 }
 
+/// Returns pending (unclaimed) rewards for multiple entities with full oracle details.
+///
+/// Computes pending = lifetime - already_claimed for each entity, using the median oracle value.
 pub async fn pending<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     client: &C,
     token: ClaimableToken,
@@ -666,6 +692,7 @@ pub async fn pending<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     Ok(entity_key_rewards)
 }
 
+/// Fetches lifetime reward totals from all oracles for the given entities.
 pub async fn lifetime<C: GetAnchorAccount, E: AsRef<EncodedEntityKey>>(
     client: &C,
     token: ClaimableToken,
@@ -779,9 +806,11 @@ async fn bulk_from_oracle<E: AsRef<EncodedEntityKey>>(
         .try_collect()
 }
 
+/// Reward recipient accounts -- tracks total claimed rewards and optional custom destinations.
 pub mod recipient {
     use super::*;
 
+    /// Fetches the recipient account for a key-to-asset, if one exists.
     pub async fn for_kta<C: GetAnchorAccount>(
         client: &C,
         token: ClaimableToken,
@@ -791,6 +820,7 @@ pub mod recipient {
         Ok(client.anchor_account(&recipient_key).await.ok())
     }
 
+    /// Fetches the recipient account for an entity key, if one exists.
     pub async fn for_entity_key<C: GetAnchorAccount, E: AsEntityKey>(
         client: &C,
         token: ClaimableToken,
@@ -800,6 +830,7 @@ pub mod recipient {
         for_kta(client, token, &kta).await
     }
 
+    /// Fetches recipient accounts for multiple key-to-asset entries in batch.
     pub async fn for_ktas<C: GetAnchorAccount>(
         client: &C,
         token: ClaimableToken,
@@ -812,6 +843,7 @@ pub mod recipient {
         client.anchor_accounts(&recipient_keys).await
     }
 
+    /// Fetches recipient accounts for multiple entity keys in batch.
     pub async fn for_entity_keys<C: GetAnchorAccount, E: AsEntityKey>(
         client: &C,
         token: ClaimableToken,
@@ -821,6 +853,7 @@ pub mod recipient {
         for_ktas(client, token, &ktas).await
     }
 
+    /// Builds an instruction to initialize a new recipient account for reward tracking.
     pub fn init_instruction(
         token: ClaimableToken,
         kta: &helium_entity_manager::accounts::KeyToAssetV0,
@@ -872,8 +905,10 @@ pub mod recipient {
         Ok(ix)
     }
 
+    /// Compute budget units for recipient initialization.
     pub const INIT_INSTRUCTION_BUDGET: u32 = 150_000;
 
+    /// Builds an unsigned message to initialize a recipient account.
     pub async fn init_message<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         client: &C,
         token: ClaimableToken,
@@ -898,6 +933,7 @@ pub mod recipient {
         message::mk_message(client, ixs, &opts.lut_addresses, payer).await
     }
 
+    /// Signs and returns a transaction to initialize a recipient account.
     pub async fn init<E: AsEntityKey, C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         client: &C,
         token: ClaimableToken,
@@ -911,9 +947,11 @@ pub mod recipient {
         Ok((txn, block_height))
     }
 
+    /// Resolves the actual reward destination for entities (custom destination or asset owner).
     pub mod destination {
         use super::*;
 
+        /// Returns the reward destination for a key-to-asset (custom destination or asset owner).
         pub async fn for_kta<C: GetAnchorAccount + AsRef<DasClient>>(
             client: &C,
             token: ClaimableToken,
@@ -931,6 +969,7 @@ pub mod recipient {
             }
         }
 
+        /// Returns reward destinations for multiple key-to-asset entries in batch.
         pub async fn for_ktas<C: GetAnchorAccount + AsRef<DasClient>>(
             client: &C,
             token: ClaimableToken,
@@ -970,6 +1009,7 @@ pub mod recipient {
             Ok(maybe_destinations.into_iter().flatten().collect())
         }
 
+        /// Returns the reward destination for a single entity key.
         pub async fn for_entity_key<C: GetAnchorAccount + AsRef<DasClient>, E: AsEntityKey>(
             client: &C,
             token: ClaimableToken,
@@ -979,6 +1019,7 @@ pub mod recipient {
             for_kta(client, token, &kta).await
         }
 
+        /// Returns reward destinations for multiple entity keys in batch.
         pub async fn for_entity_keys<C: GetAnchorAccount + AsRef<DasClient>, E: AsEntityKey>(
             client: &C,
             token: ClaimableToken,
@@ -988,6 +1029,7 @@ pub mod recipient {
             for_ktas(client, token, &ktas).await
         }
 
+        /// Builds an instruction to change the reward destination for an entity.
         pub fn update_instruction(
             token: ClaimableToken,
             kta: &helium_entity_manager::accounts::KeyToAssetV0,
@@ -1043,6 +1085,7 @@ pub mod recipient {
             Ok(ix)
         }
 
+        /// Builds an unsigned message to update the reward destination, initializing the recipient if needed.
         pub async fn update_message<
             C: AsRef<SolanaRpcClient> + AsRef<DasClient> + GetAnchorAccount,
             E: AsEntityKey,
@@ -1086,6 +1129,7 @@ pub mod recipient {
             message::mk_message(client, &ixs, &opts.lut_addresses, owner).await
         }
 
+        /// Signs and returns a transaction to update the reward destination.
         pub async fn update<
             E: AsEntityKey,
             C: AsRef<SolanaRpcClient> + AsRef<DasClient> + GetAnchorAccount,

@@ -4,14 +4,18 @@ use crate::{
 };
 use std::sync::Arc;
 
+/// Wrapper around a Solana keypair with signing and optional BIP39 mnemonic support.
 #[derive(PartialEq, Debug)]
 pub struct Keypair(solana_sdk::signer::keypair::Keypair);
+
+/// A keypair that always fails signing, used as a placeholder when building unsigned transactions.
 #[derive(Debug, Clone)]
 pub struct VoidKeypair;
 
 pub use solana_sdk::pubkey;
 pub use solana_sdk::{pubkey::Pubkey, pubkey::PUBKEY_BYTES, signature::Signature, signer::Signer};
 
+/// Serde support for serializing/deserializing `Pubkey` as a base58 string.
 pub mod serde_pubkey {
     use super::*;
     use serde::de::{self, Deserialize};
@@ -33,6 +37,7 @@ pub mod serde_pubkey {
     }
 }
 
+/// Serde support for `Option<Pubkey>`, serializing as a nullable base58 string.
 pub mod serde_opt_pubkey {
     use super::*;
     use serde::{Deserialize, Serialize};
@@ -60,6 +65,7 @@ pub mod serde_opt_pubkey {
     }
 }
 
+/// Convert a `helium_crypto::PublicKey` (ed25519) to a Solana `Pubkey`.
 pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey, DecodeError> {
     match key.key_type() {
         helium_crypto::KeyType::Ed25519 => {
@@ -70,6 +76,7 @@ pub fn to_pubkey(key: &helium_crypto::PublicKey) -> Result<Pubkey, DecodeError> 
     }
 }
 
+/// Convert a Solana `Pubkey` to a `helium_crypto::PublicKey`.
 pub fn to_helium_pubkey(key: &Pubkey) -> Result<helium_crypto::PublicKey, DecodeError> {
     use helium_crypto::ReadFrom;
     let mut input = std::io::Cursor::new(key.as_ref());
@@ -106,14 +113,17 @@ impl From<solana_sdk::signer::keypair::Keypair> for Keypair {
 }
 
 impl Keypair {
+    /// Generate a new random keypair.
     pub fn generate() -> Self {
         Keypair(solana_sdk::signer::keypair::Keypair::new())
     }
 
+    /// Create a void (non-signing) keypair for building unsigned transactions.
     pub fn void() -> Arc<VoidKeypair> {
         Arc::new(VoidKeypair)
     }
 
+    /// Derive a keypair deterministically from entropy bytes (e.g. a seed).
     pub fn generate_from_entropy(entropy: &[u8]) -> Result<Self, Error> {
         Ok(Keypair(
             solana_sdk::signer::keypair::keypair_from_seed(entropy)
@@ -121,12 +131,14 @@ impl Keypair {
         ))
     }
 
+    /// Get the 64-byte secret key (secret bytes + public key bytes).
     pub fn secret(&self) -> Vec<u8> {
         let mut result = self.0.secret_bytes().to_vec();
         result.extend_from_slice(self.pubkey().as_ref());
         result
     }
 
+    /// Sign a message, returning the ed25519 signature.
     pub fn sign(&self, msg: &[u8]) -> Result<Signature, Error> {
         Ok(self.try_sign_message(msg)?)
     }
@@ -140,6 +152,7 @@ impl Keypair {
         Ok(words.join(" "))
     }
 
+    /// Restore a keypair from a BIP39 seed phrase. Requires the `mnemonic` feature.
     #[cfg(feature = "mnemonic")]
     pub fn from_words(words: &[&str]) -> Result<Arc<Self>, Error> {
         let entropy_bytes = helium_mnemonic::mnemonic_to_entropy(words)?;

@@ -13,6 +13,7 @@ pub const DEFAULT_TIMEOUT: u64 = 120;
 /// The default base URL if none is specified.
 pub const DEFAULT_BASE_URL: &str = "https://onboarding.dewi.org/api/v2";
 
+/// Legacy staking/onboarding server client (v2 API).
 pub struct Client {
     base_url: String,
     client: reqwest::Client,

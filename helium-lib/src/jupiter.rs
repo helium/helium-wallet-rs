@@ -7,29 +7,40 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;
 
+/// Default Jupiter V2 swap API base URL.
 pub const DEFAULT_API_URL: &str = "https://api.jup.ag/swap/v2";
+/// Default slippage tolerance in basis points (100 bps = 1%).
 pub const DEFAULT_SLIPPAGE_BPS: u16 = 100;
 const MAX_ERROR_BODY_LEN: usize = 200;
 
+/// Errors that can occur during Jupiter swap operations.
 #[derive(Debug, thiserror::Error)]
 pub enum JupiterError {
+    /// HTTP request to Jupiter API failed.
     #[error("Jupiter API request failed: {0}")]
     Request(#[from] reqwest::Error),
+    /// Jupiter API returned a non-200 status code.
     #[error("Jupiter API error (HTTP {status}): {message}")]
     Api { status: u16, message: String },
+    /// Jupiter reported an error within the swap response body.
     #[error("Jupiter swap error: {0}")]
     SwapError(String),
+    /// No swap routes found for the given token pair.
     #[error("Jupiter quote returned no routes for {input_mint} → {output_mint}")]
     NoRoutes {
         input_mint: String,
         output_mint: String,
     },
+    /// Failed to deserialize the base64-encoded swap transaction.
     #[error("Failed to decode swap transaction: {0}")]
     TransactionDecode(String),
+    /// Solana RPC call failed during swap execution.
     #[error("Solana RPC error: {0}")]
     Solana(String),
+    /// Transaction signing failed.
     #[error("Transaction signing failed: {0}")]
     Signing(String),
+    /// Invalid client configuration (e.g., bad slippage value).
     #[error("Jupiter configuration error: {0}")]
     Config(String),
 }
@@ -96,6 +107,7 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
+    /// Creates a new Jupiter client with explicit configuration.
     pub fn new(
         api_key: Option<impl Into<String>>,
         base_url: impl Into<String>,
@@ -256,11 +268,17 @@ impl Client {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderResponse {
+    /// Input token mint address.
     pub input_mint: String,
+    /// Output token mint address.
     pub output_mint: String,
+    /// Input amount in smallest token units.
     pub in_amount: String,
+    /// Quoted output amount in smallest token units.
     pub out_amount: String,
+    /// Estimated price impact as a percentage string.
     pub price_impact_pct: String,
+    /// Slippage tolerance used for this order.
     pub slippage_bps: u16,
     #[serde(default)]
     pub(crate) route_plan: Vec<RoutePlan>,

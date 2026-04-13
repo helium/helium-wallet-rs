@@ -18,14 +18,17 @@ use crate::{
 };
 use itertools::Itertools;
 
+/// Derives the entity cron authority PDA for a wallet.
 pub fn entity_cron_authority_key(wallet: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[b"entity_cron_authority", wallet.as_ref()], &hpl_crons::ID).0
 }
 
+/// Derives the cron job PDA for a wallet and job ID.
 pub fn cron_job_key_for_wallet(wallet: &Pubkey, job_id: u32) -> Pubkey {
     tuktuk::cron::cron_job_key(&entity_cron_authority_key(wallet), job_id)
 }
 
+/// Fetches a cron job account, returning `None` if it does not exist.
 pub async fn get<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     key: &Pubkey,
@@ -37,6 +40,7 @@ pub async fn get<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount
     }
 }
 
+/// Builds an instruction to initialize a scheduled entity claim cron job.
 pub fn init_instruction(
     task_queue_key: &Pubkey,
     task_queue: &TaskQueueV0,
@@ -92,6 +96,7 @@ pub fn init_instruction(
     Ok(ix)
 }
 
+/// Initializes a scheduled entity claim cron job and returns a signed transaction.
 pub async fn init<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     task_queue_key: &Pubkey,
@@ -141,6 +146,7 @@ pub async fn init<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccoun
     Ok((txn, block_height))
 }
 
+/// Builds an instruction to requeue an existing entity claim cron job.
 pub fn requeue_instruction(
     task_queue_key: &Pubkey,
     task_queue: &TaskQueueV0,
@@ -190,6 +196,7 @@ pub fn requeue_instruction(
     Ok(ix)
 }
 
+/// Requeue a scheduled entity claim cron job and return a signed transaction.
 pub async fn requeue<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     task_queue_key: &Pubkey,
@@ -225,8 +232,10 @@ pub async fn requeue<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     Ok((txn, block_height))
 }
 
+/// Compute units needed to close a cron job.
 pub const CU_CLOSE: u32 = 60_000;
 
+/// Builds an instruction to close a scheduled entity claim cron job.
 pub fn close_instruction(cron_id: u32, name: &str, payer: &Pubkey) -> Result<Instruction, Error> {
     fn mk_accounts(job_id: u32, name: &str, payer: &Pubkey) -> impl ToAccountMetas {
         let user_authority = *payer;
@@ -257,8 +266,10 @@ pub fn close_instruction(cron_id: u32, name: &str, payer: &Pubkey) -> Result<Ins
     Ok(ix)
 }
 
+/// Compute units needed to remove one entity claim from a cron job.
 pub const CU_CLOSE_ENTITY_CLAIM: u32 = 40_000;
 
+/// Builds an instruction to remove a single entity from a cron job.
 pub fn close_entity_claim_instruction(
     cron_job_key: &Pubkey,
     cron_job_index: u32,
@@ -296,6 +307,7 @@ pub fn close_entity_claim_instruction(
     Ok(ix)
 }
 
+/// Close a cron job (removing all entities first) and return a signed transaction.
 pub async fn close<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     cron_job_key: &Pubkey,
@@ -348,6 +360,7 @@ pub async fn close<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     Ok((txn, block_height))
 }
 
+/// Builds an instruction to add a wallet claim to a cron job.
 pub fn claim_wallet_instruction(
     cron_job_key: &Pubkey,
     cron_job: &CronJobV0,
@@ -389,6 +402,7 @@ pub fn claim_wallet_instruction(
     Ok(ix)
 }
 
+/// Add a wallet claim to a cron job and return a signed transaction.
 pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     cron_job_key: &Pubkey,
@@ -415,6 +429,7 @@ pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnch
     Ok((txn, block_height))
 }
 
+/// Builds an instruction to add an entity asset claim to a cron job.
 pub fn claim_asset_instruction(
     cron_job_key: &Pubkey,
     cron_job: &CronJobV0,
@@ -456,6 +471,7 @@ pub fn claim_asset_instruction(
     Ok(ix)
 }
 
+/// Add an entity asset claim to a cron job and return a signed transaction.
 pub async fn claim_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     cron_job_key: &Pubkey,

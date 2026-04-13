@@ -10,11 +10,14 @@ use crate::{
 };
 use itertools::Itertools;
 
+/// Common address lookup table on devnet.
 pub const COMMON_LUT_DEVNET: Pubkey = pubkey!("FnqYkQ6ZKnVKdkvYCGsEeiP5qgGqVbcFUkGduy2ta4gA");
+/// Common address lookup table on mainnet.
 pub const COMMON_LUT: Pubkey = pubkey!("43eY9L2spbM2b1MPDFFBStUiFGt29ziZ1nc1xbpzsfVt");
 
 pub use solana_sdk::message::VersionedMessage;
 
+/// Fetches and deserializes address lookup table accounts from on-chain.
 pub async fn get_lut_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     addresses: &[Pubkey],
@@ -36,6 +39,7 @@ pub async fn get_lut_accounts<C: AsRef<SolanaRpcClient>>(
     .try_collect()
 }
 
+/// Compile instructions and lookup tables into a V0 versioned message.
 pub fn mk_raw_message(
     ixs: &[Instruction],
     lut_accounts: &[AddressLookupTableAccount],
@@ -50,6 +54,7 @@ pub fn mk_raw_message(
     Ok(msg)
 }
 
+/// Builds a versioned message with a fresh blockhash, resolving LUT addresses on-chain.
 pub async fn mk_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     ixs: &[Instruction],

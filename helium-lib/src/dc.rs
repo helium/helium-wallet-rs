@@ -15,6 +15,7 @@ use crate::{
     TransactionOpts,
 };
 
+/// Builds a message that mints data credits by burning HNT.
 pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
@@ -48,14 +49,14 @@ pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
             hnt_mint: *Token::Hnt.mint(),
             dc_mint: *Token::Dc.mint(),
             recipient,
-            recipient_token_account: Token::Dc.associated_token_adress(&recipient),
+            recipient_token_account: Token::Dc.associated_token_address(&recipient),
             system_program: solana_sdk::system_program::ID,
             token_program: anchor_spl::token::ID,
             associated_token_program: anchor_spl::associated_token::ID,
             hnt_price_oracle,
             circuit_breaker_program: circuit_breaker::ID,
             circuit_breaker: Token::Dc.mint_circuit_breaker_address(),
-            burner: Token::Hnt.associated_token_adress(owner),
+            burner: Token::Hnt.associated_token_address(owner),
         }
     }
 
@@ -88,6 +89,7 @@ pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
+/// Mints data credits by burning HNT and returns a signed transaction.
 pub async fn mint<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
@@ -100,6 +102,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
+/// Builds a message that delegates data credits to a router/OUI.
 pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     subdao: SubDao,
@@ -116,7 +119,7 @@ pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
             dao: Dao::Hnt.key(),
             sub_dao: subdao.key(),
             owner,
-            from_account: Token::Dc.associated_token_adress(&owner),
+            from_account: Token::Dc.associated_token_address(&owner),
             escrow_account: subdao.escrow_key(&delegated_dc_key),
             payer: owner,
             associated_token_program: anchor_spl::associated_token::ID,
@@ -151,6 +154,7 @@ pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, owner).await
 }
 
+/// Delegates data credits to a router/OUI and returns a signed transaction.
 pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     client: &C,
     subdao: SubDao,
@@ -165,6 +169,7 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
+/// Builds a message that burns data credits without tracking.
 pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: u64,
@@ -174,7 +179,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     fn mk_accounts(owner: Pubkey) -> impl ToAccountMetas {
         data_credits::client::accounts::BurnWithoutTrackingV0 {
             burn_accounts: data_credits::client::accounts::BurnAccounts {
-                burner: Token::Dc.associated_token_adress(&owner),
+                burner: Token::Dc.associated_token_address(&owner),
                 dc_mint: *Token::Dc.mint(),
                 data_credits: Dao::dc_key(),
                 token_program: anchor_spl::token::ID,
@@ -207,6 +212,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, owner).await
 }
 
+/// Burns data credits and returns a signed transaction.
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: u64,
@@ -218,6 +224,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
+/// Builds a message that burns delegated data credits for a router.
 pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
@@ -289,6 +296,7 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
+/// Burns delegated data credits and returns a signed transaction.
 pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,

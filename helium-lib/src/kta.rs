@@ -10,31 +10,37 @@ use std::{
     sync::{Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
+/// Initializes the global KTA cache with the given Solana RPC client.
 pub fn init(solana_client: Arc<SolanaRpcClient>) -> Result<(), Error> {
     let _ = CACHE.set(KtaCache::new(solana_client)?);
     Ok(())
 }
 
+/// Fetches a KeyToAsset account, using the cache when available.
 pub async fn get(kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get(kta_key).await
 }
 
+/// Return a cached KeyToAsset account or error if not yet cached.
 pub fn get_cached(kta_key: &Pubkey) -> Result<KeyToAssetV0, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get_cached(kta_key)
 }
 
+/// Fetches multiple KeyToAsset accounts, using the cache when available.
 pub async fn get_many(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get_many(kta_keys).await
 }
 
+/// Return multiple cached KeyToAsset accounts or error if any are missing.
 pub fn get_many_cached(kta_keys: &[Pubkey]) -> Result<Vec<KeyToAssetV0>, Error> {
     let cache = CACHE.get().ok_or_else(Error::account_not_found)?;
     cache.get_many_cached(kta_keys)
 }
 
+/// Look up the KeyToAsset account for an entity key.
 pub async fn for_entity_key<E>(entity_key: &E) -> Result<KeyToAssetV0, Error>
 where
     E: AsEntityKey,
@@ -43,6 +49,7 @@ where
     get(&kta_key).await
 }
 
+/// Look up KeyToAsset accounts for multiple entity keys.
 pub async fn for_entity_keys<E>(entity_keys: &[E]) -> Result<Vec<KeyToAssetV0>, Error>
 where
     E: AsEntityKey,

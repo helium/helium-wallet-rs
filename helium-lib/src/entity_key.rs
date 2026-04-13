@@ -2,7 +2,9 @@ use crate::{error::DecodeError, helium_entity_manager};
 use solana_sdk::bs58;
 use std::{fmt::Display, hash::Hash};
 
+/// Convert a value to its on-chain entity key byte representation.
 pub trait AsEntityKey {
+    /// Return the entity key bytes used for PDA derivation.
     fn as_entity_key(&self) -> Vec<u8>;
 }
 
@@ -46,6 +48,7 @@ impl AsEntityKey for helium_crypto::PublicKeyBinary {
 
 pub use helium_entity_manager::types::KeySerialization;
 
+/// Parse an entity key string using the specified encoding (UTF-8 or base58).
 pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, DecodeError> {
     let entity_key = match encoding {
         KeySerialization::UTF8 => str.as_entity_key(),
@@ -56,6 +59,7 @@ pub fn from_str(str: &str, encoding: KeySerialization) -> Result<Vec<u8>, Decode
     Ok(entity_key)
 }
 
+/// Encoding format for entity keys (base58 or UTF-8).
 #[derive(Debug, Clone, serde::Serialize, Copy, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[serde(rename_all = "lowercase")]
@@ -83,6 +87,7 @@ impl From<EntityKeyEncoding> for KeySerialization {
     }
 }
 
+/// An entity key paired with its encoding.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct EncodedEntityKey {
@@ -94,6 +99,7 @@ pub struct EncodedEntityKey {
 }
 
 impl EncodedEntityKey {
+    /// Decode this encoded entity key into raw bytes.
     pub fn as_entity_key(&self) -> Result<Vec<u8>, DecodeError> {
         from_str(&self.entity_key, self.encoding.into())
     }

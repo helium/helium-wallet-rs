@@ -3,12 +3,14 @@ use futures::TryFutureExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::marker::Send;
 
+/// HTTP client for the Helium onboarding server API.
 pub struct Client {
     base_url: String,
     inner: reqwest::Client,
 }
 
 impl Client {
+    /// Create a client targeting the given onboarding server URL.
     pub fn new(base_url: &str) -> Self {
         Self {
             base_url: base_url.to_string(),
@@ -16,6 +18,7 @@ impl Client {
         }
     }
 
+    /// Send a GET request and deserialize the response data.
     pub async fn get<T>(&self, path: &str) -> Result<T, OnboardingError>
     where
         T: 'static + DeserializeOwned + Send,
@@ -29,6 +32,7 @@ impl Client {
         onboarding_resp.data.ok_or_else(|| OnboardingError::NoData)
     }
 
+    /// Send a POST request with JSON body and deserialize the response data.
     pub async fn post<T, P>(&self, path: &str, params: &P) -> Result<T, OnboardingError>
     where
         T: 'static + DeserializeOwned + Send,
@@ -43,6 +47,7 @@ impl Client {
         onboarding_resp.data.ok_or_else(|| OnboardingError::NoData)
     }
 
+    /// Fetch onboarding info for a hotspot by its public key.
     pub async fn get_hotspot(
         &self,
         hotspot: &helium_crypto::PublicKey,
@@ -50,6 +55,7 @@ impl Client {
         self.get::<Hotspot>(&format!("/hotspots/{hotspot}")).await
     }
 
+    /// Get a signed metadata-update transaction from the onboarding server.
     pub async fn get_update_txn(
         &self,
         hotspot: &helium_crypto::PublicKey,
@@ -91,6 +97,7 @@ impl Client {
     }
 }
 
+/// Hotspot record from the onboarding server.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all(deserialize = "camelCase"))]
 pub struct Hotspot {
@@ -99,6 +106,7 @@ pub struct Hotspot {
     pub public_address: helium_crypto::PublicKey,
 }
 
+/// Maker (manufacturer) record from the onboarding server.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all(deserialize = "camelCase"))]
 pub struct Maker {
@@ -109,6 +117,7 @@ pub struct Maker {
     pub name: String,
 }
 
+/// Errors from onboarding server requests.
 #[derive(Debug, thiserror::Error)]
 pub enum OnboardingError {
     #[error("onboarding request: {0}")]

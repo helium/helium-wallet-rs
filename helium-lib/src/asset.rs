@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{signature::NullSigner, signer::Signer};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
 
+/// Fetches a compressed NFT asset for a given Helium entity key (e.g., hotspot public key).
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
     client: &C,
     entity_key: &E,
@@ -32,6 +33,7 @@ where
     for_kta(client, &kta).await
 }
 
+/// Fetches compressed NFT assets for multiple entity keys in batch.
 pub async fn for_entity_keys<E, C: AsRef<DasClient>>(
     client: &C,
     entity_keys: &[E],
@@ -43,6 +45,7 @@ where
     for_ktas(client, ktas.as_slice()).await
 }
 
+/// Fetches the compressed NFT asset referenced by a key-to-asset account.
 pub async fn for_kta<C: AsRef<DasClient>>(
     client: &C,
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
@@ -50,6 +53,7 @@ pub async fn for_kta<C: AsRef<DasClient>>(
     get(client, &kta.asset).await
 }
 
+/// Fetches compressed NFT assets for multiple key-to-asset accounts in batch.
 pub async fn for_ktas<C: AsRef<DasClient>>(
     client: &C,
     ktas: &[helium_entity_manager::accounts::KeyToAssetV0],
@@ -58,6 +62,7 @@ pub async fn for_ktas<C: AsRef<DasClient>>(
     get_many(client, &pubkeys).await
 }
 
+/// Fetches both the asset and its Merkle proof from a key-to-asset account.
 pub async fn for_kta_with_proof<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
     client: &C,
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
@@ -65,11 +70,13 @@ pub async fn for_kta_with_proof<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
     get_with_proof(client, &kta.asset).await
 }
 
+/// Fetches a single compressed NFT asset by its Solana public key.
 pub async fn get<C: AsRef<DasClient>>(client: &C, pubkey: &Pubkey) -> Result<Asset, Error> {
     let asset_response: Asset = client.as_ref().get_asset(pubkey).await?;
     Ok(asset_response)
 }
 
+/// Fetches multiple compressed NFT assets by their Solana public keys (batched in chunks of 1000).
 pub async fn get_many<C: AsRef<DasClient>>(
     client: &C,
     pubkeys: &[Pubkey],
@@ -86,6 +93,7 @@ pub async fn get_many<C: AsRef<DasClient>>(
     Ok(assets)
 }
 
+/// Fetches an asset and its Merkle proof concurrently. Needed for transfer/burn operations.
 pub async fn get_with_proof<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
     client: &C,
     pubkey: &Pubkey,
@@ -94,6 +102,7 @@ pub async fn get_with_proof<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
     Ok((asset, asset_proof))
 }
 
+/// Derives the Metaplex metadata PDA for a collection mint.
 pub fn collection_metadata_key(collection_key: &Pubkey) -> Pubkey {
     let (collection_metadata, _bump) = Pubkey::find_program_address(
         &[
@@ -106,6 +115,7 @@ pub fn collection_metadata_key(collection_key: &Pubkey) -> Pubkey {
     collection_metadata
 }
 
+/// Derives the Metaplex master edition PDA for a collection mint.
 pub fn collection_master_edition_key(collection_key: &Pubkey) -> Pubkey {
     let (collection_master_edition, _cme_bump) = Pubkey::find_program_address(
         &[
@@ -119,18 +129,21 @@ pub fn collection_master_edition_key(collection_key: &Pubkey) -> Pubkey {
     collection_master_edition
 }
 
+/// Derives the Bubblegum tree authority PDA for a given Merkle tree.
 pub fn merkle_tree_authority(merkle_tree: &Pubkey) -> Pubkey {
     let (tree_authority, _ta_bump) =
         Pubkey::find_program_address(&[merkle_tree.as_ref()], &bubblegum::ID);
     tree_authority
 }
 
+/// Derives the Bubblegum collection CPI signer PDA.
 pub fn bubblegum_signer() -> Pubkey {
     let (bubblegum_signer, _bump) =
         Pubkey::find_program_address(&[b"collection_cpi"], &bubblegum::ID);
     bubblegum_signer
 }
 
+/// Utilities for determining Merkle tree canopy heights, used to trim proof sizes.
 pub mod canopy {
     use super::*;
     use crate::spl_account_compression::types::{
@@ -169,6 +182,7 @@ pub mod canopy {
         Ok(canopy_depth as usize)
     }
 
+    /// Returns the canopy height for a single Merkle tree.
     pub async fn height<C: AsRef<SolanaRpcClient>>(
         client: &C,
         tree: &Pubkey,
@@ -180,6 +194,7 @@ pub mod canopy {
         height_from_account(&tree_account)
     }
 
+    /// Returns canopy heights for multiple Merkle trees, using a remote cache when available.
     pub async fn heights<C: AsRef<SolanaRpcClient>>(
         client: &C,
         trees: &[Pubkey],
@@ -325,9 +340,11 @@ pub mod canopy {
     }
 }
 
+/// Functions for fetching Merkle proofs from DAS, with canopy height applied.
 pub mod proof {
     use super::*;
 
+    /// Fetches the Merkle proof for a single asset, including canopy height.
     pub async fn get<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
         client: &C,
         pubkey: &Pubkey,
@@ -339,6 +356,7 @@ pub mod proof {
         Ok(asset_proof)
     }
 
+    /// Fetches Merkle proofs for multiple assets in batch, including canopy heights.
     pub async fn get_many<C: AsRef<DasClient> + AsRef<SolanaRpcClient>>(
         client: &C,
         pubkeys: &[Pubkey],
@@ -369,6 +387,7 @@ pub mod proof {
     }
 }
 
+/// Searches for compressed NFT assets using DAS search parameters.
 pub async fn search<C: AsRef<DasClient>>(
     client: &C,
     params: DasSearchAssetsParams,
@@ -376,6 +395,7 @@ pub async fn search<C: AsRef<DasClient>>(
     Ok(client.as_ref().search_assets(params).await?)
 }
 
+/// Returns all assets owned by a wallet that match a given creator, with automatic pagination.
 pub async fn for_owner<C: AsRef<DasClient>>(
     client: &C,
     creator: &Pubkey,
@@ -402,6 +422,7 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     Ok(results)
 }
 
+/// Builds a Bubblegum transfer instruction for a compressed NFT asset.
 pub fn transfer_instruction(
     recipient: &Pubkey,
     asset: &Asset,
@@ -441,7 +462,7 @@ pub fn transfer_instruction(
     Ok(ix)
 }
 
-/// Get an unsigned transaction for an asset transfer
+/// Gets an unsigned transaction for an asset transfer.
 ///
 /// The asset is transferred from the owner to the given recipient
 /// Note that the owner is currently expected to sign this transaction and pay for
@@ -467,6 +488,7 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
+/// Signs and returns a transaction to transfer a compressed NFT to a new owner.
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
@@ -481,7 +503,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
-/// Get an unsigned burn transaction for an asset
+/// Gets an unsigned burn transaction for an asset.
 pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
@@ -529,6 +551,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await
 }
 
+/// Signs and returns a transaction to permanently burn (destroy) a compressed NFT.
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
@@ -540,6 +563,7 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
+/// A paginated list of compressed NFT assets returned from a DAS search.
 #[derive(Deserialize, Serialize, Clone)]
 pub struct AssetPage {
     pub total: u32,
@@ -548,8 +572,10 @@ pub struct AssetPage {
     pub items: Vec<Asset>,
 }
 
+/// A Solana compressed NFT (cNFT) representing a Helium entity such as a hotspot.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Asset {
+    /// The asset's on-chain address.
     #[serde(with = "serde_pubkey")]
     pub id: Pubkey,
     pub compression: AssetCompression,
@@ -561,6 +587,7 @@ pub struct Asset {
     pub burnt: bool,
 }
 
+/// A creator entry on a compressed NFT, with verification status and royalty share.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetCreator {
     #[serde(with = "serde_pubkey")]
@@ -571,6 +598,7 @@ pub struct AssetCreator {
 
 pub type Hash = [u8; 32];
 
+/// Compression metadata for a cNFT: hashes, leaf position, and the Merkle tree it belongs to.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetCompression {
     #[serde(with = "serde_hash")]
@@ -588,6 +616,7 @@ impl AssetCompression {
     }
 }
 
+/// A collection group that a compressed NFT belongs to (e.g., the Helium hotspot collection).
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetGroup {
     pub group_key: String,
@@ -595,6 +624,7 @@ pub struct AssetGroup {
     pub group_value: Pubkey,
 }
 
+/// Ownership information for a compressed NFT: current owner and optional delegate.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetOwnership {
     #[serde(with = "serde_pubkey")]
@@ -603,6 +633,7 @@ pub struct AssetOwnership {
     pub delegate: Option<Pubkey>,
 }
 
+/// Merkle proof for a compressed NFT, required for on-chain operations (transfer, burn, etc.).
 #[derive(Debug, Deserialize, Clone)]
 pub struct AssetProof {
     pub proof: Vec<String>,
@@ -665,12 +696,14 @@ impl AssetProof {
     }
 }
 
+/// The off-chain content associated with a compressed NFT (metadata URI and parsed metadata).
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetContent {
     pub metadata: AssetMetadata,
     pub json_uri: url::Url,
 }
 
+/// Parsed JSON metadata for a compressed NFT, including name, symbol, and trait attributes.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetMetadata {
     #[serde(default)]
@@ -690,6 +723,7 @@ impl AssetMetadata {
     }
 }
 
+/// A single key-value trait attribute from an asset's metadata (e.g., `"trait_type": "entity_key"`).
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AssetMetadataAttribute {
     #[serde(default)]

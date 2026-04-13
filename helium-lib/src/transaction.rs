@@ -56,6 +56,7 @@ impl SignatureStatus {
     }
 }
 
+/// Builds a signed versioned transaction from a message and signers.
 pub fn mk_transaction<T: Signers + ?Sized>(
     msg: message::VersionedMessage,
     signers: &T,
@@ -63,6 +64,7 @@ pub fn mk_transaction<T: Signers + ?Sized>(
     VersionedTransaction::try_new(msg, signers).map_err(Error::from)
 }
 
+/// Pack multiple instruction groups into size-limited transactions.
 pub fn pack_instructions(
     instructions: &[&[Instruction]],
     lookup_tables: Option<Vec<AddressLookupTableAccount>>,

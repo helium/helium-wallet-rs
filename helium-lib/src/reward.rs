@@ -286,7 +286,8 @@ pub fn distribute_rewards_instruction_for_owner(
             owner: asset.ownership.owner,
             circuit_breaker: lazy_distributor_circuit_breaker(ld_account),
             recipient: token.recipient_key_from_kta(kta),
-            destination_account: Token::from(token).associated_token_address(&asset.ownership.owner),
+            destination_account: Token::from(token)
+                .associated_token_address(&asset.ownership.owner),
         },
         compression_program: spl_account_compression::ID,
         merkle_tree: asset.compression.tree,

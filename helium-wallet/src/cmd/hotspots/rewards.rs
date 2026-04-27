@@ -68,8 +68,12 @@ pub struct PendingCmd {
 impl PendingCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let owner = opts.maybe_wallet_key(self.owner)?;
-        let hotspots = collect_hotspots(&client, self.hotspots.clone(), Some(owner)).await?;
+        let owner = match (self.hotspots.as_ref(), self.owner) {
+            (Some(_), _) => None,
+            (None, Some(owner)) => Some(owner),
+            (None, None) => Some(opts.maybe_wallet_key(None)?),
+        };
+        let hotspots = collect_hotspots(&client, self.hotspots.clone(), owner).await?;
         let encoded_entity_keys: Vec<EncodedEntityKey> = hotspots.iter().map(Into::into).collect();
         let pending =
             reward::pending_amounts(&client, self.token, None, &encoded_entity_keys).await?;
@@ -96,8 +100,12 @@ pub struct LifetimeCmd {
 impl LifetimeCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let owner = opts.maybe_wallet_key(self.owner)?;
-        let hotspots = collect_hotspots(&client, self.hotspots.clone(), Some(owner)).await?;
+        let owner = match (self.hotspots.as_ref(), self.owner) {
+            (Some(_), _) => None,
+            (None, Some(owner)) => Some(owner),
+            (None, None) => Some(opts.maybe_wallet_key(None)?),
+        };
+        let hotspots = collect_hotspots(&client, self.hotspots.clone(), owner).await?;
         let encoded_entity_keys: Vec<EncodedEntityKey> = hotspots.iter().map(Into::into).collect();
         let rewards = reward::lifetime(&client, self.token, &encoded_entity_keys).await?;
 

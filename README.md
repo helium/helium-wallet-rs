@@ -49,6 +49,27 @@ cargo build --release
 
 The resulting `target/release/helium-wallet` is ready for use.
 
+### Releasing
+
+Releases are cut with [`cargo-release`](https://github.com/crate-ci/cargo-release).
+The shared config in `release.toml` enables GPG-signed commits and tags
+and disables crates.io publishing. Tags follow `<package>-v<version>`;
+pushing a `helium-wallet-v*` tag triggers
+`.github/workflows/rust.yml`, which builds the linux and macos-arm64
+binaries and uploads them to a GitHub Release.
+
+From a clean `master`:
+
+```sh
+cargo release patch -p helium-wallet --execute
+```
+
+That bumps `helium-wallet/Cargo.toml`, refreshes `Cargo.lock`, creates
+the signed `chore: Release` commit and tag, and pushes both. Branch
+protection on `master` requires admin bypass at push time. Substitute
+`minor` or `major` for non-patch bumps; use `-p helium-lib` for a lib
+release (no CI hook today, just a versioned tag).
+
 ## Usage
 
 Use `-h` or `--help` on any command for detailed help.

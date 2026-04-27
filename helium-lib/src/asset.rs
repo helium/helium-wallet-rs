@@ -679,9 +679,13 @@ impl Asset {
 
 impl AssetProof {
     pub fn proof(&self) -> Result<Vec<solana_program::instruction::AccountMeta>, Error> {
+        let proof_len = self
+            .proof
+            .len()
+            .saturating_sub(self.canopy_height.unwrap_or(0));
         self.proof
             .iter()
-            .take(self.canopy_height.unwrap_or(self.proof.len()))
+            .take(proof_len)
             .map(|s| {
                 Pubkey::from_str(s)
                     .map_err(DecodeError::from)

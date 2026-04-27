@@ -139,7 +139,7 @@ pub async fn confirm_signatures<C: AsRef<SolanaRpcClient>>(
 
         // Process results - remove confirmed/failed from pending
         let mut still_pending = Vec::new();
-        for (sig, status) in pending.iter().zip(statuses.into_iter()) {
+        for (sig, status) in pending.iter().zip(statuses) {
             match &status {
                 SignatureStatus::Confirmed | SignatureStatus::Failed(_) => {
                     results.insert(*sig, status);

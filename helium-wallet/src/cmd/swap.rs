@@ -24,8 +24,7 @@ impl Cmd {
             bail!("swap amount must be a positive finite number");
         }
 
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
 
         let jupiter_client = jupiter::Client::from_env()?;
@@ -36,7 +35,7 @@ impl Cmd {
             helium_lib::token::TokenAmount::from_f64(self.input_token, self.amount).amount;
 
         let (tx, _, order) = jupiter_client
-            .swap(&client, input_mint, output_mint, raw_amount, &keypair)
+            .swap(&client, input_mint, output_mint, raw_amount, &*signer)
             .await?;
 
         let response = self.commit.maybe_commit(tx, &client).await?;

@@ -115,13 +115,12 @@ impl RecipientInitCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let (tx, _) = reward::recipient::init(
             &client,
             self.token,
             &self.entity_key.as_entity_key()?,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;
@@ -151,14 +150,13 @@ impl RecipientUpdateCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let (tx, _) = reward::recipient::destination::update(
             &client,
             self.token,
             &self.entity_key.as_entity_key()?,
             &self.destination,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;

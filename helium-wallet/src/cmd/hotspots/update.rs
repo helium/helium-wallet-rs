@@ -61,8 +61,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
 
         let server = self.onboarding.as_ref().map(|value| {
             match value.as_str() {
@@ -85,7 +84,7 @@ impl Cmd {
             server,
             &self.gateway,
             &update,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;

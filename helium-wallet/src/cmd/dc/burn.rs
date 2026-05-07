@@ -28,8 +28,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
@@ -41,7 +40,7 @@ impl Cmd {
                 &client,
                 squads_target,
                 self.memo.clone(),
-                &keypair,
+                &*signer,
                 &self.commit,
                 &transaction_opts,
                 |vault| async move { Ok(vec![dc::burn_instruction(self.dc, vault.as_pubkey())]) },
@@ -54,14 +53,14 @@ impl Cmd {
                 dc::burn_delegated(
                     &client,
                     subdao,
-                    &keypair,
+                    &*signer,
                     self.dc,
                     router_key,
                     &transaction_opts,
                 )
                 .await?
             }
-            (None, None) => dc::burn(&client, self.dc, &keypair, &transaction_opts).await?,
+            (None, None) => dc::burn(&client, self.dc, &*signer, &transaction_opts).await?,
             _ => bail!("both router and subdao must be specified"),
         };
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())

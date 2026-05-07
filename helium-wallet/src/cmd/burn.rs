@@ -21,8 +21,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
         let txn_opts = self.commit.transaction_opts(&client);
 
@@ -33,7 +32,7 @@ impl Cmd {
                 &client,
                 squads_target,
                 self.memo.clone(),
-                &keypair,
+                &*signer,
                 &self.commit,
                 &txn_opts,
                 |vault| async move {
@@ -46,7 +45,7 @@ impl Cmd {
             .await;
         }
 
-        let (tx, _) = token::burn(&client, &token_amount, &keypair, &txn_opts).await?;
+        let (tx, _) = token::burn(&client, &token_amount, &*signer, &txn_opts).await?;
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

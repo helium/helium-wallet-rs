@@ -4,8 +4,8 @@
 use clap::Parser;
 use helium_wallet::{
     cmd::{
-        assets, balance, burn, create, dc, export, hotspots, info, memo, price, router, sign,
-        squads, swap, transfer, upgrade, Opts,
+        assets, balance, burn, create, dc, export, hotspots, info, ledger, memo, price, router,
+        sign, squads, swap, transfer, upgrade, Opts,
     },
     result::Result,
 };
@@ -45,6 +45,7 @@ pub enum Cmd {
     Squads(squads::Cmd),
     Memo(memo::Cmd),
     Assets(assets::Cmd),
+    Ledger(ledger::Cmd),
 }
 
 #[allow(clippy::needless_return)]
@@ -76,6 +77,7 @@ impl Cli {
             Cmd::Squads(cmd) => cmd.run(self.opts).await,
             Cmd::Memo(cmd) => cmd.run(self.opts).await,
             Cmd::Assets(cmd) => cmd.run(self.opts).await,
+            Cmd::Ledger(cmd) => cmd.run(self.opts).await,
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     client::SolanaRpcClient,
-    keypair::{Keypair, Pubkey},
+    keypair::Pubkey,
     transaction::VersionedTransaction,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -223,7 +223,7 @@ impl Client {
         input_mint: &Pubkey,
         output_mint: &Pubkey,
         amount: u64,
-        keypair: &Keypair,
+        keypair: &dyn Signer,
     ) -> Result<(VersionedTransaction, u64, OrderResponse), JupiterError> {
         let order = self
             .order(input_mint, output_mint, amount, &keypair.pubkey())

@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use helium_crypto::{ecc_compact, ed25519, multisig, KeyType};
+use helium_crypto::{ecc_compact, ed25519, KeyType};
 use io::{Read, Write};
 use std::io;
 
@@ -21,7 +21,6 @@ impl ReadWrite for helium_crypto::PublicKey {
         let key_size = match KeyType::try_from(data[0])? {
             KeyType::Ed25519 => ed25519::PUBLIC_KEY_LENGTH,
             KeyType::EccCompact => ecc_compact::PUBLIC_KEY_LENGTH,
-            KeyType::MultiSig => multisig::PUBLIC_KEY_LENGTH,
             KeyType::Secp256k1 => bail!("Secp256k1 key type unsupported for read.",),
             KeyType::Rsa => bail!("RSA key type unsupported for read."),
         };

@@ -97,8 +97,7 @@ async fn perform_add(
     commit: &CommitOpts,
     opts: &Opts,
 ) -> Result {
-    let password = get_wallet_password(false)?;
-    let keypair = opts.load_keypair(password.as_bytes())?;
+    let signer = opts.load_signer()?;
     let gateway = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
     let client = opts.client()?;
     let hotspot_issued = asset::for_entity_key(&client, &gateway).await.is_ok();
@@ -112,7 +111,7 @@ async fn perform_add(
 
     let issue_response = if !hotspot_issued {
         let (tx, _) =
-            hotspot::dataonly::issue(&client, verifier, &mut txn, &keypair, transaction_opts)
+            hotspot::dataonly::issue(&client, verifier, &mut txn, &*signer, transaction_opts)
                 .await?;
         commit.maybe_commit(tx, &client).await?
     } else {
@@ -128,7 +127,7 @@ async fn perform_add(
             subdao,
             &gateway,
             &update,
-            &keypair,
+            &*signer,
             transaction_opts,
         )
         .await?;

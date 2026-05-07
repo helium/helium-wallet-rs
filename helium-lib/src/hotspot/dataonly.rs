@@ -8,7 +8,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
-    keypair::{Keypair, Pubkey},
+    keypair::Pubkey,
     kta, message, priority_fee,
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
     solana_sdk::{
@@ -242,7 +242,7 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     subdao: SubDao,
     hotspot_key: &helium_crypto::PublicKey,
     assertion: &HotspotInfoUpdate,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) = onboard_transaction(
@@ -402,7 +402,7 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     verifier: &str,
     add_tx: &mut BlockchainTxnAddGatewayV1,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) =

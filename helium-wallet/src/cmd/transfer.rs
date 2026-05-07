@@ -103,8 +103,7 @@ pub struct Multi {
 impl PayCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let payments = self.collect_payments()?;
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
         let txn_opts = self.commit().transaction_opts(&client);
 
@@ -113,7 +112,7 @@ impl PayCmd {
                 &client,
                 squads_target,
                 self.squads_memo().cloned(),
-                &keypair,
+                &*signer,
                 self.commit(),
                 &txn_opts,
                 |vault| async move {
@@ -123,7 +122,7 @@ impl PayCmd {
             .await;
         }
 
-        let (tx, _) = token::transfer(&client, &payments, &keypair, &txn_opts).await?;
+        let (tx, _) = token::transfer(&client, &payments, &*signer, &txn_opts).await?;
 
         print_json(&self.commit().maybe_commit(tx, &client).await?.to_json())
     }

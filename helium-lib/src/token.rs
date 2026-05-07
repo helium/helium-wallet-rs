@@ -3,7 +3,7 @@ use crate::{
     anchor_spl, circuit_breaker,
     client::SolanaRpcClient,
     error::{DecodeError, Error},
-    keypair::{serde_pubkey, Keypair, Pubkey},
+    keypair::{serde_pubkey, Pubkey},
     message, priority_fee,
     solana_sdk::{account::Account, signer::Signer},
     transaction::{mk_transaction, VersionedTransaction},
@@ -102,7 +102,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
@@ -196,7 +196,7 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
@@ -289,8 +289,8 @@ pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &[Pubkey],
     destination: &Pubkey,
-    owner: &Keypair,
-    fee_payer: &Keypair,
+    owner: &dyn Signer,
+    fee_payer: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = close_accounts_message(
@@ -302,7 +302,7 @@ pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
         opts,
     )
     .await?;
-    let signers: Vec<&Keypair> = if fee_payer.pubkey() == owner.pubkey() {
+    let signers: Vec<&dyn Signer> = if fee_payer.pubkey() == owner.pubkey() {
         vec![owner]
     } else {
         vec![fee_payer, owner]
@@ -317,8 +317,8 @@ pub async fn close_account<C: AsRef<SolanaRpcClient>>(
     client: &C,
     account: &Pubkey,
     destination: &Pubkey,
-    owner: &Keypair,
-    fee_payer: &Keypair,
+    owner: &dyn Signer,
+    fee_payer: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     close_accounts(client, &[*account], destination, owner, fee_payer, opts).await
@@ -607,8 +607,27 @@ pub struct TokenBalance {
 }
 
 /// Map of token type to balance, used for multi-token wallet summaries.
-#[derive(Debug, serde::Serialize, Clone, Default)]
+///
+/// Serializes as a flat `{ "<token>": <amount> }` object. Amounts follow the
+/// same numeric convention as [`TokenAmount`]: integer for 0-decimal tokens
+/// (DC), floating-point for the rest.
+#[derive(Debug, Clone, Default)]
 pub struct TokenBalanceMap(HashMap<Token, TokenBalance>);
+
+impl serde::Serialize for TokenBalanceMap {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (token, balance) in &self.0 {
+            if token.decimals() == 0 {
+                map.serialize_entry(&token.to_string(), &balance.amount.amount)?;
+            } else {
+                map.serialize_entry(&token.to_string(), &f64::from(&balance.amount))?;
+            }
+        }
+        map.end()
+    }
+}
 
 impl AsRef<HashMap<Token, TokenBalance>> for TokenBalanceMap {
     fn as_ref(&self) -> &HashMap<Token, TokenBalance> {
@@ -851,6 +870,27 @@ mod tests {
         };
         let json = serde_json::to_string(&balance).unwrap();
         assert!(json.contains("\"amount\":{\"token\":\"mobile\",\"amount\":10.5}"));
+    }
+
+    #[test]
+    fn test_token_balance_map_serialization_is_flat() {
+        let address = Pubkey::new_unique();
+        let mut map = TokenBalanceMap::default();
+        map.as_mut().insert(
+            Token::Hnt,
+            Token::Hnt.to_balance(address, 1_50_000_000), // 1.5 HNT (8 decimals)
+        );
+        map.as_mut().insert(
+            Token::Dc,
+            Token::Dc.to_balance(address, 100), // 100 DC (0 decimals)
+        );
+        let value: serde_json::Value = serde_json::to_value(&map).unwrap();
+        assert_eq!(value.get("hnt"), Some(&serde_json::json!(1.5)));
+        assert_eq!(value.get("dc"), Some(&serde_json::json!(100)));
+        // Per-ATA address and nested amount struct should not appear.
+        let json = serde_json::to_string(&value).unwrap();
+        assert!(!json.contains("\"address\""));
+        assert!(!json.contains("\"token\":"));
     }
 
     #[test]

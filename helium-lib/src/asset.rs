@@ -6,7 +6,7 @@ use crate::{
     entity_key::{self, AsEntityKey},
     error::{DecodeError, Error},
     helium_entity_manager,
-    keypair::{serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
+    keypair::{serde_opt_pubkey, serde_pubkey, Pubkey},
     kta, message,
     priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
@@ -510,7 +510,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
     recipient: &Pubkey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) = transfer_transaction(client, pubkey, recipient, opts).await?;
@@ -607,7 +607,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, pubkey, opts).await?;

@@ -6,7 +6,7 @@ use crate::{
     data_credits,
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
-    keypair::{pubkey, serde_opt_pubkey, serde_pubkey, Keypair, Pubkey},
+    keypair::{pubkey, serde_opt_pubkey, serde_pubkey, Pubkey},
     kta, message, onboarding, priority_fee,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
@@ -253,7 +253,7 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
     update: &HotspotInfoUpdate,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) =
@@ -273,7 +273,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     onboarding_server: Option<String>,
     hotspot: &helium_crypto::PublicKey,
     update: &HotspotInfoUpdate,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<VersionedTransaction, Error> {
     let public_key = keypair.pubkey();
@@ -336,7 +336,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
@@ -357,7 +357,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;

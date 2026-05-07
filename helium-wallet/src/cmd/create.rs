@@ -1,6 +1,23 @@
 use crate::{cmd::*, wallet::ShardConfig};
 use clap::builder::TypedValueParser as _;
-use helium_lib::{bs58, keypair};
+use helium_lib::{
+    bs58,
+    keypair::{self, Signer},
+};
+use rand::{RngCore, SeedableRng};
+use std::{
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc::{self, RecvTimeoutError},
+        Arc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
+
+const BASE58_ALPHABET: &str = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const ATTEMPT_BATCH_SIZE: u64 = 1024;
+const PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, clap::Args)]
 pub struct Cmd {
@@ -23,6 +40,11 @@ pub enum CreateCommand {
 }
 
 #[derive(Debug, clap::Args)]
+#[command(group(
+    clap::ArgGroup::new("grind_pattern")
+        .args(["starts_with", "ends_with"])
+        .multiple(true),
+))]
 /// Create a new basic wallet
 pub struct Basic {
     #[arg(short, long, default_value = "wallet.key")]
@@ -40,6 +62,22 @@ pub struct Basic {
     #[arg(long)]
     /// Use solana byte array or b58 encoded private key
     key: bool,
+
+    #[arg(long, value_name = "PREFIX", conflicts_with_all = ["seed", "key"])]
+    /// Grind until the Solana address starts with this base58 prefix
+    starts_with: Option<String>,
+
+    #[arg(long, value_name = "SUFFIX", conflicts_with_all = ["seed", "key"])]
+    /// Grind until the Solana address ends with this base58 suffix
+    ends_with: Option<String>,
+
+    #[arg(long, requires = "grind_pattern")]
+    /// Match grind prefix and suffix without ASCII case sensitivity
+    ignore_case: bool,
+
+    #[arg(long, value_name = "COUNT", requires = "grind_pattern")]
+    /// Number of grind threads to use; defaults to available parallelism
+    num_threads: Option<usize>,
 }
 
 #[derive(Debug, clap::Args)]
@@ -108,6 +146,10 @@ fn get_entropy(seed: bool, key: bool) -> Result<Option<Vec<u8>>> {
 
 impl Basic {
     pub async fn run(&self, _opts: Opts) -> Result {
+        if self.is_grind() {
+            return self.run_grind().await;
+        }
+
         let entropy = get_entropy(self.seed, self.key)?;
         let password = get_wallet_password(true)?;
 
@@ -119,6 +161,44 @@ impl Basic {
             .create()?;
 
         info::print_wallet(&wallet)
+    }
+
+    async fn run_grind(&self) -> Result {
+        let num_threads = self.num_threads.unwrap_or_else(default_num_threads);
+        if num_threads == 0 {
+            bail!("--num-threads must be greater than zero");
+        }
+        if !self.force && self.output.exists() {
+            bail!(
+                "{} already exists; use --force to overwrite",
+                self.output.display()
+            );
+        }
+
+        let pattern = GrindPattern::new(
+            self.starts_with.clone(),
+            self.ends_with.clone(),
+            self.ignore_case,
+        )?;
+        let GrindResult {
+            entropy,
+            attempts,
+            elapsed,
+        } = grind_keypair(pattern, num_threads)?;
+
+        let password = get_wallet_password(true)?;
+        let wallet = Wallet::builder()
+            .output(&self.output)
+            .password(&password)
+            .force(self.force)
+            .entropy(Some(entropy))
+            .create()?;
+
+        print_grind_wallet(&wallet, attempts, elapsed)
+    }
+
+    fn is_grind(&self) -> bool {
+        self.starts_with.is_some() || self.ends_with.is_some()
     }
 }
 
@@ -173,6 +253,251 @@ impl Keypair {
     }
 }
 
+#[derive(Clone, Debug)]
+struct GrindPattern {
+    starts_with: Option<String>,
+    ends_with: Option<String>,
+    ignore_case: bool,
+}
+
+#[derive(Debug)]
+struct GrindResult {
+    entropy: Vec<u8>,
+    attempts: u64,
+    elapsed: Duration,
+}
+
+impl GrindPattern {
+    fn new(
+        starts_with: Option<String>,
+        ends_with: Option<String>,
+        ignore_case: bool,
+    ) -> Result<Self> {
+        match (starts_with.as_deref(), ends_with.as_deref()) {
+            (None, None) => bail!("at least one of --starts-with or --ends-with is required"),
+            (Some(""), _) => bail!("--starts-with must not be empty"),
+            (_, Some("")) => bail!("--ends-with must not be empty"),
+            _ => {}
+        }
+
+        if let Some(prefix) = &starts_with {
+            validate_base58_pattern("--starts-with", prefix, ignore_case)?;
+        }
+        if let Some(suffix) = &ends_with {
+            validate_base58_pattern("--ends-with", suffix, ignore_case)?;
+        }
+
+        let combined_len =
+            starts_with.as_ref().map_or(0, String::len) + ends_with.as_ref().map_or(0, String::len);
+        if combined_len > 44 {
+            bail!("combined prefix and suffix length cannot exceed 44 characters");
+        }
+
+        Ok(Self {
+            starts_with,
+            ends_with,
+            ignore_case,
+        })
+    }
+
+    fn matches(&self, pubkey: &str) -> bool {
+        self.matches_start(pubkey) && self.matches_end(pubkey)
+    }
+
+    fn matches_start(&self, pubkey: &str) -> bool {
+        match &self.starts_with {
+            Some(prefix) => pubkey
+                .get(..prefix.len())
+                .is_some_and(|value| pattern_eq(value, prefix, self.ignore_case)),
+            None => true,
+        }
+    }
+
+    fn matches_end(&self, pubkey: &str) -> bool {
+        match &self.ends_with {
+            Some(suffix) => pubkey
+                .get(pubkey.len().saturating_sub(suffix.len())..)
+                .is_some_and(|value| pattern_eq(value, suffix, self.ignore_case)),
+            None => true,
+        }
+    }
+}
+
+fn grind_keypair(pattern: GrindPattern, num_threads: usize) -> Result<GrindResult> {
+    let pattern = Arc::new(pattern);
+    let found = Arc::new(AtomicBool::new(false));
+    let attempts = Arc::new(AtomicU64::new(0));
+    let (tx, rx) = mpsc::channel::<Result<Vec<u8>>>();
+    let mut handles = Vec::with_capacity(num_threads);
+    let start = Instant::now();
+    let mut last_progress = start;
+    let mut last_attempts = 0;
+
+    for _ in 0..num_threads {
+        let pattern = Arc::clone(&pattern);
+        let found = Arc::clone(&found);
+        let attempts = Arc::clone(&attempts);
+        let tx = tx.clone();
+
+        handles.push(thread::spawn(move || {
+            let mut rng = rand::rngs::StdRng::from_entropy();
+            let mut pending_attempts = 0;
+
+            while !found.load(Ordering::Relaxed) {
+                let mut entropy = [0u8; 32];
+                rng.fill_bytes(&mut entropy);
+
+                let keypair = match keypair::Keypair::generate_from_entropy(&entropy) {
+                    Ok(keypair) => keypair,
+                    Err(err) => {
+                        flush_pending_attempts(attempts.as_ref(), &mut pending_attempts);
+                        found.store(true, Ordering::Relaxed);
+                        let _ = tx.send(Err(err.into()));
+                        return;
+                    }
+                };
+                let pubkey = keypair.pubkey();
+                pending_attempts += 1;
+                if pending_attempts >= ATTEMPT_BATCH_SIZE {
+                    flush_pending_attempts(attempts.as_ref(), &mut pending_attempts);
+                }
+
+                if pattern.matches(&pubkey.to_string()) {
+                    flush_pending_attempts(attempts.as_ref(), &mut pending_attempts);
+                    if !found.swap(true, Ordering::Relaxed) {
+                        let _ = tx.send(Ok(entropy.to_vec()));
+                    }
+                    return;
+                }
+            }
+            flush_pending_attempts(attempts.as_ref(), &mut pending_attempts);
+        }));
+    }
+    drop(tx);
+
+    let result = loop {
+        match rx.recv_timeout(PROGRESS_INTERVAL) {
+            Ok(result) => break result,
+            Err(RecvTimeoutError::Timeout) => {
+                let now = Instant::now();
+                let current_attempts = attempts.load(Ordering::Relaxed);
+                print_grind_progress(current_attempts, last_attempts, start, last_progress, now);
+                last_attempts = current_attempts;
+                last_progress = now;
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err(anyhow!("grind threads exited without a result"));
+            }
+        }
+    };
+    for handle in handles {
+        handle
+            .join()
+            .map_err(|_| anyhow!("grind thread panicked"))?;
+    }
+    let entropy = result?;
+    let elapsed = start.elapsed();
+    let total_attempts = attempts.load(Ordering::Relaxed);
+
+    Ok(GrindResult {
+        entropy,
+        attempts: total_attempts,
+        elapsed,
+    })
+}
+
+fn flush_pending_attempts(attempts: &AtomicU64, pending_attempts: &mut u64) {
+    if *pending_attempts > 0 {
+        attempts.fetch_add(*pending_attempts, Ordering::Relaxed);
+        *pending_attempts = 0;
+    }
+}
+
+fn print_grind_progress(
+    current_attempts: u64,
+    last_attempts: u64,
+    start: Instant,
+    last_progress: Instant,
+    now: Instant,
+) {
+    let recent_rate = rate_since(
+        current_attempts.saturating_sub(last_attempts),
+        last_progress,
+        now,
+    );
+    let average_rate = rate_since(current_attempts, start, now);
+    eprintln!(
+        "Searched {} keys ({}/s recent, {}/s avg)",
+        current_attempts,
+        format_rate(recent_rate),
+        format_rate(average_rate)
+    );
+}
+
+fn print_grind_wallet(wallet: &Wallet, attempts: u64, elapsed: Duration) -> Result {
+    let mut json = info::wallet_json(wallet)?;
+    json["grind"] = json!({
+        "attempts": attempts,
+        "elapsed_seconds": elapsed.as_secs_f64(),
+        "keys_per_second": rate_for_duration(attempts, elapsed),
+    });
+    print_json(&json)
+}
+
+fn rate_since(attempts: u64, start: Instant, end: Instant) -> f64 {
+    rate_for_duration(attempts, end.duration_since(start))
+}
+
+fn rate_for_duration(attempts: u64, duration: Duration) -> f64 {
+    let seconds = duration.as_secs_f64();
+    if seconds > 0.0 {
+        attempts as f64 / seconds
+    } else {
+        0.0
+    }
+}
+
+fn format_rate(rate: f64) -> String {
+    if rate >= 1_000_000.0 {
+        format!("{:.1}M", rate / 1_000_000.0)
+    } else if rate >= 1_000.0 {
+        format!("{:.1}K", rate / 1_000.0)
+    } else {
+        format!("{rate:.0}")
+    }
+}
+
+fn default_num_threads() -> usize {
+    thread::available_parallelism().map_or(1, |threads| threads.get())
+}
+
+fn validate_base58_pattern(name: &str, value: &str, ignore_case: bool) -> Result {
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii() && is_base58_pattern_char(ch, ignore_case))
+    {
+        Ok(())
+    } else {
+        bail!("{name} must contain only base58 characters");
+    }
+}
+
+fn is_base58_pattern_char(ch: char, ignore_case: bool) -> bool {
+    BASE58_ALPHABET.contains(ch)
+        || (ignore_case
+            && ch.is_ascii_alphabetic()
+            && (BASE58_ALPHABET.contains(ch.to_ascii_lowercase())
+                || BASE58_ALPHABET.contains(ch.to_ascii_uppercase())))
+}
+
+fn pattern_eq(value: &str, pattern: &str, ignore_case: bool) -> bool {
+    if ignore_case {
+        value.eq_ignore_ascii_case(pattern)
+    } else {
+        value == pattern
+    }
+}
+
 fn get_seed_entropy() -> Result<Vec<u8>> {
     fn secret_from_phrase(s: &str) -> Result<Vec<u8>> {
         let entropy = helium_mnemonic::mnemonic_to_entropy(&phrase_to_words(s))?.to_vec();
@@ -211,5 +536,38 @@ fn get_secret_entropy() -> Result<Vec<u8>> {
                 .interact()?;
             secret_from_str(&secret_string)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grind_pattern_requires_a_matcher() {
+        GrindPattern::new(None, None, false).expect_err("missing matcher should fail");
+    }
+
+    #[test]
+    fn grind_pattern_matches_prefix_and_suffix() {
+        let pattern = GrindPattern::new(Some("abc".to_string()), Some("XYZ".to_string()), false)
+            .expect("valid pattern");
+
+        assert!(pattern.matches("abcdefXYZ"));
+        assert!(!pattern.matches("abCdefXYZ"));
+        assert!(!pattern.matches("abcdefXYz"));
+    }
+
+    #[test]
+    fn grind_pattern_can_ignore_case() {
+        let pattern = GrindPattern::new(Some("abc".to_string()), Some("xyz".to_string()), true)
+            .expect("valid pattern");
+
+        assert!(pattern.matches("ABCdefXYZ"));
+    }
+
+    #[test]
+    fn grind_pattern_rejects_impossible_base58() {
+        GrindPattern::new(Some("0".to_string()), None, false).expect_err("zero is not base58");
     }
 }

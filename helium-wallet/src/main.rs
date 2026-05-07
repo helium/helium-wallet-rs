@@ -56,8 +56,10 @@ async fn main() -> Result {
 
 impl Cli {
     async fn run(self) -> Result {
-        let client = self.opts.client()?;
-        helium_lib::init(client.solana_client)?;
+        if self.cmd.needs_client() {
+            let client = self.opts.client()?;
+            helium_lib::init(client.solana_client)?;
+        }
         match self.cmd {
             Cmd::Info(cmd) => cmd.run(self.opts).await,
             Cmd::Balance(cmd) => cmd.run(self.opts).await,
@@ -75,5 +77,14 @@ impl Cli {
             Cmd::Memo(cmd) => cmd.run(self.opts).await,
             Cmd::Assets(cmd) => cmd.run(self.opts).await,
         }
+    }
+}
+
+impl Cmd {
+    fn needs_client(&self) -> bool {
+        !matches!(
+            self,
+            Self::Info(_) | Self::Create(_) | Self::Export(_) | Self::Sign(_) | Self::Upgrade(_)
+        )
     }
 }

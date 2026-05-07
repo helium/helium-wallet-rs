@@ -15,7 +15,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-const BASE58_ALPHABET: &str = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const ATTEMPT_BATCH_SIZE: u64 = 1024;
 const PROGRESS_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -472,22 +471,32 @@ fn default_num_threads() -> usize {
 }
 
 fn validate_base58_pattern(name: &str, value: &str, ignore_case: bool) -> Result {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii() && is_base58_pattern_char(ch, ignore_case))
-    {
+    let is_valid = if ignore_case {
+        value.chars().all(is_base58_case_variant)
+    } else {
+        bs58::decode(value).into_vec().is_ok()
+    };
+
+    if is_valid {
         Ok(())
     } else {
         bail!("{name} must contain only base58 characters");
     }
 }
 
-fn is_base58_pattern_char(ch: char, ignore_case: bool) -> bool {
-    BASE58_ALPHABET.contains(ch)
-        || (ignore_case
-            && ch.is_ascii_alphabetic()
-            && (BASE58_ALPHABET.contains(ch.to_ascii_lowercase())
-                || BASE58_ALPHABET.contains(ch.to_ascii_uppercase())))
+fn is_base58_case_variant(ch: char) -> bool {
+    is_base58_char(ch)
+        || (ch.is_ascii_alphabetic()
+            && (is_base58_char(ch.to_ascii_lowercase()) || is_base58_char(ch.to_ascii_uppercase())))
+}
+
+fn is_base58_char(ch: char) -> bool {
+    if !ch.is_ascii() {
+        return false;
+    }
+
+    let mut decoded = [0u8; 1];
+    bs58::decode([ch as u8]).onto(&mut decoded).is_ok()
 }
 
 fn pattern_eq(value: &str, pattern: &str, ignore_case: bool) -> bool {
@@ -567,7 +576,14 @@ mod tests {
     }
 
     #[test]
+    fn grind_pattern_ignore_case_accepts_base58_case_variant() {
+        GrindPattern::new(Some("O".to_string()), None, true)
+            .expect("capital o can match lowercase");
+    }
+
+    #[test]
     fn grind_pattern_rejects_impossible_base58() {
         GrindPattern::new(Some("0".to_string()), None, false).expect_err("zero is not base58");
+        GrindPattern::new(Some("0".to_string()), None, true).expect_err("zero is not base58");
     }
 }

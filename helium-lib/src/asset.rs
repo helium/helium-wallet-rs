@@ -462,6 +462,23 @@ pub fn transfer_instruction(
     Ok(ix)
 }
 
+/// Fetch the asset + Merkle proof and return the bare bubblegum
+/// transfer instruction (no compute-budget framing). Asserts the
+/// asset's current owner matches `expected_owner` — for Squads-mode
+/// wrappers this prevents shipping a proposal whose `leaf_owner`
+/// can't be satisfied at execute time (the vault PDA is the only
+/// signer the program can produce via `invoke_signed`).
+pub async fn fetch_transfer_instruction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    expected_owner: &Pubkey,
+) -> Result<Instruction, Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+    check_owner(pubkey, &asset, expected_owner)?;
+    transfer_instruction(recipient, &asset, &asset_proof)
+}
+
 /// Gets an unsigned transaction for an asset transfer.
 ///
 /// The asset is transferred from the owner to the given recipient
@@ -503,18 +520,16 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
-/// Gets an unsigned burn transaction for an asset.
-pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(message::VersionedMessage, u64), Error> {
+/// Build the bare Bubblegum burn instruction from a fetched asset and
+/// its Merkle proof. The proof siblings are appended to the account
+/// list — `mpl-bubblegum`'s on-chain `burn` handler forwards
+/// `remaining_accounts` straight into `replace_leaf`, so without them
+/// the CPI fails Merkle proof verification.
+pub fn burn_instruction(asset: &Asset, asset_proof: &AssetProof) -> Result<Instruction, Error> {
     use bubblegum::client::{accounts::Burn as BurnAccounts, args::Burn as BurnArgs};
-    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-
     let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
 
-    let burn = BurnAccounts {
+    let mut accounts = BurnAccounts {
         leaf_owner: asset.ownership.owner,
         leaf_delegate,
         merkle_tree: asset_proof.tree_id,
@@ -522,29 +537,66 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
         log_wrapper: SPL_NOOP_PROGRAM_ID,
         compression_program: spl_account_compression::ID,
         system_program: solana_sdk::system_program::id(),
-    };
+    }
+    .to_account_metas(None);
+    accounts.extend(asset_proof.proof()?);
 
-    let args = BurnArgs {
+    let data = BurnArgs {
         creator_hash: asset.compression.creator_hash,
         root: asset_proof.root.to_bytes(),
         data_hash: asset.compression.data_hash,
         index: asset.compression.leaf_id()?,
         nonce: asset.compression.leaf_id,
-    };
+    }
+    .data();
 
-    let ix = Instruction {
+    Ok(Instruction {
         program_id: bubblegum::ID,
-        accounts: burn.to_account_metas(None),
-        data: args.data(),
-    };
+        accounts,
+        data,
+    })
+}
 
-    let mut priority_fee_accounts = ix.accounts.clone();
-    priority_fee_accounts.extend(asset_proof.proof()?);
+/// Fetch the asset + Merkle proof and return the bare bubblegum burn
+/// instruction. Asserts the asset's current owner matches
+/// `expected_owner` — same rationale as `fetch_transfer_instruction`.
+pub async fn fetch_burn_instruction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    expected_owner: &Pubkey,
+) -> Result<Instruction, Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+    check_owner(pubkey, &asset, expected_owner)?;
+    burn_instruction(&asset, &asset_proof)
+}
+
+/// Reject calls where the on-chain asset owner doesn't match the
+/// caller's expectation. Surfaces a clear error with both addresses
+/// so the user can compare against the Squads UI.
+fn check_owner(asset_id: &Pubkey, asset: &Asset, expected: &Pubkey) -> Result<(), Error> {
+    if asset.ownership.owner != *expected {
+        return Err(crate::squads::SquadsError::WrongAssetOwner {
+            asset: *asset_id,
+            actual: asset.ownership.owner,
+            expected: *expected,
+        }
+        .into());
+    }
+    Ok(())
+}
+
+/// Gets an unsigned burn transaction for an asset.
+pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+    let ix = burn_instruction(&asset, &asset_proof)?;
 
     let ixs = &[
         compute_budget_instruction(100_000),
-        compute_price_instruction_for_accounts(client, &priority_fee_accounts, opts.fee_range())
-            .await?,
+        compute_price_instruction_for_accounts(client, &ix.accounts, opts.fee_range()).await?,
         ix,
     ];
 
@@ -757,5 +809,115 @@ pub mod serde_hash {
             .as_slice()
             .try_into()
             .map_err(|_| de::Error::custom("invalid hash"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn synthetic_asset(owner: Pubkey, tree: Pubkey) -> Asset {
+        Asset {
+            id: Pubkey::new_unique(),
+            compression: AssetCompression {
+                data_hash: [1u8; 32],
+                creator_hash: [2u8; 32],
+                leaf_id: 7,
+                tree,
+            },
+            creators: vec![],
+            ownership: AssetOwnership {
+                owner,
+                delegate: None,
+            },
+            content: AssetContent {
+                metadata: AssetMetadata {
+                    attributes: vec![],
+                    name: "test".to_string(),
+                    symbol: "TEST".to_string(),
+                },
+                json_uri: url::Url::parse("https://example.test/x").unwrap(),
+            },
+            grouping: vec![],
+            burnt: false,
+        }
+    }
+
+    fn synthetic_proof(tree: Pubkey, siblings: &[Pubkey]) -> AssetProof {
+        AssetProof {
+            proof: siblings.iter().map(ToString::to_string).collect(),
+            root: Pubkey::new_unique(),
+            tree_id: tree,
+            canopy_height: None,
+        }
+    }
+
+    /// `burn_instruction` must extend the bubblegum `Burn` accounts
+    /// with the asset's Merkle proof siblings — bubblegum's on-chain
+    /// `burn` handler forwards `remaining_accounts` straight into
+    /// `replace_leaf` for proof verification, so missing siblings
+    /// would fail the CPI on-chain. Pin both the count and the
+    /// trailing-account ordering so a regression that drops the
+    /// `accounts.extend(asset_proof.proof()?)` line surfaces here.
+    #[test]
+    fn burn_instruction_appends_proof_siblings() {
+        let owner = Pubkey::new_unique();
+        let tree = Pubkey::new_unique();
+        let siblings = [
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        ];
+        let asset = synthetic_asset(owner, tree);
+        let proof = synthetic_proof(tree, &siblings);
+
+        let ix = burn_instruction(&asset, &proof).expect("burn_instruction");
+
+        // Bubblegum `Burn` has 7 base accounts; the proof siblings
+        // append after them in order.
+        assert_eq!(
+            ix.accounts.len(),
+            7 + siblings.len(),
+            "expected 7 base + {} proof siblings; got {} total",
+            siblings.len(),
+            ix.accounts.len(),
+        );
+        let trailing = &ix.accounts[7..];
+        for (i, sibling) in siblings.iter().enumerate() {
+            assert_eq!(
+                trailing[i].pubkey, *sibling,
+                "trailing account {i} must be sibling {sibling}",
+            );
+            assert!(
+                !trailing[i].is_signer && !trailing[i].is_writable,
+                "proof siblings must be readonly non-signers",
+            );
+        }
+    }
+
+    /// Canopy-height truncation: if the tree has a canopy, the proof
+    /// vec carries the full path but only the part above the canopy
+    /// goes on-chain (the canopy is verified inside the program).
+    /// `AssetProof::proof` already truncates; this test pins that
+    /// `burn_instruction` honors it instead of e.g. cloning the raw
+    /// `proof` vec.
+    #[test]
+    fn burn_instruction_respects_canopy_height() {
+        let owner = Pubkey::new_unique();
+        let tree = Pubkey::new_unique();
+        let siblings = [
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        ];
+        let asset = synthetic_asset(owner, tree);
+        let mut proof = synthetic_proof(tree, &siblings);
+        proof.canopy_height = Some(2);
+
+        let ix = burn_instruction(&asset, &proof).expect("burn_instruction");
+        // 5 siblings - 2 canopy = 3 on-chain proof entries.
+        assert_eq!(ix.accounts.len(), 7 + 3);
     }
 }

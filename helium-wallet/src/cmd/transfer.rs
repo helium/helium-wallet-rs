@@ -1,4 +1,7 @@
-use crate::cmd::*;
+use crate::{
+    cmd::{squads as cmd_squads, *},
+    result::Result,
+};
 use helium_lib::{
     keypair::{serde_pubkey, Pubkey},
     token::{self, Token, TokenAmount},
@@ -36,6 +39,16 @@ pub enum PayCmd {
 pub struct One {
     #[command(flatten)]
     payee: Payee,
+    /// Submit as a Squads v4 proposal instead of executing directly.
+    /// Accepts a multisig PDA or a vault PDA — when a vault is given the
+    /// multisig is resolved through the local cache. The transfer's
+    /// source becomes the vault's ATA (not the wallet's), and the wallet
+    /// just signs as proposer.
+    #[arg(long)]
+    squads: Option<Pubkey>,
+    /// Memo recorded on the v4 proposal (`--squads` only).
+    #[arg(long)]
+    memo: Option<String>,
     /// Commit the payment to the API
     #[command(flatten)]
     commit: CommitOpts,
@@ -76,6 +89,12 @@ pub struct One {
 pub struct Multi {
     /// File to read multiple payments from.
     path: PathBuf,
+    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
+    #[arg(long)]
+    squads: Option<Pubkey>,
+    /// Memo recorded on the v4 proposal (`--squads` only).
+    #[arg(long)]
+    memo: Option<String>,
     /// Commit the payments
     #[command(flatten)]
     commit: CommitOpts,
@@ -89,9 +108,38 @@ impl PayCmd {
         let client = opts.client()?;
         let txn_opts = self.commit().transaction_opts(&client);
 
+        if let Some(squads_target) = self.squads_target() {
+            return cmd_squads::submit_proposal_with(
+                &client,
+                squads_target,
+                self.squads_memo().cloned(),
+                &keypair,
+                self.commit(),
+                &txn_opts,
+                |vault| async move {
+                    Ok(token::transfer_instructions(vault.as_pubkey(), &payments)?)
+                },
+            )
+            .await;
+        }
+
         let (tx, _) = token::transfer(&client, &payments, &keypair, &txn_opts).await?;
 
         print_json(&self.commit().maybe_commit(tx, &client).await?.to_json())
+    }
+
+    fn squads_target(&self) -> Option<Pubkey> {
+        match &self {
+            Self::One(one) => one.squads,
+            Self::Multi(multi) => multi.squads,
+        }
+    }
+
+    fn squads_memo(&self) -> Option<&String> {
+        match &self {
+            Self::One(one) => one.memo.as_ref(),
+            Self::Multi(multi) => multi.memo.as_ref(),
+        }
     }
 
     fn collect_payments(&self) -> Result<Vec<(Pubkey, TokenAmount)>> {

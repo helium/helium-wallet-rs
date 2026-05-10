@@ -289,6 +289,33 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok(tx)
 }
 
+/// Resolve the hotspot's underlying asset and return the bare
+/// bubblegum transfer instruction. Asserts the hotspot's current
+/// owner matches `expected_owner` (typically the Squads vault) —
+/// see `asset::fetch_transfer_instruction`.
+pub async fn fetch_transfer_instruction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    recipient: &Pubkey,
+    expected_owner: &Pubkey,
+) -> Result<solana_sdk::instruction::Instruction, Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::fetch_transfer_instruction(client, &kta.asset, recipient, expected_owner).await
+}
+
+/// Resolve the hotspot's underlying asset and return the bare
+/// bubblegum burn instruction. Asserts the hotspot's current owner
+/// matches `expected_owner` (typically the Squads vault) — see
+/// `asset::fetch_burn_instruction`.
+pub async fn fetch_burn_instruction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    expected_owner: &Pubkey,
+) -> Result<solana_sdk::instruction::Instruction, Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::fetch_burn_instruction(client, &kta.asset, expected_owner).await
+}
+
 /// Gets an unsigned transaction for a hotspot transfer.
 ///
 /// The Hotspot is transferred from the owner of the Hotspot to the given recipient

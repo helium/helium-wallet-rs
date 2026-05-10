@@ -270,6 +270,77 @@ helium-wallet assets burn <asset> --commit
 helium-wallet assets transfer <asset> <address> --commit
 ```
 
+### `squads` -- Squads Multisig (v3 and v4)
+
+Inspect and act on Helium-managed Squads multisigs. Both v3
+(`SMPLecH…`) and v4 (`SQDS4ep…`) are supported. Wherever a target is
+expected, either a multisig PDA or a vault PDA works — vault →
+multisig resolution is cached locally after the first lookup.
+
+```
+helium-wallet squads members list   <multisig|vault>
+helium-wallet squads members add    <multisig|vault> <pubkey> [--perm <list>] --commit
+helium-wallet squads members remove <multisig|vault> <pubkey> --commit
+helium-wallet squads list           <multisig|vault> [--days <N>] [--include-drafts]
+helium-wallet squads inspect        <target> [--index <n>]
+helium-wallet squads approve        <target> [--index <n>] --commit
+helium-wallet squads reject         <target> [--index <n>] --commit
+helium-wallet squads cancel         <target> [--index <n>] --commit
+helium-wallet squads execute        <target> [--index <n>] --commit
+helium-wallet squads threshold      <multisig|vault> <new-threshold> --commit
+```
+
+| Subcommand | Purpose |
+|---|---|
+| `members list` | Print members, threshold, and version of a multisig |
+| `members add` / `members remove` | Propose adding or removing a member (v4 only). `members add` defaults to all permissions (initiate + vote + execute); `--perm vote --perm execute` narrows |
+| `list` | Actionable proposals — Active / Approved / ExecuteReady, last 7 days by default. `--days 0` for the full open set; `--include-drafts` to surface pre-activation drafts |
+| `inspect` | Decode a single proposal: status, votes, inner instructions, decoded args |
+| `approve` / `reject` / `cancel` | Cast votes on a proposal |
+| `execute` | Execute an approved (or ExecuteReady) proposal |
+| `threshold` | Propose a new approval threshold (v4 only) |
+
+Member-roster and threshold changes go through the same approve → execute lifecycle as a regular proposal — the proposing member needs the `Initiate` permission, and threshold of existing members must approve before someone with `Execute` permission lands the change.
+
+For `inspect`/`approve`/`reject`/`cancel`/`execute`, `<target>` may be
+a transaction PDA on its own (it self-identifies the multisig +
+index), or a multisig/vault PDA together with `--index <n>`. The
+transaction PDA emitted by `squads list` is suitable as input to all
+of these.
+
+Reviewer workflow:
+
+```
+helium-wallet squads list <vault>                            # find pending proposals
+helium-wallet squads inspect <transaction-pda>               # verify what it does
+helium-wallet squads approve <transaction-pda> --commit
+helium-wallet squads execute <transaction-pda> --commit      # once approved
+```
+
+#### Wrapping wallet ops as Squads proposals
+
+These commands accept an optional `--squads <multisig|vault>` to
+submit the operation as a v4 proposal instead of executing it
+directly. The wallet just signs as proposer; the actual transaction
+runs from the resolved vault when the proposal is later executed. A
+`--memo <text>` records a free-form note on the proposal.
+
+| Command | What gets wrapped |
+|---|---|
+| `transfer one`, `transfer multi` | Token transfer from the vault |
+| `burn` | Subdao token burn from the vault |
+| `dc mint` | HNT → DC mint, sourced from the vault |
+| `dc burn` | DC burn from the vault (non-router branch only) |
+| `dc delegate` | DC delegation from the vault |
+| `assets transfer`, `assets burn` | Compressed-NFT transfer/burn |
+| `hotspots transfer`, `hotspots burn` | Hotspot transfer/burn |
+
+Example:
+
+```
+helium-wallet transfer one <recipient> 5 hnt --squads <vault> --memo "Q2 disbursement" --commit
+```
+
 ### `sign` -- Sign and Verify
 
 ```

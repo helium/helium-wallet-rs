@@ -1,5 +1,6 @@
 use crate::{
-    anchor_client, anchor_lang, client, hotspot::cert, jupiter, onboarding, solana_client, token,
+    anchor_client, anchor_lang, client, hotspot::cert, jupiter, onboarding, solana_client, squads,
+    token,
 };
 use solana_sdk::signature::Signature;
 use std::{array::TryFromSliceError, num::TryFromIntError, time::Duration};
@@ -57,6 +58,8 @@ pub enum Error {
     Tuktuk(#[from] tuktuk_sdk::error::Error),
     #[error("jupiter: {0}")]
     Jupiter(#[from] jupiter::JupiterError),
+    #[error("squads: {0}")]
+    Squads(#[from] squads::SquadsError),
 }
 
 impl From<solana_client::client_error::ClientError> for Error {
@@ -118,6 +121,8 @@ pub enum EncodeError {
     Bincode(#[from] bincode::Error),
     #[error("h3: {0}")]
     H3(#[from] h3o::error::InvalidLatLng),
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
     #[error("encode: {0}")]
     Encode(String),
 }
@@ -125,6 +130,14 @@ pub enum EncodeError {
 impl EncodeError {
     pub fn other<S: ToString>(reason: S) -> Self {
         Self::Encode(reason.to_string())
+    }
+
+    /// Wraps a Borsh / Anchor serialize failure with the type's name
+    /// for context. Used at instruction-data construction sites where
+    /// the borsh error alone wouldn't tell the user which arg struct
+    /// failed.
+    pub fn borsh<E: std::fmt::Display>(type_name: &str, source: E) -> Self {
+        Self::Encode(format!("{type_name}: {source}"))
     }
 }
 
@@ -164,6 +177,32 @@ pub enum DecodeError {
 impl DecodeError {
     pub fn other<S: ToString>(reason: S) -> Self {
         Self::Decode(reason.to_string())
+    }
+
+    /// Account isn't owned by the expected program.
+    pub fn wrong_owner(
+        address: &solana_sdk::pubkey::Pubkey,
+        expected: &str,
+        got: &solana_sdk::pubkey::Pubkey,
+    ) -> Self {
+        Self::Decode(format!("{address} owner is {got}, expected {expected}"))
+    }
+
+    /// Account doesn't match the 8-byte Anchor discriminator for the
+    /// expected type.
+    pub fn wrong_discriminator(address: &solana_sdk::pubkey::Pubkey, account_type: &str) -> Self {
+        Self::Decode(format!(
+            "{address} is not a {account_type} account (bad discriminator)"
+        ))
+    }
+
+    /// Borsh / Anchor deserialize failure for a specific account.
+    pub fn deserialize<E: std::fmt::Display>(
+        address: &solana_sdk::pubkey::Pubkey,
+        account_type: &str,
+        source: E,
+    ) -> Self {
+        Self::Decode(format!("{account_type} {address}: {source}"))
     }
 }
 

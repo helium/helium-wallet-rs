@@ -15,7 +15,55 @@ use crate::{
     TransactionOpts,
 };
 
-/// Builds a message that mints data credits by burning HNT.
+/// Build the bare DC-mint instruction (no compute-budget framing). Used
+/// by both `mint_message` and Squads-mode wrappers; same args/accounts,
+/// just stripped of the outer envelope.
+pub async fn mint_instruction<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    amount: TokenAmount,
+    payee: &Pubkey,
+    payer: &Pubkey,
+) -> Result<Instruction, Error> {
+    let mint_args = match amount.token {
+        Token::Hnt => data_credits::types::MintDataCreditsArgsV0 {
+            hnt_amount: Some(amount.amount),
+            dc_amount: None,
+        },
+        Token::Dc => data_credits::types::MintDataCreditsArgsV0 {
+            hnt_amount: None,
+            dc_amount: Some(amount.amount),
+        },
+        other => {
+            return Err(DecodeError::other(format!("Invalid token type: {other}")).into());
+        }
+    };
+    let hnt_price_oracle = client
+        .as_ref()
+        .anchor_account::<data_credits::accounts::DataCreditsV0>(&Dao::dc_key())
+        .await?
+        .hnt_price_oracle;
+    let accounts = data_credits::client::accounts::MintDataCreditsV0 {
+        data_credits: Dao::dc_key(),
+        owner: *payer,
+        hnt_mint: *Token::Hnt.mint(),
+        dc_mint: *Token::Dc.mint(),
+        recipient: *payee,
+        recipient_token_account: Token::Dc.associated_token_address(payee),
+        system_program: solana_sdk::system_program::ID,
+        token_program: anchor_spl::token::ID,
+        associated_token_program: anchor_spl::associated_token::ID,
+        hnt_price_oracle,
+        circuit_breaker_program: circuit_breaker::ID,
+        circuit_breaker: Token::Dc.mint_circuit_breaker_address(),
+        burner: Token::Hnt.associated_token_address(payer),
+    };
+    Ok(Instruction {
+        program_id: data_credits::ID,
+        accounts: accounts.to_account_metas(None),
+        data: data_credits::client::args::MintDataCreditsV0 { args: mint_args }.data(),
+    })
+}
+
 pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
@@ -23,58 +71,7 @@ pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     payer: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
-    fn token_amount_to_mint_args(
-        amount: TokenAmount,
-    ) -> Result<data_credits::types::MintDataCreditsArgsV0, DecodeError> {
-        match amount.token {
-            Token::Hnt => Ok(data_credits::types::MintDataCreditsArgsV0 {
-                hnt_amount: Some(amount.amount),
-                dc_amount: None,
-            }),
-            Token::Dc => Ok(data_credits::types::MintDataCreditsArgsV0 {
-                hnt_amount: None,
-                dc_amount: Some(amount.amount),
-            }),
-            other => Err(DecodeError::other(format!("Invalid token type: {other}"))),
-        }
-    }
-    fn mk_accounts(
-        owner: &Pubkey,
-        recipient: Pubkey,
-        hnt_price_oracle: Pubkey,
-    ) -> impl ToAccountMetas {
-        data_credits::client::accounts::MintDataCreditsV0 {
-            data_credits: Dao::dc_key(),
-            owner: *owner,
-            hnt_mint: *Token::Hnt.mint(),
-            dc_mint: *Token::Dc.mint(),
-            recipient,
-            recipient_token_account: Token::Dc.associated_token_address(&recipient),
-            system_program: solana_sdk::system_program::ID,
-            token_program: anchor_spl::token::ID,
-            associated_token_program: anchor_spl::associated_token::ID,
-            hnt_price_oracle,
-            circuit_breaker_program: circuit_breaker::ID,
-            circuit_breaker: Token::Dc.mint_circuit_breaker_address(),
-            burner: Token::Hnt.associated_token_address(owner),
-        }
-    }
-
-    let hnt_price_oracle = client
-        .as_ref()
-        .anchor_account::<data_credits::accounts::DataCreditsV0>(&Dao::dc_key())
-        .await?
-        .hnt_price_oracle;
-
-    let ix = Instruction {
-        program_id: data_credits::ID,
-        accounts: mk_accounts(payer, *payee, hnt_price_oracle).to_account_metas(None),
-        data: data_credits::client::args::MintDataCreditsV0 {
-            args: token_amount_to_mint_args(amount)?,
-        }
-        .data(),
-    };
-
+    let ix = mint_instruction(client, amount, payee, payer).await?;
     let ixs = &[
         priority_fee::compute_budget_instruction(300_000),
         priority_fee::compute_price_instruction_for_accounts(
@@ -85,7 +82,6 @@ pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
         .await?,
         ix,
     ];
-
     message::mk_message(client, ixs, &opts.lut_addresses, payer).await
 }
 
@@ -102,6 +98,42 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
+/// Build the bare DC-delegate instruction (no compute-budget framing).
+/// Used by both `delegate_message` and Squads-mode wrappers.
+pub fn delegate_instruction(
+    subdao: SubDao,
+    payer_key: &str,
+    amount: u64,
+    owner: &Pubkey,
+) -> Instruction {
+    let delegated_dc_key = subdao.delegated_dc_key(&payer_key);
+    let accounts = data_credits::client::accounts::DelegateDataCreditsV0 {
+        delegated_data_credits: delegated_dc_key,
+        data_credits: Dao::dc_key(),
+        dc_mint: *Token::Dc.mint(),
+        dao: Dao::Hnt.key(),
+        sub_dao: subdao.key(),
+        owner: *owner,
+        from_account: Token::Dc.associated_token_address(owner),
+        escrow_account: subdao.escrow_key(&delegated_dc_key),
+        payer: *owner,
+        associated_token_program: anchor_spl::associated_token::ID,
+        token_program: anchor_spl::token::ID,
+        system_program: solana_sdk::system_program::ID,
+    };
+    Instruction {
+        program_id: data_credits::ID,
+        accounts: accounts.to_account_metas(None),
+        data: data_credits::client::args::DelegateDataCreditsV0 {
+            args: data_credits::types::DelegateDataCreditsArgsV0 {
+                amount,
+                router_key: payer_key.to_string(),
+            },
+        }
+        .data(),
+    }
+}
+
 /// Builds a message that delegates data credits to a router/OUI.
 pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
@@ -111,35 +143,7 @@ pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     owner: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
-    fn mk_accounts(delegated_dc_key: Pubkey, subdao: SubDao, owner: Pubkey) -> impl ToAccountMetas {
-        data_credits::client::accounts::DelegateDataCreditsV0 {
-            delegated_data_credits: delegated_dc_key,
-            data_credits: Dao::dc_key(),
-            dc_mint: *Token::Dc.mint(),
-            dao: Dao::Hnt.key(),
-            sub_dao: subdao.key(),
-            owner,
-            from_account: Token::Dc.associated_token_address(&owner),
-            escrow_account: subdao.escrow_key(&delegated_dc_key),
-            payer: owner,
-            associated_token_program: anchor_spl::associated_token::ID,
-            token_program: anchor_spl::token::ID,
-            system_program: solana_sdk::system_program::ID,
-        }
-    }
-
-    let delegated_dc_key = subdao.delegated_dc_key(&payer_key);
-    let ix = Instruction {
-        program_id: data_credits::ID,
-        accounts: mk_accounts(delegated_dc_key, subdao, *owner).to_account_metas(None),
-        data: data_credits::client::args::DelegateDataCreditsV0 {
-            args: data_credits::types::DelegateDataCreditsArgsV0 {
-                amount,
-                router_key: payer_key.to_string(),
-            },
-        }
-        .data(),
-    };
+    let ix = delegate_instruction(subdao, payer_key, amount, owner);
 
     let ixs = &[
         priority_fee::compute_budget_instruction(150_000),
@@ -169,6 +173,30 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
+/// Build the bare DC-burn instruction (no compute-budget framing).
+/// Used by both `burn_message` and Squads-mode wrappers.
+pub fn burn_instruction(amount: u64, owner: &Pubkey) -> Instruction {
+    let accounts = data_credits::client::accounts::BurnWithoutTrackingV0 {
+        burn_accounts: data_credits::client::accounts::BurnAccounts {
+            burner: Token::Dc.associated_token_address(owner),
+            dc_mint: *Token::Dc.mint(),
+            data_credits: Dao::dc_key(),
+            token_program: anchor_spl::token::ID,
+            system_program: solana_sdk::system_program::ID,
+            associated_token_program: anchor_spl::associated_token::ID,
+            owner: *owner,
+        },
+    };
+    Instruction {
+        program_id: data_credits::ID,
+        accounts: accounts.to_account_metas(None),
+        data: data_credits::client::args::BurnWithoutTrackingV0 {
+            args: data_credits::types::BurnWithoutTrackingArgsV0 { amount },
+        }
+        .data(),
+    }
+}
+
 /// Builds a message that burns data credits without tracking.
 pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
@@ -176,28 +204,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     owner: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
-    fn mk_accounts(owner: Pubkey) -> impl ToAccountMetas {
-        data_credits::client::accounts::BurnWithoutTrackingV0 {
-            burn_accounts: data_credits::client::accounts::BurnAccounts {
-                burner: Token::Dc.associated_token_address(&owner),
-                dc_mint: *Token::Dc.mint(),
-                data_credits: Dao::dc_key(),
-                token_program: anchor_spl::token::ID,
-                system_program: solana_sdk::system_program::ID,
-                associated_token_program: anchor_spl::associated_token::ID,
-                owner,
-            },
-        }
-    }
-
-    let ix = Instruction {
-        program_id: data_credits::ID,
-        accounts: mk_accounts(*owner).to_account_metas(None),
-        data: data_credits::client::args::BurnWithoutTrackingV0 {
-            args: data_credits::types::BurnWithoutTrackingArgsV0 { amount },
-        }
-        .data(),
-    };
+    let ix = burn_instruction(amount, owner);
 
     let ixs = &[
         priority_fee::compute_budget_instruction(150_000),

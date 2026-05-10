@@ -63,20 +63,19 @@ const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
 /// (Estimated value based on similar operations)
 const SPL_CLOSE_ACCOUNT_CU: u32 = 3000;
 
-/// Builds a versioned message that burns a token amount from the payer's account.
-pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
-    client: &C,
-    token_amount: &TokenAmount,
+/// Build the bare burn instruction (no compute-budget framing) for a
+/// given owner. Native SOL burn is not supported.
+pub fn burn_instruction(
     payer: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(message::VersionedMessage, u64), Error> {
-    let ix = match token_amount.token.mint() {
+    token_amount: &TokenAmount,
+) -> Result<solana_sdk::instruction::Instruction, Error> {
+    match token_amount.token.mint() {
         spl_mint if spl_mint == Token::Sol.mint() => {
-            return Err(DecodeError::other("native token burn not supported").into());
+            Err(DecodeError::other("native token burn not supported").into())
         }
         spl_mint => {
             let token_account = token_amount.token.associated_token_address(payer);
-            anchor_spl::token::spl_token::instruction::burn_checked(
+            Ok(anchor_spl::token::spl_token::instruction::burn_checked(
                 &anchor_spl::token::spl_token::id(),
                 &token_account,
                 spl_mint,
@@ -84,10 +83,18 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
                 &[payer],
                 token_amount.amount,
                 token_amount.token.decimals(),
-            )?
+            )?)
         }
-    };
+    }
+}
 
+pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    token_amount: &TokenAmount,
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
+    let ix = burn_instruction(payer, token_amount)?;
     message::mk_message(client, &[ix], &opts.lut_addresses, payer).await
 }
 
@@ -103,42 +110,37 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     Ok((txn, block_height))
 }
 
-/// Builds a versioned message that transfers tokens to one or more recipients.
-pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
-    client: &C,
-    transfers: &[(Pubkey, TokenAmount)],
+/// Build the bare transfer instructions (no compute-budget framing) for
+/// one or more recipients, with `payer` as the source authority. Used
+/// directly by callers that don't want the compute-budget envelope —
+/// e.g. wrapping the instructions into a Squads proposal where the
+/// outer (proposer) transaction supplies its own compute budget.
+pub fn transfer_instructions(
     payer: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(message::VersionedMessage, u64), Error> {
-    let mut ixs = vec![];
-    let mut ixs_accounts = vec![];
-    let mut cu_budget: u32 = SYS_PROGRAM_SETUP_CU;
+    transfers: &[(Pubkey, TokenAmount)],
+) -> Result<Vec<solana_sdk::instruction::Instruction>, Error> {
+    let mut ixs = Vec::new();
     for (payee, token_amount) in transfers {
         match token_amount.token.mint() {
             spl_mint if spl_mint == Token::Sol.mint() => {
-                let ix = solana_system_interface::instruction::transfer(
+                ixs.push(solana_system_interface::instruction::transfer(
                     payer,
                     payee,
                     token_amount.amount,
-                );
-                ixs_accounts.extend_from_slice(&ix.accounts);
-                ixs.push(ix);
-                cu_budget += SYS_PROGRAM_TRANSFER_CU;
+                ));
             }
             spl_mint => {
                 let source_pubkey = token_amount.token.associated_token_address(payer);
                 let destination_pubkey = token_amount.token.associated_token_address(payee);
-                let ix = spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-                    payer,
-                    payee,
-                    spl_mint,
-                    &anchor_spl::token::spl_token::id(),
+                ixs.push(
+                    spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                        payer,
+                        payee,
+                        spl_mint,
+                        &anchor_spl::token::spl_token::id(),
+                    ),
                 );
-                ixs_accounts.extend_from_slice(&ix.accounts);
-                ixs.push(ix);
-                cu_budget += SPL_CREATE_IDEMPOTENT_CU;
-
-                let ix = anchor_spl::token::spl_token::instruction::transfer_checked(
+                ixs.push(anchor_spl::token::spl_token::instruction::transfer_checked(
                     &anchor_spl::token::spl_token::id(),
                     &source_pubkey,
                     token_amount.token.mint(),
@@ -147,13 +149,33 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                     &[],
                     token_amount.amount,
                     token_amount.token.decimals(),
-                )?;
-                ixs_accounts.extend_from_slice(&ix.accounts);
-                ixs.push(ix);
-                cu_budget += SPL_TRANSFER_CHECKED_CU;
+                )?);
             }
         }
     }
+    Ok(ixs)
+}
+
+/// Builds a versioned message that transfers tokens to one or more recipients.
+pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    transfers: &[(Pubkey, TokenAmount)],
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(message::VersionedMessage, u64), Error> {
+    let ixs = transfer_instructions(payer, transfers)?;
+    let cu_budget: u32 = SYS_PROGRAM_SETUP_CU
+        + transfers
+            .iter()
+            .map(|(_, ta)| {
+                if ta.token.mint() == Token::Sol.mint() {
+                    SYS_PROGRAM_TRANSFER_CU
+                } else {
+                    SPL_CREATE_IDEMPOTENT_CU + SPL_TRANSFER_CHECKED_CU
+                }
+            })
+            .sum::<u32>();
+    let ixs_accounts: Vec<_> = ixs.iter().flat_map(|i| i.accounts.clone()).collect();
     let final_ixs = &[
         &[
             priority_fee::compute_budget_instruction(cu_budget),

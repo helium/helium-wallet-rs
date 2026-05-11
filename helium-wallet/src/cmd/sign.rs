@@ -249,7 +249,10 @@ impl VerifyCmd {
 /// [body]
 /// ```
 fn build_offchain_envelope(signer: &Pubkey, format: u8, body: &[u8]) -> Vec<u8> {
-    debug_assert!(body.len() <= u16::MAX as usize, "body length checked upstream");
+    debug_assert!(
+        body.len() <= u16::MAX as usize,
+        "body length checked upstream"
+    );
     let mut env = Vec::with_capacity(V0_HEADER_LEN + body.len());
     env.extend_from_slice(SIGNING_DOMAIN);
     env.push(0); // version
@@ -388,7 +391,10 @@ mod tests {
         let content = vec![0xab; 100_000];
         let body = hex_lower(&Sha256::digest(&content));
         assert_eq!(body.len(), 64);
-        assert_eq!(pick_format(body.as_bytes()).unwrap(), FORMAT_RESTRICTED_ASCII);
+        assert_eq!(
+            pick_format(body.as_bytes()).unwrap(),
+            FORMAT_RESTRICTED_ASCII
+        );
         let env = build_offchain_envelope(&pubkey, FORMAT_RESTRICTED_ASCII, body.as_bytes());
         // Envelope stays small even though file is 100KB.
         assert_eq!(env.len(), V0_HEADER_LEN + 64);

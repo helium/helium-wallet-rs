@@ -1,10 +1,6 @@
 use crate::{
-    client::SolanaRpcClient,
-    error::Error,
-    keypair::Pubkey,
-    message, priority_fee,
-    solana_sdk::signer::Signer,
-    transaction, TransactionOpts,
+    client::SolanaRpcClient, error::Error, keypair::Pubkey, message, priority_fee,
+    solana_sdk::signer::Signer, transaction, TransactionOpts,
 };
 
 /// Builds a message that records an on-chain memo.

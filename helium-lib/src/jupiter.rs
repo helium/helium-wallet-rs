@@ -1,8 +1,4 @@
-use crate::{
-    client::SolanaRpcClient,
-    keypair::Pubkey,
-    transaction::VersionedTransaction,
-};
+use crate::{client::SolanaRpcClient, keypair::Pubkey, transaction::VersionedTransaction};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;

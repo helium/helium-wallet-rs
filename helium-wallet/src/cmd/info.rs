@@ -79,11 +79,7 @@ pub(crate) fn print_wallet(wallet: &Wallet) -> Result {
     print_json(&json)
 }
 
-fn print_ledger(
-    address: &Pubkey,
-    path: &ledger::DerivationPath,
-    serial: Option<&str>,
-) -> Result {
+fn print_ledger(address: &Pubkey, path: &ledger::DerivationPath, serial: Option<&str>) -> Result {
     let helium_address = to_helium_pubkey(address)?;
     let mut json = json!({
         "source": "ledger",

@@ -1,5 +1,5 @@
-use crate::cmd::*;
-use helium_lib::{dao::SubDao, token};
+use crate::cmd::{squads as cmd_squads, *};
+use helium_lib::{dao::SubDao, keypair::Pubkey, token};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Burn tokens
@@ -8,6 +8,12 @@ pub struct Cmd {
     subdao: SubDao,
     /// Amount to burn
     amount: f64,
+    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
+    #[arg(long)]
+    squads: Option<Pubkey>,
+    /// Memo recorded on the v4 proposal (`--squads` only).
+    #[arg(long)]
+    memo: Option<String>,
     /// Commit the burn
     #[command(flatten)]
     commit: CommitOpts,
@@ -21,6 +27,25 @@ impl Cmd {
         let txn_opts = self.commit.transaction_opts(&client);
 
         let token_amount = token::TokenAmount::from_f64(self.subdao.token(), self.amount);
+
+        if let Some(squads_target) = self.squads {
+            return cmd_squads::submit_proposal_with(
+                &client,
+                squads_target,
+                self.memo.clone(),
+                &keypair,
+                &self.commit,
+                &txn_opts,
+                |vault| async move {
+                    Ok(vec![token::burn_instruction(
+                        vault.as_pubkey(),
+                        &token_amount,
+                    )?])
+                },
+            )
+            .await;
+        }
+
         let (tx, _) = token::burn(&client, &token_amount, &keypair, &txn_opts).await?;
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }

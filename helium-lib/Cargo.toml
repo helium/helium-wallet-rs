@@ -54,6 +54,9 @@ helium-mnemonic = { path = "../helium-mnemonic", optional = true }
 bytemuck = "1"
 solana-transaction-utils = { version = ">= 0.4" }
 tuktuk-sdk = { git = "https://github.com/helium/tuktuk.git", branch = "main" }
+squads-multisig-program = { git = "https://github.com/Squads-Protocol/v4.git", branch = "main", default-features = false, features = ["no-entrypoint"] }
+dirs = "5"
 
 [dev-dependencies]
 rand = "0.8"
+tempfile = "3"

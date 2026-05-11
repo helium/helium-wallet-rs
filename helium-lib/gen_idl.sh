@@ -16,6 +16,7 @@ mobile_entity_manager,memMa1HG4odAFmUbGWfPwS1WWfK95k99F2YTkGvyxZr
 lazy_transactions,1atrmQs3eq1N2FEYWu6tyTXbCjP4uQwExpjtnhXtS8h
 treasury_management,treaf4wWBBty3fHdyBpo35Mz84M8k3heKXmjmi9vFt5
 hpl_crons,hcrLPFgFUY6sCUKzqLWxXx5bntDiDCrAZVcrXfx9AHu
+welcome_pack,we1cGnTxTkDP9Sk49dw1d3T7ik7V2NfnY4qDGCDHXfC
 EOF
 
 anchor idl fetch 1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w | \
@@ -35,3 +36,12 @@ anchor idl fetch BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY | \
   > /tmp/bubblegum.json && \
   anchor idl convert /tmp/bubblegum.json \
   > idls/bubblegum.json
+
+# Squads v3 (squads-mpl). Repo is archived and the crate pins solana 1.x, so
+# we rely on the on-chain IDL. v4 is a git dep — its IDL uses `SmallVec<L,T>`
+# which doesn't survive declare_program!.
+anchor idl fetch SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu | \
+  jq '.metadata.address = "SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu"' \
+  > /tmp/squads_mpl.json && \
+  anchor idl convert /tmp/squads_mpl.json \
+  > idls/squads_mpl.json

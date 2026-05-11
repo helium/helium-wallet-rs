@@ -1,0 +1,945 @@
+{
+  "address": "we1cGnTxTkDP9Sk49dw1d3T7ik7V2NfnY4qDGCDHXfC",
+  "metadata": {
+    "name": "welcome_pack",
+    "version": "0.0.3",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "claim_welcome_pack_v0",
+      "discriminator": [
+        193,
+        189,
+        189,
+        219,
+        97,
+        176,
+        82,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "claimer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rent_refund",
+          "writable": true
+        },
+        {
+          "name": "asset_return_address"
+        },
+        {
+          "name": "owner",
+          "relations": [
+            "welcome_pack"
+          ]
+        },
+        {
+          "name": "welcome_pack",
+          "writable": true
+        },
+        {
+          "name": "rewards_mint",
+          "relations": [
+            "welcome_pack"
+          ]
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "rewards_recipient",
+          "writable": true
+        },
+        {
+          "name": "token_account",
+          "writable": true
+        },
+        {
+          "name": "queue_authority"
+        },
+        {
+          "name": "task_queue",
+          "writable": true
+        },
+        {
+          "name": "task_queue_authority"
+        },
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "name": "pre_task",
+          "writable": true
+        },
+        {
+          "name": "tree_authority"
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+        },
+        {
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "mini_fanout_program",
+          "address": "mfanLprNnaiP4RX9Zz1BMcDosYHCqnG24H1fMEbi9Gn"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
+        },
+        {
+          "name": "tuktuk_program",
+          "address": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA"
+        },
+        {
+          "name": "lazy_distributor_program",
+          "address": "1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "ClaimWelcomePackArgsV0"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "close_welcome_pack_v0",
+      "discriminator": [
+        220,
+        222,
+        184,
+        125,
+        100,
+        243,
+        243,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "welcome_pack",
+            "user_welcome_packs"
+          ]
+        },
+        {
+          "name": "welcome_pack",
+          "writable": true
+        },
+        {
+          "name": "user_welcome_packs"
+        },
+        {
+          "name": "rent_refund",
+          "writable": true
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "tree_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "merkle_tree"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                152,
+                139,
+                128,
+                235,
+                121,
+                53,
+                40,
+                105,
+                178,
+                36,
+                116,
+                95,
+                89,
+                221,
+                191,
+                138,
+                38,
+                88,
+                202,
+                19,
+                220,
+                104,
+                129,
+                33,
+                38,
+                53,
+                28,
+                174,
+                7,
+                193,
+                165,
+                165
+              ]
+            }
+          }
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+        },
+        {
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "lazy_distributor_program",
+          "address": "1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CloseWelcomePackArgsV0"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_welcome_pack_v0",
+      "discriminator": [
+        30,
+        11,
+        218,
+        24,
+        48,
+        198,
+        32,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rent_refund"
+        },
+        {
+          "name": "lazy_distributor",
+          "relations": [
+            "recipient"
+          ]
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "asset_return_address"
+        },
+        {
+          "name": "user_welcome_packs",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  119,
+                  101,
+                  108,
+                  99,
+                  111,
+                  109,
+                  101,
+                  95,
+                  112,
+                  97,
+                  99,
+                  107,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "welcome_pack",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  101,
+                  108,
+                  99,
+                  111,
+                  109,
+                  101,
+                  95,
+                  112,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "account",
+                "path": "user_welcome_packs.next_id",
+                "account": "UserWelcomePacksV0"
+              }
+            ]
+          }
+        },
+        {
+          "name": "tree_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "merkle_tree"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                152,
+                139,
+                128,
+                235,
+                121,
+                53,
+                40,
+                105,
+                178,
+                36,
+                116,
+                95,
+                89,
+                221,
+                191,
+                138,
+                38,
+                88,
+                202,
+                19,
+                220,
+                104,
+                129,
+                33,
+                38,
+                53,
+                28,
+                174,
+                7,
+                193,
+                165,
+                165
+              ]
+            }
+          }
+        },
+        {
+          "name": "leaf_owner",
+          "signer": true
+        },
+        {
+          "name": "merkle_tree",
+          "writable": true
+        },
+        {
+          "name": "log_wrapper",
+          "address": "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+        },
+        {
+          "name": "compression_program",
+          "address": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "bubblegum_program",
+          "address": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"
+        },
+        {
+          "name": "lazy_distributor_program",
+          "address": "1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeWelcomePackArgsV0"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "LazyDistributorV0",
+      "discriminator": [
+        135,
+        186,
+        185,
+        252,
+        10,
+        77,
+        99,
+        167
+      ]
+    },
+    {
+      "name": "RecipientV0",
+      "discriminator": [
+        174,
+        14,
+        199,
+        217,
+        206,
+        108,
+        154,
+        50
+      ]
+    },
+    {
+      "name": "UserWelcomePacksV0",
+      "discriminator": [
+        207,
+        221,
+        75,
+        20,
+        104,
+        235,
+        208,
+        172
+      ]
+    },
+    {
+      "name": "WelcomePackV0",
+      "discriminator": [
+        240,
+        173,
+        154,
+        20,
+        194,
+        189,
+        93,
+        7
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidAssetReturnAddress",
+      "msg": "Invalid asset return address"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidAsset",
+      "msg": "Invalid asset"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidRewardsRecipient",
+      "msg": "Invalid rewards recipient"
+    },
+    {
+      "code": 6003,
+      "name": "ClaimApprovalExpired",
+      "msg": "Claim approval expired"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidClaimApprovalSignature",
+      "msg": "Invalid claim approval signature"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidRentRefund",
+      "msg": "Invalid rent refund"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidRewardsSplit",
+      "msg": "Invalid rewards split"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidSchedule",
+      "msg": "Invalid schedule"
+    }
+  ],
+  "types": [
+    {
+      "name": "ClaimWelcomePackArgsV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "data_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "approval_expiration_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "claim_signature",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "task_id",
+            "type": "u16"
+          },
+          {
+            "name": "pre_task_id",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CloseWelcomePackArgsV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "data_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeWelcomePackArgsV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "sol_amount",
+            "type": "u64"
+          },
+          {
+            "name": "rewards_split",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "MiniFanoutShareArgV0"
+                }
+              }
+            }
+          },
+          {
+            "name": "rewards_schedule",
+            "type": "string"
+          },
+          {
+            "name": "data_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LazyDistributorV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u16"
+          },
+          {
+            "name": "rewards_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "rewards_escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracles",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "OracleConfigV0"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "approver",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MiniFanoutShareArgV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "share",
+            "type": {
+              "defined": {
+                "name": "Share"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "OracleConfigV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oracle",
+            "type": "pubkey"
+          },
+          {
+            "name": "url",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RecipientV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lazy_distributor",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_rewards",
+            "type": "u64"
+          },
+          {
+            "name": "current_config_version",
+            "type": "u16"
+          },
+          {
+            "name": "current_rewards",
+            "type": {
+              "vec": {
+                "option": "u64"
+              }
+            }
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "reserved",
+            "type": "u64"
+          },
+          {
+            "name": "destination",
+            "docs": [
+              "Pubkey::Default if not being used."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Share",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Share",
+            "fields": [
+              {
+                "name": "amount",
+                "type": "u32"
+              }
+            ]
+          },
+          {
+            "name": "Fixed",
+            "fields": [
+              {
+                "name": "amount",
+                "type": "u64"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserWelcomePacksV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "next_id",
+            "type": "u32"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "next_unique_id",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WelcomePackV0",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u32"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset",
+            "type": "pubkey"
+          },
+          {
+            "name": "lazy_distributor",
+            "type": "pubkey"
+          },
+          {
+            "name": "rewards_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "rent_refund",
+            "type": "pubkey"
+          },
+          {
+            "name": "sol_amount",
+            "type": "u64"
+          },
+          {
+            "name": "rewards_split",
+            "type": {
+              "vec": {
+                "defined": {
+                  "name": "MiniFanoutShareArgV0"
+                }
+              }
+            }
+          },
+          {
+            "name": "rewards_schedule",
+            "type": "string"
+          },
+          {
+            "name": "asset_return_address",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump_seed",
+            "type": "u8"
+          },
+          {
+            "name": "unique_id",
+            "type": "u32"
+          }
+        ]
+      }
+    }
+  ]
+}

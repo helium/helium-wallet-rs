@@ -49,6 +49,8 @@ pub mod queue;
 pub mod reward;
 /// Cron-based scheduled reward claiming.
 pub mod schedule;
+/// Squads multisig integration (v3 + v4): proposal building, voting, decoding.
+pub mod squads;
 /// Token operations: transfers, burns, balances, and prices.
 pub mod token;
 /// Transaction building, signing, and confirmation.

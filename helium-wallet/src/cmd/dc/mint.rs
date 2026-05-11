@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::cmd::{squads as cmd_squads, *};
 use helium_lib::{
     dc,
     keypair::{Pubkey, Signer},
@@ -24,6 +24,15 @@ pub struct Cmd {
     #[arg(long, conflicts_with = "hnt")]
     dc: Option<u64>,
 
+    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
+    /// HNT is sourced from the resolved vault; the wallet only signs as
+    /// proposer.
+    #[arg(long)]
+    squads: Option<Pubkey>,
+    /// Memo recorded on the v4 proposal (`--squads` only).
+    #[arg(long)]
+    memo: Option<String>,
+
     /// Commit the burn
     #[command(flatten)]
     commit: CommitOpts,
@@ -35,7 +44,6 @@ impl Cmd {
         let keypair = opts.load_keypair(password.as_bytes())?;
 
         let client = opts.client()?;
-        let payee = self.payee.unwrap_or(keypair.pubkey());
         let amount = match (self.hnt, self.dc) {
             (Some(hnt), None) => TokenAmount::from_f64(Token::Hnt, hnt),
             (None, Some(dc)) => TokenAmount::from_u64(Token::Dc, dc),
@@ -43,6 +51,30 @@ impl Cmd {
         };
         let transaction_opts = self.commit.transaction_opts(&client);
 
+        if let Some(squads_target) = self.squads {
+            let client_ref = &client;
+            let payee_override = self.payee;
+            return cmd_squads::submit_proposal_with(
+                client_ref,
+                squads_target,
+                self.memo.clone(),
+                &keypair,
+                &self.commit,
+                &transaction_opts,
+                |vault| async move {
+                    // Default payee is the vault when --squads is set;
+                    // the resulting DC lands in the vault's DC ATA
+                    // unless --payee overrides.
+                    let payee = payee_override.unwrap_or_else(|| vault.into_pubkey());
+                    Ok(vec![
+                        dc::mint_instruction(client_ref, amount, &payee, vault.as_pubkey()).await?,
+                    ])
+                },
+            )
+            .await;
+        }
+
+        let payee = self.payee.unwrap_or(keypair.pubkey());
         let (tx, _) = dc::mint(&client, amount, &payee, &keypair, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }

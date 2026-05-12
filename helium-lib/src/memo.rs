@@ -1,10 +1,6 @@
 use crate::{
-    client::SolanaRpcClient,
-    error::Error,
-    keypair::{Keypair, Pubkey},
-    message, priority_fee,
-    solana_sdk::signer::Signer,
-    transaction, TransactionOpts,
+    client::SolanaRpcClient, error::Error, keypair::Pubkey, message, priority_fee,
+    solana_sdk::signer::Signer, transaction, TransactionOpts,
 };
 
 /// Builds a message that records an on-chain memo.
@@ -33,7 +29,7 @@ pub async fn memo_message<C: AsRef<SolanaRpcClient>>(
 pub async fn memo<C: AsRef<SolanaRpcClient>>(
     client: &C,
     data: &str,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(transaction::VersionedTransaction, u64), Error> {
     let (msg, block_height) = memo_message(client, data, &keypair.pubkey(), opts).await?;

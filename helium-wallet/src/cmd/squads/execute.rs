@@ -22,11 +22,10 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
         let txn_opts = self.commit.transaction_opts(&client);
-        let member = keypair.pubkey();
+        let member = signer.pubkey();
 
         let resolved = squads::resolve_proposal_target(&client, &self.target, self.index).await?;
         // Pre-flight: v4 requires the Execute permission; v3 has no
@@ -57,7 +56,7 @@ impl Cmd {
         let ixs = &[ix];
         let (msg, _block_height) =
             message::mk_message(&client, ixs, &txn_opts.lut_addresses, &member).await?;
-        let tx = mk_transaction(msg, &[&*keypair])?;
+        let tx = mk_transaction(msg, &[&*signer])?;
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

@@ -1,7 +1,6 @@
 use crate::{
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
     error::Error,
-    keypair::Keypair,
     message, priority_fee,
     programs::hpl_crons,
     solana_sdk::{instruction::Instruction, pubkey},
@@ -73,7 +72,7 @@ pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnch
     client: &C,
     task_queue_key: &Pubkey,
     wallet: &Pubkey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let task_queue = client.anchor_account(task_queue_key).await?;

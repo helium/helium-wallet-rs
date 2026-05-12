@@ -14,12 +14,11 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
         let (tx, _) =
-            helium_lib::memo::memo(&client, &self.message, &keypair, &transaction_opts).await?;
+            helium_lib::memo::memo(&client, &self.message, &*signer, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

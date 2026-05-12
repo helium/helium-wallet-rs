@@ -23,8 +23,7 @@ pub struct Cmd {
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
         if let Some(squads_target) = self.squads {
@@ -34,7 +33,7 @@ impl Cmd {
                 client_ref,
                 squads_target,
                 self.memo.clone(),
-                &keypair,
+                &*signer,
                 &self.commit,
                 &transaction_opts,
                 |vault| async move {
@@ -47,7 +46,7 @@ impl Cmd {
             .await;
         }
 
-        let (tx, _) = hotspot::burn(&client, &self.address, &keypair, &transaction_opts).await?;
+        let (tx, _) = hotspot::burn(&client, &self.address, &*signer, &transaction_opts).await?;
 
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }

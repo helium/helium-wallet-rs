@@ -22,8 +22,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
@@ -35,7 +34,7 @@ impl Cmd {
             self.token,
             token_amount,
             &self.entity_key,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?

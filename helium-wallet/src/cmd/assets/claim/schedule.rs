@@ -89,8 +89,7 @@ impl InitCmd {
             return print_json(&json!({ "result": "ok"}));
         }
 
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let fund = self
             .fund
             .map(|amount| token::TokenAmount::from_f64(token::Token::Sol, amount).amount);
@@ -100,7 +99,7 @@ impl InitCmd {
             0,
             (&self.schedule, SCHEDULE_NAME),
             fund,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;
@@ -123,14 +122,13 @@ impl RequeueCmd {
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let (tx, _) = schedule::requeue(
             &client,
             &queue::TASK_QUEUE_ID,
             0,
             SCHEDULE_NAME,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;
@@ -197,19 +195,18 @@ pub struct CloseCmd {
 
 impl CloseCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
-        let cron_job_key = schedule::cron_job_key_for_wallet(&keypair.pubkey(), 0);
+        let cron_job_key = schedule::cron_job_key_for_wallet(&signer.pubkey(), 0);
 
         let (tx, _) = schedule::close(
             &client,
             &cron_job_key,
             0,
             SCHEDULE_NAME,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;
@@ -255,12 +252,11 @@ impl ClaimWalletCmd {
             return print_json(&claim_info);
         }
 
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let transaction_opts = self.commit.transaction_opts(&client);
-        let cron_job_key = schedule::cron_job_key_for_wallet(&keypair.pubkey(), 0);
+        let cron_job_key = schedule::cron_job_key_for_wallet(&signer.pubkey(), 0);
         let (tx, _) =
-            schedule::claim_wallet(&client, &cron_job_key, &wallet, &keypair, &transaction_opts)
+            schedule::claim_wallet(&client, &cron_job_key, &wallet, &*signer, &transaction_opts)
                 .await?;
 
         print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
@@ -287,15 +283,14 @@ pub struct ClaimOneCmd {
 impl ClaimOneCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let transaction_opts = self.commit.transaction_opts(&client);
-        let cron_job_key = schedule::cron_job_key_for_wallet(&keypair.pubkey(), 0);
+        let cron_job_key = schedule::cron_job_key_for_wallet(&signer.pubkey(), 0);
         let (tx, _) = schedule::claim_asset(
             &client,
             &cron_job_key,
             &self.entity_key,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;

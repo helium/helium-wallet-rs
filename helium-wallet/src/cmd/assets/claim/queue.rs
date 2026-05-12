@@ -53,14 +53,13 @@ impl ClaimWalletCmd {
         let wallet = opts.maybe_wallet_key(self.wallet)?;
         let client = opts.client()?;
 
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
         let transaction_opts = self.commit.transaction_opts(&client);
         let (tx, _) = queue::claim_wallet(
             &client,
             &queue::TASK_QUEUE_ID,
             &wallet,
-            &keypair,
+            &*signer,
             &transaction_opts,
         )
         .await?;

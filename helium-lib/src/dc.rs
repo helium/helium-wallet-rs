@@ -7,7 +7,7 @@ use crate::{
     entity_key::AsEntityKey,
     error::{DecodeError, Error},
     helium_sub_daos,
-    keypair::{Keypair, Pubkey},
+    keypair::Pubkey,
     message, priority_fee,
     solana_sdk::{instruction::Instruction, signer::Signer},
     token::{Token, TokenAmount},
@@ -90,7 +90,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
     payee: &Pubkey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = mint_message(client, amount, payee, &keypair.pubkey(), opts).await?;
@@ -164,7 +164,7 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     subdao: SubDao,
     payer_key: &str,
     amount: u64,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) =
@@ -223,7 +223,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: u64,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (msg, block_height) = burn_message(client, amount, &keypair.pubkey(), opts).await?;
@@ -307,7 +307,7 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
 pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     amount: u64,
     router_key: &E,
     opts: &TransactionOpts,

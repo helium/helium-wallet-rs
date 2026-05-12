@@ -7,7 +7,7 @@ use crate::{
     entity_key::{self, AsEntityKey, EncodedEntityKey},
     error::{DecodeError, Error},
     helium_entity_manager,
-    keypair::{Keypair, Pubkey},
+    keypair::Pubkey,
     kta, lazy_distributor,
     message::{self, mk_message},
     priority_fee, rewards_oracle,
@@ -318,7 +318,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     token: ClaimableToken,
     amount: Option<u64>,
     encoded_entity_key: &entity_key::EncodedEntityKey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<Option<(VersionedTransaction, u64)>, Error> {
     let ticket = ClaimTicket::new(encoded_entity_key.to_owned(), amount)?;
@@ -939,7 +939,7 @@ pub mod recipient {
         client: &C,
         token: ClaimableToken,
         entity_key: &E,
-        keypair: &Keypair,
+        keypair: &dyn Signer,
         opts: &TransactionOpts,
     ) -> Result<(VersionedTransaction, u64), Error> {
         let (msg, block_height) =
@@ -1139,7 +1139,7 @@ pub mod recipient {
             token: ClaimableToken,
             entity_key: &E,
             destination: &Pubkey,
-            keypair: &Keypair,
+            keypair: &dyn Signer,
             opts: &TransactionOpts,
         ) -> Result<(VersionedTransaction, u64), Error> {
             let (msg, block_height) = update_message(

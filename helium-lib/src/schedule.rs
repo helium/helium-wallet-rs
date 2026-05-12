@@ -4,7 +4,6 @@ use crate::{
     dao::Dao,
     entity_key::EncodedEntityKey,
     error::Error,
-    keypair::Keypair,
     message, priority_fee,
     programs::hpl_crons::{self, accounts::CronJobV0, types::RemoveEntityFromCronArgsV0},
     queue,
@@ -103,7 +102,7 @@ pub async fn init<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccoun
     cron_id: u32,
     (schedule, name): (&str, &str),
     fund: Option<u64>,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let task_queue = client.anchor_account(task_queue_key).await?;
@@ -202,7 +201,7 @@ pub async fn requeue<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     task_queue_key: &Pubkey,
     cron_id: u32,
     name: &str,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let task_queue = client.anchor_account(task_queue_key).await?;
@@ -313,7 +312,7 @@ pub async fn close<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     cron_job_key: &Pubkey,
     cron_id: u32,
     name: &str,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job: CronJobV0 = client.anchor_account(cron_job_key).await?;
@@ -407,7 +406,7 @@ pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnch
     client: &C,
     cron_job_key: &Pubkey,
     wallet: &Pubkey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job = client.anchor_account(cron_job_key).await?;
@@ -476,7 +475,7 @@ pub async fn claim_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAncho
     client: &C,
     cron_job_key: &Pubkey,
     encoded_entity_key: &EncodedEntityKey,
-    keypair: &Keypair,
+    keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job = client.anchor_account(cron_job_key).await?;

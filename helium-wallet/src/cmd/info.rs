@@ -1,8 +1,9 @@
 use crate::{
-    cmd::{print_json, Opts},
+    cmd::{print_json, Opts, WalletSource},
     result::{Error, Result},
     wallet::Wallet,
 };
+use helium_crypto::ledger;
 use helium_lib::keypair::{to_helium_pubkey, to_pubkey, Pubkey};
 use qr2term::print_qr;
 use serde_json::json;
@@ -23,13 +24,24 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         if let Some(address) = &self.address {
             let pubkey = parse_address(address)?;
-            print_address(&pubkey)
-        } else {
-            let wallet = opts.load_wallet()?;
-            if self.qr {
-                print_qr(wallet.public_key.to_string()).map_err(Error::from)
-            } else {
-                print_wallet(&wallet)
+            return print_address(&pubkey);
+        }
+        match opts.sources().first() {
+            Some(WalletSource::Ledger { path, serial, .. }) => {
+                let pubkey = opts.load_pubkey()?;
+                if self.qr {
+                    print_qr(pubkey.to_string()).map_err(Error::from)
+                } else {
+                    print_ledger(&pubkey, path, serial.as_deref())
+                }
+            }
+            _ => {
+                let wallet = opts.load_wallet()?;
+                if self.qr {
+                    print_qr(wallet.public_key.to_string()).map_err(Error::from)
+                } else {
+                    print_wallet(&wallet)
+                }
             }
         }
     }
@@ -64,5 +76,21 @@ pub(crate) fn print_wallet(wallet: &Wallet) -> Result {
             "helium": helium_address,
         },
     });
+    print_json(&json)
+}
+
+fn print_ledger(address: &Pubkey, path: &ledger::DerivationPath, serial: Option<&str>) -> Result {
+    let helium_address = to_helium_pubkey(address)?;
+    let mut json = json!({
+        "source": "ledger",
+        "path": path.to_string(),
+        "address": {
+            "solana": address.to_string(),
+            "helium": helium_address.to_string(),
+        },
+    });
+    if let Some(serial) = serial {
+        json["serial"] = json!(serial);
+    }
     print_json(&json)
 }

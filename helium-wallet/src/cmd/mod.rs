@@ -5,13 +5,14 @@ use crate::{
 use helium_lib::{
     b64,
     client::{self, SolanaRpcClient},
-    keypair::{Keypair, Pubkey},
+    keypair::{to_pubkey, Keypair, Pubkey, Signer},
     message, priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
     },
-    solana_sdk::transaction::VersionedTransaction,
+    solana_sdk::{commitment_config::CommitmentConfig, transaction::VersionedTransaction},
+    transaction::{self as lib_transaction, SignatureStatus},
     TransactionOpts,
 };
 use serde_json::json;
@@ -20,6 +21,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 pub mod assets;
@@ -30,26 +32,31 @@ pub mod dc;
 pub mod export;
 pub mod hotspots;
 pub mod info;
+pub mod ledger;
 pub mod memo;
 pub mod price;
 pub mod router;
 pub mod sign;
+pub mod source;
 pub mod squads;
 pub mod swap;
 pub mod transfer;
 pub mod upgrade;
 
+pub use source::WalletSource;
+
 /// Common options for most wallet commands
 #[derive(Debug, clap::Args, Clone)]
 pub struct Opts {
-    /// File(s) to use
+    /// Wallet source(s) to use. Either a path to an encrypted key file, or a
+    /// Ledger device URL (`usb://ledger?key=<account>/<change>`).
     #[arg(
         short = 'f',
         long = "file",
         number_of_values(1),
         default_value = "wallet.key"
     )]
-    files: Vec<PathBuf>,
+    files: Vec<WalletSource>,
 
     /// Solana RPC URL to use.
     #[arg(long, default_value = "m")]
@@ -57,27 +64,54 @@ pub struct Opts {
 }
 
 impl Opts {
+    pub fn sources(&self) -> &[WalletSource] {
+        &self.files
+    }
+
+    /// Resolve the wallet's Solana public key, opening a Ledger if the source
+    /// requires it. Does not prompt for a password.
+    pub fn load_pubkey(&self) -> Result<Pubkey> {
+        match self.files.first() {
+            None => bail!("at least one wallet source expected"),
+            Some(WalletSource::Ledger { path, serial, .. }) => {
+                if self.files.len() > 1 {
+                    bail!("a Ledger source cannot be combined with other wallets");
+                }
+                let kp = helium_crypto::ledger::Keypair::from_derivation_path(
+                    helium_crypto::Network::MainNet,
+                    path.clone(),
+                    serial.as_deref(),
+                )?;
+                to_pubkey(&kp.public_key).map_err(Error::from)
+            }
+            Some(WalletSource::File(_)) => Ok(self.load_wallet()?.public_key),
+        }
+    }
+
     pub fn maybe_wallet_key(&self, wallet: Option<Pubkey>) -> Result<Pubkey> {
-        let pubkey = if let Some(pubkey) = wallet {
-            pubkey
-        } else {
-            self.load_wallet()?.public_key
-        };
-        Ok(pubkey)
+        match wallet {
+            Some(pubkey) => Ok(pubkey),
+            None => self.load_pubkey(),
+        }
     }
 
     pub fn load_wallet(&self) -> Result<Wallet> {
-        let mut files_iter = self.files.iter();
+        let mut files_iter = self.files.iter().map(|s| match s {
+            WalletSource::File(path) => Ok(path),
+            WalletSource::Ledger { .. } => Err(anyhow!(
+                "this command does not yet support Ledger sources; use a key file"
+            )),
+        });
         let mut first_wallet = match files_iter.next() {
             Some(path) => {
-                let mut reader = fs::File::open(path)?;
+                let mut reader = fs::File::open(path?)?;
                 Wallet::read(&mut reader)?
             }
             None => bail!("At least one wallet file expected"),
         };
 
         for path in files_iter {
-            let mut reader = fs::File::open(path)?;
+            let mut reader = fs::File::open(path?)?;
             let w = Wallet::read(&mut reader)?;
             first_wallet.absorb_shard(&w)?;
         }
@@ -90,9 +124,48 @@ impl Opts {
         wallet.decrypt(password)
     }
 
+    /// Resolve the wallet to a Solana SDK signer. For File sources this
+    /// prompts for a password and decrypts the keyfile; for Ledger sources
+    /// it opens the device (no password). The returned signer can be passed
+    /// to any helium-lib function expecting `&dyn Signer`.
+    pub fn load_signer(&self) -> Result<Arc<dyn Signer + Send + Sync>> {
+        match self.files.first() {
+            None => bail!("at least one wallet source expected"),
+            Some(WalletSource::Ledger { path, serial, .. }) => {
+                if self.files.len() > 1 {
+                    bail!("a Ledger source cannot be combined with other wallets");
+                }
+                let kp = helium_crypto::ledger::Keypair::from_derivation_path(
+                    helium_crypto::Network::MainNet,
+                    path.clone(),
+                    serial.as_deref(),
+                )?
+                .with_blind_sign_hook(print_blind_sign_hash);
+                Ok(Arc::new(kp))
+            }
+            Some(WalletSource::File(_)) => {
+                let password = get_wallet_password(false)?;
+                Ok(self.load_keypair(password.as_bytes())?)
+            }
+        }
+    }
+
     pub fn client(&self) -> Result<client::Client> {
         Ok(client::Client::try_from(self.url.as_str())?)
     }
+}
+
+/// Blind-sign hook installed on every Ledger keypair we hand out. Fires
+/// just before the device receives a SIGN_MESSAGE APDU that's going to
+/// blind-sign (any program outside the Solana app's clear-sign whitelist).
+/// Prints the SHA-256 the device will display in base58 to stderr so the
+/// user can compare. helium-crypto no longer prints this itself; it's our
+/// job to surface for any caller that wants the UX.
+fn print_blind_sign_hash(hash: &[u8; 32]) {
+    eprintln!(
+        "→ Ledger blind-sign — verify hash on device: {}",
+        bs58::encode(hash).into_string()
+    );
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -109,6 +182,13 @@ pub struct CommitOpts {
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
+    /// Seconds to wait for the submitted transaction to confirm. The wallet
+    /// returns success only when the signature reaches `confirmed`
+    /// commitment. Bump this if you're signing on a slow device (e.g.
+    /// reading a blind-sign hash on a Ledger Flex) and the recent_blockhash
+    /// might expire before submission.
+    #[arg(long, default_value_t = 90)]
+    confirm_timeout_secs: u64,
 }
 
 impl CommitOpts {
@@ -152,12 +232,43 @@ impl CommitOpts {
                 skip_preflight: self.skip_preflight,
                 ..Default::default()
             };
-            client
+            let signature = client
                 .as_ref()
                 .send_transaction_with_config(&versioned_tx, config)
                 .await
-                .map(Into::into)
-                .map_err(context_err)
+                .map_err(context_err)?;
+
+            // Submission ≠ confirmation. Solana's send_transaction returns
+            // the locally-computed signature regardless of whether the tx
+            // ever lands — by far the most common Ledger failure mode is
+            // the recent_blockhash expiring while the user reads the device
+            // and approves. Poll for confirmation so a non-landing tx
+            // surfaces as an error instead of looking identical to a
+            // successful one. See `transaction::confirm_signatures` in
+            // helium-lib for the underlying primitive.
+            let timeout = Duration::from_secs(self.confirm_timeout_secs);
+            let poll_interval = Duration::from_secs(2);
+            let statuses = lib_transaction::confirm_signatures(
+                client,
+                &[signature],
+                CommitmentConfig::confirmed(),
+                timeout,
+                poll_interval,
+            )
+            .await?;
+
+            match statuses.get(&signature) {
+                Some(SignatureStatus::Confirmed) => Ok(CommitResponse::Signature(signature)),
+                Some(SignatureStatus::Failed(err)) => {
+                    Err(anyhow!("transaction failed on-chain: {err}"))
+                }
+                Some(SignatureStatus::NotFound) | None => Err(anyhow!(
+                    "transaction did not confirm within {}s — likely the blockhash \
+                     expired while signing on the device, or the RPC dropped it before \
+                     reaching leaders. Submitted signature: {signature}",
+                    timeout.as_secs(),
+                )),
+            }
         } else {
             client
                 .as_ref()

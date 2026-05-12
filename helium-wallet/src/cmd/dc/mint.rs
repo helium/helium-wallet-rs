@@ -40,8 +40,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let password = get_wallet_password(false)?;
-        let keypair = opts.load_keypair(password.as_bytes())?;
+        let signer = opts.load_signer()?;
 
         let client = opts.client()?;
         let amount = match (self.hnt, self.dc) {
@@ -58,7 +57,7 @@ impl Cmd {
                 client_ref,
                 squads_target,
                 self.memo.clone(),
-                &keypair,
+                &*signer,
                 &self.commit,
                 &transaction_opts,
                 |vault| async move {
@@ -74,8 +73,8 @@ impl Cmd {
             .await;
         }
 
-        let payee = self.payee.unwrap_or(keypair.pubkey());
-        let (tx, _) = dc::mint(&client, amount, &payee, &keypair, &transaction_opts).await?;
+        let payee = self.payee.unwrap_or(signer.pubkey());
+        let (tx, _) = dc::mint(&client, amount, &payee, &*signer, &transaction_opts).await?;
         print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

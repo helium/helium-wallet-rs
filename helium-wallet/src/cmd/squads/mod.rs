@@ -1,13 +1,12 @@
 use crate::cmd::*;
 use helium_lib::{
-    keypair::{Keypair, Pubkey, Signer},
+    keypair::{Pubkey, Signer},
     message, solana_sdk,
     squads::{self as lib_squads, MemberAction, MultisigKey, VaultKey},
     transaction::mk_transaction,
     TransactionOpts,
 };
 use solana_sdk::{instruction::Instruction, transaction::VersionedTransaction};
-use std::sync::Arc;
 
 mod execute;
 mod inspect;
@@ -44,7 +43,7 @@ pub(crate) async fn submit_proposal_with<C, F, Fut>(
     client: &C,
     squads_target: Pubkey,
     memo: Option<String>,
-    keypair: &Arc<Keypair>,
+    keypair: &dyn Signer,
     commit: &CommitOpts,
     txn_opts: &TransactionOpts,
     build_ixs: F,
@@ -96,7 +95,7 @@ pub(crate) async fn submit_config_proposal<C>(
     target: Pubkey,
     actions: Vec<helium_lib::squads::v4::ConfigActionInput>,
     memo: Option<String>,
-    keypair: &Arc<Keypair>,
+    keypair: &dyn Signer,
     commit: &CommitOpts,
     txn_opts: &TransactionOpts,
 ) -> Result
@@ -119,7 +118,7 @@ where
     .await?;
     let (msg, _block_height) =
         message::mk_message(client, &proposal_ixs, &txn_opts.lut_addresses, &proposer).await?;
-    let tx = mk_transaction(msg, &[&**keypair])?;
+    let tx = mk_transaction(msg, &[keypair])?;
     let response = commit.maybe_commit(tx, client).await?;
     let mut json = response.to_json();
     if let serde_json::Value::Object(map) = &mut json {
@@ -147,7 +146,7 @@ pub(crate) async fn wrap_as_proposal<C: AsRef<helium_lib::client::SolanaRpcClien
     vault_index: u8,
     inner_ixs: &[Instruction],
     memo: Option<String>,
-    keypair: &Arc<Keypair>,
+    keypair: &dyn Signer,
     txn_opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64)> {
     let proposer = keypair.pubkey();
@@ -163,7 +162,7 @@ pub(crate) async fn wrap_as_proposal<C: AsRef<helium_lib::client::SolanaRpcClien
     .await?;
     let (msg, _block_height) =
         message::mk_message(client, &proposal_ixs, &txn_opts.lut_addresses, &proposer).await?;
-    let tx = mk_transaction(msg, &[&**keypair])?;
+    let tx = mk_transaction(msg, &[keypair])?;
     Ok((tx, transaction_index))
 }
 

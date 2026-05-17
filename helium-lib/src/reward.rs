@@ -505,7 +505,7 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
             let mut oracle_reward = lifetime_rewards.remove(ticket.key_str())?.pop()?;
             let pending_reward = pending_map.get(ticket.key_str())?;
             let max_pending = pending_reward.reward.amount;
-            // ensyre that the requested claim amount is the lower of max_claim and the pending amount
+            // ensure that the requested claim amount is the lower of max_claim and the pending amount
             let to_claim = ticket
                 .amount
                 .unwrap_or(max_pending)

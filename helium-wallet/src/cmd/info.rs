@@ -66,17 +66,20 @@ fn print_address(address: &Pubkey) -> Result {
 }
 
 pub(crate) fn print_wallet(wallet: &Wallet) -> Result {
+    print_json(&wallet_json(wallet)?)
+}
+
+pub(crate) fn wallet_json(wallet: &Wallet) -> Result<serde_json::Value> {
     let helium_address = wallet.helium_address()?;
     let address = wallet.address()?;
-    let json = json!({
+    Ok(json!({
         "sharded": wallet.is_sharded(),
         "pwhash": wallet.pwhash().to_string(),
         "address": {
             "solana": address,
             "helium": helium_address,
         },
-    });
-    print_json(&json)
+    }))
 }
 
 fn print_ledger(address: &Pubkey, path: &ledger::DerivationPath, serial: Option<&str>) -> Result {

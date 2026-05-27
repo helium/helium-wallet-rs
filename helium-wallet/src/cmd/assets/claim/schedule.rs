@@ -86,7 +86,10 @@ impl InitCmd {
                     cronjob.name
                 );
             }
-            return print_json(&json!({ "result": "ok"}));
+            return print_json(&json!({
+                "result": "ok",
+                "committed": false,
+            }));
         }
 
         let signer = opts.load_signer()?;

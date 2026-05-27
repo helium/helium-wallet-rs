@@ -382,9 +382,13 @@ impl ToJson for CommitResponse {
         match self {
             Self::Signature(signature) => json!({
                 "result": "ok",
+                "committed": true,
                 "txid": signature.to_string(),
             }),
-            Self::None => json!({"result": "ok"}),
+            Self::None => json!({
+                "result": "ok",
+                "committed": false,
+            }),
         }
     }
 }
@@ -410,6 +414,7 @@ pub fn print_simulation_response(
     }
     print_json(&json!({
         "result": "ok",
+        "committed": false,
     }))
 }
 
@@ -419,4 +424,35 @@ pub fn phrase_to_words(phrase: &str) -> Vec<&str> {
 
 pub trait ToJson {
     fn to_json(&self) -> serde_json::Value;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use helium_lib::keypair::Signature;
+
+    #[test]
+    fn commit_response_signature_serializes_with_committed_true() {
+        let signature = Signature::from([7u8; 64]);
+        let value = CommitResponse::Signature(signature).to_json();
+        assert_eq!(value["result"], json!("ok"));
+        assert_eq!(value["committed"], json!(true));
+        assert_eq!(value["txid"], json!(signature.to_string()));
+    }
+
+    #[test]
+    fn commit_response_none_serializes_with_committed_false() {
+        let value = CommitResponse::None.to_json();
+        assert_eq!(value["result"], json!("ok"));
+        assert_eq!(value["committed"], json!(false));
+        assert!(value.get("txid").is_none());
+    }
+
+    #[test]
+    fn commit_response_error_keeps_existing_shape() {
+        let err: Result<CommitResponse> = Err(anyhow!("boom").into());
+        let value = err.to_json();
+        assert_eq!(value["result"], json!("error"));
+        assert!(value.get("committed").is_none());
+    }
 }

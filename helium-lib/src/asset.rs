@@ -19,7 +19,7 @@ use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{signature::NullSigner, signer::Signer};
-use std::{collections::HashMap, result::Result as StdResult, str::FromStr};
+use std::{collections::HashMap, result::Result as StdResult, str::FromStr, time::Duration};
 
 /// Fetches a compressed NFT asset for a given Helium entity key (e.g., hotspot public key).
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
@@ -31,6 +31,36 @@ where
 {
     let kta = kta::for_entity_key(entity_key).await?;
     for_kta(client, &kta).await
+}
+
+/// Polls for an entity's asset until it becomes visible to the DAS indexer or `timeout` elapses.
+///
+/// The DAS indexer can trail Solana confirmation by a few seconds after a
+/// `dataonly::issue` transaction commits, so an immediate read via `for_entity_key`
+/// (or anything that goes through it, like `dataonly::onboard_transaction`) bubbles
+/// up a transient `AccountNotFound`. This helper retries only `AccountNotFound` at
+/// `poll_interval` cadence; every other error passes through. Signature mirrors
+/// `transaction::confirm_signatures` so both poll helpers behave consistently.
+pub async fn wait_for_entity_key<E, C>(
+    client: &C,
+    entity_key: &E,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> Result<Asset, Error>
+where
+    E: AsEntityKey,
+    C: AsRef<DasClient>,
+{
+    use backon::{ConstantBuilder, Retryable};
+    let max_times = ((timeout.as_secs_f64() / poll_interval.as_secs_f64()).ceil() as usize).max(1);
+    let backoff = ConstantBuilder::default()
+        .with_delay(poll_interval)
+        .with_max_times(max_times);
+    (|| async { for_entity_key(client, entity_key).await })
+        .retry(backoff)
+        .sleep(futures_timer::Delay::new)
+        .when(|err: &Error| err.is_account_not_found())
+        .await
 }
 
 /// Fetches compressed NFT assets for multiple entity keys in batch.

@@ -2,7 +2,7 @@ use crate::{cmd::*, result::Context, txn_envelope::TxnEnvelope};
 use chrono::{DateTime, Utc};
 use helium_crypto::{KeyTag, PublicKey};
 use helium_lib::{
-    asset,
+    asset, client as lib_client,
     client::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
     dao::SubDao,
     hotspot::{self, cert, HotspotInfoUpdate},
@@ -10,7 +10,37 @@ use helium_lib::{
 use helium_proto::BlockchainTxnAddGatewayV1;
 use rand::rngs::OsRng;
 use serde::Serialize;
-use std::io::Write;
+use std::{io::Write, time::Duration};
+
+// After `issue` commits, the new asset takes a few RPC reads to become
+// visible to the next subprogram call (Solana confirmation propagation +
+// DAS indexer lag). Polling for the asset before invoking `onboard`
+// avoids the AccountNotFound error users see on the first 1-2 attempts
+// of `hotspots add iot --commit` against a brand-new gateway (#398).
+const ISSUED_ASSET_POLL_TIMEOUT: Duration = Duration::from_secs(60);
+const ISSUED_ASSET_POLL_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
+const ISSUED_ASSET_POLL_MAX_BACKOFF: Duration = Duration::from_secs(5);
+
+async fn wait_for_issued_asset(
+    client: &lib_client::Client,
+    gateway: &helium_crypto::PublicKey,
+) -> Result {
+    let deadline = std::time::Instant::now() + ISSUED_ASSET_POLL_TIMEOUT;
+    let mut backoff = ISSUED_ASSET_POLL_INITIAL_BACKOFF;
+    loop {
+        match asset::for_entity_key(client, gateway).await {
+            Ok(_) => return Ok(()),
+            Err(err) if err.is_account_not_found() => {
+                if std::time::Instant::now() >= deadline {
+                    return Err(err.into());
+                }
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(ISSUED_ASSET_POLL_MAX_BACKOFF);
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -117,6 +147,13 @@ async fn perform_add(
     } else {
         CommitResponse::None
     };
+    // The DAS indexer can lag the on-chain confirmation by a few seconds.
+    // If we just committed an issue tx, give the asset a chance to become
+    // visible before invoking onboard, which queries it through DAS and
+    // would otherwise bubble up a transient AccountNotFound (#398).
+    if matches!(issue_response, CommitResponse::Signature(_)) {
+        wait_for_issued_asset(&client, &gateway).await?;
+    }
     // Only assert the Hotspot if either (a) it has already been issued before this cli
     // was run or (b) `commit` is enabled which means the previous command should have created it.
     // Without this, the command will always fail for brand new hotspots when --commit is not

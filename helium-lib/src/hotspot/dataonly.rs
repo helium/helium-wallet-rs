@@ -204,19 +204,72 @@ pub async fn onboard_transaction<
     owner: &Pubkey,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
+    build_onboard_transaction(
+        client,
+        subdao,
+        hotspot_key,
+        (&asset, &asset_proof),
+        assertion,
+        owner,
+        opts,
+    )
+    .await
+}
+
+/// Builds an unsigned onboard transaction using a pre-fetched asset, skipping the asset re-fetch.
+///
+/// Use this when the caller already holds a fresh `Asset` for `hotspot_key` (e.g. just returned
+/// by [`asset::wait_for_entity_key`]) so onboard's DAS round-trip can be replaced with a
+/// proof-only fetch.
+pub async fn onboard_transaction_with_asset<
+    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
+>(
+    client: &C,
+    subdao: SubDao,
+    hotspot_key: &helium_crypto::PublicKey,
+    asset: &asset::Asset,
+    assertion: &HotspotInfoUpdate,
+    owner: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let asset_proof = asset::proof::get(client, &asset.id).await?;
+    build_onboard_transaction(
+        client,
+        subdao,
+        hotspot_key,
+        (asset, &asset_proof),
+        assertion,
+        owner,
+        opts,
+    )
+    .await
+}
+
+async fn build_onboard_transaction<
+    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
+>(
+    client: &C,
+    subdao: SubDao,
+    hotspot_key: &helium_crypto::PublicKey,
+    asset_and_proof: (&asset::Asset, &asset::AssetProof),
+    assertion: &HotspotInfoUpdate,
+    owner: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (asset, asset_proof) = asset_and_proof;
     let config_account = client
         .anchor_account::<helium_entity_manager::accounts::DataOnlyConfigV0>(
             &Dao::Hnt.dataonly_config_key(),
         )
         .await?;
-    let kta = kta::for_entity_key(hotspot_key).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
     let ix = onboard_instruction(
         subdao,
         hotspot_key,
         &config_account,
-        &asset,
-        &asset_proof,
+        asset,
+        asset_proof,
         assertion,
         owner,
     )?;
@@ -249,6 +302,33 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
         client,
         subdao,
         hotspot_key,
+        assertion,
+        &keypair.pubkey(),
+        opts,
+    )
+    .await?;
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
+    Ok((txn, block_height))
+}
+
+/// Signs and returns an onboard transaction using a pre-fetched asset; see
+/// [`onboard_transaction_with_asset`] for the rationale.
+pub async fn onboard_with_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+    client: &C,
+    subdao: SubDao,
+    hotspot_key: &helium_crypto::PublicKey,
+    asset: &asset::Asset,
+    assertion: &HotspotInfoUpdate,
+    keypair: &dyn Signer,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (mut txn, block_height) = onboard_transaction_with_asset(
+        client,
+        subdao,
+        hotspot_key,
+        asset,
         assertion,
         &keypair.pubkey(),
         opts,

@@ -412,10 +412,7 @@ pub fn print_simulation_response(
         let _ = print_json(&result);
         bail!("Transaction simulation failed");
     }
-    print_json(&json!({
-        "result": "ok",
-        "committed": false,
-    }))
+    print_json(&CommitResponse::None.to_json())
 }
 
 pub fn phrase_to_words(phrase: &str) -> Vec<&str> {

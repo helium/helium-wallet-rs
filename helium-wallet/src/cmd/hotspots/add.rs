@@ -2,7 +2,7 @@ use crate::{cmd::*, result::Context, txn_envelope::TxnEnvelope};
 use chrono::{DateTime, Utc};
 use helium_crypto::{KeyTag, PublicKey};
 use helium_lib::{
-    asset, client as lib_client,
+    asset,
     client::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
     dao::SubDao,
     hotspot::{self, cert, HotspotInfoUpdate},
@@ -12,35 +12,8 @@ use rand::rngs::OsRng;
 use serde::Serialize;
 use std::{io::Write, time::Duration};
 
-// After `issue` commits, the new asset takes a few RPC reads to become
-// visible to the next subprogram call (Solana confirmation propagation +
-// DAS indexer lag). Polling for the asset before invoking `onboard`
-// avoids the AccountNotFound error users see on the first 1-2 attempts
-// of `hotspots add iot --commit` against a brand-new gateway (#398).
-const ISSUED_ASSET_POLL_TIMEOUT: Duration = Duration::from_secs(60);
-const ISSUED_ASSET_POLL_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
-const ISSUED_ASSET_POLL_MAX_BACKOFF: Duration = Duration::from_secs(5);
-
-async fn wait_for_issued_asset(
-    client: &lib_client::Client,
-    gateway: &helium_crypto::PublicKey,
-) -> Result {
-    let deadline = std::time::Instant::now() + ISSUED_ASSET_POLL_TIMEOUT;
-    let mut backoff = ISSUED_ASSET_POLL_INITIAL_BACKOFF;
-    loop {
-        match asset::for_entity_key(client, gateway).await {
-            Ok(_) => return Ok(()),
-            Err(err) if err.is_account_not_found() => {
-                if std::time::Instant::now() >= deadline {
-                    return Err(err.into());
-                }
-                tokio::time::sleep(backoff).await;
-                backoff = (backoff * 2).min(ISSUED_ASSET_POLL_MAX_BACKOFF);
-            }
-            Err(err) => return Err(err.into()),
-        }
-    }
-}
+const ISSUED_ASSET_VISIBILITY_TIMEOUT: Duration = Duration::from_secs(60);
+const ISSUED_ASSET_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -130,7 +103,11 @@ async fn perform_add(
     let signer = opts.load_signer()?;
     let gateway = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
     let client = opts.client()?;
-    let hotspot_issued = asset::for_entity_key(&client, &gateway).await.is_ok();
+    // Capture the Asset on the precheck so we can hand it to onboard later and
+    // skip the duplicate DAS fetch (`onboard_transaction` would otherwise read
+    // it again as part of `for_kta_with_proof`).
+    let mut prefetched_asset = asset::for_entity_key(&client, &gateway).await.ok();
+    let hotspot_issued = prefetched_asset.is_some();
     let verifier_key = verifier.as_ref().unwrap_or(&opts.url);
     let verifier = match verifier_key.as_str() {
         "m" | "mainnet-beta" => VERIFIER_URL_MAINNET,
@@ -152,25 +129,35 @@ async fn perform_add(
     // visible before invoking onboard, which queries it through DAS and
     // would otherwise bubble up a transient AccountNotFound (#398).
     if matches!(issue_response, CommitResponse::Signature(_)) {
-        wait_for_issued_asset(&client, &gateway).await?;
+        prefetched_asset = Some(
+            asset::wait_for_entity_key(
+                &client,
+                &gateway,
+                ISSUED_ASSET_VISIBILITY_TIMEOUT,
+                ISSUED_ASSET_POLL_INTERVAL,
+            )
+            .await?,
+        );
     }
     // Only assert the Hotspot if either (a) it has already been issued before this cli
     // was run or (b) `commit` is enabled which means the previous command should have created it.
     // Without this, the command will always fail for brand new hotspots when --commit is not
     // enabled, as it cannot find the key_to_asset account or asset account.
-    let onboard_response = if hotspot_issued || commit.commit {
-        let (tx, _) = hotspot::dataonly::onboard(
-            &client,
-            subdao,
-            &gateway,
-            &update,
-            &*signer,
-            transaction_opts,
-        )
-        .await?;
-        commit.maybe_commit(tx, &client).await?
-    } else {
-        CommitResponse::None
+    let onboard_response = match prefetched_asset {
+        Some(asset) if hotspot_issued || commit.commit => {
+            let (tx, _) = hotspot::dataonly::onboard_with_asset(
+                &client,
+                subdao,
+                &gateway,
+                &asset,
+                &update,
+                &*signer,
+                transaction_opts,
+            )
+            .await?;
+            commit.maybe_commit(tx, &client).await?
+        }
+        _ => CommitResponse::None,
     };
     let json = json!({
         "issue": issue_response.to_json(),

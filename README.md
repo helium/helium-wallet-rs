@@ -380,6 +380,31 @@ helium-wallet memo <subcommand>
 helium-wallet router <subcommand>
 ```
 
+### `completion` -- Shell Tab-Completion
+
+Generate a completion script for the given shell. The supported shells are
+`bash`, `zsh`, `fish`, `powershell`, and `elvish`.
+
+```
+helium-wallet completion <SHELL>
+```
+
+Install it where your shell will pick it up. A few common one-liners:
+
+```bash
+# zsh — drop it into an fpath directory
+helium-wallet completion zsh > ~/.zfunc/_helium-wallet
+
+# bash
+helium-wallet completion bash | sudo tee /etc/bash_completion.d/helium-wallet
+
+# fish
+helium-wallet completion fish > ~/.config/fish/completions/helium-wallet.fish
+
+# Or eval at shell start (zsh shown):
+eval "$(helium-wallet completion zsh)"
+```
+
 ## Environment Variables
 
 ### Solana RPC

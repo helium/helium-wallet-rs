@@ -4,9 +4,8 @@ use crate::{
 };
 use helium_lib::{
     keypair::Pubkey,
-    squads::{self, v4::ConfigActionInput, MemberInfo, MemberPermissions, MultisigInfo},
+    squads::{self, v4::ConfigActionInput, MemberPermissions},
 };
-use serde::Serialize;
 
 /// Manage the member roster of a Squads multisig.
 #[derive(Debug, Clone, clap::Args)]
@@ -50,52 +49,9 @@ impl ListCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
         let info = squads::get_multisig_info(&client, &self.target).await?;
-        print_json(&NamedMultisigInfo::new(&info))
-    }
-}
-
-/// Display wrapper for `MultisigInfo` that annotates each member with
-/// their contact-book name when one is known. JSON shape matches the
-/// upstream `MultisigInfo` except for the per-member `name` field,
-/// which is omitted when no contact is found — existing consumers see
-/// no change.
-#[derive(Serialize)]
-struct NamedMultisigInfo<'a> {
-    address: &'a squads::MultisigKey,
-    version: &'a squads::Version,
-    threshold: u16,
-    transaction_index: u64,
-    members: Vec<NamedMember<'a>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    resolved_from_vault: Option<&'a squads::VaultKey>,
-}
-
-#[derive(Serialize)]
-struct NamedMember<'a> {
-    #[serde(flatten)]
-    inner: &'a MemberInfo,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<&'a str>,
-}
-
-impl<'a> NamedMultisigInfo<'a> {
-    fn new(info: &'a MultisigInfo) -> Self {
-        let book = contacts::cached();
-        Self {
-            address: &info.address,
-            version: &info.version,
-            threshold: info.threshold,
-            transaction_index: info.transaction_index,
-            members: info
-                .members
-                .iter()
-                .map(|m| NamedMember {
-                    inner: m,
-                    name: book.find_by_address(&m.key).map(|c| c.name.as_str()),
-                })
-                .collect(),
-            resolved_from_vault: info.resolved_from_vault.as_ref(),
-        }
+        let mut value = serde_json::to_value(&info)?;
+        contacts::enrich_pubkeys_in_place(&mut value);
+        print_json(&value)
     }
 }
 

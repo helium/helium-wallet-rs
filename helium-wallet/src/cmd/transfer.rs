@@ -1,5 +1,6 @@
 use crate::{
     cmd::{squads as cmd_squads, *},
+    contacts,
     result::Result,
 };
 use helium_lib::{
@@ -43,8 +44,8 @@ pub struct One {
     /// Accepts a multisig PDA or a vault PDA — when a vault is given the
     /// multisig is resolved through the local cache. The transfer's
     /// source becomes the vault's ATA (not the wallet's), and the wallet
-    /// just signs as proposer.
-    #[arg(long)]
+    /// just signs as proposer. Also accepts a contact name.
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     squads: Option<Pubkey>,
     /// Memo recorded on the v4 proposal (`--squads` only).
     #[arg(long)]
@@ -90,7 +91,7 @@ pub struct Multi {
     /// File to read multiple payments from.
     path: PathBuf,
     /// Submit as a Squads v4 proposal — see `transfer one --squads`.
-    #[arg(long)]
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     squads: Option<Pubkey>,
     /// Memo recorded on the v4 proposal (`--squads` only).
     #[arg(long)]
@@ -166,8 +167,10 @@ impl PayCmd {
 
 #[derive(Debug, Deserialize, clap::Args)]
 pub struct Payee {
-    /// Address to send the tokens to.
+    /// Address to send the tokens to. Accepts a base58 Solana pubkey or
+    /// a contact name from the address book.
     #[serde(with = "serde_pubkey")]
+    #[arg(value_parser = contacts::parse_address_or_name)]
     address: Pubkey,
     /// Amount of token to send
     amount: f64,

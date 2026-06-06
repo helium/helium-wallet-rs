@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::{cmd::*, contacts};
 use helium_lib::{
     keypair::{Pubkey, Signer},
     message, solana_sdk,
@@ -76,11 +76,29 @@ where
     let mut json = response.to_json();
     if let serde_json::Value::Object(map) = &mut json {
         map.insert("multisig".to_string(), multisig.to_string().into());
+        insert_contact_name(map, "multisig_name", multisig.as_pubkey());
         map.insert("vault".to_string(), vault.to_string().into());
+        insert_contact_name(map, "vault_name", vault.as_pubkey());
         map.insert("vault_index".to_string(), vault_index.into());
         map.insert("transaction_index".to_string(), transaction_index.into());
     }
     print_json(&json)
+}
+
+/// Augment a JSON object with a `<field>` entry holding the contact
+/// name registered for `addr`, when one exists. No-op otherwise — the
+/// caller's existing pubkey field carries the address either way.
+fn insert_contact_name(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    addr: &Pubkey,
+) {
+    if let Some(contact) = contacts::cached().find_by_address(addr) {
+        map.insert(
+            field.to_string(),
+            serde_json::Value::String(contact.name.clone()),
+        );
+    }
 }
 
 /// Sibling of `submit_proposal_with` for ConfigTransaction proposals
@@ -123,6 +141,7 @@ where
     let mut json = response.to_json();
     if let serde_json::Value::Object(map) = &mut json {
         map.insert("multisig".to_string(), multisig.to_string().into());
+        insert_contact_name(map, "multisig_name", multisig.as_pubkey());
         map.insert("transaction_index".to_string(), transaction_index.into());
     }
     print_json(&json)

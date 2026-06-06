@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::{cmd::*, contacts};
 use helium_lib::{
     entity_key,
     keypair::{Pubkey, Signer},
@@ -143,8 +143,9 @@ impl RequeueCmd {
 /// separate from the wallets for each of the jobs that run within the schedule.
 #[derive(Clone, Debug, clap::Args)]
 pub struct InfoCmd {
-    /// The wallet to look up claim information for
+    /// The wallet to look up claim information for. Accepts a contact name.
     /// Defaults to active wallet
+    #[arg(value_parser = contacts::parse_address_or_name)]
     pub wallet: Option<Pubkey>,
 }
 
@@ -228,8 +229,9 @@ impl CloseCmd {
 /// between 0.05 and 0.1 SOL, with the top end allowing for a lot of growth.
 #[derive(Clone, Debug, clap::Args)]
 pub struct ClaimWalletCmd {
-    /// The wallet to claim all hotspots for.
+    /// The wallet to claim all hotspots for. Accepts a contact name.
     /// Defaults to active wallet
+    #[arg(value_parser = contacts::parse_address_or_name)]
     pub wallet: Option<Pubkey>,
     /// Get the claim wallet balance
     #[arg(long)]

@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::{cmd::*, contacts};
 use helium_lib::{keypair::Pubkey, squads};
 
 /// Decode a Squads proposal (v3 or v4): status, votes, and the inner
@@ -11,6 +11,8 @@ use helium_lib::{keypair::Pubkey, squads};
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
     /// Multisig PDA, vault PDA, transaction PDA, or proposal PDA.
+    /// Also accepts a contact name.
+    #[arg(value_parser = contacts::parse_address_or_name)]
     target: Pubkey,
 
     /// Transaction index. Required when `target` is a multisig or vault;

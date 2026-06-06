@@ -2,6 +2,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod cmd;
+pub mod contacts;
 pub mod format;
 pub mod pwhash;
 pub mod read_write;

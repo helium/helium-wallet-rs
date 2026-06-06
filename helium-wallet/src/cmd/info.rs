@@ -1,5 +1,6 @@
 use crate::{
     cmd::{print_json, Opts, WalletSource},
+    contacts,
     result::{Error, Result},
     wallet::Wallet,
 };
@@ -48,20 +49,27 @@ impl Cmd {
 }
 
 fn parse_address(address: &str) -> Result<Pubkey> {
-    Pubkey::from_str(address).or_else(|_| {
-        let helium_pubkey = helium_crypto::PublicKey::from_str(address)?;
-        to_pubkey(&helium_pubkey).map_err(Error::from)
-    })
+    if let Ok(pk) = Pubkey::from_str(address) {
+        return Ok(pk);
+    }
+    if let Some(contact) = contacts::cached().find_by_name(address) {
+        return Ok(contact.address);
+    }
+    let helium_pubkey = helium_crypto::PublicKey::from_str(address)?;
+    to_pubkey(&helium_pubkey).map_err(Error::from)
 }
 
 fn print_address(address: &Pubkey) -> Result {
     let helium_address = to_helium_pubkey(address)?;
-    let json = json!({
+    let mut json = json!({
         "address": {
             "solana": address.to_string(),
             "helium": helium_address.to_string(),
         },
     });
+    if let Some(contact) = contacts::cached().find_by_address(address) {
+        json["name"] = json!(contact.name);
+    }
     print_json(&json)
 }
 

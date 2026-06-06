@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::{cmd::*, contacts};
 use chrono::{Duration, Utc};
 use helium_lib::{keypair::Pubkey, squads};
 
@@ -15,6 +15,8 @@ use helium_lib::{keypair::Pubkey, squads};
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
     /// Multisig, vault, or any transaction/proposal PDA in the multisig.
+    /// Also accepts a contact name.
+    #[arg(value_parser = contacts::parse_address_or_name)]
     target: Pubkey,
 
     /// Also include Draft proposals. Drafts are pre-activation

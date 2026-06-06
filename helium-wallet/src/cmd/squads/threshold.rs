@@ -1,4 +1,7 @@
-use crate::cmd::{squads as cmd_squads, *};
+use crate::{
+    cmd::{squads as cmd_squads, *},
+    contacts,
+};
 use helium_lib::{keypair::Pubkey, squads::v4::ConfigActionInput};
 
 /// Propose a new approval threshold for the multisig (v4 only). Once
@@ -8,6 +11,8 @@ use helium_lib::{keypair::Pubkey, squads::v4::ConfigActionInput};
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
     /// Multisig, vault, or any transaction/proposal PDA in the multisig.
+    /// Also accepts a contact name.
+    #[arg(value_parser = contacts::parse_address_or_name)]
     target: Pubkey,
 
     /// New approval threshold.

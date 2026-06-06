@@ -4,7 +4,7 @@ use crate::{
     result::Result,
 };
 use helium_lib::{
-    keypair::{serde_pubkey, Pubkey},
+    keypair::Pubkey,
     token::{self, Token, TokenAmount},
 };
 use serde::Deserialize;
@@ -168,8 +168,10 @@ impl PayCmd {
 #[derive(Debug, Deserialize, clap::Args)]
 pub struct Payee {
     /// Address to send the tokens to. Accepts a base58 Solana pubkey or
-    /// a contact name from the address book.
-    #[serde(with = "serde_pubkey")]
+    /// a contact name from the address book — works both on the
+    /// command line (`transfer one --payee alice`) and inside the
+    /// JSON file consumed by `transfer multi`.
+    #[serde(with = "contacts::serde_address_or_name")]
     #[arg(value_parser = contacts::parse_address_or_name)]
     address: Pubkey,
     /// Amount of token to send

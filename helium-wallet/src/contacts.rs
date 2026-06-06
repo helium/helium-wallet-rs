@@ -94,8 +94,17 @@ impl ContactBook {
         if name.chars().any(char::is_whitespace) {
             bail!("contact name '{name}' contains whitespace; names must be a single CLI argument");
         }
+        // Reject names that parse as a wallet address in any of the forms
+        // the CLI resolves. Otherwise a contact could shadow a real
+        // address — `info <name>` would return the contact instead of
+        // doing the Solana-or-helium → Pubkey conversion. The Solana
+        // case covers `transfer one`, `squads`, etc; the helium case
+        // covers `info`'s helium-base58 fallback path.
         if Pubkey::from_str(name).is_ok() {
             bail!("contact name '{name}' parses as a Solana address; pick a non-pubkey name");
+        }
+        if helium_crypto::PublicKey::from_str(name).is_ok() {
+            bail!("contact name '{name}' parses as a Helium pubkey; pick a non-pubkey name");
         }
         if self.find_by_name(name).is_some() {
             bail!("contact named '{name}' already exists");
@@ -115,14 +124,37 @@ impl ContactBook {
 }
 
 /// Process-wide cached read of the default book. Loads lazily on first
-/// use; a missing or malformed file degrades to an empty book so name
-/// resolution can never break commands that don't use the feature.
+/// use; a missing file degrades to an empty book so name resolution
+/// can never break commands that don't use the feature. A *malformed*
+/// file also degrades to empty, but emits a warning on stderr —
+/// otherwise a subsequent `contacts add` would atomically overwrite
+/// the broken (but recoverable) file with a fresh one containing only
+/// the new entry, destroying every other contact.
 pub fn cached() -> &'static ContactBook {
     static BOOK: OnceLock<ContactBook> = OnceLock::new();
     BOOK.get_or_init(|| {
-        ContactBook::default_path()
-            .and_then(|p| ContactBook::load(&p))
-            .unwrap_or_default()
+        let path = match ContactBook::default_path() {
+            Ok(p) => p,
+            Err(err) => {
+                eprintln!("warning: failed to resolve contacts file path: {err}");
+                return ContactBook::default();
+            }
+        };
+        match ContactBook::load(&path) {
+            Ok(book) => book,
+            Err(err) => {
+                eprintln!(
+                    "warning: failed to load contacts from {}: {err}",
+                    path.display()
+                );
+                eprintln!(
+                    "         continuing with an empty address book. \
+                     fix the file before running `contacts add` — \
+                     it will atomically overwrite the existing file."
+                );
+                ContactBook::default()
+            }
+        }
     })
 }
 
@@ -148,6 +180,29 @@ pub fn parse_address_or_name(input: &str) -> Result<Pubkey> {
     resolve_with(cached(), input)
 }
 
+/// Serde variant of `parse_address_or_name` for fields read from JSON
+/// input files (e.g. `transfer multi`'s payee list). Lets a contact
+/// name appear inside the JSON wherever a base58 pubkey is accepted,
+/// matching the CLI-arg behavior.
+pub mod serde_address_or_name {
+    use super::*;
+    use serde::de::{self, Deserialize};
+
+    pub fn serialize<S: serde::Serializer>(
+        value: &Pubkey,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serde_pubkey::serialize(value, serializer)
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Pubkey, D::Error> {
+        let input = String::deserialize(deserializer)?;
+        resolve_with(cached(), &input).map_err(de::Error::custom)
+    }
+}
+
 /// JSON keys that identify the *subject* of an object — the pubkey
 /// this object IS. A matching contact attaches as the sibling key
 /// `name`. Used by the JSON walker; see `enrich_pubkeys_in_place`.
@@ -158,7 +213,13 @@ const IDENTITY_KEYS: &[&str] = &["pubkey", "key", "address"];
 /// `<original>_name` (e.g. `multisig` → `multisig_name`). Kept
 /// narrow so unrelated string fields can't accidentally trigger a
 /// lookup.
-const RELATION_KEYS: &[&str] = &["multisig", "vault", "authority", "creator"];
+const RELATION_KEYS: &[&str] = &[
+    "multisig",
+    "vault",
+    "authority",
+    "creator",
+    "resolved_from_vault",
+];
 
 /// Walk `value` and annotate every recognized pubkey-bearing field
 /// with the contact name registered for it, when one exists. Two
@@ -175,13 +236,22 @@ pub fn enrich_pubkeys_in_place(value: &mut serde_json::Value) {
 fn enrich(value: &mut serde_json::Value, book: &ContactBook) {
     match value {
         serde_json::Value::Object(map) => {
+            // Relation pass: for each `<key>` in RELATION_KEYS, attach
+            // a `<key>_name` sibling only when the sibling isn't
+            // already set — symmetric with the identity-key guard
+            // below, so a caller pre-populating `vault_name` (say, to
+            // label a non-contact entity) isn't clobbered.
             let relation_inserts: Vec<(String, String)> = RELATION_KEYS
                 .iter()
                 .filter_map(|key| {
+                    let sibling = format!("{key}_name");
+                    if map.contains_key(&sibling) {
+                        return None;
+                    }
                     let addr = map.get(*key)?.as_str()?;
                     let pk = Pubkey::from_str(addr).ok()?;
                     let name = book.find_by_address(&pk)?.name.clone();
-                    Some((format!("{key}_name"), name))
+                    Some((sibling, name))
                 })
                 .collect();
             for (k, v) in relation_inserts {
@@ -277,6 +347,30 @@ mod tests {
     }
 
     #[test]
+    fn add_rejects_helium_pubkey_shaped_name() {
+        // info.rs's parse_address falls back to helium_crypto::PublicKey
+        // after the contact lookup. If a helium-shaped name were
+        // allowed, a contact could shadow the helium → solana
+        // conversion — same class of bug as the Solana case above.
+        // Round-trip a known Solana pubkey through the helium format
+        // to get a name string the helium parser accepts.
+        let helium = helium_lib::keypair::to_helium_pubkey(&pk(1))
+            .expect("convert test pubkey to helium format");
+        let helium_name = helium.to_string();
+        helium_crypto::PublicKey::from_str(&helium_name)
+            .expect("round-tripped string parses as helium pubkey");
+
+        let mut book = ContactBook::default();
+        let err = book
+            .add(Contact {
+                name: helium_name,
+                address: pk(2),
+            })
+            .expect_err("helium-pubkey-shaped name must fail");
+        assert!(err.to_string().contains("Helium pubkey"));
+    }
+
+    #[test]
     fn remove_returns_entry_and_errors_when_missing() {
         let mut book = ContactBook::default();
         book.add(Contact {
@@ -369,13 +463,6 @@ mod tests {
         assert!(msg.contains("nobody"));
     }
 
-    /// Walker tests use a private variant of `enrich_pubkeys_in_place`
-    /// that takes an explicit book — same path the public function
-    /// uses internally, just without the process-singleton dependency.
-    fn enrich_test(value: &mut serde_json::Value, book: &ContactBook) {
-        super::enrich(value, book);
-    }
-
     fn book_with(entries: &[(&str, Pubkey)]) -> ContactBook {
         let mut book = ContactBook::default();
         for (name, address) in entries {
@@ -394,7 +481,7 @@ mod tests {
         let cases = ["pubkey", "key", "address"];
         for field in cases {
             let mut value = serde_json::json!({ field: pk(1).to_string() });
-            enrich_test(&mut value, &book);
+            super::enrich(&mut value, &book);
             assert_eq!(value[field].as_str(), Some(pk(1).to_string().as_str()));
             assert_eq!(value["name"].as_str(), Some("alice"), "field = {field}");
         }
@@ -414,7 +501,7 @@ mod tests {
             "vault": pk(3).to_string(),
             "authority": pk(4).to_string(),
         });
-        enrich_test(&mut value, &book);
+        super::enrich(&mut value, &book);
         assert_eq!(value["multisig_name"].as_str(), Some("treasury"));
         assert_eq!(value["creator_name"].as_str(), Some("alice"));
         assert_eq!(value["vault_name"].as_str(), Some("vault-prod"));
@@ -435,7 +522,7 @@ mod tests {
                 }
             ]
         });
-        enrich_test(&mut value, &book);
+        super::enrich(&mut value, &book);
         let accounts = &value["instructions"][0]["accounts"];
         assert_eq!(accounts[0]["name"].as_str(), Some("alice"));
         assert_eq!(accounts[1]["name"].as_str(), Some("bob"));
@@ -453,7 +540,7 @@ mod tests {
             "pubkey": pk(99).to_string(),
         });
         let mut value = original.clone();
-        enrich_test(&mut value, &book);
+        super::enrich(&mut value, &book);
         assert_eq!(value, original, "unknown addresses must not be annotated");
     }
 
@@ -466,8 +553,42 @@ mod tests {
             "pubkey": pk(1).to_string(),
             "name": "HNT mint",
         });
-        enrich_test(&mut value, &book);
+        super::enrich(&mut value, &book);
         assert_eq!(value["name"].as_str(), Some("HNT mint"));
+    }
+
+    #[test]
+    fn walker_preserves_existing_relation_name_field() {
+        // Symmetric guard with the identity-key case above: a caller
+        // that pre-populated `multisig_name` (e.g. to label a non-
+        // contact entity with a specific reviewer-facing label) keeps
+        // it; the walker doesn't clobber.
+        let book = book_with(&[("treasury", pk(1))]);
+        let mut value = serde_json::json!({
+            "multisig": pk(1).to_string(),
+            "multisig_name": "operator-set-2025-q2",
+        });
+        super::enrich(&mut value, &book);
+        assert_eq!(
+            value["multisig_name"].as_str(),
+            Some("operator-set-2025-q2")
+        );
+    }
+
+    #[test]
+    fn walker_enriches_resolved_from_vault() {
+        // MultisigInfo carries `resolved_from_vault` when the input
+        // target was a vault PDA. It should be named in the same way
+        // `multisig` and `vault` are.
+        let book = book_with(&[("ops-vault", pk(1))]);
+        let mut value = serde_json::json!({
+            "resolved_from_vault": pk(1).to_string(),
+        });
+        super::enrich(&mut value, &book);
+        assert_eq!(
+            value["resolved_from_vault_name"].as_str(),
+            Some("ops-vault")
+        );
     }
 
     #[test]
@@ -479,7 +600,7 @@ mod tests {
         let mut value = serde_json::json!({
             "address": "123 Main St",
         });
-        enrich_test(&mut value, &book);
+        super::enrich(&mut value, &book);
         assert!(value.get("name").is_none());
     }
 }

@@ -49,11 +49,14 @@ impl Cmd {
 }
 
 fn parse_address(address: &str) -> Result<Pubkey> {
-    if let Ok(pk) = Pubkey::from_str(address) {
+    // Solana literal → contact-name lookup is the same precedence the
+    // global value parser pins. Falling back to helium-base58 is what
+    // this command adds on top, so `info` accepts the helium hotspot
+    // address format too. Keeping the contact step centralized means
+    // any future tweak (case-insensitive match, etc) applies here for
+    // free.
+    if let Ok(pk) = contacts::resolve_with(contacts::cached(), address) {
         return Ok(pk);
-    }
-    if let Some(contact) = contacts::cached().find_by_name(address) {
-        return Ok(contact.address);
     }
     let helium_pubkey = helium_crypto::PublicKey::from_str(address)?;
     to_pubkey(&helium_pubkey).map_err(Error::from)

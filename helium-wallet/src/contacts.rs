@@ -148,6 +148,70 @@ pub fn parse_address_or_name(input: &str) -> Result<Pubkey> {
     resolve_with(cached(), input)
 }
 
+/// JSON keys that identify the *subject* of an object — the pubkey
+/// this object IS. A matching contact attaches as the sibling key
+/// `name`. Used by the JSON walker; see `enrich_pubkeys_in_place`.
+const IDENTITY_KEYS: &[&str] = &["pubkey", "key", "address"];
+
+/// JSON keys that name a related entity — the pubkey this object
+/// HAS-A. A matching contact attaches as the sibling key
+/// `<original>_name` (e.g. `multisig` → `multisig_name`). Kept
+/// narrow so unrelated string fields can't accidentally trigger a
+/// lookup.
+const RELATION_KEYS: &[&str] = &["multisig", "vault", "authority", "creator"];
+
+/// Walk `value` and annotate every recognized pubkey-bearing field
+/// with the contact name registered for it, when one exists. Two
+/// patterns are recognized — see `IDENTITY_KEYS` / `RELATION_KEYS`.
+///
+/// Purely additive: an object with no matching contacts is unchanged.
+/// An object that already has a `name` field is never overwritten —
+/// callers can pre-populate names for entities outside the contacts
+/// book.
+pub fn enrich_pubkeys_in_place(value: &mut serde_json::Value) {
+    enrich(value, cached());
+}
+
+fn enrich(value: &mut serde_json::Value, book: &ContactBook) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let relation_inserts: Vec<(String, String)> = RELATION_KEYS
+                .iter()
+                .filter_map(|key| {
+                    let addr = map.get(*key)?.as_str()?;
+                    let pk = Pubkey::from_str(addr).ok()?;
+                    let name = book.find_by_address(&pk)?.name.clone();
+                    Some((format!("{key}_name"), name))
+                })
+                .collect();
+            for (k, v) in relation_inserts {
+                map.insert(k, serde_json::Value::String(v));
+            }
+
+            if !map.contains_key("name") {
+                let identity_name = IDENTITY_KEYS.iter().find_map(|key| {
+                    let addr = map.get(*key)?.as_str()?;
+                    let pk = Pubkey::from_str(addr).ok()?;
+                    book.find_by_address(&pk).map(|c| c.name.clone())
+                });
+                if let Some(name) = identity_name {
+                    map.insert("name".to_string(), serde_json::Value::String(name));
+                }
+            }
+
+            for v in map.values_mut() {
+                enrich(v, book);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                enrich(v, book);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,5 +367,119 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("not a known contact"));
         assert!(msg.contains("nobody"));
+    }
+
+    /// Walker tests use a private variant of `enrich_pubkeys_in_place`
+    /// that takes an explicit book — same path the public function
+    /// uses internally, just without the process-singleton dependency.
+    fn enrich_test(value: &mut serde_json::Value, book: &ContactBook) {
+        super::enrich(value, book);
+    }
+
+    fn book_with(entries: &[(&str, Pubkey)]) -> ContactBook {
+        let mut book = ContactBook::default();
+        for (name, address) in entries {
+            book.add(Contact {
+                name: (*name).to_string(),
+                address: *address,
+            })
+            .expect("add");
+        }
+        book
+    }
+
+    #[test]
+    fn walker_injects_name_next_to_identity_keys() {
+        let book = book_with(&[("alice", pk(1))]);
+        let cases = ["pubkey", "key", "address"];
+        for field in cases {
+            let mut value = serde_json::json!({ field: pk(1).to_string() });
+            enrich_test(&mut value, &book);
+            assert_eq!(value[field].as_str(), Some(pk(1).to_string().as_str()));
+            assert_eq!(value["name"].as_str(), Some("alice"), "field = {field}");
+        }
+    }
+
+    #[test]
+    fn walker_injects_suffixed_name_for_relation_keys() {
+        let book = book_with(&[
+            ("treasury", pk(1)),
+            ("alice", pk(2)),
+            ("vault-prod", pk(3)),
+            ("ops-vault", pk(4)),
+        ]);
+        let mut value = serde_json::json!({
+            "multisig": pk(1).to_string(),
+            "creator": pk(2).to_string(),
+            "vault": pk(3).to_string(),
+            "authority": pk(4).to_string(),
+        });
+        enrich_test(&mut value, &book);
+        assert_eq!(value["multisig_name"].as_str(), Some("treasury"));
+        assert_eq!(value["creator_name"].as_str(), Some("alice"));
+        assert_eq!(value["vault_name"].as_str(), Some("vault-prod"));
+        assert_eq!(value["authority_name"].as_str(), Some("ops-vault"));
+    }
+
+    #[test]
+    fn walker_recurses_into_arrays_and_nested_objects() {
+        let book = book_with(&[("alice", pk(1)), ("bob", pk(2))]);
+        let mut value = serde_json::json!({
+            "instructions": [
+                {
+                    "accounts": [
+                        { "pubkey": pk(1).to_string(), "writable": true },
+                        { "pubkey": pk(2).to_string(), "writable": false },
+                        { "pubkey": pk(3).to_string(), "writable": false },
+                    ]
+                }
+            ]
+        });
+        enrich_test(&mut value, &book);
+        let accounts = &value["instructions"][0]["accounts"];
+        assert_eq!(accounts[0]["name"].as_str(), Some("alice"));
+        assert_eq!(accounts[1]["name"].as_str(), Some("bob"));
+        assert!(
+            accounts[2].get("name").is_none(),
+            "unknown pubkey gets no name"
+        );
+    }
+
+    #[test]
+    fn walker_skips_unknown_addresses_silently() {
+        let book = book_with(&[("alice", pk(1))]);
+        let original = serde_json::json!({
+            "multisig": pk(99).to_string(),
+            "pubkey": pk(99).to_string(),
+        });
+        let mut value = original.clone();
+        enrich_test(&mut value, &book);
+        assert_eq!(value, original, "unknown addresses must not be annotated");
+    }
+
+    #[test]
+    fn walker_preserves_existing_name_field() {
+        let book = book_with(&[("alice", pk(1))]);
+        // Caller pre-populated `name` for a token / program / etc;
+        // the walker must not overwrite it with the contact name.
+        let mut value = serde_json::json!({
+            "pubkey": pk(1).to_string(),
+            "name": "HNT mint",
+        });
+        enrich_test(&mut value, &book);
+        assert_eq!(value["name"].as_str(), Some("HNT mint"));
+    }
+
+    #[test]
+    fn walker_ignores_non_pubkey_strings_in_known_keys() {
+        let book = book_with(&[("alice", pk(1))]);
+        // A field literally named "address" can hold a non-pubkey
+        // string (e.g. a hotspot's location string). The walker must
+        // not trip over it.
+        let mut value = serde_json::json!({
+            "address": "123 Main St",
+        });
+        enrich_test(&mut value, &book);
+        assert!(value.get("name").is_none());
     }
 }

@@ -26,6 +26,8 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
         let info = squads::inspect_target(&client, &self.target, self.index).await?;
-        print_json(&info)
+        let mut value = serde_json::to_value(&info)?;
+        contacts::enrich_pubkeys_in_place(&mut value);
+        print_json(&value)
     }
 }

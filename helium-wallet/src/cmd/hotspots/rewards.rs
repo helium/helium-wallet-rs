@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::{cmd::*, contacts};
 use client::DasClient;
 use helium_lib::{entity_key::EncodedEntityKey, hotspot, keypair::Pubkey, reward};
 
@@ -60,8 +60,8 @@ pub struct PendingCmd {
     token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
-    /// Wallet to look up hotspots for
-    #[arg(long)]
+    /// Wallet to look up hotspots for. Accepts a contact name.
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     owner: Option<Pubkey>,
 }
 
@@ -92,8 +92,8 @@ pub struct LifetimeCmd {
     token: reward::ClaimableToken,
     /// Hotspots to lookup
     hotspots: Option<Vec<helium_crypto::PublicKey>>,
-    /// Wallet to look up hotspots for
-    #[arg(long)]
+    /// Wallet to look up hotspots for. Accepts a contact name.
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     owner: Option<Pubkey>,
 }
 

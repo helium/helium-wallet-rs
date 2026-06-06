@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::{cmd::*, contacts};
 use helium_lib::{keypair::Pubkey, queue, token};
 
 #[derive(Debug, Clone, clap::Args)]
@@ -40,8 +40,9 @@ impl Command {
 /// between 0.05 and 0.1 SOL, with the top end allowing for a lot of growth.
 #[derive(Clone, Debug, clap::Args)]
 pub struct ClaimWalletCmd {
-    /// The wallet to claim all hotspots for.
+    /// The wallet to claim all hotspots for. Accepts a contact name.
     /// Defaults to active wallet
+    #[arg(value_parser = contacts::parse_address_or_name)]
     pub wallet: Option<Pubkey>,
     /// Commit the claim request transaction.
     #[command(flatten)]
@@ -73,8 +74,9 @@ impl ClaimWalletCmd {
 /// This includes the current balance of the claim wallet funding the claims
 #[derive(Clone, Debug, clap::Args)]
 pub struct InfoCmd {
-    /// The wallet to look up claim information for
+    /// The wallet to look up claim information for. Accepts a contact name.
     /// Defaults to active wallet
+    #[arg(value_parser = contacts::parse_address_or_name)]
     pub wallet: Option<Pubkey>,
 }
 

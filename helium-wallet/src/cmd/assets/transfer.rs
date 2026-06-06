@@ -1,4 +1,7 @@
-use crate::cmd::{squads as cmd_squads, *};
+use crate::{
+    cmd::{squads as cmd_squads, *},
+    contacts,
+};
 use helium_lib::{
     asset, entity_key,
     keypair::{Pubkey, Signer},
@@ -11,11 +14,12 @@ pub struct Cmd {
     #[clap(flatten)]
     pub entity_key: entity_key::EncodedEntityKey,
 
-    /// Solana address of Recipient of Hotspot
+    /// Recipient of the Hotspot — base58 Solana pubkey or contact name.
+    #[arg(value_parser = contacts::parse_address_or_name)]
     recipient: Pubkey,
     /// Submit as a Squads v4 proposal — see `transfer one --squads`.
     /// The asset's current owner must be the resolved vault.
-    #[arg(long)]
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     squads: Option<Pubkey>,
     /// Memo recorded on the v4 proposal (`--squads` only).
     #[arg(long)]

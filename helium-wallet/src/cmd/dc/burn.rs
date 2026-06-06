@@ -1,4 +1,7 @@
-use crate::cmd::{squads as cmd_squads, *};
+use crate::{
+    cmd::{squads as cmd_squads, *},
+    contacts,
+};
 use helium_lib::{dao, dc, keypair::Pubkey};
 
 #[derive(Debug, Clone, clap::Args)]
@@ -16,7 +19,7 @@ pub struct Cmd {
     /// Submit as a Squads v4 proposal — see `transfer one --squads`.
     /// Only supported for the non-delegated (no router) burn path; the
     /// DC is sourced from the resolved vault's DC ATA.
-    #[arg(long)]
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     squads: Option<Pubkey>,
     /// Memo recorded on the v4 proposal (`--squads` only).
     #[arg(long)]

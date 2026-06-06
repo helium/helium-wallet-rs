@@ -1,4 +1,4 @@
-use crate::cmd::*;
+use crate::{cmd::*, contacts};
 use helium_lib::{
     keypair::{Pubkey, Signer},
     message,
@@ -11,7 +11,9 @@ use helium_lib::{
 /// multisig (v3).
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
-    /// Multisig PDA, vault PDA, or transaction/proposal PDA.
+    /// Multisig PDA, vault PDA, or transaction/proposal PDA. Also
+    /// accepts a contact name.
+    #[arg(value_parser = contacts::parse_address_or_name)]
     target: Pubkey,
     /// Transaction index. Required if `target` is a multisig or vault.
     #[arg(long)]

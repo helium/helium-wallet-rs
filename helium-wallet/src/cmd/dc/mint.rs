@@ -1,4 +1,7 @@
-use crate::cmd::{squads as cmd_squads, *};
+use crate::{
+    cmd::{squads as cmd_squads, *},
+    contacts,
+};
 use helium_lib::{
     dc,
     keypair::{Pubkey, Signer},
@@ -12,8 +15,8 @@ use helium_lib::{
 /// can be specified.
 pub struct Cmd {
     /// Account address to send the resulting DC to. Defaults to the active
-    /// wallet.
-    #[arg(long)]
+    /// wallet. Accepts a contact name.
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     payee: Option<Pubkey>,
 
     /// Amount of HNT to convert to DC
@@ -27,7 +30,7 @@ pub struct Cmd {
     /// Submit as a Squads v4 proposal — see `transfer one --squads`.
     /// HNT is sourced from the resolved vault; the wallet only signs as
     /// proposer.
-    #[arg(long)]
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     squads: Option<Pubkey>,
     /// Memo recorded on the v4 proposal (`--squads` only).
     #[arg(long)]

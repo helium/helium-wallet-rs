@@ -1,4 +1,7 @@
-use crate::cmd::{squads as cmd_squads, *};
+use crate::{
+    cmd::{squads as cmd_squads, *},
+    contacts,
+};
 use helium_lib::{dao::SubDao, keypair::Pubkey, token};
 
 #[derive(Debug, Clone, clap::Args)]
@@ -9,7 +12,7 @@ pub struct Cmd {
     /// Amount to burn
     amount: f64,
     /// Submit as a Squads v4 proposal — see `transfer one --squads`.
-    #[arg(long)]
+    #[arg(long, value_parser = contacts::parse_address_or_name)]
     squads: Option<Pubkey>,
     /// Memo recorded on the v4 proposal (`--squads` only).
     #[arg(long)]

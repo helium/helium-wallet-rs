@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use helium_wallet::{
     cmd::{
-        assets, balance, burn, create, dc, export, hotspots, info, ledger, memo, price, router,
-        sign, squads, swap, transfer, upgrade, Opts,
+        assets, balance, burn, completion, create, dc, export, hotspots, info, ledger, memo, price,
+        router, sign, squads, swap, transfer, upgrade, Opts,
     },
     result::Result,
 };
@@ -46,6 +46,8 @@ pub enum Cmd {
     Memo(memo::Cmd),
     Assets(assets::Cmd),
     Ledger(ledger::Cmd),
+    /// Generate shell completion script for the given shell.
+    Completion(completion::Cmd),
 }
 
 #[allow(clippy::needless_return)]
@@ -58,6 +60,12 @@ async fn main() -> Result {
 
 impl Cli {
     async fn run(self) -> Result {
+        if let Cmd::Completion(cmd) = &self.cmd {
+            let mut cli_cmd = Cli::command();
+            let bin = cli_cmd.get_name().to_string();
+            clap_complete::generate(cmd.shell, &mut cli_cmd, bin, &mut std::io::stdout());
+            return Ok(());
+        }
         let client = self.opts.client()?;
         helium_lib::init(client.solana_client)?;
         match self.cmd {
@@ -78,6 +86,7 @@ impl Cli {
             Cmd::Memo(cmd) => cmd.run(self.opts).await,
             Cmd::Assets(cmd) => cmd.run(self.opts).await,
             Cmd::Ledger(cmd) => cmd.run(self.opts).await,
+            Cmd::Completion(_) => unreachable!("handled above"),
         }
     }
 }

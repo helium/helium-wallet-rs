@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 use helium_wallet::{
     cmd::{
         assets, balance, burn, completion, create, dc, export, hotspots, info, ledger, memo, price,
@@ -46,7 +46,6 @@ pub enum Cmd {
     Memo(memo::Cmd),
     Assets(assets::Cmd),
     Ledger(ledger::Cmd),
-    /// Generate shell completion script for the given shell.
     Completion(completion::Cmd),
 }
 
@@ -61,10 +60,7 @@ async fn main() -> Result {
 impl Cli {
     async fn run(self) -> Result {
         if let Cmd::Completion(cmd) = &self.cmd {
-            let mut cli_cmd = Cli::command();
-            let bin = cli_cmd.get_name().to_string();
-            clap_complete::generate(cmd.shell, &mut cli_cmd, bin, &mut std::io::stdout());
-            return Ok(());
+            return cmd.run::<Cli>();
         }
         let client = self.opts.client()?;
         helium_lib::init(client.solana_client)?;

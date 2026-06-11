@@ -25,7 +25,7 @@ impl Cmd {
         let client = opts.client()?;
         let txn_opts = self.commit.transaction_opts(&client);
 
-        let token_amount = token::TokenAmount::from_f64(self.subdao.token(), self.amount);
+        let token_amount = token::TokenAmount::from_f64(self.subdao.token(), self.amount)?;
 
         if let Some(squads_target) = self.squads {
             return cmd_squads::submit_proposal_with(

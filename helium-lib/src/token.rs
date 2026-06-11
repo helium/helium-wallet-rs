@@ -748,7 +748,7 @@ impl<'de> serde::Deserialize<'de> for TokenAmount {
                     let amount = amount_value
                         .as_f64()
                         .ok_or_else(|| de::Error::custom("expected float for decimal token"))?;
-                    TokenAmount::from_f64(token, amount)
+                    TokenAmount::from_f64(token, amount).map_err(de::Error::custom)?
                 };
 
                 Ok(token_amount)
@@ -770,11 +770,33 @@ impl Default for TokenAmount {
 }
 
 impl TokenAmount {
+    /// Largest integer an f64 represents exactly (2^53). Scaled amounts
+    /// past this would silently lose base units in the cast.
+    const MAX_F64_AMOUNT: f64 = (1u64 << f64::MANTISSA_DIGITS) as f64;
+
     /// Create a token amount from a human-readable decimal value (e.g. `1.5` HNT).
-    pub fn from_f64<T: Into<Token>>(token: T, amount: f64) -> Self {
+    ///
+    /// Rejects negative, NaN, and infinite values, and values whose
+    /// base-unit form exceeds f64's exact integer range, all of which
+    /// the previous unchecked cast silently turned into a different
+    /// on-chain amount.
+    pub fn from_f64<T: Into<Token>>(token: T, amount: f64) -> Result<Self, DecodeError> {
         let token = token.into();
-        let amount = (amount * 10_usize.pow(token.decimals().into()) as f64) as u64;
-        Self { token, amount }
+        if !amount.is_finite() || amount < 0.0 {
+            return Err(DecodeError::other(format!(
+                "invalid {token} amount: {amount}"
+            )));
+        }
+        let scaled = amount * 10_usize.pow(token.decimals().into()) as f64;
+        if scaled > Self::MAX_F64_AMOUNT {
+            return Err(DecodeError::other(format!(
+                "{token} amount {amount} is too large to represent exactly"
+            )));
+        }
+        Ok(Self {
+            token,
+            amount: scaled as u64,
+        })
     }
 
     /// Create a token amount from raw integer units (e.g. lamports, bones).
@@ -855,7 +877,7 @@ mod tests {
 
     #[test]
     fn test_token_amount_serde_roundtrip_with_decimals() {
-        let original = TokenAmount::from_f64(Token::Hnt, 1.5);
+        let original = TokenAmount::from_f64(Token::Hnt, 1.5).expect("hnt token amount");
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: TokenAmount = serde_json::from_str(&json).unwrap();
         assert_eq!(original, deserialized);
@@ -863,10 +885,24 @@ mod tests {
     }
 
     #[test]
+    fn test_token_amount_from_f64_rejects_invalid() {
+        for bad in [-1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                TokenAmount::from_f64(Token::Hnt, bad).is_err(),
+                "expected rejection of {bad}"
+            );
+        }
+        // 2^53 base units of HNT (8 decimals) is ~90M HNT; past that the
+        // f64 cast would silently lose base units.
+        assert!(TokenAmount::from_f64(Token::Hnt, 100_000_000.0).is_err());
+        assert!(TokenAmount::from_f64(Token::Hnt, 0.0).expect("zero").amount == 0);
+    }
+
+    #[test]
     fn test_token_balance_serialization() {
         let balance = TokenBalance {
             address: Pubkey::new_unique(),
-            amount: TokenAmount::from_f64(Token::Mobile, 10.5),
+            amount: TokenAmount::from_f64(Token::Mobile, 10.5).expect("mobile token amount"),
         };
         let json = serde_json::to_string(&balance).unwrap();
         assert!(json.contains("\"amount\":{\"token\":\"mobile\",\"amount\":10.5}"));

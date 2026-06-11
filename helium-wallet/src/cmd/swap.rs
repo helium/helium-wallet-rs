@@ -32,7 +32,7 @@ impl Cmd {
         let input_mint = self.input_token.mint();
         let output_mint = self.output_token.mint();
         let raw_amount =
-            helium_lib::token::TokenAmount::from_f64(self.input_token, self.amount).amount;
+            helium_lib::token::TokenAmount::from_f64(self.input_token, self.amount)?.amount;
 
         let (tx, _, order) = jupiter_client
             .swap(&client, input_mint, output_mint, raw_amount, &*signer)

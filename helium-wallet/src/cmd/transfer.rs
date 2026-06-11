@@ -54,16 +54,14 @@ pub struct One {
     commit: CommitOpts,
 }
 
-/// Multiple playment descriptor file
+/// Multiple payment descriptor file
 ///
 /// The input file for multiple payments is expected to be json file with a list
-/// of payees, amounts, tokens, and optional memos.
+/// of payees, amounts, and tokens.
 /// Notes:
 ///   "address" is required.
-///   "amount" is required. It must be a number or the string "max". When "max"
-///            the entire balance (minus fees) will be sent.
-///   "token" is optional and defaults to "hnt".
-///   "memo" is optional.
+///   "amount" is required and must be a positive number.
+///   "token" is required.
 ///
 /// For example:
 ///
@@ -71,15 +69,10 @@ pub struct One {
 ///     {
 ///         "address": "<address1>",
 ///         "amount": 1.6,
-///         "memo": "AAAAAAAAAAA=",
 ///         "token": "hnt"
 ///     },
 ///     {
 ///         "address": "<address2>",
-///         "amount": "max"
-///     },
-///     {
-///         "address": "<address3>",
 ///         "amount": 3,
 ///         "token": "mobile"
 ///     }
@@ -143,15 +136,14 @@ impl PayCmd {
 
     fn collect_payments(&self) -> Result<Vec<(Pubkey, TokenAmount)>> {
         match &self {
-            Self::One(one) => Ok(vec![(one.payee.address, one.payee.token_amount())]),
+            Self::One(one) => Ok(vec![(one.payee.address, one.payee.token_amount()?)]),
             Self::Multi(multi) => {
                 let file = std::fs::File::open(multi.path.clone())?;
                 let payees: Vec<Payee> = serde_json::from_reader(file)?;
-                let payments = payees
+                payees
                     .iter()
-                    .map(|p| (p.address, p.token_amount()))
-                    .collect();
-                Ok(payments)
+                    .map(|p| Ok((p.address, p.token_amount()?)))
+                    .collect()
             }
         }
     }
@@ -164,7 +156,11 @@ impl PayCmd {
     }
 }
 
+// deny_unknown_fields so a typo'd or unsupported key in a multi-payment
+// file (e.g. "memo", which the old doc advertised but was silently
+// dropped) is an error instead of being ignored.
 #[derive(Debug, Deserialize, clap::Args)]
+#[serde(deny_unknown_fields)]
 pub struct Payee {
     /// Address to send the tokens to.
     #[serde(with = "serde_pubkey")]
@@ -177,8 +173,8 @@ pub struct Payee {
 }
 
 impl Payee {
-    pub fn token_amount(&self) -> TokenAmount {
-        TokenAmount::from_f64(self.token, self.amount)
+    pub fn token_amount(&self) -> Result<TokenAmount> {
+        Ok(TokenAmount::from_f64(self.token, self.amount)?)
     }
 }
 
@@ -200,7 +196,7 @@ mod tests {
                 amount: 160_000_000,
                 token: Token::Hnt
             },
-            payee.token_amount()
+            payee.token_amount().expect("token amount")
         );
     }
 
@@ -218,7 +214,7 @@ mod tests {
                 amount: 500_000,
                 token: Token::Mobile
             },
-            payee.token_amount()
+            payee.token_amount().expect("token amount")
         );
     }
 

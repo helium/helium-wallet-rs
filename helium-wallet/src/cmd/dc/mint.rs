@@ -44,7 +44,7 @@ impl Cmd {
 
         let client = opts.client()?;
         let amount = match (self.hnt, self.dc) {
-            (Some(hnt), None) => TokenAmount::from_f64(Token::Hnt, hnt),
+            (Some(hnt), None) => TokenAmount::from_f64(Token::Hnt, hnt)?,
             (None, Some(dc)) => TokenAmount::from_u64(Token::Dc, dc),
             _ => return Err(anyhow!("Must specify either HNT or DC")),
         };

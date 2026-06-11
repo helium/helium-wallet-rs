@@ -1,24 +1,22 @@
-use crate::cmd::{squads as cmd_squads, *};
-use helium_lib::{asset, dao, entity_key, keypair::Pubkey};
+use crate::cmd::{
+    squads::{self as cmd_squads, SquadsOpts},
+    *,
+};
+use helium_lib::{asset, entity_key};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Burn a given asset (NFT)
 pub struct Cmd {
-    /// Subdao for command
-    subdao: dao::SubDao,
     /// Entity key of asset to burn
     #[clap(flatten)]
-    entity_key: entity_key::EncodedEntityKey,
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
+    pub entity_key: entity_key::EncodedEntityKey,
+    /// Submit as a Squads v4 proposal.
     /// The asset's current owner must be the resolved vault.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    pub squads: SquadsOpts,
     /// Commit the transaction
     #[command(flatten)]
-    commit: CommitOpts,
+    pub commit: CommitOpts,
 }
 
 impl Cmd {
@@ -28,13 +26,13 @@ impl Cmd {
         let transaction_opts = self.commit.transaction_opts(&client);
         let asset = asset::for_entity_key(&client, &self.entity_key.as_entity_key()?).await?;
 
-        if let Some(squads_target) = self.squads {
+        if let Some(squads_target) = self.squads.squads {
             let client_ref = &client;
             let asset_id = asset.id;
             return cmd_squads::submit_proposal_with(
                 client_ref,
                 squads_target,
-                self.memo.clone(),
+                self.squads.memo.clone(),
                 &*signer,
                 &self.commit,
                 &transaction_opts,

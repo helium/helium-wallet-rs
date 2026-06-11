@@ -1,5 +1,8 @@
-use crate::cmd::{squads as cmd_squads, *};
-use helium_lib::{dao::SubDao, keypair::Pubkey, token};
+use crate::cmd::{
+    squads::{self as cmd_squads, SquadsOpts},
+    *,
+};
+use helium_lib::{dao::SubDao, token};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Burn tokens
@@ -8,12 +11,8 @@ pub struct Cmd {
     subdao: SubDao,
     /// Amount to burn
     amount: f64,
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    squads: SquadsOpts,
     /// Commit the burn
     #[command(flatten)]
     commit: CommitOpts,
@@ -27,11 +26,11 @@ impl Cmd {
 
         let token_amount = token::TokenAmount::from_f64(self.subdao.token(), self.amount);
 
-        if let Some(squads_target) = self.squads {
+        if let Some(squads_target) = self.squads.squads {
             return cmd_squads::submit_proposal_with(
                 &client,
                 squads_target,
-                self.memo.clone(),
+                self.squads.memo.clone(),
                 &*signer,
                 &self.commit,
                 &txn_opts,

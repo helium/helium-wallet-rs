@@ -1,5 +1,8 @@
-use crate::cmd::{squads as cmd_squads, *};
-use helium_lib::{dao, dc, keypair::Pubkey};
+use crate::cmd::{
+    squads::{self as cmd_squads, SquadsOpts},
+    *,
+};
+use helium_lib::{dao, dc};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Burn Data Credits (DC) from this wallet or delegated for the given router into oblivion.
@@ -13,14 +16,10 @@ pub struct Cmd {
     /// Note that the wallet keypair must be the burn authority for the router key
     /// for the burn to succeed
     router: Option<String>,
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
     /// Only supported for the non-delegated (no router) burn path; the
     /// DC is sourced from the resolved vault's DC ATA.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    squads: SquadsOpts,
     /// Commit the burn
     #[command(flatten)]
     commit: CommitOpts,
@@ -32,14 +31,14 @@ impl Cmd {
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
-        if let Some(squads_target) = self.squads {
+        if let Some(squads_target) = self.squads.squads {
             if self.router.is_some() || self.subdao.is_some() {
                 bail!("--squads only supports the non-delegated burn path");
             }
             return cmd_squads::submit_proposal_with(
                 &client,
                 squads_target,
-                self.memo.clone(),
+                self.squads.memo.clone(),
                 &*signer,
                 &self.commit,
                 &transaction_opts,

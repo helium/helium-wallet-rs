@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn commit_response_error_keeps_existing_shape() {
-        let err: Result<CommitResponse> = Err(anyhow!("boom").into());
+        let err: Result<CommitResponse> = Err(anyhow!("boom"));
         let value = err.to_json();
         assert_eq!(value["result"], json!("error"));
         assert!(value.get("committed").is_none());

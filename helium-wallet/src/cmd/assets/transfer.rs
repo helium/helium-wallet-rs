@@ -1,4 +1,7 @@
-use crate::cmd::{squads as cmd_squads, *};
+use crate::cmd::{
+    squads::{self as cmd_squads, SquadsOpts},
+    *,
+};
 use helium_lib::{
     asset, entity_key,
     keypair::{Pubkey, Signer},
@@ -6,23 +9,20 @@ use helium_lib::{
 };
 
 #[derive(Clone, Debug, clap::Args)]
-/// Transfer a Hotspot to another owner
+/// Transfer an asset (NFT) to another owner
 pub struct Cmd {
     #[clap(flatten)]
     pub entity_key: entity_key::EncodedEntityKey,
 
-    /// Solana address of Recipient of Hotspot
-    recipient: Pubkey,
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
+    /// Solana address of the recipient of the asset
+    pub recipient: Pubkey,
+    /// Submit as a Squads v4 proposal.
     /// The asset's current owner must be the resolved vault.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    pub squads: SquadsOpts,
     /// Commit the transfer
     #[command(flatten)]
-    commit: CommitOpts,
+    pub commit: CommitOpts,
 }
 
 impl Cmd {
@@ -32,14 +32,14 @@ impl Cmd {
         let transaction_opts = self.commit.transaction_opts(&client);
         let kta = kta::for_entity_key(&self.entity_key.as_entity_key()?).await?;
 
-        if let Some(squads_target) = self.squads {
+        if let Some(squads_target) = self.squads.squads {
             let client_ref = &client;
             let recipient = self.recipient;
             let asset_id = kta.asset;
             return cmd_squads::submit_proposal_with(
                 client_ref,
                 squads_target,
-                self.memo.clone(),
+                self.squads.memo.clone(),
                 &*signer,
                 &self.commit,
                 &transaction_opts,
@@ -62,7 +62,7 @@ impl Cmd {
         }
 
         if signer.pubkey() == self.recipient {
-            bail!("recipient already owner of hotspot");
+            bail!("recipient already owner of asset");
         }
         let (tx, _) = asset::transfer(
             &client,

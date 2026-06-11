@@ -1,8 +1,5 @@
-use crate::cmd::{squads as cmd_squads, *};
-use helium_lib::{
-    hotspot,
-    keypair::{Pubkey, Signer},
-};
+use crate::cmd::{squads::SquadsOpts, *};
+use helium_lib::{entity_key::EncodedEntityKey, keypair::Pubkey};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Transfer a Hotspot to another owner
@@ -11,64 +8,30 @@ pub struct Cmd {
     address: helium_crypto::PublicKey,
     /// Solana address of Recipient of Hotspot
     recipient: Pubkey,
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
+    /// Submit as a Squads v4 proposal.
     /// The hotspot's current owner must be the resolved vault.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    squads: SquadsOpts,
     /// Commit the transfer
     #[command(flatten)]
     commit: CommitOpts,
 }
 
+impl From<&Cmd> for crate::cmd::assets::transfer::Cmd {
+    fn from(value: &Cmd) -> Self {
+        Self {
+            entity_key: EncodedEntityKey::from(&value.address),
+            recipient: value.recipient,
+            squads: value.squads.clone(),
+            commit: value.commit.clone(),
+        }
+    }
+}
+
 impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let signer = opts.load_signer()?;
-        let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
-
-        if let Some(squads_target) = self.squads {
-            let client_ref = &client;
-            let address = self.address.clone();
-            let recipient = self.recipient;
-            return cmd_squads::submit_proposal_with(
-                client_ref,
-                squads_target,
-                self.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move {
-                    if vault.as_pubkey() == &recipient {
-                        bail!("recipient already owner of hotspot");
-                    }
-                    Ok(vec![
-                        hotspot::fetch_transfer_instruction(
-                            client_ref,
-                            &address,
-                            &recipient,
-                            vault.as_pubkey(),
-                        )
-                        .await?,
-                    ])
-                },
-            )
-            .await;
-        }
-
-        if signer.pubkey() == self.recipient {
-            bail!("recipient already owner of hotspot");
-        }
-        let (tx, _) = hotspot::transfer(
-            &client,
-            &self.address,
-            &self.recipient,
-            &*signer,
-            &transaction_opts,
-        )
-        .await?;
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        crate::cmd::assets::transfer::Cmd::from(self)
+            .run(opts)
+            .await
     }
 }

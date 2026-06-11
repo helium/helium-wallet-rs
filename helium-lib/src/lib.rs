@@ -124,7 +124,22 @@ pub struct TransactionOpts {
     pub lut_addresses: Vec<Pubkey>,
 }
 
+/// Returns the default LUT addresses for the cluster identified by `url`,
+/// selecting the devnet common LUT for devnet URLs and the mainnet common
+/// LUT otherwise. See [`client::is_devnet`] for how the cluster is detected.
+fn default_lut_addresses_for_url(url: &str) -> Vec<Pubkey> {
+    if client::is_devnet(url) {
+        vec![message::COMMON_LUT_DEVNET]
+    } else {
+        vec![message::COMMON_LUT]
+    }
+}
+
 impl Default for TransactionOpts {
+    /// Default options assuming the **mainnet** cluster. When the target
+    /// cluster is not known to be mainnet, build options with
+    /// [`TransactionOpts::for_url`] or [`TransactionOpts::for_client`] so the
+    /// correct (devnet vs mainnet) common lookup table is selected.
     fn default() -> Self {
         Self {
             min_priority_fee: priority_fee::MIN_PRIORITY_FEE,
@@ -135,6 +150,23 @@ impl Default for TransactionOpts {
 }
 
 impl TransactionOpts {
+    /// Builds options for the cluster identified by `url`, selecting the
+    /// devnet or mainnet common lookup table accordingly. Priority fees use
+    /// the same defaults as [`TransactionOpts::default`].
+    pub fn for_url(url: &str) -> Self {
+        Self {
+            lut_addresses: default_lut_addresses_for_url(url),
+            ..Self::default()
+        }
+    }
+
+    /// Builds options for the cluster `client` is connected to, selecting the
+    /// devnet or mainnet common lookup table accordingly. Priority fees use
+    /// the same defaults as [`TransactionOpts::default`].
+    pub fn for_client<C: AsRef<SolanaRpcClient>>(client: &C) -> Self {
+        Self::for_url(&client.as_ref().url())
+    }
+
     fn fee_range(&self) -> RangeInclusive<u64> {
         RangeInclusive::new(self.min_priority_fee, self.max_priority_fee)
     }
@@ -153,4 +185,21 @@ pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(
         .await?;
     txn.message.recent_blockhash = latest_blockhash;
     Ok((txn, latest_block_height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transaction_opts_selects_devnet_lut_for_devnet_url() {
+        let opts = TransactionOpts::for_url(client::SOLANA_URL_DEVNET);
+        assert_eq!(opts.lut_addresses, vec![message::COMMON_LUT_DEVNET]);
+    }
+
+    #[test]
+    fn transaction_opts_selects_mainnet_lut_for_mainnet_url() {
+        let opts = TransactionOpts::for_url(client::SOLANA_URL_MAINNET);
+        assert_eq!(opts.lut_addresses, vec![message::COMMON_LUT]);
+    }
 }

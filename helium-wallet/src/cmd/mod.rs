@@ -6,7 +6,7 @@ use helium_lib::{
     b64,
     client::{self, SolanaRpcClient},
     keypair::{to_pubkey, Keypair, Pubkey, Signer},
-    message, priority_fee,
+    priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
@@ -286,11 +286,7 @@ impl CommitOpts {
         TransactionOpts {
             min_priority_fee: self.min_priority_fee,
             max_priority_fee: self.max_priority_fee,
-            lut_addresses: if client::is_devnet(&client.as_ref().url()) {
-                vec![message::COMMON_LUT_DEVNET]
-            } else {
-                vec![message::COMMON_LUT]
-            },
+            ..TransactionOpts::for_client(client)
         }
     }
 }

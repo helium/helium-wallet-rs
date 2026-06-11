@@ -2591,7 +2591,7 @@ dependencies = [
  "bs58",
  "lazy_static",
  "sha2 0.10.9",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

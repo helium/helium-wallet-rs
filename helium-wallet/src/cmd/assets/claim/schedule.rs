@@ -92,7 +92,10 @@ impl InitCmd {
         let signer = opts.load_signer()?;
         let fund = self
             .fund
-            .map(|amount| token::TokenAmount::from_f64(token::Token::Sol, amount).amount);
+            .map(|amount| {
+                token::TokenAmount::from_f64(token::Token::Sol, amount).map(|ta| ta.amount)
+            })
+            .transpose()?;
         let (tx, _) = schedule::init(
             &client,
             &queue::TASK_QUEUE_ID,

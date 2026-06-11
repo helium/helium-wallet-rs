@@ -8,6 +8,7 @@ use sha2::Sha256;
 use shamirsecretsharing::hazmat::{combine_keyshares, create_keyshares};
 use sodiumoxide::randombytes;
 use std::{fmt, io};
+use zeroize::Zeroizing;
 
 #[derive(Clone)]
 pub enum Format {
@@ -135,13 +136,16 @@ impl Sharded {
     pub fn derive_key(&mut self, password: &[u8], key: &mut [u8]) -> Result {
         self.pwhash.pwhash(password, key)?;
 
-        let mut sss_key: [u8; 32] = [0; 32];
+        let mut sss_key: Zeroizing<[u8; 32]> = Zeroizing::new([0; 32]);
 
         if self.key_shares.is_empty() {
             // Generate the keyhares when we have none
-            randombytes::randombytes_into(&mut sss_key);
-            let key_share_vecs =
-                create_keyshares(&sss_key, self.key_share_count, self.recovery_threshold)?;
+            randombytes::randombytes_into(sss_key.as_mut());
+            let key_share_vecs = create_keyshares(
+                sss_key.as_ref(),
+                self.key_share_count,
+                self.recovery_threshold,
+            )?;
             let mut key_shares = vec![];
             for share_vec in key_share_vecs {
                 key_shares.push(KeyShare::from_slice(&share_vec));
@@ -154,7 +158,7 @@ impl Sharded {
             // Reconstruct shared key
             let key_share_vecs: Vec<Vec<u8>> =
                 self.key_shares.iter().map(|sh| sh.to_vec()).collect();
-            match combine_keyshares(&key_share_vecs) {
+            match combine_keyshares(&key_share_vecs).map(Zeroizing::new) {
                 Ok(k) => sss_key.copy_from_slice(&k),
                 Err(_) => bail!("Failed to combine keyshares"),
             }
@@ -162,7 +166,7 @@ impl Sharded {
 
         // Now go derive the encryption key from the sharded key
         // source and the stretched key
-        let mut hmac = match Hmac::<Sha256>::new_from_slice(&sss_key) {
+        let mut hmac = match Hmac::<Sha256>::new_from_slice(sss_key.as_ref()) {
             Err(_) => bail!("Failed to initialize hmac"),
             Ok(m) => m,
         };

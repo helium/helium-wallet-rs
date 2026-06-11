@@ -38,3 +38,4 @@ helium-mnemonic = { path = "../helium-mnemonic" }
 helium-proto = { workspace = true }
 helium-crypto = { workspace = true, features = ["solana", "ledger"] }
 bs58 = "0.5"
+zeroize = "1"

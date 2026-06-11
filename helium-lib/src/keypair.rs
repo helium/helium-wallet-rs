@@ -132,8 +132,12 @@ impl Keypair {
     }
 
     /// Get the 64-byte secret key (secret bytes + public key bytes).
+    ///
+    /// Allocated up-front so the secret bytes are never copied through an
+    /// intermediate reallocation the caller can't scrub.
     pub fn secret(&self) -> Vec<u8> {
-        let mut result = self.0.secret_bytes().to_vec();
+        let mut result = Vec::with_capacity(64);
+        result.extend_from_slice(self.0.secret_bytes().as_slice());
         result.extend_from_slice(self.pubkey().as_ref());
         result
     }

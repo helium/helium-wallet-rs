@@ -1,9 +1,9 @@
 use crate::{cmd::*, pwhash::*};
-use helium_lib::keypair::Signer;
 use qr2term::print_qr;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sodiumoxide::crypto::{pwhash::argon2id13 as pwhash, secretbox::xsalsa20poly1305 as secretbox};
+use zeroize::Zeroizing;
 
 //NOTE: The ops and memlimits are set lower than the CLI wallet uses for itself because
 //      initial testing on the mobile devices found SENSITIVE settings took too long.
@@ -53,11 +53,16 @@ impl Cmd {
                 Ok(())
             }
             OutputFormat::Key => {
-                println!("{}", &serde_json::to_string(&keypair.secret())?);
+                let secret = Zeroizing::new(keypair.secret());
+                let json = Zeroizing::new(serde_json::to_string(secret.as_slice())?);
+                let json = json.as_str();
+                println!("{json}");
                 Ok(())
             }
             OutputFormat::Seed => {
-                println!("{}", &keypair.phrase()?);
+                let phrase = Zeroizing::new(keypair.phrase()?);
+                let phrase = phrase.as_str();
+                println!("{phrase}");
                 Ok(())
             }
         }
@@ -71,8 +76,7 @@ impl Cmd {
 ///  3) base64 encode the salt, the nonce, and the encrypted result so it is easier to
 ///     render in JSON later.
 pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<EncryptedSeed> {
-    let address = keypair.pubkey().to_string();
-    let phrase = keypair.phrase()?;
+    let phrase = Zeroizing::new(keypair.phrase()?);
 
     let hasher = Argon2id13::with_limits(ARGON_OPS_LIMIT, ARGON_MEM_LIMIT);
     let mut key = secretbox::Key([0; secretbox::KEYBYTES]);
@@ -82,24 +86,12 @@ pub fn encrypt_seed_v1(keypair: &Keypair, password: &String) -> Result<Encrypted
     let nonce = secretbox::gen_nonce();
     let ciphertext = secretbox::seal(phrase.as_bytes(), &nonce, &key);
 
-    let result = EncryptedSeed {
+    Ok(EncryptedSeed {
         version: 1,
         salt: b64::encode(hasher.salt()),
         nonce: b64::encode(nonce),
         ciphertext: b64::encode(ciphertext),
-    };
-
-    if cfg!(debug_assertions) {
-        println!("DEBUG encrypt_seed_v1:  password: {password}");
-        println!("DEBUG encrypt_seed_v1:  key: {}", b64::encode(key));
-        let json_data = json!({
-            "address": address,
-            "seed": result,
-        });
-        print_json(&json_data)?;
-    };
-
-    Ok(result)
+    })
 }
 
 /// Decrypt an EncryptedSeed that was encrypted by encrypt_seed_v1
@@ -117,12 +109,6 @@ pub fn decrypt_seed_v1(es: &EncryptedSeed, password: &String) -> Result<String> 
 
     let nonce: [u8; secretbox::NONCEBYTES] = b64::decode(&es.nonce)?.as_slice().try_into()?;
     let ciphertext = b64::decode(&es.ciphertext)?;
-
-    if cfg!(debug_assertions) {
-        println!("DEBUG decrypt_seed_v1: password: {password}");
-        println!("DEBUG decrypt_seed_v1: es: {es:?}");
-        println!("DEBUG decrypt_seed_v1: nonce: {nonce:?}, salt: {salt:?}");
-    };
 
     if let Ok(decrypted_bytes) = secretbox::open(&ciphertext, &secretbox::Nonce(nonce), &key) {
         String::from_utf8(decrypted_bytes).map_err(anyhow::Error::from)

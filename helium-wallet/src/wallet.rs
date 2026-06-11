@@ -15,6 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use zeroize::Zeroizing;
 
 pub type Tag = [u8; 16];
 pub type Iv = [u8; 12];
@@ -47,15 +48,15 @@ impl Wallet {
     }
 
     pub fn encrypt(keypair: &Keypair, password: &[u8], fmt: Format) -> Result<Wallet> {
-        let mut encryption_key = AesKey::default();
+        let mut encryption_key = Zeroizing::new(AesKey::default());
         let mut format = fmt;
         let public_key = keypair.pubkey();
-        format.derive_key(password, &mut encryption_key)?;
+        format.derive_key(password, encryption_key.as_mut())?;
 
         let mut iv = Iv::default();
         randombytes::randombytes_into(&mut iv);
 
-        let aead = Aes256Gcm::new(GenericArray::from_slice(&encryption_key));
+        let aead = Aes256Gcm::new(GenericArray::from_slice(encryption_key.as_ref()));
 
         let mut encrypted = vec![];
         keypair.write(&mut encrypted)?;
@@ -79,11 +80,11 @@ impl Wallet {
     }
 
     pub fn decrypt(&self, password: &[u8]) -> Result<Arc<Keypair>> {
-        let mut encryption_key = AesKey::default();
+        let mut encryption_key = Zeroizing::new(AesKey::default());
         let mut format = self.format.clone();
-        format.derive_key(password, &mut encryption_key)?;
+        format.derive_key(password, encryption_key.as_mut())?;
 
-        let aead = Aes256Gcm::new(GenericArray::from_slice(&encryption_key));
+        let aead = Aes256Gcm::new(GenericArray::from_slice(encryption_key.as_ref()));
         let pubkey_bytes: Vec<u8> = match self.kind {
             WALLET_KIND_BASIC_V1
             | WALLET_KIND_BASIC_V2
@@ -102,12 +103,12 @@ impl Wallet {
             _ => unreachable!(),
         };
 
-        let mut buffer = self.encrypted.to_owned();
+        let mut buffer = Zeroizing::new(self.encrypted.to_owned());
         if aead
             .decrypt_in_place_detached(
                 self.iv.as_ref().into(),
                 &pubkey_bytes,
-                &mut buffer,
+                buffer.as_mut(),
                 self.tag.as_ref().into(),
             )
             .is_err()
@@ -290,7 +291,7 @@ pub struct Builder {
     output: PathBuf,
 
     /// Password to access wallet
-    password: String,
+    password: Zeroizing<String>,
 
     pwhash: PwHash,
 
@@ -298,7 +299,7 @@ pub struct Builder {
     force: bool,
 
     /// The entropy used to create this wallet
-    entropy: Option<Vec<u8>>,
+    entropy: Option<Zeroizing<Vec<u8>>>,
 
     /// Optional shard config info to use in order to create a sharded wallet
     /// otherwise, creates a basic non-sharded wallet
@@ -331,6 +332,13 @@ impl Builder {
         self
     }
 
+    /// The entropy used to create this wallet
+    /// Defaults to None
+    pub fn entropy(mut self, entropy: Option<Vec<u8>>) -> Builder {
+        self.entropy = entropy.map(Zeroizing::new);
+        self
+    }
+
     /// Sets the wallet's password hasher
     /// Defaults to `PwHash::argon2id13_default()`
     pub fn pwhash(mut self, pwhash: PwHash) -> Builder {
@@ -342,13 +350,6 @@ impl Builder {
     /// Defaults to false
     pub fn force(mut self, overwrite: bool) -> Builder {
         self.force = overwrite;
-        self
-    }
-
-    /// The entropy used to create this wallet
-    /// Defaults to None
-    pub fn entropy(mut self, entropy: Option<Vec<u8>>) -> Builder {
-        self.entropy = entropy;
         self
     }
 
@@ -408,7 +409,7 @@ impl Default for Builder {
     }
 }
 
-fn gen_keypair(entropy: Option<Vec<u8>>) -> Result<Arc<Keypair>> {
+fn gen_keypair(entropy: Option<Zeroizing<Vec<u8>>>) -> Result<Arc<Keypair>> {
     // Callers of this function should either have Some of both or None of both.
     // Anything else is an error.
     match entropy {
@@ -417,13 +418,21 @@ fn gen_keypair(entropy: Option<Vec<u8>>) -> Result<Arc<Keypair>> {
     }
 }
 
+/// Open `filename` for writing, restricting access to the owner on Unix
+/// since the file holds (encrypted) key material.
 fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
-    fs::OpenOptions::new()
+    let mut options = fs::OpenOptions::new();
+    options
         .write(true)
         .create(true)
         .truncate(true)
-        .create_new(create)
-        .open(filename)
+        .create_new(create);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(filename)
 }
 
 //

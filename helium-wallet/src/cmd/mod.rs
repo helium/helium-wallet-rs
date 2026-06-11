@@ -23,6 +23,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use zeroize::Zeroizing;
 
 pub mod assets;
 pub mod balance;
@@ -312,30 +313,38 @@ impl std::str::FromStr for Transaction {
     }
 }
 
-fn get_wallet_password(confirm: bool) -> std::io::Result<String> {
+fn get_wallet_password(confirm: bool) -> std::io::Result<Zeroizing<String>> {
     match env::var("HELIUM_WALLET_PASSWORD") {
-        Ok(str) => Ok(str),
+        Ok(str) => Ok(Zeroizing::new(str)),
         _ => get_password("Wallet Password", confirm),
     }
 }
 
-fn get_password(prompt: &str, confirm: bool) -> std::io::Result<String> {
+fn get_password(prompt: &str, confirm: bool) -> std::io::Result<Zeroizing<String>> {
     use dialoguer::Password;
     let mut builder = Password::new();
     builder.with_prompt(prompt);
     if confirm {
         builder.with_confirmation("Confirm password", "Passwords do not match");
     };
-    builder.interact()
+    builder.interact().map(Zeroizing::new)
 }
 
+/// Open `filename` for writing, restricting access to the owner on Unix.
+/// Used for outputs that may contain key material.
 pub fn open_output_file(filename: &Path, create: bool) -> io::Result<fs::File> {
-    fs::OpenOptions::new()
+    let mut options = fs::OpenOptions::new();
+    options
         .write(true)
         .create(true)
         .create_new(create)
-        .truncate(true)
-        .open(filename)
+        .truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(filename)
 }
 
 pub fn get_file_extension(filename: &Path) -> String {

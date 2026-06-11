@@ -26,6 +26,21 @@ pub enum Language {
     English,
 }
 
+/// Indicates whether the BIP39 checksum of a mnemonic phrase was verified.
+///
+/// Some legacy helium-hotspot-app phrases (12-word only) were generated with a
+/// checksum of `0` regardless of the computed checksum. Those phrases import
+/// successfully but cannot have their checksum verified, so callers may wish to
+/// warn the user that a transcription error would not be caught.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChecksumStatus {
+    /// The encoded checksum matched the computed checksum.
+    Verified,
+    /// The phrase carried a zero checksum (legacy helium-hotspot-app 12-word
+    /// phrase); the checksum could not be verified.
+    Unverified,
+}
+
 impl Language {
     pub fn find_word(&self, user_word: &str) -> Option<usize> {
         match self {
@@ -56,8 +71,26 @@ impl Index<usize> for Language {
 }
 
 /// Converts a 12 or 24 word mnemonic to entropy that can be used to
-/// generate a keypair
+/// generate a keypair.
+///
+/// This is a thin wrapper over [`mnemonic_to_entropy_checked`] that discards
+/// the [`ChecksumStatus`]. Callers that want to know whether the checksum was
+/// verified (e.g. to warn on import of a legacy zero-checksum phrase) should
+/// call [`mnemonic_to_entropy_checked`] directly.
 pub fn mnemonic_to_entropy(words: &[&str]) -> Result<[u8; 32], MnmemonicError> {
+    mnemonic_to_entropy_checked(words).map(|(entropy, _status)| entropy)
+}
+
+/// Converts a 12 or 24 word mnemonic to entropy along with a [`ChecksumStatus`]
+/// indicating whether the BIP39 checksum was verified.
+///
+/// Legacy helium-hotspot-app 12-word phrases were generated with a checksum of
+/// `0` and are accepted with [`ChecksumStatus::Unverified`]. All other phrases,
+/// including all 24-word phrases, must carry a matching checksum or this returns
+/// [`MnmemonicError::InvalidChecksum`].
+pub fn mnemonic_to_entropy_checked(
+    words: &[&str],
+) -> Result<([u8; 32], ChecksumStatus), MnmemonicError> {
     const MAX_ENTROPY_BITS: usize = 256;
     const BITS_PER_WORD: usize = 11;
     const CHECKSUM_BITS_PER_WORD: usize = 3;
@@ -112,13 +145,19 @@ pub fn mnemonic_to_entropy(words: &[&str]) -> Result<[u8; 32], MnmemonicError> {
         calc_checksum_256(entropy_bytes)
     };
 
-    // Some wallet apps have produced phrases with a checksum of '0'
-    // so allow those for backwards compatibility.
-    if (checksum_byte != valid_checksum) && (checksum_byte != 0) {
-        return Err(MnmemonicError::InvalidChecksum);
+    if checksum_byte == valid_checksum {
+        return Ok((entropy_bytes, ChecksumStatus::Verified));
     }
 
-    Ok(entropy_bytes)
+    // The legacy helium-hotspot-app produced 12-word phrases with a checksum of
+    // '0' regardless of the computed checksum. Accept those for backwards
+    // compatibility, but report the checksum as unverified so callers can warn.
+    // 24-word phrases never came from that path, so they must always validate.
+    if words_len == 12 && checksum_byte == 0 {
+        return Ok((entropy_bytes, ChecksumStatus::Unverified));
+    }
+
+    Err(MnmemonicError::InvalidChecksum)
 }
 
 /// Given some entropy of the proper length, return a mnemonic phrase.
@@ -178,6 +217,52 @@ fn calc_checksum_256(bytes: [u8; 32]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zero_checksum_12_words_imports_unverified() {
+        // Legacy helium-hotspot-app 12-word phrase with a checksum of 0.
+        let words = "catch poet clog intact scare jacket throw palm illegal buyer allow figure";
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let (_entropy, status) =
+            mnemonic_to_entropy_checked(&word_list).expect("zero-checksum phrase imports");
+        assert_eq!(ChecksumStatus::Unverified, status);
+    }
+
+    #[test]
+    fn valid_12_words_reports_verified() {
+        let words = "ritual ice harbor gas modify seed control solve burden people stay million";
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let (_entropy, status) =
+            mnemonic_to_entropy_checked(&word_list).expect("valid phrase imports");
+        assert_eq!(ChecksumStatus::Verified, status);
+    }
+
+    #[test]
+    fn corrupted_12_words_nonzero_checksum_errors() {
+        // Start from a valid phrase and corrupt the last word so the encoded
+        // checksum is nonzero but no longer matches the computed checksum.
+        let words = "ritual ice harbor gas modify seed control solve burden people stay minute";
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let result = mnemonic_to_entropy_checked(&word_list);
+        assert!(
+            matches!(result, Err(MnmemonicError::InvalidChecksum)),
+            "expected InvalidChecksum, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn corrupted_24_words_zero_checksum_errors() {
+        // 24-word phrases never benefited from the zero-checksum carve-out.
+        // Corrupt the last word of a valid 24-word phrase so the checksum is 0
+        // but does not match; it must error rather than silently import.
+        let words = "pelican sphere tackle click broken hurt fork nephew choice seven announce moment tobacco tribe topple pause october drama sock erase news glove okay abandon";
+        let word_list: Vec<&str> = words.split_whitespace().collect();
+        let result = mnemonic_to_entropy_checked(&word_list);
+        assert!(
+            matches!(result, Err(MnmemonicError::InvalidChecksum)),
+            "expected InvalidChecksum, got {result:?}"
+        );
+    }
 
     #[test]
     fn decode_mobile_12_words() {

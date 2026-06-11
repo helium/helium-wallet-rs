@@ -64,6 +64,16 @@ pub fn mk_transaction<T: Signers + ?Sized>(
     VersionedTransaction::try_new(msg, signers).map_err(Error::from)
 }
 
+/// Signs a `(message, block_height)` pair as returned by the `*_message`
+/// builders, preserving the block height for confirmation tracking.
+pub fn mk_signed_transaction<T: Signers + ?Sized>(
+    (msg, block_height): (message::VersionedMessage, u64),
+    signers: &T,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let txn = mk_transaction(msg, signers)?;
+    Ok((txn, block_height))
+}
+
 /// Pack multiple instruction groups into size-limited transactions.
 pub fn pack_instructions(
     instructions: &[&[Instruction]],

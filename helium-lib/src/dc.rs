@@ -8,10 +8,10 @@ use crate::{
     error::{DecodeError, Error},
     helium_sub_daos,
     keypair::Pubkey,
-    message, priority_fee,
+    message,
     solana_sdk::{instruction::Instruction, signer::Signer},
     token::{Token, TokenAmount},
-    transaction::{mk_transaction, VersionedTransaction},
+    transaction::{mk_signed_transaction, VersionedTransaction},
     TransactionOpts,
 };
 
@@ -72,17 +72,7 @@ pub async fn mint_message<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
     let ix = mint_instruction(client, amount, payee, payer).await?;
-    let ixs = &[
-        priority_fee::compute_budget_instruction(300_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-    message::mk_message(client, ixs, &opts.lut_addresses, payer).await
+    message::mk_budgeted_message(client, 300_000, &[ix], payer, opts).await
 }
 
 /// Mints data credits by burning HNT and returns a signed transaction.
@@ -93,9 +83,8 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) = mint_message(client, amount, payee, &keypair.pubkey(), opts).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = mint_message(client, amount, payee, &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Build the bare DC-delegate instruction (no compute-budget framing).
@@ -144,18 +133,7 @@ pub async fn delegate_message<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
     let ix = delegate_instruction(subdao, payer_key, amount, owner);
-
-    let ixs = &[
-        priority_fee::compute_budget_instruction(150_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-    message::mk_message(client, ixs, &opts.lut_addresses, owner).await
+    message::mk_budgeted_message(client, 150_000, &[ix], owner, opts).await
 }
 
 /// Delegates data credits to a router/OUI and returns a signed transaction.
@@ -167,10 +145,8 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) =
-        delegate_message(client, subdao, payer_key, amount, &keypair.pubkey(), opts).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = delegate_message(client, subdao, payer_key, amount, &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Build the bare DC-burn instruction (no compute-budget framing).
@@ -205,18 +181,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
     let ix = burn_instruction(amount, owner);
-
-    let ixs = &[
-        priority_fee::compute_budget_instruction(150_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-    message::mk_message(client, ixs, &opts.lut_addresses, owner).await
+    message::mk_budgeted_message(client, 150_000, &[ix], owner, opts).await
 }
 
 /// Burns data credits and returns a signed transaction.
@@ -226,9 +191,8 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) = burn_message(client, amount, &keypair.pubkey(), opts).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = burn_message(client, amount, &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Builds a message that burns delegated data credits for a router.
@@ -290,17 +254,7 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
         .data(),
     };
 
-    let ixs = &[
-        priority_fee::compute_budget_instruction(150_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &burn_ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        burn_ix,
-    ];
-    message::mk_message(client, ixs, &opts.lut_addresses, payer).await
+    message::mk_budgeted_message(client, 150_000, &[burn_ix], payer, opts).await
 }
 
 /// Burns delegated data credits and returns a signed transaction.
@@ -312,9 +266,7 @@ pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     router_key: &E,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) =
-        burn_delegated_message(client, sub_dao, amount, router_key, &keypair.pubkey(), opts)
-            .await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = burn_delegated_message(client, sub_dao, amount, router_key, &keypair.pubkey(), opts)
+        .await?;
+    mk_signed_transaction(msg, &[keypair])
 }

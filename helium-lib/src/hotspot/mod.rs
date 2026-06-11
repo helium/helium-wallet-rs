@@ -7,7 +7,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_opt_pubkey, serde_pubkey, Pubkey},
-    kta, message, onboarding, priority_fee,
+    kta, message, onboarding,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
         signer::Signer,
@@ -230,18 +230,8 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
     let ix = direct_update_instruction(&kta, &asset, &asset_proof, update, owner)?;
 
-    let ixs = &[
-        priority_fee::compute_budget_instruction(200_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-
-    let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, owner).await?;
+    let (msg, block_height) =
+        message::mk_budgeted_message(client, 200_000, &[ix], owner, opts).await?;
     let txn = mk_transaction(msg, &[&NullSigner::new(owner)])?;
     Ok((txn, block_height))
 }

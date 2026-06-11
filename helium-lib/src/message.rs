@@ -1,12 +1,13 @@
 use crate::{
     client::SolanaRpcClient,
     keypair::pubkey,
+    priority_fee,
     solana_sdk::{
         address_lookup_table::{state::AddressLookupTable, AddressLookupTableAccount},
         instruction::Instruction,
         message::v0,
     },
-    Error, Pubkey,
+    Error, Pubkey, TransactionOpts,
 };
 use itertools::Itertools;
 
@@ -69,4 +70,24 @@ pub async fn mk_message<C: AsRef<SolanaRpcClient>>(
     let mut msg = mk_raw_message(ixs, &lut_accounts, payer)?;
     msg.set_recent_blockhash(recent_blockhash);
     Ok((msg, recent_blockheight))
+}
+
+/// Builds a versioned message like [`mk_message`], prepending a
+/// compute-budget instruction with the given compute unit limit and a
+/// compute-price instruction with a priority fee estimated from the
+/// writable accounts of `ixs`, clamped to the fee range in `opts`.
+pub async fn mk_budgeted_message<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    compute_limit: u32,
+    ixs: &[Instruction],
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedMessage, u64), Error> {
+    let budget_ixs = [
+        priority_fee::compute_budget_instruction(compute_limit),
+        priority_fee::compute_price_instruction_for_instructions(client, ixs, opts.fee_range())
+            .await?,
+    ];
+    let all_ixs = [&budget_ixs[..], ixs].concat();
+    mk_message(client, &all_ixs, &opts.lut_addresses, payer).await
 }

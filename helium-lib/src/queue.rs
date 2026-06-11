@@ -1,10 +1,10 @@
 use crate::{
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
     error::Error,
-    message, priority_fee,
+    message,
     programs::hpl_crons,
     solana_sdk::{instruction::Instruction, pubkey},
-    transaction::{mk_transaction, VersionedTransaction},
+    transaction::{mk_signed_transaction, VersionedTransaction},
     Pubkey, TransactionOpts,
 };
 use anchor_lang::{InstructionData, ToAccountMetas};
@@ -78,19 +78,6 @@ pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnch
     let task_queue = client.anchor_account(task_queue_key).await?;
 
     let ix = claim_wallet_instruction(task_queue_key, &task_queue, wallet, &keypair.pubkey())?;
-    let ixs = &[
-        priority_fee::compute_budget_instruction(100_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-
-    let (msg, block_height) =
-        message::mk_message(client, ixs, &opts.lut_addresses, &keypair.pubkey()).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = message::mk_budgeted_message(client, 100_000, &[ix], &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }

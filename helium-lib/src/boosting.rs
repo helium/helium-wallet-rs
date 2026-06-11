@@ -4,7 +4,7 @@ use crate::{
     error::Error,
     hexboosting,
     keypair::Pubkey,
-    message, priority_fee,
+    message,
     solana_sdk::{instruction::Instruction, signer::Signer},
     transaction, TransactionOpts,
 };
@@ -41,7 +41,6 @@ pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
         }
     }
 
-    let mut ix_accounts = vec![];
     let mut start_ixs = vec![];
     for update in updates {
         let accounts = mk_accounts(
@@ -49,11 +48,9 @@ pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
             update.boost_config(),
             update.boosted_hex(),
         );
-        let accounts = accounts.to_account_metas(None);
-        ix_accounts.extend_from_slice(&accounts);
         let ix = Instruction {
             program_id: hexboosting::ID,
-            accounts,
+            accounts: accounts.to_account_metas(None),
             data: hexboosting::client::args::StartBoostV0 {
                 args: hexboosting::types::StartBoostArgsV0 {
                     start_ts: update.activation_ts().timestamp(),
@@ -63,20 +60,7 @@ pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
         };
         start_ixs.push(ix);
     }
-    let ixs = [
-        &[
-            priority_fee::compute_budget_instruction(150_000),
-            priority_fee::compute_price_instruction_for_accounts(
-                client,
-                &ix_accounts,
-                opts.fee_range(),
-            )
-            .await?,
-        ],
-        start_ixs.as_slice(),
-    ]
-    .concat();
-    message::mk_message(client, &ixs, &opts.lut_addresses, &keypair.pubkey()).await
+    message::mk_budgeted_message(client, 150_000, &start_ixs, &keypair.pubkey(), opts).await
 }
 
 /// Activate hex boosting and return a signed transaction.
@@ -86,7 +70,6 @@ pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
     keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(transaction::VersionedTransaction, u64), Error> {
-    let (msg, block_height) = start_boost_message(client, keypair, updates, opts).await?;
-    let txn = transaction::mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = start_boost_message(client, keypair, updates, opts).await?;
+    transaction::mk_signed_transaction(msg, &[keypair])
 }

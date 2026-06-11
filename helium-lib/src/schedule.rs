@@ -4,11 +4,11 @@ use crate::{
     dao::Dao,
     entity_key::EncodedEntityKey,
     error::Error,
-    message, priority_fee,
+    message,
     programs::hpl_crons::{self, accounts::CronJobV0, types::RemoveEntityFromCronArgsV0},
     queue,
     solana_sdk::{instruction::Instruction, signer::Signer},
-    transaction::{mk_transaction, VersionedTransaction},
+    transaction::{mk_signed_transaction, VersionedTransaction},
     tuktuk_sdk::{
         tuktuk,
         tuktuk_program::{self, TaskQueueV0},
@@ -122,27 +122,10 @@ pub async fn init<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccoun
         solana_system_interface::instruction::transfer(&payer, &cron_job_key, amount)
     });
 
-    let ixs = [
-        Some(priority_fee::compute_budget_instruction(500_000)),
-        Some(
-            priority_fee::compute_price_instruction_for_accounts(
-                client,
-                &ix.accounts,
-                opts.fee_range(),
-            )
-            .await?,
-        ),
-        Some(ix),
-        fund_ix,
-    ]
-    .into_iter()
-    .flatten()
-    .collect_vec();
+    let ixs = [Some(ix), fund_ix].into_iter().flatten().collect_vec();
 
-    let (msg, block_height) =
-        message::mk_message(client, &ixs, &opts.lut_addresses, &keypair.pubkey()).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = message::mk_budgeted_message(client, 500_000, &ixs, &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Builds an instruction to requeue an existing entity claim cron job.
@@ -214,21 +197,8 @@ pub async fn requeue<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
         &keypair.pubkey(),
     )?;
 
-    let ixs = [
-        priority_fee::compute_budget_instruction(100_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-
-    let (msg, block_height) =
-        message::mk_message(client, &ixs, &opts.lut_addresses, &keypair.pubkey()).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = message::mk_budgeted_message(client, 100_000, &[ix], &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Compute units needed to close a cron job.
@@ -318,45 +288,22 @@ pub async fn close<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     let cron_job: CronJobV0 = client.anchor_account(cron_job_key).await?;
 
     let payer = keypair.pubkey();
-    let mut ix_accounts = vec![];
     let mut compute_budget = 0;
     let close_claim_ixs: Vec<Instruction> = (0..cron_job.next_transaction_id)
         .map(|cron_job_index| {
-            close_entity_claim_instruction(cron_job_key, cron_job_index, &payer).inspect(|ix| {
-                ix_accounts.extend_from_slice(&ix.accounts);
-                compute_budget += CU_CLOSE_ENTITY_CLAIM;
-            })
+            close_entity_claim_instruction(cron_job_key, cron_job_index, &payer)
+                .inspect(|_ix| compute_budget += CU_CLOSE_ENTITY_CLAIM)
         })
         .try_collect()?;
 
     let close_ix = close_instruction(cron_id, name, &keypair.pubkey())?;
-    ix_accounts.extend_from_slice(&close_ix.accounts);
     compute_budget += CU_CLOSE;
 
-    let ixs = &[
-        &[
-            priority_fee::compute_budget_instruction(compute_budget),
-            priority_fee::compute_price_instruction_for_accounts(
-                client,
-                &ix_accounts,
-                opts.fee_range(),
-            )
-            .await?,
-        ],
-        close_claim_ixs.as_slice(),
-        &[close_ix],
-    ]
-    .concat();
+    let ixs = [close_claim_ixs.as_slice(), &[close_ix]].concat();
 
-    let (msg, block_height) = message::mk_message(
-        client,
-        ixs.as_slice(),
-        &opts.lut_addresses,
-        &keypair.pubkey(),
-    )
-    .await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg =
+        message::mk_budgeted_message(client, compute_budget, &ixs, &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Builds an instruction to add a wallet claim to a cron job.
@@ -411,21 +358,8 @@ pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnch
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job = client.anchor_account(cron_job_key).await?;
     let ix = claim_wallet_instruction(cron_job_key, &cron_job, wallet, &keypair.pubkey())?;
-    let ixs = &[
-        priority_fee::compute_budget_instruction(100_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-
-    let (msg, block_height) =
-        message::mk_message(client, ixs, &opts.lut_addresses, &keypair.pubkey()).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = message::mk_budgeted_message(client, 100_000, &[ix], &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Builds an instruction to add an entity asset claim to a cron job.
@@ -482,19 +416,6 @@ pub async fn claim_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAncho
     let entity_key = encoded_entity_key.as_entity_key()?;
     let kta_key = Dao::Hnt.entity_key_to_kta_key(&entity_key);
     let ix = claim_asset_instruction(cron_job_key, &cron_job, &kta_key, &keypair.pubkey())?;
-    let ixs = &[
-        priority_fee::compute_budget_instruction(100_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
-
-    let (msg, block_height) =
-        message::mk_message(client, ixs, &opts.lut_addresses, &keypair.pubkey()).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = message::mk_budgeted_message(client, 100_000, &[ix], &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }

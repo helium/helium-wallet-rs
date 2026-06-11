@@ -1,5 +1,8 @@
-use crate::cmd::{squads as cmd_squads, *};
-use helium_lib::{dao::SubDao, dc, keypair::Pubkey};
+use crate::cmd::{
+    squads::{self as cmd_squads, SquadsOpts},
+    *,
+};
+use helium_lib::{dao::SubDao, dc};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Delegate DC from this wallet to a given router
@@ -13,13 +16,9 @@ pub struct Cmd {
     /// Amount of DC to delegate
     dc: u64,
 
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
     /// The DC is sourced from the resolved vault's DC ATA.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    squads: SquadsOpts,
 
     /// Commit the delegation
     #[command(flatten)]
@@ -33,11 +32,11 @@ impl Cmd {
         let client = opts.client()?;
         let transaction_opts = self.commit.transaction_opts(&client);
 
-        if let Some(squads_target) = self.squads {
+        if let Some(squads_target) = self.squads.squads {
             return cmd_squads::submit_proposal_with(
                 &client,
                 squads_target,
-                self.memo.clone(),
+                self.squads.memo.clone(),
                 &*signer,
                 &self.commit,
                 &transaction_opts,

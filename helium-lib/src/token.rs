@@ -4,9 +4,9 @@ use crate::{
     client::SolanaRpcClient,
     error::{DecodeError, Error},
     keypair::{serde_pubkey, Pubkey},
-    message, priority_fee,
+    message,
     solana_sdk::{account::Account, signer::Signer},
-    transaction::{mk_transaction, VersionedTransaction},
+    transaction::{mk_signed_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -105,9 +105,8 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Build the bare transfer instructions (no compute-budget framing) for
@@ -175,21 +174,7 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
                 }
             })
             .sum::<u32>();
-    let ixs_accounts: Vec<_> = ixs.iter().flat_map(|i| i.accounts.clone()).collect();
-    let final_ixs = &[
-        &[
-            priority_fee::compute_budget_instruction(cu_budget),
-            priority_fee::compute_price_instruction_for_accounts(
-                client,
-                &ixs_accounts,
-                opts.fee_range(),
-            )
-            .await?,
-        ],
-        ixs.as_slice(),
-    ]
-    .concat();
-    message::mk_message(client, final_ixs, &opts.lut_addresses, payer).await
+    message::mk_budgeted_message(client, cu_budget, &ixs, payer, opts).await
 }
 
 /// Transfer tokens to one or more recipients, returning a signed transaction.
@@ -199,9 +184,8 @@ pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// Builds a message to close multiple accounts and return funds to destination.
@@ -262,21 +246,7 @@ pub async fn close_accounts_message<C: AsRef<SolanaRpcClient>>(
         + system_ix.as_ref().map_or(0, |_| SYS_PROGRAM_TRANSFER_CU);
     let ixs = spl_ixs.into_iter().chain(system_ix).collect_vec();
 
-    let final_ixs = &[
-        &[
-            priority_fee::compute_budget_instruction(cu_budget),
-            priority_fee::compute_price_instruction_for_instructions(
-                client,
-                &ixs,
-                opts.fee_range(),
-            )
-            .await?,
-        ],
-        ixs.as_slice(),
-    ]
-    .concat();
-
-    message::mk_message(client, final_ixs, &opts.lut_addresses, fee_payer).await
+    message::mk_budgeted_message(client, cu_budget, &ixs, fee_payer, opts).await
 }
 
 /// Close multiple accounts in a single transaction.
@@ -293,7 +263,7 @@ pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
     fee_payer: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) = close_accounts_message(
+    let msg = close_accounts_message(
         client,
         accounts,
         destination,
@@ -307,8 +277,7 @@ pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
     } else {
         vec![fee_payer, owner]
     };
-    let txn = mk_transaction(msg, &signers)?;
-    Ok((txn, block_height))
+    mk_signed_transaction(msg, &signers)
 }
 
 /// Close a single account and return funds to destination.
@@ -914,7 +883,7 @@ mod tests {
         let mut map = TokenBalanceMap::default();
         map.as_mut().insert(
             Token::Hnt,
-            Token::Hnt.to_balance(address, 1_50_000_000), // 1.5 HNT (8 decimals)
+            Token::Hnt.to_balance(address, 150_000_000), // 1.5 HNT (8 decimals)
         );
         map.as_mut().insert(
             Token::Dc,

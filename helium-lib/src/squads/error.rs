@@ -103,17 +103,6 @@ pub enum SquadsError {
     Membership(#[from] SquadsMembershipError),
     #[error("encoding: {0}")]
     Encoding(#[from] SquadsEncodingError),
-    /// Asset owner doesn't match the expected vault. The Squads-mode
-    /// asset/hotspot wrappers enforce this so a proposer can't ship
-    /// an un-executable proposal whose `leaf_owner` the vault can't
-    /// satisfy at execute time. Single-variant outlier — kept directly
-    /// on `SquadsError` rather than carved into a one-variant sub-enum.
-    #[error("asset {asset} is owned by {actual}, expected {expected}")]
-    WrongAssetOwner {
-        asset: solana_sdk::pubkey::Pubkey,
-        actual: solana_sdk::pubkey::Pubkey,
-        expected: solana_sdk::pubkey::Pubkey,
-    },
 }
 
 /// JSON-RPC failure modes the squads module surfaces from raw

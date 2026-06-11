@@ -1,4 +1,7 @@
-use crate::cmd::{squads as cmd_squads, *};
+use crate::cmd::{
+    squads::{self as cmd_squads, SquadsOpts},
+    *,
+};
 use helium_lib::{
     dc,
     keypair::{Pubkey, Signer},
@@ -24,14 +27,10 @@ pub struct Cmd {
     #[arg(long, conflicts_with = "hnt")]
     dc: Option<u64>,
 
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
     /// HNT is sourced from the resolved vault; the wallet only signs as
     /// proposer.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    squads: SquadsOpts,
 
     /// Commit the burn
     #[command(flatten)]
@@ -50,13 +49,13 @@ impl Cmd {
         };
         let transaction_opts = self.commit.transaction_opts(&client);
 
-        if let Some(squads_target) = self.squads {
+        if let Some(squads_target) = self.squads.squads {
             let client_ref = &client;
             let payee_override = self.payee;
             return cmd_squads::submit_proposal_with(
                 client_ref,
                 squads_target,
-                self.memo.clone(),
+                self.squads.memo.clone(),
                 &*signer,
                 &self.commit,
                 &transaction_opts,

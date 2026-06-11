@@ -9,7 +9,7 @@ use crate::{
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::Pubkey,
-    kta, message, priority_fee,
+    kta, message,
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
     solana_sdk::{
         instruction::Instruction,
@@ -273,18 +273,8 @@ async fn build_onboard_transaction<
         assertion,
         owner,
     )?;
-    let ixs = &[
-        priority_fee::compute_budget_instruction(300_000),
-        priority_fee::compute_price_instruction_for_accounts(
-            client,
-            &ix.accounts,
-            opts.fee_range(),
-        )
-        .await?,
-        ix,
-    ];
     let (msg, block_height) =
-        message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await?;
+        message::mk_budgeted_message(client, 300_000, &[ix], &asset.ownership.owner, opts).await?;
     let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
     Ok((txn, block_height))
 }
@@ -398,14 +388,8 @@ pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
         .data(),
     };
 
-    let ixs = &[
-        priority_fee::compute_budget_instruction(300_000),
-        priority_fee::compute_price_instruction_for_accounts(client, &accounts, opts.fee_range())
-            .await?,
-        issue_ix,
-    ];
-
-    let (msg, block_height) = message::mk_message(client, ixs, &opts.lut_addresses, &owner).await?;
+    let (msg, block_height) =
+        message::mk_budgeted_message(client, 300_000, &[issue_ix], &owner, opts).await?;
     let txn = mk_transaction(
         msg,
         &[

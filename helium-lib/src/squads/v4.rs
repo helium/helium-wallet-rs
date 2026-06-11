@@ -2220,7 +2220,8 @@ mod tests {
             data: vec![9, 9, 9],
         };
         let bytes =
-            compile_transaction_message_with_luts(&vault, &[ix], &[lut.clone()]).expect("compact");
+            compile_transaction_message_with_luts(&vault, &[ix], std::slice::from_ref(&lut))
+                .expect("compact");
 
         // Header.
         assert_eq!(bytes[0], 1, "num_signers");
@@ -2324,13 +2325,21 @@ mod tests {
             ],
             data: vec![7; 16],
         };
-        let first = compile_transaction_message_with_luts(&vault, &[ix.clone()], &[lut.clone()])
-            .expect("compact");
+        let first = compile_transaction_message_with_luts(
+            &vault,
+            std::slice::from_ref(&ix),
+            std::slice::from_ref(&lut),
+        )
+        .expect("compact");
         for _ in 0..16 {
             assert_eq!(
                 first,
-                compile_transaction_message_with_luts(&vault, &[ix.clone()], &[lut.clone()])
-                    .expect("compact"),
+                compile_transaction_message_with_luts(
+                    &vault,
+                    std::slice::from_ref(&ix),
+                    std::slice::from_ref(&lut)
+                )
+                .expect("compact"),
                 "compactor output must be deterministic"
             );
         }
@@ -2351,7 +2360,8 @@ mod tests {
             ],
             data: vec![1, 2, 3, 4],
         };
-        let static_only = compile_transaction_message(&vault, &[ix.clone()]).expect("compact");
+        let static_only =
+            compile_transaction_message(&vault, std::slice::from_ref(&ix)).expect("compact");
         let with_empty_luts =
             compile_transaction_message_with_luts(&vault, &[ix], &[]).expect("compact");
         assert_eq!(static_only, with_empty_luts);
@@ -2474,7 +2484,8 @@ mod tests {
             data: vec![],
         };
         let bytes =
-            compile_transaction_message_with_luts(&vault, &[ix], &[lut.clone()]).expect("compact");
+            compile_transaction_message_with_luts(&vault, &[ix], std::slice::from_ref(&lut))
+                .expect("compact");
 
         // Static count = 2 (vault + program); both LUT keys are resolved.
         let static_count = bytes[3] as usize;
@@ -2604,13 +2615,13 @@ mod tests {
                 account_keys: static_keys.clone(),
                 instructions: vec![MultisigCompiledInstruction {
                     program_id_index: 2, // program
-                    account_indexes: vec![0, 3].try_into().unwrap(),
-                    data: vec![].try_into().unwrap(),
+                    account_indexes: vec![0, 3],
+                    data: vec![],
                 }],
                 address_table_lookups: vec![MultisigMessageAddressTableLookup {
                     account_key: lut_addr,
-                    writable_indexes: vec![0u8, 1u8].try_into().unwrap(),
-                    readonly_indexes: vec![2u8].try_into().unwrap(),
+                    writable_indexes: vec![0u8, 1u8],
+                    readonly_indexes: vec![2u8],
                 }],
             },
         };

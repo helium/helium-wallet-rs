@@ -45,7 +45,7 @@ pub enum Error {
     #[error("confirmation: {0}")]
     Confirmation(#[from] ConfirmationError),
     #[error("message: {0}")]
-    Cmopile(#[from] solana_sdk::message::CompileError),
+    Compile(#[from] solana_sdk::message::CompileError),
     #[error("signing: {0}")]
     Signing(#[from] solana_sdk::signer::SignerError),
     #[error("crypto: {0}")]
@@ -60,6 +60,17 @@ pub enum Error {
     Jupiter(#[from] jupiter::JupiterError),
     #[error("squads: {0}")]
     Squads(#[from] squads::SquadsError),
+    /// Asset owner doesn't match the caller's expectation. Surfaced by
+    /// owner pre-checks (e.g. the Squads-mode asset/hotspot wrappers,
+    /// which enforce this so a proposer can't ship an un-executable
+    /// proposal whose `leaf_owner` the vault can't satisfy at execute
+    /// time) with both addresses so the user can compare.
+    #[error("asset {asset} is owned by {actual}, expected {expected}")]
+    WrongAssetOwner {
+        asset: solana_sdk::pubkey::Pubkey,
+        actual: solana_sdk::pubkey::Pubkey,
+        expected: solana_sdk::pubkey::Pubkey,
+    },
 }
 
 impl From<solana_client::client_error::ClientError> for Error {

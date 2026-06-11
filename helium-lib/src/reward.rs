@@ -10,11 +10,11 @@ use crate::{
     keypair::Pubkey,
     kta, lazy_distributor,
     message::{self, mk_message},
-    priority_fee, rewards_oracle,
+    rewards_oracle,
     solana_sdk::{instruction::Instruction, signer::Signer, sysvar},
     spl_account_compression,
     token::{Token, TokenAmount},
-    transaction::{mk_transaction, VersionedTransaction},
+    transaction::{mk_signed_transaction, mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use chrono::Utc;
@@ -921,17 +921,7 @@ pub mod recipient {
         let asset_with_proof = asset::for_kta_with_proof(client, &kta).await?;
 
         let ix = init_instruction(token, &kta, &asset_with_proof, payer)?;
-        let ixs = &[
-            priority_fee::compute_budget_instruction(INIT_INSTRUCTION_BUDGET),
-            priority_fee::compute_price_instruction_for_accounts(
-                client,
-                &ix.accounts,
-                opts.fee_range(),
-            )
-            .await?,
-            ix,
-        ];
-        message::mk_message(client, ixs, &opts.lut_addresses, payer).await
+        message::mk_budgeted_message(client, INIT_INSTRUCTION_BUDGET, &[ix], payer, opts).await
     }
 
     /// Signs and returns a transaction to initialize a recipient account.
@@ -942,10 +932,8 @@ pub mod recipient {
         keypair: &dyn Signer,
         opts: &TransactionOpts,
     ) -> Result<(VersionedTransaction, u64), Error> {
-        let (msg, block_height) =
-            init_message(client, token, entity_key, &keypair.pubkey(), opts).await?;
-        let txn = mk_transaction(msg, &[keypair])?;
-        Ok((txn, block_height))
+        let msg = init_message(client, token, entity_key, &keypair.pubkey(), opts).await?;
+        mk_signed_transaction(msg, &[keypair])
     }
 
     /// Resolves the actual reward destination for entities (custom destination or asset owner).
@@ -1101,33 +1089,17 @@ pub mod recipient {
             let kta = kta::for_entity_key(entity_key).await?;
             let asset_with_proof = asset::for_kta_with_proof(client, &kta).await?;
 
-            let mut ix_accounts = vec![];
             let init_ix = if recipient::for_kta(client, token, &kta).await?.is_none() {
-                let init_ix = init_instruction(token, &kta, &asset_with_proof, owner)?;
-                ix_accounts.extend_from_slice(&init_ix.accounts);
-                Some(init_ix)
+                Some(init_instruction(token, &kta, &asset_with_proof, owner)?)
             } else {
                 None
             };
             let update_ix = update_instruction(token, &kta, &asset_with_proof, destination)?;
-            ix_accounts.extend_from_slice(&update_ix.accounts);
-            let ixs = [
-                Some(priority_fee::compute_budget_instruction(200_000)),
-                Some(
-                    priority_fee::compute_price_instruction_for_accounts(
-                        client,
-                        &ix_accounts,
-                        opts.fee_range(),
-                    )
-                    .await?,
-                ),
-                init_ix,
-                Some(update_ix),
-            ]
-            .into_iter()
-            .flatten()
-            .collect_vec();
-            message::mk_message(client, &ixs, &opts.lut_addresses, owner).await
+            let ixs = [init_ix, Some(update_ix)]
+                .into_iter()
+                .flatten()
+                .collect_vec();
+            message::mk_budgeted_message(client, 200_000, &ixs, owner, opts).await
         }
 
         /// Signs and returns a transaction to update the reward destination.
@@ -1142,7 +1114,7 @@ pub mod recipient {
             keypair: &dyn Signer,
             opts: &TransactionOpts,
         ) -> Result<(VersionedTransaction, u64), Error> {
-            let (msg, block_height) = update_message(
+            let msg = update_message(
                 client,
                 token,
                 entity_key,
@@ -1151,9 +1123,7 @@ pub mod recipient {
                 opts,
             )
             .await?;
-
-            let txn = mk_transaction(msg, &[keypair])?;
-            Ok((txn, block_height))
+            mk_signed_transaction(msg, &[keypair])
         }
     }
 }

@@ -1,5 +1,8 @@
 use crate::{
-    cmd::{squads as cmd_squads, *},
+    cmd::{
+        squads::{self as cmd_squads, SquadsOpts},
+        *,
+    },
     result::Result,
 };
 use helium_lib::{
@@ -39,16 +42,8 @@ pub enum PayCmd {
 pub struct One {
     #[command(flatten)]
     payee: Payee,
-    /// Submit as a Squads v4 proposal instead of executing directly.
-    /// Accepts a multisig PDA or a vault PDA — when a vault is given the
-    /// multisig is resolved through the local cache. The transfer's
-    /// source becomes the vault's ATA (not the wallet's), and the wallet
-    /// just signs as proposer.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    squads: SquadsOpts,
     /// Commit the payment to the API
     #[command(flatten)]
     commit: CommitOpts,
@@ -82,12 +77,8 @@ pub struct One {
 pub struct Multi {
     /// File to read multiple payments from.
     path: PathBuf,
-    /// Submit as a Squads v4 proposal — see `transfer one --squads`.
-    #[arg(long)]
-    squads: Option<Pubkey>,
-    /// Memo recorded on the v4 proposal (`--squads` only).
-    #[arg(long)]
-    memo: Option<String>,
+    #[command(flatten)]
+    squads: SquadsOpts,
     /// Commit the payments
     #[command(flatten)]
     commit: CommitOpts,
@@ -100,11 +91,11 @@ impl PayCmd {
         let client = opts.client()?;
         let txn_opts = self.commit().transaction_opts(&client);
 
-        if let Some(squads_target) = self.squads_target() {
+        if let Some(squads_target) = self.squads().squads {
             return cmd_squads::submit_proposal_with(
                 &client,
                 squads_target,
-                self.squads_memo().cloned(),
+                self.squads().memo.clone(),
                 &*signer,
                 self.commit(),
                 &txn_opts,
@@ -120,17 +111,10 @@ impl PayCmd {
         print_json(&self.commit().maybe_commit(tx, &client).await?.to_json())
     }
 
-    fn squads_target(&self) -> Option<Pubkey> {
+    fn squads(&self) -> &SquadsOpts {
         match &self {
-            Self::One(one) => one.squads,
-            Self::Multi(multi) => multi.squads,
-        }
-    }
-
-    fn squads_memo(&self) -> Option<&String> {
-        match &self {
-            Self::One(one) => one.memo.as_ref(),
-            Self::Multi(multi) => multi.memo.as_ref(),
+            Self::One(one) => &one.squads,
+            Self::Multi(multi) => &multi.squads,
         }
     }
 

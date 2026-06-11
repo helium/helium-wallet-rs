@@ -15,6 +15,23 @@ mod members;
 mod threshold;
 mod vote;
 
+/// Shared `--squads`/`--memo` options for commands that can submit their
+/// transaction as a Squads v4 proposal instead of executing directly.
+/// Flatten with `#[command(flatten)]`.
+#[derive(Debug, Clone, clap::Args)]
+pub struct SquadsOpts {
+    /// Submit as a Squads v4 proposal instead of executing directly.
+    /// Accepts a multisig PDA or a vault PDA — when a vault is given the
+    /// multisig is resolved through the local cache. The transaction's
+    /// authority becomes the resolved vault (not the wallet), and the
+    /// wallet just signs as proposer.
+    #[arg(long)]
+    pub squads: Option<Pubkey>,
+    /// Memo recorded on the v4 proposal (`--squads` only).
+    #[arg(long)]
+    pub memo: Option<String>,
+}
+
 /// Resolve a `--squads <addr>` value into the (multisig, vault PDA,
 /// vault_index) triple every proposer-side wallet command needs.
 /// Helium multisigs use vault index 0; non-zero vaults aren't surfaced

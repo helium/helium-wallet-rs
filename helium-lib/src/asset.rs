@@ -8,11 +8,10 @@ use crate::{
     helium_entity_manager,
     keypair::{serde_opt_pubkey, serde_pubkey, Pubkey},
     kta, message,
-    priority_fee::{compute_budget_instruction, compute_price_instruction_for_accounts},
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
     solana_sdk::{account::Account, instruction::Instruction},
     spl_account_compression,
-    transaction::{mk_transaction, VersionedTransaction},
+    transaction::{mk_signed_transaction, mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
 use futures::{stream, StreamExt, TryStreamExt};
@@ -523,14 +522,8 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
     let ix = transfer_instruction(recipient, &asset, &asset_proof)?;
 
-    let ixs = &[
-        compute_budget_instruction(200_000),
-        compute_price_instruction_for_accounts(client, &ix.accounts, opts.fee_range()).await?,
-        ix,
-    ];
-
     let (msg, block_height) =
-        message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await?;
+        message::mk_budgeted_message(client, 200_000, &[ix], &asset.ownership.owner, opts).await?;
     let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
     Ok((txn, block_height))
 }
@@ -605,12 +598,11 @@ pub async fn fetch_burn_instruction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>
 /// so the user can compare against the Squads UI.
 fn check_owner(asset_id: &Pubkey, asset: &Asset, expected: &Pubkey) -> Result<(), Error> {
     if asset.ownership.owner != *expected {
-        return Err(crate::squads::SquadsError::WrongAssetOwner {
+        return Err(Error::WrongAssetOwner {
             asset: *asset_id,
             actual: asset.ownership.owner,
             expected: *expected,
-        }
-        .into());
+        });
     }
     Ok(())
 }
@@ -624,13 +616,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
     let ix = burn_instruction(&asset, &asset_proof)?;
 
-    let ixs = &[
-        compute_budget_instruction(100_000),
-        compute_price_instruction_for_accounts(client, &ix.accounts, opts.fee_range()).await?,
-        ix,
-    ];
-
-    message::mk_message(client, ixs, &opts.lut_addresses, &asset.ownership.owner).await
+    message::mk_budgeted_message(client, 100_000, &[ix], &asset.ownership.owner, opts).await
 }
 
 /// Signs and returns a transaction to permanently burn (destroy) a compressed NFT.
@@ -640,9 +626,8 @@ pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     keypair: &dyn Signer,
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
-    let (msg, block_height) = burn_message(client, pubkey, opts).await?;
-    let txn = mk_transaction(msg, &[keypair])?;
-    Ok((txn, block_height))
+    let msg = burn_message(client, pubkey, opts).await?;
+    mk_signed_transaction(msg, &[keypair])
 }
 
 /// A paginated list of compressed NFT assets returned from a DAS search.

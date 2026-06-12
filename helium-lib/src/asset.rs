@@ -178,12 +178,32 @@ pub mod canopy {
     use crate::spl_account_compression::types::{
         ConcurrentMerkleTreeHeader, ConcurrentMerkleTreeHeaderData,
     };
+    use std::sync::OnceLock;
+    use tokio::sync::OnceCell;
 
-    async fn get_heights() -> Result<HashMap<Pubkey, usize>, Error> {
-        const KNOWN_CANOPY_HEIGHT_URL: &str = "https://entities.nft.helium.io/v2/merkles";
-        let client = reqwest::Client::new();
+    /// Endpoint serving the known merkle-tree -> canopy-height map.
+    const KNOWN_CANOPY_HEIGHT_URL: &str = "https://entities.nft.helium.io/v2/merkles";
+
+    /// Process-wide memoized canopy-height map.
+    ///
+    /// The merkle-tree -> canopy-height map served by
+    /// `KNOWN_CANOPY_HEIGHT_URL` is effectively static (canopy depth is
+    /// fixed at tree creation), so a single successful fetch per process
+    /// is sufficient for a CLI invocation. `OnceCell::get_or_try_init`
+    /// only stores the value on success: a failed fetch leaves the cell
+    /// uninitialized so the next call retries.
+    static CANOPY_HEIGHTS: OnceCell<HashMap<Pubkey, usize>> = OnceCell::const_new();
+
+    /// Reqwest client reused across canopy fetches. The DAS client's pool
+    /// isn't reachable here (`heights` only takes `AsRef<SolanaRpcClient>`),
+    /// so we keep a dedicated lazily-initialized client for this endpoint
+    /// rather than constructing a fresh one per call.
+    static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+    async fn fetch_heights(url: &str) -> Result<HashMap<Pubkey, usize>, Error> {
+        let client = HTTP_CLIENT.get_or_init(reqwest::Client::new);
         let map: HashMap<String, usize> = client
-            .get(KNOWN_CANOPY_HEIGHT_URL)
+            .get(url)
             .send()
             .await?
             .error_for_status()?
@@ -197,6 +217,12 @@ pub mod canopy {
                     .map(|key| (key, value))
             })
             .try_collect()
+    }
+
+    async fn get_heights() -> Result<&'static HashMap<Pubkey, usize>, Error> {
+        CANOPY_HEIGHTS
+            .get_or_try_init(|| fetch_heights(KNOWN_CANOPY_HEIGHT_URL))
+            .await
     }
 
     fn height_from_account(account: &Account) -> Result<usize, Error> {
@@ -366,6 +392,30 @@ pub mod canopy {
         pub leaf: Node,
         pub index: u32,
         pub _padding: u32,
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{fetch_heights, CANOPY_HEIGHTS};
+
+        /// A failed fetch must not poison the process-wide cache: run the
+        /// real `get_or_try_init` path against an unroutable address
+        /// (reserved port 0 refuses immediately, no network) and confirm
+        /// `CANOPY_HEIGHTS` stays uninitialized so a later call can retry.
+        #[tokio::test]
+        async fn failed_fetch_does_not_poison_cache() {
+            let result = CANOPY_HEIGHTS
+                .get_or_try_init(|| fetch_heights("http://127.0.0.1:0/merkles"))
+                .await;
+            assert!(
+                result.is_err(),
+                "fetch against an unroutable endpoint should error",
+            );
+            assert!(
+                CANOPY_HEIGHTS.get().is_none(),
+                "a failed fetch must leave the cache uninitialized for retry",
+            );
+        }
     }
 }
 

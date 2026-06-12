@@ -57,7 +57,9 @@ solana-transaction-utils = { version = ">= 0.4" }
 tuktuk-sdk = { git = "https://github.com/helium/tuktuk.git", branch = "main" }
 squads-multisig-program = { git = "https://github.com/Squads-Protocol/v4.git", branch = "main", default-features = false, features = ["no-entrypoint"] }
 dirs = "5"
+tokio = { version = "1", default-features = false, features = ["sync"] }
 
 [dev-dependencies]
 rand = "0.8"
 tempfile = "3"
+tokio = { version = "1", default-features = false, features = ["macros", "rt"] }

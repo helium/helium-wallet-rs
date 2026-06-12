@@ -174,22 +174,32 @@ impl Keypair {
 }
 
 fn get_seed_entropy() -> Result<Vec<u8>> {
-    fn secret_from_phrase(s: &str) -> Result<Vec<u8>> {
-        let entropy = helium_mnemonic::mnemonic_to_entropy(&phrase_to_words(s))?.to_vec();
-        Ok(entropy)
+    // Silent parse: also used as the interactive input validator, so the
+    // unverified-checksum warning is printed once below, not per validation.
+    fn secret_from_phrase(s: &str) -> Result<(Vec<u8>, helium_mnemonic::ChecksumStatus)> {
+        let (entropy, status) = helium_mnemonic::mnemonic_to_entropy_checked(&phrase_to_words(s))?;
+        Ok((entropy.to_vec(), status))
     }
 
-    match env::var("HELIUM_WALLET_SEED_WORDS") {
-        Ok(word_string) => secret_from_phrase(&word_string),
+    let (entropy, status) = match env::var("HELIUM_WALLET_SEED_WORDS") {
+        Ok(word_string) => secret_from_phrase(&word_string)?,
         _ => {
             use dialoguer::Input;
             let word_string = Input::<String>::new()
                 .with_prompt("Space separated seed words")
                 .validate_with(|v: &String| secret_from_phrase(v.as_str()).map(|_| ()))
                 .interact()?;
-            secret_from_phrase(&word_string)
+            secret_from_phrase(&word_string)?
         }
+    };
+    if status == helium_mnemonic::ChecksumStatus::Unverified {
+        eprintln!(
+            "Warning: this seed phrase has a zero checksum (legacy helium-hotspot-app \
+             phrase). Its checksum could not be verified, so a transcription error would \
+             not be caught. Double-check the resulting wallet address is the one you expect."
+        );
     }
+    Ok(entropy)
 }
 
 fn get_secret_entropy() -> Result<Vec<u8>> {

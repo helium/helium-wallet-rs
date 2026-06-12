@@ -20,7 +20,7 @@ use std::{
     env, fs, io,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 use zeroize::Zeroizing;
@@ -48,7 +48,7 @@ pub mod upgrade;
 pub use source::WalletSource;
 
 /// Common options for most wallet commands
-#[derive(Debug, clap::Args, Clone)]
+#[derive(clap::Args)]
 pub struct Opts {
     /// Wallet source(s) to use. Either a path to an encrypted key file, or a
     /// Ledger device URL (`usb://ledger?key=<account>/<change>`).
@@ -63,6 +63,25 @@ pub struct Opts {
     /// Solana RPC URL to use.
     #[arg(long, default_value = "m")]
     url: String,
+
+    /// Memoized client, built once on first `client()` call. Every command's
+    /// `run()` calls `opts.client()`; without this each invocation would spin
+    /// up a second reqwest pool and RPC client distinct from the one used to
+    /// seed the global KTA cache in `main`. `clap(skip)` keeps it out of the
+    /// argument parser.
+    #[arg(skip)]
+    client: OnceLock<client::Client>,
+}
+
+// Manual impl: `client::Client` holds reqwest/RPC handles that don't
+// implement `Debug`, and the cache state isn't useful debug output anyway.
+impl std::fmt::Debug for Opts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Opts")
+            .field("files", &self.files)
+            .field("url", &self.url)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Opts {
@@ -152,8 +171,24 @@ impl Opts {
         }
     }
 
+    /// Return the shared client for this invocation, building it once and
+    /// caching it. Subsequent calls (and the per-command `run()` calls) hand
+    /// back a clone of the same `Arc`-backed handles, so the whole process
+    /// shares a single reqwest pool and RPC client — the same instance used to
+    /// seed the global KTA cache.
     pub fn client(&self) -> Result<client::Client> {
-        Ok(client::Client::try_from(self.url.as_str())?)
+        if let Some(client) = self.client.get() {
+            return Ok(client.clone());
+        }
+        let client = client::Client::try_from(self.url.as_str())?;
+        // Ignore the Err: a concurrent caller may have set it first, in which
+        // case `get()` below returns that instance and ours is dropped.
+        let _ = self.client.set(client);
+        Ok(self
+            .client
+            .get()
+            .expect("client set above or by a concurrent caller")
+            .clone())
     }
 }
 

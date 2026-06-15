@@ -2,7 +2,7 @@ use crate::{
     anchor_client, anchor_lang, client, hotspot::cert, jupiter, onboarding, solana_client, squads,
     token,
 };
-use solana_sdk::signature::Signature;
+use solana_sdk::{signature::Signature, transaction::TransactionError};
 use std::{array::TryFromSliceError, num::TryFromIntError, time::Duration};
 use thiserror::Error;
 
@@ -229,7 +229,10 @@ pub enum ConfirmationError {
 
     /// Transaction failed on-chain with a program error
     #[error("transaction {signature} failed: {error}")]
-    Failed { signature: Signature, error: String },
+    Failed {
+        signature: Signature,
+        error: TransactionError,
+    },
 
     /// Confirmation polling timed out before reaching finalized status
     #[error("timeout after {duration:?} waiting for {count} signatures")]
@@ -256,11 +259,8 @@ impl ConfirmationError {
     }
 
     /// Create a Failed error for a transaction that failed on-chain
-    pub fn failed(signature: Signature, error: impl Into<String>) -> Self {
-        Self::Failed {
-            signature,
-            error: error.into(),
-        }
+    pub fn failed(signature: Signature, error: TransactionError) -> Self {
+        Self::Failed { signature, error }
     }
 
     /// Create a Timeout error when confirmation polling exceeded the deadline
@@ -285,7 +285,7 @@ impl Error {
     }
 
     /// Helper to create a confirmation failed error
-    pub fn confirmation_failed(signature: Signature, error: impl Into<String>) -> Self {
+    pub fn confirmation_failed(signature: Signature, error: TransactionError) -> Self {
         ConfirmationError::failed(signature, error).into()
     }
 

@@ -15,7 +15,7 @@ chrono = { workspace = true }
 thiserror = "1"
 async-trait = "0"
 anchor-client = { version = "0.31.1", features = ["async"] }
-anchor-lang = { git = "https://github.com/madninja/anchor", branch = "madninja/const_pubkey", features = [
+anchor-lang = { git = "https://github.com/madninja/anchor", rev = "1dfe80386037379325c30095dcdb51e152c1e3c5", features = [
   "idl-build",
   "derive",
 ] }
@@ -54,8 +54,8 @@ clap = { workspace = true, optional = true }
 helium-mnemonic = { path = "../helium-mnemonic", optional = true }
 bytemuck = "1"
 solana-transaction-utils = { version = ">= 0.4" }
-tuktuk-sdk = { git = "https://github.com/helium/tuktuk.git", branch = "main" }
-squads-multisig-program = { git = "https://github.com/Squads-Protocol/v4.git", branch = "main", default-features = false, features = ["no-entrypoint"] }
+tuktuk-sdk = { git = "https://github.com/helium/tuktuk.git", rev = "1b281ae0189e96dfaf27c7206ad2e72b98a5fb34" }
+squads-multisig-program = { git = "https://github.com/Squads-Protocol/v4.git", rev = "edbca83427b10cbe58bf65fc9b597e8eb7b17cc1", default-features = false, features = ["no-entrypoint"] }
 dirs = "5"
 tokio = { version = "1", default-features = false, features = ["sync"] }
 

@@ -36,6 +36,16 @@ pub enum JupiterError {
     /// Transaction signing failed.
     #[error("Transaction signing failed: {0}")]
     Signing(String),
+    /// Jupiter returned a transaction requiring signers beyond the taker.
+    /// The canonical case is an RFQ / JupiterZ fill, where the maker
+    /// co-signs through Jupiter's execute endpoint. This client signs only
+    /// as the taker and broadcasts via Solana RPC, so it cannot complete
+    /// such an order.
+    #[error("swap transaction requires {num_signers} signers, extra: {extra_signers} (RFQ/maker co-sign is not self-signable)")]
+    MultipleSigners {
+        num_signers: u8,
+        extra_signers: String,
+    },
     /// Invalid client configuration (e.g., bad slippage value).
     #[error("Jupiter configuration error: {0}")]
     Config(String),
@@ -56,6 +66,13 @@ impl JupiterError {
 
     pub fn signing(msg: impl std::fmt::Display) -> Self {
         Self::Signing(msg.to_string())
+    }
+
+    pub fn multiple_signers(num_signers: u8, extra_signers: impl Into<String>) -> Self {
+        Self::MultipleSigners {
+            num_signers,
+            extra_signers: extra_signers.into(),
+        }
     }
 
     fn api(status: u16, body: String) -> Self {
@@ -177,6 +194,14 @@ impl Client {
             ("amount", amount.to_string()),
             ("slippageBps", self.slippage_bps.to_string()),
             ("taker", taker.to_string()),
+            // Exclude RFQ (JupiterZ) routes. Those return maker-co-signed
+            // transactions that must be submitted through Jupiter's execute
+            // endpoint; this client signs only as the taker and broadcasts
+            // via Solana RPC, so it can only complete single-signer
+            // aggregator routes. Measured price difference vs RFQ on
+            // HNT→USDC is within quote noise (≤0.01%), so excluding it
+            // costs effectively nothing.
+            ("excludeRfq", "true".to_string()),
         ]);
         let resp = self.apply_auth(req).send().await?;
 
@@ -240,6 +265,12 @@ impl Client {
         let mut txn: VersionedTransaction =
             bincode::deserialize(&tx_bytes).map_err(JupiterError::transaction_decode)?;
 
+        // Belt-and-suspenders: `order()` already passes `excludeRfq=true`,
+        // but reject any transaction that still needs more than the taker's
+        // signature so the failure names the offending signer instead of
+        // surfacing an opaque "not enough signers" from `try_new` below.
+        ensure_taker_only_signer(&txn.message, &keypair.pubkey())?;
+
         // Update to a fresh blockhash and re-sign
         let solana_client = client.as_ref();
         let (blockhash, last_valid_block_height) = solana_client
@@ -252,6 +283,29 @@ impl Client {
 
         Ok((txn, last_valid_block_height, order))
     }
+}
+
+/// Reject a Jupiter-built transaction that needs signatures beyond the
+/// taker's. This client signs only as the taker and broadcasts via Solana
+/// RPC, so a multi-signer message (e.g. an RFQ/JupiterZ maker co-sign)
+/// can never be completed here.
+fn ensure_taker_only_signer(
+    message: &solana_sdk::message::VersionedMessage,
+    taker: &Pubkey,
+) -> Result<(), JupiterError> {
+    let num_signers = message.header().num_required_signatures;
+    if num_signers > 1 {
+        let extra_signers = message
+            .static_account_keys()
+            .iter()
+            .take(num_signers as usize)
+            .filter(|key| *key != taker)
+            .map(|key| key.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(JupiterError::multiple_signers(num_signers, extra_signers));
+    }
+    Ok(())
 }
 
 // ---- Jupiter API response types ----
@@ -313,6 +367,7 @@ pub(crate) struct SwapInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use solana_sdk::message::VersionedMessage;
 
     /// Mutex to serialize env-dependent tests (env vars are process-global).
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -350,6 +405,45 @@ mod tests {
         clean_env();
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), JupiterError::Config(_)));
+    }
+
+    fn legacy_message(num_required_signatures: u8, keys: Vec<Pubkey>) -> VersionedMessage {
+        use solana_sdk::message::{Message, MessageHeader};
+        VersionedMessage::Legacy(Message {
+            header: MessageHeader {
+                num_required_signatures,
+                num_readonly_signed_accounts: 0,
+                num_readonly_unsigned_accounts: 0,
+            },
+            account_keys: keys,
+            recent_blockhash: solana_sdk::hash::Hash::default(),
+            instructions: vec![],
+        })
+    }
+
+    #[test]
+    fn taker_only_signer_ok() {
+        let taker = Pubkey::new_unique();
+        let msg = legacy_message(1, vec![taker]);
+        assert!(ensure_taker_only_signer(&msg, &taker).is_ok());
+    }
+
+    #[test]
+    fn rfq_maker_cosign_rejected() {
+        let taker = Pubkey::new_unique();
+        let maker = Pubkey::new_unique();
+        // RFQ shape: maker is the fee payer (slot 0), taker signs slot 1.
+        let msg = legacy_message(2, vec![maker, taker]);
+        match ensure_taker_only_signer(&msg, &taker) {
+            Err(JupiterError::MultipleSigners {
+                num_signers,
+                extra_signers,
+            }) => {
+                assert_eq!(num_signers, 2);
+                assert_eq!(extra_signers, maker.to_string());
+            }
+            other => panic!("expected MultipleSigners, got {other:?}"),
+        }
     }
 
     #[test]

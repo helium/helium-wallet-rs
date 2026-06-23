@@ -102,7 +102,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     token_amount: &TokenAmount,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = burn_message(client, token_amount, &keypair.pubkey(), opts).await?;
@@ -181,7 +181,7 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,
     transfers: &[(Pubkey, TokenAmount)],
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = transfer_message(client, transfers, &keypair.pubkey(), opts).await?;
@@ -259,8 +259,8 @@ pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &[Pubkey],
     destination: &Pubkey,
-    owner: &dyn Signer,
-    fee_payer: &dyn Signer,
+    owner: &(dyn Signer + Sync),
+    fee_payer: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = close_accounts_message(
@@ -272,7 +272,7 @@ pub async fn close_accounts<C: AsRef<SolanaRpcClient>>(
         opts,
     )
     .await?;
-    let signers: Vec<&dyn Signer> = if fee_payer.pubkey() == owner.pubkey() {
+    let signers: Vec<&(dyn Signer + Sync)> = if fee_payer.pubkey() == owner.pubkey() {
         vec![owner]
     } else {
         vec![fee_payer, owner]
@@ -286,8 +286,8 @@ pub async fn close_account<C: AsRef<SolanaRpcClient>>(
     client: &C,
     account: &Pubkey,
     destination: &Pubkey,
-    owner: &dyn Signer,
-    fee_payer: &dyn Signer,
+    owner: &(dyn Signer + Sync),
+    fee_payer: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     close_accounts(client, &[*account], destination, owner, fee_payer, opts).await

@@ -583,7 +583,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
     recipient: &Pubkey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) = transfer_transaction(client, pubkey, recipient, opts).await?;
@@ -673,7 +673,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     pubkey: &Pubkey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = burn_message(client, pubkey, opts).await?;

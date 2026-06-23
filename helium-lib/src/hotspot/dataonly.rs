@@ -285,7 +285,7 @@ pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     subdao: SubDao,
     hotspot_key: &helium_crypto::PublicKey,
     assertion: &HotspotInfoUpdate,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) = onboard_transaction(
@@ -311,7 +311,7 @@ pub async fn onboard_with_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
     hotspot_key: &helium_crypto::PublicKey,
     asset: &asset::Asset,
     assertion: &HotspotInfoUpdate,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) = onboard_transaction_with_asset(
@@ -466,7 +466,7 @@ pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     verifier: &str,
     add_tx: &mut BlockchainTxnAddGatewayV1,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) =

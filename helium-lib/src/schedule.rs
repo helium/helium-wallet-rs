@@ -102,7 +102,7 @@ pub async fn init<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccoun
     cron_id: u32,
     (schedule, name): (&str, &str),
     fund: Option<u64>,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let task_queue = client.anchor_account(task_queue_key).await?;
@@ -184,7 +184,7 @@ pub async fn requeue<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAcc
     task_queue_key: &Pubkey,
     cron_id: u32,
     name: &str,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let task_queue = client.anchor_account(task_queue_key).await?;
@@ -282,7 +282,7 @@ pub async fn close<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     cron_job_key: &Pubkey,
     cron_id: u32,
     name: &str,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job: CronJobV0 = client.anchor_account(cron_job_key).await?;
@@ -353,7 +353,7 @@ pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnch
     client: &C,
     cron_job_key: &Pubkey,
     wallet: &Pubkey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job = client.anchor_account(cron_job_key).await?;
@@ -409,7 +409,7 @@ pub async fn claim_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAncho
     client: &C,
     cron_job_key: &Pubkey,
     encoded_entity_key: &EncodedEntityKey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let cron_job = client.anchor_account(cron_job_key).await?;

@@ -243,7 +243,7 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot: &helium_crypto::PublicKey,
     update: &HotspotInfoUpdate,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let (mut txn, block_height) =
@@ -263,7 +263,7 @@ pub async fn update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     onboarding_server: Option<String>,
     hotspot: &helium_crypto::PublicKey,
     update: &HotspotInfoUpdate,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<VersionedTransaction, Error> {
     let public_key = keypair.pubkey();
@@ -326,7 +326,7 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
     recipient: &Pubkey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;
@@ -347,7 +347,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
     hotspot_key: &helium_crypto::PublicKey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let kta = kta::for_entity_key(hotspot_key).await?;

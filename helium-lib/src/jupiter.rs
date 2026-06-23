@@ -244,7 +244,7 @@ impl Client {
         input_mint: &Pubkey,
         output_mint: &Pubkey,
         amount: u64,
-        keypair: &dyn Signer,
+        keypair: &(dyn Signer + Sync),
     ) -> Result<(VersionedTransaction, u64, OrderResponse), JupiterError> {
         let order = self
             .order(input_mint, output_mint, amount, &keypair.pubkey())

@@ -80,7 +80,7 @@ pub async fn mint<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: TokenAmount,
     payee: &Pubkey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = mint_message(client, amount, payee, &keypair.pubkey(), opts).await?;
@@ -142,7 +142,7 @@ pub async fn delegate<C: AsRef<SolanaRpcClient>>(
     subdao: SubDao,
     payer_key: &str,
     amount: u64,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = delegate_message(client, subdao, payer_key, amount, &keypair.pubkey(), opts).await?;
@@ -188,7 +188,7 @@ pub async fn burn_message<C: AsRef<SolanaRpcClient>>(
 pub async fn burn<C: AsRef<SolanaRpcClient>>(
     client: &C,
     amount: u64,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = burn_message(client, amount, &keypair.pubkey(), opts).await?;
@@ -261,7 +261,7 @@ pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
 pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
     client: &C,
     sub_dao: SubDao,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     amount: u64,
     router_key: &E,
     opts: &TransactionOpts,

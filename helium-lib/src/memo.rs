@@ -18,7 +18,7 @@ pub async fn memo_message<C: AsRef<SolanaRpcClient>>(
 pub async fn memo<C: AsRef<SolanaRpcClient>>(
     client: &C,
     data: &str,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(transaction::VersionedTransaction, u64), Error> {
     let msg = memo_message(client, data, &keypair.pubkey(), opts).await?;

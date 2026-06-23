@@ -318,7 +318,7 @@ pub async fn claim<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccou
     token: ClaimableToken,
     amount: Option<u64>,
     encoded_entity_key: &entity_key::EncodedEntityKey,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<Option<(VersionedTransaction, u64)>, Error> {
     let ticket = ClaimTicket::new(encoded_entity_key.to_owned(), amount)?;
@@ -929,7 +929,7 @@ pub mod recipient {
         client: &C,
         token: ClaimableToken,
         entity_key: &E,
-        keypair: &dyn Signer,
+        keypair: &(dyn Signer + Sync),
         opts: &TransactionOpts,
     ) -> Result<(VersionedTransaction, u64), Error> {
         let msg = init_message(client, token, entity_key, &keypair.pubkey(), opts).await?;
@@ -1111,7 +1111,7 @@ pub mod recipient {
             token: ClaimableToken,
             entity_key: &E,
             destination: &Pubkey,
-            keypair: &dyn Signer,
+            keypair: &(dyn Signer + Sync),
             opts: &TransactionOpts,
         ) -> Result<(VersionedTransaction, u64), Error> {
             let msg = update_message(

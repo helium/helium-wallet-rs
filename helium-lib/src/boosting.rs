@@ -25,7 +25,7 @@ pub trait StartBoostingHex {
 /// Builds a message that activates hex boosting for a set of hexes.
 pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
     opts: &TransactionOpts,
 ) -> Result<(message::VersionedMessage, u64), Error> {
@@ -67,7 +67,7 @@ pub async fn start_boost_message<C: AsRef<SolanaRpcClient>>(
 pub async fn start_boost<C: AsRef<SolanaRpcClient>>(
     client: &C,
     updates: impl IntoIterator<Item = impl StartBoostingHex>,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Sync),
     opts: &TransactionOpts,
 ) -> Result<(transaction::VersionedTransaction, u64), Error> {
     let msg = start_boost_message(client, keypair, updates, opts).await?;

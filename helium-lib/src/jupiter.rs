@@ -194,14 +194,19 @@ impl Client {
             ("amount", amount.to_string()),
             ("slippageBps", self.slippage_bps.to_string()),
             ("taker", taker.to_string()),
-            // Exclude RFQ (JupiterZ) routes. Those return maker-co-signed
-            // transactions that must be submitted through Jupiter's execute
-            // endpoint; this client signs only as the taker and broadcasts
-            // via Solana RPC, so it can only complete single-signer
-            // aggregator routes. Measured price difference vs RFQ on
-            // HNT→USDC is within quote noise (≤0.01%), so excluding it
+            // Exclude RFQ (JupiterZ) routes. Those return maker-co-signed,
+            // two-signer transactions that must be submitted through
+            // Jupiter's execute endpoint; this client signs only as the
+            // taker and broadcasts via Solana RPC, so it needs a
+            // single-signer aggregator route. The price difference vs RFQ
+            // on HNT→USDC is within quote noise (≤0.01%), so excluding it
             // costs effectively nothing.
-            ("excludeRfq", "true".to_string()),
+            //
+            // NOTE: the keyed `api.jup.ag` endpoint honors
+            // `excludeRouters=jupiterz` but silently ignores `excludeRfq`;
+            // only the keyless `lite-api` host respects `excludeRfq`. Use
+            // the router exclusion so this works on both.
+            ("excludeRouters", "jupiterz".to_string()),
         ]);
         let resp = self.apply_auth(req).send().await?;
 
@@ -265,7 +270,7 @@ impl Client {
         let mut txn: VersionedTransaction =
             bincode::deserialize(&tx_bytes).map_err(JupiterError::transaction_decode)?;
 
-        // Belt-and-suspenders: `order()` already passes `excludeRfq=true`,
+        // Belt-and-suspenders: `order()` already excludes the RFQ router,
         // but reject any transaction that still needs more than the taker's
         // signature so the failure names the offending signer instead of
         // surfacing an opaque "not enough signers" from `try_new` below.

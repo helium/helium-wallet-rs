@@ -180,7 +180,8 @@ impl Opts {
         if let Some(client) = self.client.get() {
             return Ok(client.clone());
         }
-        let client = client::Client::try_from(self.url.as_str())?;
+        let (rpc_url, cert_url) = resolve_endpoints(self.url.as_str());
+        let client = client::Client::new(&rpc_url, &cert_url)?;
         // Ignore the Err: a concurrent caller may have set it first, in which
         // case `get()` below returns that instance and ours is dropped.
         let _ = self.client.set(client);
@@ -190,6 +191,29 @@ impl Opts {
             .expect("client set above or by a concurrent caller")
             .clone())
     }
+}
+
+/// Resolve a `--url` value (a moniker or a raw URL) into concrete RPC and
+/// certificate-service endpoints, honoring the `*_MAINNET_URL` / `*_DEVNET_URL`
+/// environment overrides. Environment policy lives in the binary, not in
+/// `helium-lib`; the library takes explicit URLs via [`client::Client::new`].
+fn resolve_endpoints(url: &str) -> (String, String) {
+    fn env_or(key: &str, default: &str) -> String {
+        std::env::var(key).unwrap_or_else(|_| default.to_string())
+    }
+    let rpc_url = match url {
+        "m" | "mainnet-beta" => env_or(client::SOLANA_URL_MAINNET_ENV, client::SOLANA_URL_MAINNET),
+        "d" | "devnet" => env_or(client::SOLANA_URL_DEVNET_ENV, client::SOLANA_URL_DEVNET),
+        url => url.to_string(),
+    };
+    let cert_url = match url {
+        "d" | "devnet" => env_or(client::CERT_URL_DEVNET_ENV, client::CERT_URL_DEVNET),
+        url if client::is_devnet(url) => {
+            env_or(client::CERT_URL_DEVNET_ENV, client::CERT_URL_DEVNET)
+        }
+        _ => env_or(client::CERT_URL_MAINNET_ENV, client::CERT_URL_MAINNET),
+    };
+    (rpc_url, cert_url)
 }
 
 /// Blind-sign hook installed on every Ledger keypair we hand out. Fires

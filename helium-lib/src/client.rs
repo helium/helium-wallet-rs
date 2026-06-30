@@ -131,33 +131,43 @@ impl GetAnchorAccount for Client {
     }
 }
 
-impl TryFrom<&str> for Client {
-    type Error = Error;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        fn maybe_env(key: &str) -> Option<String> {
-            std::env::var(key).ok()
-        }
-        fn env_or(key: &str, default: &str) -> String {
-            maybe_env(key).unwrap_or_else(|| default.to_string())
-        }
-        let rpc_url = match value {
-            "m" | "mainnet-beta" => env_or(SOLANA_URL_MAINNET_ENV, SOLANA_URL_MAINNET),
-            "d" | "devnet" => env_or(SOLANA_URL_DEVNET_ENV, SOLANA_URL_DEVNET),
-            url => url.to_string(),
-        };
-        let cert_url = match value {
-            "d" | "devnet" => env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
-            url if is_devnet(url) => env_or(CERT_URL_DEVNET_ENV, CERT_URL_DEVNET),
-            _url => env_or(CERT_URL_MAINNET_ENV, CERT_URL_MAINNET),
-        };
-        let das_client = Arc::new(DasClient::with_base_url(&rpc_url)?);
-        let solana_client = Arc::new(SolanaRpcClient::new(rpc_url));
-        let cert_client = Arc::new(CertClient::new(&cert_url, None)?);
+impl Client {
+    /// Build a client from explicit RPC and certificate-service URLs.
+    ///
+    /// No environment or moniker resolution happens here: turning user input
+    /// (monikers, `*_MAINNET_URL` / `*_DEVNET_URL` env overrides) into concrete
+    /// URLs is the consuming application's responsibility. `TryFrom<&str>`
+    /// offers a moniker shorthand against the built-in defaults, but
+    /// environment overrides belong in the binary.
+    pub fn new(rpc_url: &str, cert_url: &str) -> Result<Self, Error> {
+        let das_client = Arc::new(DasClient::with_base_url(rpc_url)?);
+        let solana_client = Arc::new(SolanaRpcClient::new(rpc_url.to_string()));
+        let cert_client = Arc::new(CertClient::new(cert_url, None)?);
         Ok(Self {
             solana_client,
             das_client,
             cert_client,
         })
+    }
+}
+
+impl TryFrom<&str> for Client {
+    type Error = Error;
+    /// Resolve a moniker (`"m"`, `"mainnet-beta"`, `"d"`, `"devnet"`) or a raw
+    /// URL to the built-in default endpoints and build a client. Environment
+    /// overrides are intentionally not read here — see [`Client::new`].
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let rpc_url = match value {
+            "m" | "mainnet-beta" => SOLANA_URL_MAINNET,
+            "d" | "devnet" => SOLANA_URL_DEVNET,
+            url => url,
+        };
+        let cert_url = match value {
+            "d" | "devnet" => CERT_URL_DEVNET,
+            url if is_devnet(url) => CERT_URL_DEVNET,
+            _ => CERT_URL_MAINNET,
+        };
+        Self::new(rpc_url, cert_url)
     }
 }
 

@@ -4,6 +4,7 @@ use crate::{
     solana_sdk::{
         address_lookup_table::AddressLookupTableAccount, commitment_config::CommitmentConfig,
         instruction::Instruction, signature::Signature, signers::Signers,
+        transaction::TransactionError,
     },
     Error,
 };
@@ -19,7 +20,7 @@ pub enum SignatureStatus {
     /// Transaction confirmed at the requested commitment level
     Confirmed,
     /// Transaction failed on-chain (not retriable)
-    Failed(String),
+    Failed(TransactionError),
     /// Signature not found (may be pending or dropped)
     NotFound,
 }
@@ -101,7 +102,7 @@ pub async fn get_signature_statuses<C: AsRef<SolanaRpcClient>>(
             Some(status) => {
                 // Check for transaction error first
                 if let Some(err) = status.err {
-                    return SignatureStatus::Failed(err.to_string());
+                    return SignatureStatus::Failed(err);
                 }
                 // Check if confirmed at the required commitment level
                 let confirmed = match commitment.commitment {

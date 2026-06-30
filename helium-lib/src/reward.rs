@@ -562,15 +562,16 @@ pub async fn claim_instructions<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + G
                 return Ok(None);
             };
             // Should be safe because all ktas were fetched as part of the asset fetch
-            let kta = kta::get_cached(&ticket.kta_key).expect("kta for {ticket_key}");
+            let kta = kta::get_cached(&ticket.kta_key)
+                .unwrap_or_else(|err| panic!("kta for {}: {err}", ticket.key_str()));
             // Safe to unwrap since asset::get_many will fail for any not found asset
             let asset = asset_map
                 .remove(ticket.key_str())
-                .expect("asset for {ticket_key}");
+                .unwrap_or_else(|| panic!("asset for {}", ticket.key_str()));
             // Safe to unwrap since an oracle ixn must exist for every reward
             let oracle_ixn = oracle_ixns
                 .remove(ticket.key_str())
-                .expect("oracle instruction for {ticket_key}");
+                .unwrap_or_else(|| panic!("oracle instruction for {}", ticket.key_str()));
             let claim_common = ClaimCommon {
                 token,
                 ld_account: &ld_account,

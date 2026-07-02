@@ -216,7 +216,7 @@ impl Sharded {
 
     pub fn write(&self, writer: &mut dyn io::Write) -> Result {
         if self.key_shares.len() != 1 {
-            bail!("Invalid number of ksy shares in shard");
+            bail!("Invalid number of key shares in shard");
         }
         writer.write_u8(self.key_share_count)?;
         writer.write_u8(self.recovery_threshold)?;

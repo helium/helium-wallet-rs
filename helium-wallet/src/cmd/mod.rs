@@ -4,8 +4,9 @@ use crate::{
 };
 use helium_lib::{
     b64,
+    blockchain_api::{self, types::StatusResponse},
     client::{self, SolanaRpcClient},
-    keypair::{to_pubkey, Keypair, Pubkey, Signer},
+    keypair::{to_pubkey, Keypair, Pubkey, Signature, Signer},
     priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
@@ -20,6 +21,7 @@ use std::{
     env, fs, io,
     ops::Deref,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -190,7 +192,29 @@ impl Opts {
             .expect("client set above or by a concurrent caller")
             .clone())
     }
+
+    /// Build a blockchain-api client for this invocation's cluster.
+    ///
+    /// Uses `HELIUM_BLOCKCHAIN_API_URL` if set; otherwise defaults to the
+    /// mainnet endpoint. Devnet has no built-in default yet, so it requires the
+    /// environment variable to be set explicitly.
+    pub fn blockchain_api(&self) -> Result<blockchain_api::Client> {
+        if let Ok(url) = env::var(blockchain_api::API_URL_ENV) {
+            return Ok(blockchain_api::Client::new(url));
+        }
+        if client::is_devnet(&self.url) {
+            bail!(
+                "no default blockchain-api URL for devnet; set {}",
+                blockchain_api::API_URL_ENV
+            );
+        }
+        Ok(blockchain_api::Client::new(DEFAULT_BLOCKCHAIN_API_URL))
+    }
 }
+
+/// Default mainnet blockchain-api base URL, used when
+/// `HELIUM_BLOCKCHAIN_API_URL` is unset.
+pub const DEFAULT_BLOCKCHAIN_API_URL: &str = "https://my-helium.web.helium.io/api/v1";
 
 /// Blind-sign hook installed on every Ledger keypair we hand out. Fires
 /// just before the device receives a SIGN_MESSAGE APDU that's going to
@@ -228,41 +252,45 @@ pub struct CommitOpts {
     confirm_timeout_secs: u64,
 }
 
+/// Map a Solana client error into our `Error`, lifting any preflight
+/// simulation logs and RPC message into the error context so a failed
+/// send/simulate reports *why* (program logs) rather than an opaque code.
+fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
+    let mut captured_logs: Option<Vec<String>> = None;
+    let mut error_message: Option<String> = None;
+    if let solana_client::client_error::ClientErrorKind::RpcError(
+        solana_client::rpc_request::RpcError::RpcResponseError {
+            data:
+                RpcResponseErrorData::SendTransactionPreflightFailure(RpcSimulateTransactionResult {
+                    logs,
+                    ..
+                }),
+            message,
+            ..
+        },
+    ) = &client_err.kind
+    {
+        logs.clone_into(&mut captured_logs);
+        error_message = Some(message.clone());
+    }
+    let mut mapped = Error::from(client_err);
+    if let Some(message) = error_message {
+        mapped = mapped.context(message);
+    }
+    if let Some(logs) = captured_logs.as_ref() {
+        if let Ok(serialized_logs) = serde_json::to_string(logs) {
+            mapped = mapped.context(serialized_logs);
+        }
+    }
+    mapped
+}
+
 impl CommitOpts {
     pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>, T: Into<VersionedTransaction>>(
         &self,
         tx: T,
         client: &C,
     ) -> Result<CommitResponse> {
-        fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
-            let mut captured_logs: Option<Vec<String>> = None;
-            let mut error_message: Option<String> = None;
-            if let solana_client::client_error::ClientErrorKind::RpcError(
-                solana_client::rpc_request::RpcError::RpcResponseError {
-                    data:
-                        RpcResponseErrorData::SendTransactionPreflightFailure(
-                            RpcSimulateTransactionResult { logs, .. },
-                        ),
-                    message,
-                    ..
-                },
-            ) = &client_err.kind
-            {
-                logs.clone_into(&mut captured_logs);
-                error_message = Some(message.clone());
-            }
-            let mut mapped = Error::from(client_err);
-            if let Some(message) = error_message {
-                mapped = mapped.context(message);
-            }
-            if let Some(logs) = captured_logs.as_ref() {
-                if let Ok(serialized_logs) = serde_json::to_string(logs) {
-                    mapped = mapped.context(serialized_logs);
-                }
-            }
-            mapped
-        }
-
         let versioned_tx = tx.into();
         if self.commit {
             let config = RpcSendTransactionConfig {
@@ -323,6 +351,124 @@ impl CommitOpts {
             max_priority_fee: self.max_priority_fee,
             ..TransactionOpts::for_client(client)
         }
+    }
+
+    /// Sign and commit transactions built by the blockchain-api.
+    ///
+    /// Decodes the unsigned transactions in `response`, shows them for review,
+    /// signs each locally with `signer`, then:
+    /// - with `--commit`: submits the batch via the API and polls until it
+    ///   reaches a terminal status;
+    /// - without `--commit`: simulates each signed transaction locally against
+    ///   `rpc` and broadcasts nothing.
+    ///
+    /// The blockhash is refreshed just before signing to widen the validity
+    /// window — a slow Ledger approval can otherwise outlive the blockhash the
+    /// server built the transaction with.
+    ///
+    /// Note: `min_priority_fee` / `max_priority_fee` do not apply here; the
+    /// blockchain-api sets priority fee, compute budget, and lookup tables
+    /// server-side.
+    pub async fn commit_via_api<C: AsRef<SolanaRpcClient>>(
+        &self,
+        api: &blockchain_api::Client,
+        rpc: &C,
+        response: &blockchain_api::types::ActionResponse,
+        signer: &(dyn Signer + Send + Sync),
+    ) -> Result<CommitResponse> {
+        let unsigned = response.decode_transactions()?;
+        display_unsigned_transactions(&unsigned);
+
+        let solana = rpc.as_ref();
+        let (blockhash, _) = solana
+            .get_latest_blockhash_with_commitment(solana.commitment())
+            .await?;
+        let signed = unsigned
+            .into_iter()
+            .map(|mut tx| {
+                tx.message.set_recent_blockhash(blockhash);
+                VersionedTransaction::try_new(tx.message, &[signer])
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        if self.commit {
+            let submitted = api
+                .submit_signed(&response.transaction_data, &signed, true)
+                .await?;
+            let timeout = Duration::from_secs(self.confirm_timeout_secs);
+            let status = api
+                .poll_status(
+                    &submitted.batch_id,
+                    blockchain_api::DEFAULT_POLL_INTERVAL,
+                    timeout,
+                )
+                .await?;
+            commit_response_from_status(status)
+        } else {
+            for tx in &signed {
+                let result = solana.simulate_transaction(tx).await.map_err(context_err)?;
+                if let Some(err) = result.value.err {
+                    return Err(err.into());
+                }
+            }
+            Ok(CommitResponse::None)
+        }
+    }
+}
+
+/// Map a terminal blockchain-api batch status into a [`CommitResponse`].
+/// Only a fully `Confirmed` batch is success; anything else surfaces the
+/// per-transaction statuses so the failure is legible.
+fn commit_response_from_status(status: StatusResponse) -> Result<CommitResponse> {
+    use blockchain_api::types::BatchStatus;
+    if status.status != BatchStatus::Confirmed {
+        let details = status
+            .transactions
+            .iter()
+            .map(|tx| format!("{} → {:?}", tx.signature, tx.status))
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!(
+            "blockchain-api batch {} ended in status {:?} [{details}]",
+            status.batch_id,
+            status.status,
+        );
+    }
+    let signatures = status
+        .transactions
+        .iter()
+        .map(|tx| Signature::from_str(&tx.signature))
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|err| anyhow!("blockchain-api returned an unparseable signature: {err}"))?;
+    match signatures.as_slice() {
+        [] => bail!(
+            "blockchain-api confirmed batch {} but returned no signatures",
+            status.batch_id
+        ),
+        [single] => Ok(CommitResponse::Signature(*single)),
+        _ => Ok(CommitResponse::Batch { signatures }),
+    }
+}
+
+/// Print a short summary of API-built transactions before they are signed, so
+/// the signer can review what they are about to authorize. Enriched by the
+/// decode+display step (per-instruction detail); this is the minimal form.
+fn display_unsigned_transactions(transactions: &[VersionedTransaction]) {
+    eprintln!(
+        "→ blockchain-api returned {} transaction(s) to sign:",
+        transactions.len()
+    );
+    for (i, tx) in transactions.iter().enumerate() {
+        let payer = tx
+            .message
+            .static_account_keys()
+            .first()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "<none>".to_string());
+        eprintln!(
+            "   [{i}] fee payer {payer}, {} instruction(s)",
+            tx.message.instructions().len()
+        );
     }
 }
 
@@ -396,6 +542,10 @@ pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
 #[derive(Debug, serde::Serialize)]
 pub enum CommitResponse {
     Signature(helium_lib::keypair::Signature),
+    /// A multi-transaction blockchain-api batch that fully confirmed.
+    Batch {
+        signatures: Vec<helium_lib::keypair::Signature>,
+    },
     None,
 }
 
@@ -425,6 +575,11 @@ impl ToJson for CommitResponse {
                 "result": "ok",
                 "committed": true,
                 "txid": signature.to_string(),
+            }),
+            Self::Batch { signatures } => json!({
+                "result": "ok",
+                "committed": true,
+                "txids": signatures.iter().map(ToString::to_string).collect::<Vec<_>>(),
             }),
             Self::None => json!({
                 "result": "ok",
@@ -492,5 +647,75 @@ mod tests {
         let value = err.to_json();
         assert_eq!(value["result"], json!("error"));
         assert!(value.get("committed").is_none());
+    }
+
+    #[test]
+    fn commit_response_batch_serializes_txids() {
+        let signatures = vec![Signature::from([1u8; 64]), Signature::from([2u8; 64])];
+        let value = CommitResponse::Batch {
+            signatures: signatures.clone(),
+        }
+        .to_json();
+        assert_eq!(value["result"], json!("ok"));
+        assert_eq!(value["committed"], json!(true));
+        assert_eq!(
+            value["txids"],
+            json!(signatures
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>())
+        );
+    }
+
+    fn status_with(
+        status: helium_lib::blockchain_api::types::BatchStatus,
+        signatures: &[Signature],
+    ) -> StatusResponse {
+        use helium_lib::blockchain_api::types::TransactionStatus;
+        StatusResponse {
+            batch_id: "batch".to_string(),
+            status,
+            submission_type: "single".to_string(),
+            parallel: false,
+            transactions: signatures
+                .iter()
+                .map(|sig| TransactionStatus {
+                    signature: sig.to_string(),
+                    status,
+                })
+                .collect(),
+            jito_bundle_id: None,
+        }
+    }
+
+    #[test]
+    fn commit_from_status_confirmed_single_is_signature() {
+        use helium_lib::blockchain_api::types::BatchStatus;
+        let sig = Signature::from([3u8; 64]);
+        let response = commit_response_from_status(status_with(BatchStatus::Confirmed, &[sig]))
+            .expect("confirmed single maps to a signature");
+        match response {
+            CommitResponse::Signature(got) => assert_eq!(got, sig),
+            other => panic!("expected Signature, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn commit_from_status_confirmed_multi_is_batch() {
+        use helium_lib::blockchain_api::types::BatchStatus;
+        let sigs = [Signature::from([4u8; 64]), Signature::from([5u8; 64])];
+        let response = commit_response_from_status(status_with(BatchStatus::Confirmed, &sigs))
+            .expect("confirmed multi maps to a batch");
+        match response {
+            CommitResponse::Batch { signatures } => assert_eq!(signatures, sigs.to_vec()),
+            other => panic!("expected Batch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn commit_from_status_non_confirmed_errors() {
+        use helium_lib::blockchain_api::types::BatchStatus;
+        let sig = Signature::from([6u8; 64]);
+        assert!(commit_response_from_status(status_with(BatchStatus::Failed, &[sig])).is_err());
     }
 }

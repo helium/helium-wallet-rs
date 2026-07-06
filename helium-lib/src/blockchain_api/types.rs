@@ -1,0 +1,541 @@
+//! Wire types for the Helium blockchain-api REST surface (`/api/v1`).
+//!
+//! These mirror the Zod schemas published in the HPL repo's
+//! `@helium/blockchain-api` package (`packages/blockchain-api-client/src/schemas`).
+//! Every action endpoint takes the wallet pubkey as an explicit field and
+//! returns an [`ActionResponse`]: an unsigned base64 `VersionedTransaction`
+//! (or several) plus an estimated SOL fee. The caller decodes, signs, and
+//! submits them back via [`super::Client::submit`].
+//!
+//! Amounts are raw base-unit ("bones") decimal strings on the wire; the
+//! request constructors accept `u64` and stringify.
+
+use crate::{
+    error::{DecodeError, EncodeError},
+    keypair::Pubkey,
+    transaction::VersionedTransaction,
+};
+use serde::{Deserialize, Serialize};
+
+/// Base64-decode a wire transaction into a `VersionedTransaction`.
+///
+/// The server serializes with web3.js `VersionedTransaction.serialize()`,
+/// whose bytes are the canonical Solana wire format that `bincode` reads.
+pub(super) fn decode_transaction(serialized: &str) -> Result<VersionedTransaction, DecodeError> {
+    let bytes = crate::b64::decode(serialized)?;
+    Ok(bincode::deserialize(&bytes)?)
+}
+
+/// Serialize a signed `VersionedTransaction` to base64 for submission.
+pub(super) fn encode_transaction(tx: &VersionedTransaction) -> Result<String, EncodeError> {
+    Ok(crate::b64::encode(bincode::serialize(tx)?))
+}
+
+// ---- Shared value types ----
+
+/// Request-side token amount: raw base-unit string + mint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenAmountInput {
+    /// Raw token amount in the smallest unit (bones).
+    pub amount: String,
+    /// Mint address of the token.
+    pub mint: String,
+}
+
+impl TokenAmountInput {
+    /// Build from a mint and a raw base-unit amount.
+    pub fn new(mint: &Pubkey, amount: u64) -> Self {
+        Self {
+            amount: amount.to_string(),
+            mint: mint.to_string(),
+        }
+    }
+}
+
+/// Rich token amount returned by the API (e.g. `estimatedSolFee`, pending
+/// rewards): raw amount plus decimals and pre-formatted UI fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenAmount {
+    /// Raw token amount in the smallest unit (bones).
+    pub amount: String,
+    /// Number of decimals for the mint.
+    pub decimals: u8,
+    /// Numeric amount if `<= Number.MAX_SAFE_INTEGER`, otherwise null.
+    pub ui_amount: Option<f64>,
+    /// String representation of `ui_amount`.
+    pub ui_amount_string: String,
+    /// Mint address of the token.
+    pub mint: String,
+}
+
+// ---- Action response envelope ----
+
+/// A single (unsigned, on the way out; signed, on the way back) transaction
+/// plus opaque server metadata that must be round-tripped to `submit`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionItem {
+    /// Base64-encoded wire transaction.
+    pub serialized_transaction: String,
+    /// Server-attached metadata. Opaque here — forwarded verbatim to `submit`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// The `transactionData` envelope returned by every action endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionData {
+    /// One or more transactions to sign and submit, in order.
+    pub transactions: Vec<TransactionItem>,
+    /// Whether the transactions may be submitted in parallel.
+    pub parallel: bool,
+    /// Optional idempotency/grouping tag.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub tag: Option<String>,
+    /// Optional server-defined action metadata, forwarded verbatim to `submit`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub action_metadata: Option<serde_json::Value>,
+}
+
+impl TransactionData {
+    /// Decode all transactions into `VersionedTransaction`s, preserving order.
+    pub fn decode_transactions(&self) -> Result<Vec<VersionedTransaction>, DecodeError> {
+        self.transactions
+            .iter()
+            .map(|item| decode_transaction(&item.serialized_transaction))
+            .collect()
+    }
+
+    /// Build a [`SubmitRequest`] from the signed transactions, preserving each
+    /// transaction's metadata and this envelope's `parallel`/`tag`/
+    /// `action_metadata`. `signed` must be the same length and order as the
+    /// transactions returned by the action endpoint.
+    pub fn to_submit_request(
+        &self,
+        signed: &[VersionedTransaction],
+        simulate: bool,
+    ) -> Result<SubmitRequest, super::BlockchainApiError> {
+        if signed.len() != self.transactions.len() {
+            return Err(super::BlockchainApiError::config(format!(
+                "signed transaction count {} does not match the {} returned by the API",
+                signed.len(),
+                self.transactions.len()
+            )));
+        }
+        let transactions = signed
+            .iter()
+            .zip(&self.transactions)
+            .map(|(tx, item)| {
+                Ok(TransactionItem {
+                    serialized_transaction: encode_transaction(tx)?,
+                    metadata: item.metadata.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, EncodeError>>()?;
+        Ok(SubmitRequest {
+            transactions,
+            parallel: self.parallel,
+            tag: self.tag.clone(),
+            action_metadata: self.action_metadata.clone(),
+            simulation_commitment: None,
+            simulate: Some(simulate),
+        })
+    }
+}
+
+/// Standard response for every transaction-building action endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionResponse {
+    /// The unsigned transactions to sign and submit.
+    pub transaction_data: TransactionData,
+    /// Estimated total SOL fee (rent + priority fees + automation costs).
+    pub estimated_sol_fee: TokenAmount,
+}
+
+impl ActionResponse {
+    /// Decode the unsigned transactions into `VersionedTransaction`s.
+    pub fn decode_transactions(&self) -> Result<Vec<VersionedTransaction>, DecodeError> {
+        self.transaction_data.decode_transactions()
+    }
+}
+
+// ---- Submit / status ----
+
+/// Simulation commitment level for `submit`.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SimulationCommitment {
+    Confirmed,
+    Finalized,
+}
+
+/// Request body for `POST /transactions`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitRequest {
+    /// Signed transactions to broadcast (max 5 per batch).
+    pub transactions: Vec<TransactionItem>,
+    /// Whether the batch may be submitted in parallel.
+    pub parallel: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_metadata: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub simulation_commitment: Option<SimulationCommitment>,
+    /// Simulate before broadcasting (server default: true).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub simulate: Option<bool>,
+}
+
+/// Response from `POST /transactions`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitResponse {
+    /// Identifier for polling batch status via `GET /transactions/{id}`.
+    pub batch_id: String,
+    /// Optional human-readable message.
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+/// Terminal or in-progress status of a submitted batch or transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BatchStatus {
+    Pending,
+    Confirmed,
+    Failed,
+    Expired,
+    Partial,
+}
+
+impl BatchStatus {
+    /// Whether polling can stop (anything other than `Pending`).
+    pub fn is_terminal(&self) -> bool {
+        !matches!(self, Self::Pending)
+    }
+
+    /// Whether the batch fully confirmed.
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Confirmed)
+    }
+}
+
+/// Per-transaction status within a batch.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionStatus {
+    pub signature: String,
+    pub status: BatchStatus,
+}
+
+/// Response from `GET /transactions/{id}`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusResponse {
+    pub batch_id: String,
+    pub status: BatchStatus,
+    /// `single` | `parallel` | `sequential` | `jito_bundle`. Kept as a string:
+    /// we report it but never branch on it.
+    pub submission_type: String,
+    pub parallel: bool,
+    pub transactions: Vec<TransactionStatus>,
+    #[serde(default)]
+    pub jito_bundle_id: Option<String>,
+}
+
+// ---- Action request bodies ----
+
+/// The reward network for a claim.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RewardNetwork {
+    Hnt,
+    Iot,
+    Mobile,
+}
+
+/// Hotspot device type for `update-info`.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeviceType {
+    Iot,
+    Mobile,
+}
+
+/// A latitude/longitude pair.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct LatLng {
+    pub lat: f64,
+    pub lng: f64,
+}
+
+/// `POST /tokens/transfer` — single-recipient SPL transfer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenTransferRequest {
+    pub wallet_address: String,
+    pub destination: String,
+    pub token_amount: TokenAmountInput,
+}
+
+/// A recipient in a multi-transfer.
+#[derive(Debug, Clone, Serialize)]
+pub struct Recipient {
+    pub destination: String,
+    /// Raw token amount in the smallest unit (bones).
+    pub amount: String,
+}
+
+/// `POST /tokens/multi-transfer` — many recipients of the same mint, packed
+/// into as few transactions as possible.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MultiTransferRequest {
+    pub wallet_address: String,
+    pub mint: String,
+    pub recipients: Vec<Recipient>,
+}
+
+/// `POST /data-credits/mint` — mint DC by burning HNT.
+///
+/// Provide exactly one of `dc_amount` / `hnt_amount`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DcMintRequest {
+    pub owner: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dc_amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hnt_amount: Option<String>,
+    /// Recipient of the minted DC. Defaults to `owner` server-side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient: Option<String>,
+}
+
+/// `POST /data-credits/delegate` — delegate DC to a router.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DcDelegateRequest {
+    pub owner: String,
+    pub router_key: String,
+    /// Raw DC amount (DC has 0 decimals).
+    pub amount: String,
+    /// SubDAO token mint (MOBILE or IOT) selecting the target subDAO.
+    pub mint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+}
+
+/// `POST /hotspots/claim-rewards`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimRewardsRequest {
+    pub wallet_address: String,
+    /// Reward network; server default is `hnt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<RewardNetwork>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tuktuk: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_pending_rewards: Option<TokenAmount>,
+}
+
+/// `POST /hotspots/update-rewards-destination`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRewardsDestinationRequest {
+    pub wallet_address: String,
+    pub hotspot_pubkey: String,
+    pub destination: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lazy_distributors: Option<Vec<String>>,
+}
+
+/// `POST /hotspots/update-info` — assert location / antenna details.
+///
+/// The API models this as a tagged union on `device_type` (iot vs mobile); we
+/// send the superset and skip absent fields. `gain`/`elevation`/`azimuth`
+/// apply to iot; `deployment_info` (opaque WIFI/CBRS object) applies to mobile.
+/// The server enforces the per-device field split.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfoRequest {
+    pub device_type: DeviceType,
+    pub entity_pub_key: String,
+    pub wallet_address: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<LatLng>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gain: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub azimuth: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployment_info: Option<serde_json::Value>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_sdk::message::{Message, MessageHeader, VersionedMessage};
+
+    #[test]
+    fn action_response_deserializes_from_wire_shape() {
+        // Fixed fixture matching the OpenAPI 200 shape for /tokens/transfer.
+        let json = serde_json::json!({
+            "transactionData": {
+                "transactions": [{
+                    "serializedTransaction": "AQID",
+                    "metadata": { "type": "transfer", "description": "Send HNT" }
+                }],
+                "parallel": false,
+                "tag": "abc"
+            },
+            "estimatedSolFee": {
+                "amount": "5000",
+                "decimals": 9,
+                "uiAmount": 0.000005,
+                "uiAmountString": "0.000005",
+                "mint": "So11111111111111111111111111111111111111112"
+            }
+        });
+        let resp: ActionResponse =
+            serde_json::from_value(json).expect("deserialize ActionResponse");
+        assert_eq!(resp.transaction_data.transactions.len(), 1);
+        assert!(!resp.transaction_data.parallel);
+        assert_eq!(resp.transaction_data.tag.as_deref(), Some("abc"));
+        assert_eq!(resp.estimated_sol_fee.decimals, 9);
+        assert_eq!(resp.estimated_sol_fee.amount, "5000");
+    }
+
+    #[test]
+    fn transfer_request_serializes_camel_case() {
+        let mint = Pubkey::new_unique();
+        let req = TokenTransferRequest {
+            wallet_address: "wallet".to_string(),
+            destination: "dest".to_string(),
+            token_amount: TokenAmountInput::new(&mint, 100_000_000),
+        };
+        let v = serde_json::to_value(&req).expect("serialize request");
+        assert_eq!(v["walletAddress"], "wallet");
+        assert_eq!(v["tokenAmount"]["amount"], "100000000");
+        assert_eq!(v["tokenAmount"]["mint"], mint.to_string());
+    }
+
+    #[test]
+    fn dc_mint_omits_absent_fields() {
+        let req = DcMintRequest {
+            owner: "owner".to_string(),
+            dc_amount: Some("100".to_string()),
+            hnt_amount: None,
+            recipient: None,
+        };
+        let v = serde_json::to_value(&req).expect("serialize request");
+        assert_eq!(v["dcAmount"], "100");
+        assert!(v.get("hntAmount").is_none());
+        assert!(v.get("recipient").is_none());
+    }
+
+    #[test]
+    fn batch_status_terminal_and_success() {
+        assert!(!BatchStatus::Pending.is_terminal());
+        assert!(BatchStatus::Confirmed.is_terminal());
+        assert!(BatchStatus::Confirmed.is_success());
+        assert!(BatchStatus::Failed.is_terminal());
+        assert!(!BatchStatus::Failed.is_success());
+        assert!(!BatchStatus::Partial.is_success());
+    }
+
+    fn sample_tx() -> VersionedTransaction {
+        // A minimal, unsigned single-account legacy message wrapped versioned.
+        let msg = VersionedMessage::Legacy(Message {
+            header: MessageHeader {
+                num_required_signatures: 0,
+                num_readonly_signed_accounts: 0,
+                num_readonly_unsigned_accounts: 0,
+            },
+            account_keys: vec![Pubkey::new_unique()],
+            recent_blockhash: solana_sdk::hash::Hash::default(),
+            instructions: vec![],
+        });
+        VersionedTransaction {
+            signatures: vec![],
+            message: msg,
+        }
+    }
+
+    #[test]
+    fn transaction_base64_round_trips() {
+        let tx = sample_tx();
+        let encoded = encode_transaction(&tx).expect("encode tx");
+        let decoded = decode_transaction(&encoded).expect("decode tx");
+        assert_eq!(decoded.message, tx.message);
+    }
+
+    #[test]
+    fn decodes_live_server_transaction() {
+        // A real unsigned v0 transaction captured from
+        // POST /api/v1/tokens/transfer on the live blockchain-api. Locks the
+        // base64+bincode decode path against actual server output (web3.js
+        // `VersionedTransaction.serialize()`).
+        const LIVE_TX: &str = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFBwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABXJTo3ilnlBqqNoGd80yKLSQdw4mFADklcXlEbJt3GgcDBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZCnMgk5GFYffdf8vsSr2FE97KGpZ/etejnWO0HtiTgIsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCpwKblKrctuLwb91a9Vzh3AR7r2HJaVr5NHVH+MhVL//0EAgAFAroUAAACAAkDECcAAAAAAAADBgABAAQFBgEBBgQBBAEACgwBAAAAAAAAAAgA";
+        let tx = decode_transaction(LIVE_TX).expect("decode live server tx");
+        // The server builds v0 versioned transactions with a Helium LUT.
+        assert!(
+            matches!(tx.message, VersionedMessage::V0(_)),
+            "expected a v0 versioned message"
+        );
+        assert!(
+            !tx.message.instructions().is_empty(),
+            "expected at least one instruction"
+        );
+    }
+
+    #[test]
+    fn to_submit_request_preserves_envelope_and_metadata() {
+        let data = TransactionData {
+            transactions: vec![TransactionItem {
+                serialized_transaction: "ignored".to_string(),
+                metadata: Some(serde_json::json!({ "type": "t", "description": "d" })),
+            }],
+            parallel: true,
+            tag: Some("tag1".to_string()),
+            action_metadata: Some(serde_json::json!({ "k": "v" })),
+        };
+        let signed = vec![sample_tx()];
+        let req = data
+            .to_submit_request(&signed, true)
+            .expect("build submit request");
+        assert!(req.parallel);
+        assert_eq!(req.tag.as_deref(), Some("tag1"));
+        assert_eq!(req.simulate, Some(true));
+        assert_eq!(req.transactions.len(), 1);
+        assert_eq!(
+            req.transactions[0].metadata,
+            Some(serde_json::json!({ "type": "t", "description": "d" }))
+        );
+    }
+
+    #[test]
+    fn to_submit_request_rejects_count_mismatch() {
+        let data = TransactionData {
+            transactions: vec![TransactionItem {
+                serialized_transaction: "a".to_string(),
+                metadata: None,
+            }],
+            parallel: false,
+            tag: None,
+            action_metadata: None,
+        };
+        // Two signed for one returned → error.
+        let signed = vec![sample_tx(), sample_tx()];
+        assert!(data.to_submit_request(&signed, true).is_err());
+    }
+}

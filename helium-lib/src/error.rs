@@ -1,6 +1,6 @@
 use crate::{
-    anchor_client, anchor_lang, client, hotspot::cert, jupiter, onboarding, solana_client, squads,
-    token,
+    anchor_client, anchor_lang, blockchain_api, client, hotspot::cert, jupiter, onboarding,
+    solana_client, squads, token,
 };
 use solana_sdk::signature::Signature;
 use std::{array::TryFromSliceError, num::TryFromIntError, time::Duration};
@@ -58,6 +58,8 @@ pub enum Error {
     Tuktuk(#[from] tuktuk_sdk::error::Error),
     #[error("jupiter: {0}")]
     Jupiter(#[from] jupiter::JupiterError),
+    #[error("blockchain api: {0}")]
+    BlockchainApi(#[from] blockchain_api::BlockchainApiError),
     #[error("squads: {0}")]
     Squads(#[from] squads::SquadsError),
     /// Asset owner doesn't match the caller's expectation. Surfaced by

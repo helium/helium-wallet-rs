@@ -10,6 +10,8 @@
 pub mod asset;
 /// Base64 encoding/decoding utilities.
 pub mod b64;
+/// HTTP client for the Helium blockchain-api transaction-building service.
+pub mod blockchain_api;
 /// Solana RPC and DAS client wrappers.
 pub mod client;
 

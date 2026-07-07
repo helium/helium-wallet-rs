@@ -6,7 +6,9 @@ use crate::{
     result::Result,
 };
 use helium_lib::{
-    blockchain_api::types::{TokenAmountInput, TokenTransferRequest},
+    blockchain_api::types::{
+        MultiTransferRequest, Recipient, TokenAmountInput, TokenTransferRequest,
+    },
     keypair::{serde_pubkey, Pubkey, Signer},
     token::{self, Token, TokenAmount},
 };
@@ -25,17 +27,14 @@ impl Cmd {
 }
 
 #[derive(Debug, clap::Subcommand)]
-/// Send one (or more) payments to given addresses.
+/// Send one (or more) HNT payments to given addresses.
 ///
 /// The payment is not submitted to the system unless the '--commit' option is
 /// given.
 pub enum PayCmd {
-    /// Pay a single payee.
-    ///
-    /// Note that HNT goes to 8 decimals of precision, while MOBILE and
-    /// IOT go to 6 decimals of precision
+    /// Pay a single payee in HNT (8 decimals of precision).
     One(One),
-    /// Pay multiple payees
+    /// Pay multiple payees in HNT
     Multi(Multi),
 }
 
@@ -52,25 +51,22 @@ pub struct One {
 
 /// Multiple payment descriptor file
 ///
-/// The input file for multiple payments is expected to be json file with a list
-/// of payees, amounts, and tokens.
+/// The input file for multiple payments is expected to be a json file with a
+/// list of payees and amounts. All payments are in HNT.
 /// Notes:
 ///   "address" is required.
 ///   "amount" is required and must be a positive number.
-///   "token" is required.
 ///
 /// For example:
 ///
 /// [
 ///     {
 ///         "address": "<address1>",
-///         "amount": 1.6,
-///         "token": "hnt"
+///         "amount": 1.6
 ///     },
 ///     {
 ///         "address": "<address2>",
-///         "amount": 3,
-///         "token": "mobile"
+///         "amount": 3
 ///     }
 /// ]
 ///
@@ -108,31 +104,43 @@ impl PayCmd {
             .await;
         }
 
-        // A single-recipient transfer builds via the blockchain-api. Multi
-        // payments still build locally: they can mix tokens within one atomic
-        // transaction, which the single-mint multi-transfer endpoint cannot
-        // express (pending an API mapping decision).
-        if let [(destination, amount)] = payments.as_slice() {
-            let api = opts.blockchain_api()?;
-            let response = api
-                .token_transfer(&TokenTransferRequest {
-                    wallet_address: signer.pubkey().to_string(),
+        // Transfers build via the blockchain-api: a single recipient through
+        // tokens/transfer, multiple recipients through the single-mint
+        // multi-transfer endpoint. All transfers are HNT.
+        let api = opts.blockchain_api()?;
+        let wallet_address = signer.pubkey().to_string();
+        let response = match payments.as_slice() {
+            [(destination, amount)] => {
+                api.token_transfer(&TokenTransferRequest {
+                    wallet_address,
                     destination: destination.to_string(),
                     token_amount: TokenAmountInput::new(amount.token.mint(), amount.amount),
                 })
-                .await?;
-            return print_json(
-                &self
-                    .commit()
-                    .commit_via_api(&api, &client, &response, &*signer)
-                    .await?
-                    .to_json(),
-            );
-        }
-
-        let txn_opts = self.commit().transaction_opts(&client);
-        let (tx, _) = token::transfer(&client, &payments, &*signer, &txn_opts).await?;
-        print_json(&self.commit().maybe_commit(tx, &client).await?.to_json())
+                .await?
+            }
+            recipients => {
+                let recipients = recipients
+                    .iter()
+                    .map(|(destination, amount)| Recipient {
+                        destination: destination.to_string(),
+                        amount: amount.amount.to_string(),
+                    })
+                    .collect();
+                api.multi_transfer(&MultiTransferRequest {
+                    wallet_address,
+                    mint: Token::Hnt.mint().to_string(),
+                    recipients,
+                })
+                .await?
+            }
+        };
+        print_json(
+            &self
+                .commit()
+                .commit_via_api(&api, &client, &response, &*signer)
+                .await?
+                .to_json(),
+        )
     }
 
     fn squads(&self) -> &SquadsOpts {
@@ -165,24 +173,22 @@ impl PayCmd {
 }
 
 // deny_unknown_fields so a typo'd or unsupported key in a multi-payment
-// file (e.g. "memo", which the old doc advertised but was silently
-// dropped) is an error instead of being ignored.
+// file (e.g. "token", dropped when transfers became HNT-only, or "memo",
+// which the old doc advertised but was silently dropped) is an error
+// instead of being ignored.
 #[derive(Debug, Deserialize, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct Payee {
-    /// Address to send the tokens to.
+    /// Address to send the HNT to.
     #[serde(with = "serde_pubkey")]
     address: Pubkey,
-    /// Amount of token to send
+    /// Amount of HNT to send
     amount: f64,
-    /// Type of token to send
-    #[arg(value_parser = Token::transferrable_value_parser)]
-    token: Token,
 }
 
 impl Payee {
     pub fn token_amount(&self) -> Result<TokenAmount> {
-        Ok(TokenAmount::from_f64(self.token, self.amount)?)
+        Ok(TokenAmount::from_f64(Token::Hnt, self.amount)?)
     }
 }
 
@@ -194,8 +200,7 @@ mod tests {
     fn test_json_hnt_input() {
         let json_hnt_input = "{\
             \"address\": \"JBjajLx1b2MsugerDALTffjh9dVdNx5XTvgJd8SpwUPf\",\
-            \"amount\": 1.6,\
-            \"token\": \"hnt\"\
+            \"amount\": 1.6\
         }";
 
         let payee: Payee = serde_json::from_str(json_hnt_input).expect("payee");
@@ -209,29 +214,25 @@ mod tests {
     }
 
     #[test]
-    fn test_json_mobile_input() {
-        let json_hnt_input = "{\
+    fn test_json_rejects_token_field() {
+        // Transfers are HNT-only; a leftover "token" key must be rejected
+        // rather than silently ignored (deny_unknown_fields).
+        let json_with_token = "{\
             \"address\": \"JBjajLx1b2MsugerDALTffjh9dVdNx5XTvgJd8SpwUPf\",\
             \"amount\": 0.5,\
             \"token\": \"mobile\"\
         }";
 
-        let payee: Payee = serde_json::from_str(json_hnt_input).expect("payee");
-        assert_eq!(
-            TokenAmount {
-                amount: 500_000,
-                token: Token::Mobile
-            },
-            payee.token_amount().expect("token amount")
-        );
+        let result: std::result::Result<Payee, serde_json::Error> =
+            serde_json::from_str(json_with_token);
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_json_bad_amount() {
         let json_hnt_input = "{\
             \"address\": \"JBjajLx1b2MsugerDALTffjh9dVdNx5XTvgJd8SpwUPf\",\
-            \"amount\": \"foo\",\
-            \"token\": \"hnt\"\
+            \"amount\": \"foo\"\
         }";
 
         let result: std::result::Result<Payee, serde_json::Error> =

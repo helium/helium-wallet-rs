@@ -377,7 +377,7 @@ impl CommitOpts {
         signer: &(dyn Signer + Send + Sync),
     ) -> Result<CommitResponse> {
         let unsigned = response.decode_transactions()?;
-        display_unsigned_transactions(&unsigned);
+        display_action_for_review(response, &unsigned);
 
         let solana = rpc.as_ref();
         let (blockhash, _) = solana
@@ -450,25 +450,55 @@ fn commit_response_from_status(status: StatusResponse) -> Result<CommitResponse>
     }
 }
 
-/// Print a short summary of API-built transactions before they are signed, so
-/// the signer can review what they are about to authorize. Enriched by the
-/// decode+display step (per-instruction detail); this is the minimal form.
-fn display_unsigned_transactions(transactions: &[VersionedTransaction]) {
-    eprintln!(
-        "→ blockchain-api returned {} transaction(s) to sign:",
-        transactions.len()
-    );
-    for (i, tx) in transactions.iter().enumerate() {
+/// Build the human-readable review lines for API-built transactions. Combines
+/// the server's declared intent (per-transaction `description` and the
+/// estimated fee) with facts derived from the decoded transaction itself (fee
+/// payer and instruction count) so the signer can confirm they are authorizing
+/// what they intended. Returned separately from printing so it can be tested.
+fn review_lines(
+    response: &blockchain_api::types::ActionResponse,
+    unsigned: &[VersionedTransaction],
+) -> Vec<String> {
+    let fee = &response.estimated_sol_fee;
+    let mut lines = vec![format!(
+        "{} transaction(s) built by the blockchain-api, est. fee ~{} SOL",
+        unsigned.len(),
+        fee.ui_amount_string,
+    )];
+    for (i, (tx, item)) in unsigned
+        .iter()
+        .zip(&response.transaction_data.transactions)
+        .enumerate()
+    {
+        let description = item
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("description"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("(no description)");
         let payer = tx
             .message
             .static_account_keys()
             .first()
             .map(ToString::to_string)
             .unwrap_or_else(|| "<none>".to_string());
-        eprintln!(
-            "   [{i}] fee payer {payer}, {} instruction(s)",
-            tx.message.instructions().len()
-        );
+        lines.push(format!(
+            "[{i}] {description} (fee payer {payer}, {} instruction(s))",
+            tx.message.instructions().len(),
+        ));
+    }
+    lines
+}
+
+/// Print the review summary to stderr before transactions are signed. For
+/// Ledger sources the device additionally shows a blind-sign hash (see
+/// [`print_blind_sign_hash`]).
+fn display_action_for_review(
+    response: &blockchain_api::types::ActionResponse,
+    unsigned: &[VersionedTransaction],
+) {
+    for line in review_lines(response, unsigned) {
+        eprintln!("→ {line}");
     }
 }
 
@@ -717,5 +747,59 @@ mod tests {
         use helium_lib::blockchain_api::types::BatchStatus;
         let sig = Signature::from([6u8; 64]);
         assert!(commit_response_from_status(status_with(BatchStatus::Failed, &[sig])).is_err());
+    }
+
+    #[test]
+    fn review_lines_include_intent_fee_and_payer() {
+        use helium_lib::{
+            blockchain_api::types::{
+                ActionResponse, TokenAmount, TransactionData, TransactionItem,
+            },
+            solana_sdk::{
+                hash::Hash,
+                message::{Message, MessageHeader, VersionedMessage},
+            },
+        };
+
+        let payer = Pubkey::new_unique();
+        let tx = VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::Legacy(Message {
+                header: MessageHeader {
+                    num_required_signatures: 0,
+                    num_readonly_signed_accounts: 0,
+                    num_readonly_unsigned_accounts: 0,
+                },
+                account_keys: vec![payer],
+                recent_blockhash: Hash::default(),
+                instructions: vec![],
+            }),
+        };
+        let response = ActionResponse {
+            transaction_data: TransactionData {
+                transactions: vec![TransactionItem {
+                    serialized_transaction: "unused".to_string(),
+                    metadata: Some(
+                        json!({ "type": "token_transfer", "description": "Transfer HNT" }),
+                    ),
+                }],
+                parallel: false,
+                tag: None,
+                action_metadata: None,
+            },
+            estimated_sol_fee: TokenAmount {
+                amount: "895934".to_string(),
+                decimals: 9,
+                ui_amount: Some(0.000895934),
+                ui_amount_string: "0.000895934".to_string(),
+                mint: "So11111111111111111111111111111111111111112".to_string(),
+            },
+        };
+
+        let lines = review_lines(&response, &[tx]);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("est. fee ~0.000895934 SOL"));
+        assert!(lines[1].contains("Transfer HNT"));
+        assert!(lines[1].contains(&payer.to_string()));
     }
 }

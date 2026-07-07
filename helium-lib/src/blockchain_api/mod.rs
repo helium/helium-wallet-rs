@@ -160,7 +160,13 @@ impl Client {
     }
 
     /// `POST /data-credits/mint` — mint DC by burning HNT.
-    pub async fn dc_mint(&self, req: &DcMintRequest) -> Result<ActionResponse, BlockchainApiError> {
+    ///
+    /// The data-credit endpoints return the [`TransactionData`] bare (no
+    /// `estimatedSolFee` wrapper), unlike the token/hotspot endpoints.
+    pub async fn dc_mint(
+        &self,
+        req: &DcMintRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
         self.post("/data-credits/mint", req).await
     }
 
@@ -168,7 +174,7 @@ impl Client {
     pub async fn dc_delegate(
         &self,
         req: &DcDelegateRequest,
-    ) -> Result<ActionResponse, BlockchainApiError> {
+    ) -> Result<TransactionData, BlockchainApiError> {
         self.post("/data-credits/delegate", req).await
     }
 

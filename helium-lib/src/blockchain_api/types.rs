@@ -163,6 +163,37 @@ impl ActionResponse {
     }
 }
 
+/// Uniform access to the transactions (and optional fee estimate) an action
+/// endpoint returns. Endpoints differ in envelope: most wrap the transactions
+/// under `transactionData` with a sibling `estimatedSolFee`
+/// ([`ActionResponse`]), while data-credit endpoints return the
+/// [`TransactionData`] bare with no fee estimate. This trait lets a caller sign
+/// and submit either shape uniformly.
+pub trait ApiTransactions {
+    /// The transactions to sign and submit.
+    fn transaction_data(&self) -> &TransactionData;
+    /// The estimated SOL fee, when the endpoint provides one.
+    fn estimated_sol_fee(&self) -> Option<&TokenAmount>;
+}
+
+impl ApiTransactions for ActionResponse {
+    fn transaction_data(&self) -> &TransactionData {
+        &self.transaction_data
+    }
+    fn estimated_sol_fee(&self) -> Option<&TokenAmount> {
+        Some(&self.estimated_sol_fee)
+    }
+}
+
+impl ApiTransactions for TransactionData {
+    fn transaction_data(&self) -> &TransactionData {
+        self
+    }
+    fn estimated_sol_fee(&self) -> Option<&TokenAmount> {
+        None
+    }
+}
+
 // ---- Submit / status ----
 
 /// Simulation commitment level for `submit`.
@@ -413,6 +444,27 @@ mod tests {
         assert_eq!(resp.transaction_data.tag.as_deref(), Some("abc"));
         assert_eq!(resp.estimated_sol_fee.decimals, 9);
         assert_eq!(resp.estimated_sol_fee.amount, "5000");
+    }
+
+    #[test]
+    fn bare_transaction_data_deserializes_dc_envelope() {
+        // The data-credit endpoints return TransactionData bare, with no
+        // `transactionData`/`estimatedSolFee` wrapper.
+        let json = serde_json::json!({
+            "transactions": [{ "serializedTransaction": "AQID" }],
+            "parallel": false,
+            "tag": "dc_delegate_abc",
+            "actionMetadata": { "type": "dc_delegate" }
+        });
+        let data: TransactionData =
+            serde_json::from_value(json).expect("deserialize bare TransactionData");
+        assert_eq!(data.transactions.len(), 1);
+        assert_eq!(data.tag.as_deref(), Some("dc_delegate_abc"));
+        assert!(ApiTransactions::estimated_sol_fee(&data).is_none());
+        assert!(std::ptr::eq(
+            ApiTransactions::transaction_data(&data),
+            &data
+        ));
     }
 
     #[test]

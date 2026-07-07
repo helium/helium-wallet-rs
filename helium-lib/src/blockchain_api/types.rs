@@ -367,8 +367,13 @@ pub struct DcDelegateRequest {
     pub amount: String,
     /// SubDAO token mint (MOBILE or IOT) selecting the target subDAO.
     pub mint: String,
+    /// In-tx memo (direct mode) or the Squads proposal memo (`multisig` mode).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
+    /// If set, delegate from this multisig's vault as a Squads v4 proposal.
+    /// `owner` is the proposing member and outer fee payer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multisig: Option<String>,
 }
 
 /// `POST /hotspots/claim-rewards`.
@@ -480,6 +485,13 @@ pub struct SwapInstructionsRequest {
 pub struct TokenBurnRequest {
     pub wallet_address: String,
     pub token_amount: TokenAmountInput,
+    /// If set, burn from this multisig's vault as a Squads v4 proposal.
+    /// `wallet_address` is the proposing member and outer fee payer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multisig: Option<String>,
+    /// Memo recorded on the Squads proposal (only with `multisig`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
 }
 
 /// `POST /tokens/memo` — emit a bare spl-memo transaction.
@@ -498,6 +510,13 @@ pub struct DcBurnRequest {
     pub owner: String,
     /// Raw DC amount (DC has 0 decimals).
     pub amount: String,
+    /// If set, burn from this multisig's vault as a Squads v4 proposal.
+    /// `owner` is the proposing member and outer fee payer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multisig: Option<String>,
+    /// Memo recorded on the Squads proposal (only with `multisig`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
 }
 
 /// `POST /hotspots/burn` — permanently burn a hotspot cNFT.
@@ -506,6 +525,29 @@ pub struct DcBurnRequest {
 pub struct HotspotBurnRequest {
     pub wallet_address: String,
     pub hotspot_pubkey: String,
+    /// If set, burn a hotspot the multisig's vault owns, as a Squads v4
+    /// proposal. `wallet_address` is the proposing member and outer fee payer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multisig: Option<String>,
+    /// Memo recorded on the Squads proposal (only with `multisig`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+}
+
+/// `POST /hotspots/transfer` — transfer a hotspot cNFT to a new owner.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferHotspotRequest {
+    pub wallet_address: String,
+    pub hotspot_pubkey: String,
+    pub recipient: String,
+    /// If set, transfer a hotspot the multisig's vault owns, as a Squads v4
+    /// proposal. `wallet_address` is the proposing member and outer fee payer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multisig: Option<String>,
+    /// Memo recorded on the Squads proposal (only with `multisig`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
 }
 
 /// Body for `POST /hotspots/{entityPubKey}/claim-rewards`. The entity key is a
@@ -750,24 +792,29 @@ mod tests {
         let burn = TokenBurnRequest {
             wallet_address: "w".to_string(),
             token_amount: TokenAmountInput::new(&mint, 5),
+            multisig: None,
+            memo: None,
         };
-        assert_eq!(
-            serde_json::to_value(&burn).expect("serialize burn")["walletAddress"],
-            "w"
-        );
+        let burn_json = serde_json::to_value(&burn).expect("serialize burn");
+        assert_eq!(burn_json["walletAddress"], "w");
+        // Omitted propose fields must not appear on a direct burn.
+        assert!(burn_json.get("multisig").is_none());
 
         let dc = DcBurnRequest {
             owner: "o".to_string(),
             amount: "3".to_string(),
+            multisig: Some("ms".to_string()),
+            memo: None,
         };
-        assert_eq!(
-            serde_json::to_value(&dc).expect("serialize dc burn")["amount"],
-            "3"
-        );
+        let dc_json = serde_json::to_value(&dc).expect("serialize dc burn");
+        assert_eq!(dc_json["amount"], "3");
+        assert_eq!(dc_json["multisig"], "ms");
 
         let hotspot = HotspotBurnRequest {
             wallet_address: "w".to_string(),
             hotspot_pubkey: "h".to_string(),
+            multisig: None,
+            memo: None,
         };
         assert_eq!(
             serde_json::to_value(&hotspot).expect("serialize hotspot burn")["hotspotPubkey"],

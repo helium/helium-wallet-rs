@@ -20,6 +20,8 @@
 //!         wallet_address: "…".to_string(),
 //!         destination: "…".to_string(),
 //!         token_amount: TokenAmountInput::new(&mint, 100_000_000),
+//!         multisig: None,
+//!         memo: None,
 //!     })
 //!     .await?;
 //! let unsigned = resp.decode_transactions()?; // sign these locally, then submit
@@ -40,8 +42,8 @@ use types::{
     DcDelegateRequest, DcMintRequest, HotspotBurnRequest, MemoRequest, MultiTransferRequest,
     SquadsExecuteProposalRequest, SquadsProposalVoteRequest, SquadsProposeConfigChangeRequest,
     StatusResponse, SubmitRequest, SubmitResponse, SwapInstructionsRequest, SwapQuote,
-    TokenBurnRequest, TokenTransferRequest, TransactionData, UpdateInfoRequest,
-    UpdateRewardsDestinationRequest,
+    TokenBurnRequest, TokenTransferRequest, TransactionData, TransferHotspotRequest,
+    UpdateInfoRequest, UpdateRewardsDestinationRequest,
 };
 
 /// Environment variable holding the blockchain-api base URL (`…/api/v1`).
@@ -248,6 +250,14 @@ impl Client {
         req: &HotspotBurnRequest,
     ) -> Result<ActionResponse, BlockchainApiError> {
         self.post("/hotspots/burn", req).await
+    }
+
+    /// `POST /hotspots/transfer` — transfer a hotspot cNFT to a new owner.
+    pub async fn transfer_hotspot(
+        &self,
+        req: &TransferHotspotRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post("/hotspots/transfer", req).await
     }
 
     /// `POST /hotspots/{entity_pub_key}/claim-rewards` — claim the full pending

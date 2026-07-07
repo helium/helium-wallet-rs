@@ -4,7 +4,10 @@ use crate::{
 };
 use helium_lib::{
     b64,
-    blockchain_api::{self, types::StatusResponse},
+    blockchain_api::{
+        self,
+        types::{ApiTransactions, StatusResponse, TokenAmount, TransactionData},
+    },
     client::{self, SolanaRpcClient},
     keypair::{to_pubkey, Keypair, Pubkey, Signature, Signer},
     priority_fee,
@@ -369,15 +372,20 @@ impl CommitOpts {
     /// Note: `min_priority_fee` / `max_priority_fee` do not apply here; the
     /// blockchain-api sets priority fee, compute budget, and lookup tables
     /// server-side.
-    pub async fn commit_via_api<C: AsRef<SolanaRpcClient>>(
+    pub async fn commit_via_api<C, R>(
         &self,
         api: &blockchain_api::Client,
         rpc: &C,
-        response: &blockchain_api::types::ActionResponse,
+        response: &R,
         signer: &(dyn Signer + Send + Sync),
-    ) -> Result<CommitResponse> {
-        let unsigned = response.decode_transactions()?;
-        display_action_for_review(response, &unsigned);
+    ) -> Result<CommitResponse>
+    where
+        C: AsRef<SolanaRpcClient>,
+        R: ApiTransactions,
+    {
+        let data = response.transaction_data();
+        let unsigned = data.decode_transactions()?;
+        display_action_for_review(data, response.estimated_sol_fee(), &unsigned);
 
         let solana = rpc.as_ref();
         let (blockhash, _) = solana
@@ -392,9 +400,7 @@ impl CommitOpts {
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         if self.commit {
-            let submitted = api
-                .submit_signed(&response.transaction_data, &signed, true)
-                .await?;
+            let submitted = api.submit_signed(data, &signed, true).await?;
             let timeout = Duration::from_secs(self.confirm_timeout_secs);
             let status = api
                 .poll_status(
@@ -456,20 +462,19 @@ fn commit_response_from_status(status: StatusResponse) -> Result<CommitResponse>
 /// payer and instruction count) so the signer can confirm they are authorizing
 /// what they intended. Returned separately from printing so it can be tested.
 fn review_lines(
-    response: &blockchain_api::types::ActionResponse,
+    data: &TransactionData,
+    fee: Option<&TokenAmount>,
     unsigned: &[VersionedTransaction],
 ) -> Vec<String> {
-    let fee = &response.estimated_sol_fee;
+    let fee_summary = match fee {
+        Some(fee) => format!("est. fee ~{} SOL", fee.ui_amount_string),
+        None => "fee set server-side".to_string(),
+    };
     let mut lines = vec![format!(
-        "{} transaction(s) built by the blockchain-api, est. fee ~{} SOL",
+        "{} transaction(s) built by the blockchain-api, {fee_summary}",
         unsigned.len(),
-        fee.ui_amount_string,
     )];
-    for (i, (tx, item)) in unsigned
-        .iter()
-        .zip(&response.transaction_data.transactions)
-        .enumerate()
-    {
+    for (i, (tx, item)) in unsigned.iter().zip(&data.transactions).enumerate() {
         let description = item
             .metadata
             .as_ref()
@@ -494,10 +499,11 @@ fn review_lines(
 /// Ledger sources the device additionally shows a blind-sign hash (see
 /// [`print_blind_sign_hash`]).
 fn display_action_for_review(
-    response: &blockchain_api::types::ActionResponse,
+    data: &TransactionData,
+    fee: Option<&TokenAmount>,
     unsigned: &[VersionedTransaction],
 ) {
-    for line in review_lines(response, unsigned) {
+    for line in review_lines(data, fee, unsigned) {
         eprintln!("→ {line}");
     }
 }
@@ -796,7 +802,11 @@ mod tests {
             },
         };
 
-        let lines = review_lines(&response, &[tx]);
+        let lines = review_lines(
+            &response.transaction_data,
+            Some(&response.estimated_sol_fee),
+            &[tx],
+        );
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("est. fee ~0.000895934 SOL"));
         assert!(lines[1].contains("Transfer HNT"));

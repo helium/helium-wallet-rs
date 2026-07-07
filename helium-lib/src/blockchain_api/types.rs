@@ -466,6 +466,51 @@ pub struct SwapInstructionsRequest {
     pub destination_token_account: Option<String>,
 }
 
+/// `POST /tokens/burn` — burn SPL tokens from the wallet's account.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenBurnRequest {
+    pub wallet_address: String,
+    pub token_amount: TokenAmountInput,
+}
+
+/// `POST /tokens/memo` — emit a bare spl-memo transaction.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoRequest {
+    pub wallet_address: String,
+    pub memo: String,
+}
+
+/// `POST /data-credits/burn` — burn DC directly from the owner's account.
+/// Returns the bare [`TransactionData`], like the other data-credit endpoints.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DcBurnRequest {
+    pub owner: String,
+    /// Raw DC amount (DC has 0 decimals).
+    pub amount: String,
+}
+
+/// `POST /hotspots/burn` — permanently burn a hotspot cNFT.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HotspotBurnRequest {
+    pub wallet_address: String,
+    pub hotspot_pubkey: String,
+}
+
+/// Body for `POST /hotspots/{entityPubKey}/claim-rewards`. The entity key is a
+/// path parameter, so it is not part of this body.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimHotspotRewardsRequest {
+    pub wallet_address: String,
+    /// Reward network; server default is `hnt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<RewardNetwork>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,6 +636,54 @@ mod tests {
         assert_eq!(quote.price_impact_pct, "0.01");
         // Re-serializing reproduces every field, including those in `extra`.
         assert_eq!(serde_json::to_value(&quote).expect("serialize quote"), json);
+    }
+
+    #[test]
+    fn new_action_requests_serialize_camel_case() {
+        let mint = Pubkey::new_unique();
+        let burn = TokenBurnRequest {
+            wallet_address: "w".to_string(),
+            token_amount: TokenAmountInput::new(&mint, 5),
+        };
+        assert_eq!(
+            serde_json::to_value(&burn).expect("serialize burn")["walletAddress"],
+            "w"
+        );
+
+        let dc = DcBurnRequest {
+            owner: "o".to_string(),
+            amount: "3".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(&dc).expect("serialize dc burn")["amount"],
+            "3"
+        );
+
+        let hotspot = HotspotBurnRequest {
+            wallet_address: "w".to_string(),
+            hotspot_pubkey: "h".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(&hotspot).expect("serialize hotspot burn")["hotspotPubkey"],
+            "h"
+        );
+
+        let claim = ClaimHotspotRewardsRequest {
+            wallet_address: "w".to_string(),
+            network: Some(RewardNetwork::Iot),
+        };
+        let claim_json = serde_json::to_value(&claim).expect("serialize claim");
+        assert_eq!(claim_json["walletAddress"], "w");
+        assert_eq!(claim_json["network"], "iot");
+
+        let memo = MemoRequest {
+            wallet_address: "w".to_string(),
+            memo: "hi".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(&memo).expect("serialize memo")["memo"],
+            "hi"
+        );
     }
 
     #[test]

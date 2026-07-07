@@ -36,9 +36,11 @@ use crate::{
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::{Duration, Instant};
 use types::{
-    ActionResponse, ClaimRewardsRequest, DcDelegateRequest, DcMintRequest, MultiTransferRequest,
+    ActionResponse, ClaimHotspotRewardsRequest, ClaimRewardsRequest, DcBurnRequest,
+    DcDelegateRequest, DcMintRequest, HotspotBurnRequest, MemoRequest, MultiTransferRequest,
     StatusResponse, SubmitRequest, SubmitResponse, SwapInstructionsRequest, SwapQuote,
-    TokenTransferRequest, TransactionData, UpdateInfoRequest, UpdateRewardsDestinationRequest,
+    TokenBurnRequest, TokenTransferRequest, TransactionData, UpdateInfoRequest,
+    UpdateRewardsDestinationRequest,
 };
 
 /// Environment variable holding the blockchain-api base URL (`…/api/v1`).
@@ -216,6 +218,46 @@ impl Client {
         req: &UpdateInfoRequest,
     ) -> Result<ActionResponse, BlockchainApiError> {
         self.post("/hotspots/update-info", req).await
+    }
+
+    /// `POST /tokens/burn` — burn SPL tokens.
+    pub async fn token_burn(
+        &self,
+        req: &TokenBurnRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post("/tokens/burn", req).await
+    }
+
+    /// `POST /tokens/memo` — emit a memo transaction.
+    pub async fn memo(&self, req: &MemoRequest) -> Result<ActionResponse, BlockchainApiError> {
+        self.post("/tokens/memo", req).await
+    }
+
+    /// `POST /data-credits/burn` — burn DC. Returns the bare [`TransactionData`].
+    pub async fn dc_burn(
+        &self,
+        req: &DcBurnRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
+        self.post("/data-credits/burn", req).await
+    }
+
+    /// `POST /hotspots/burn` — permanently burn a hotspot cNFT.
+    pub async fn burn_hotspot(
+        &self,
+        req: &HotspotBurnRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post("/hotspots/burn", req).await
+    }
+
+    /// `POST /hotspots/{entity_pub_key}/claim-rewards` — claim the full pending
+    /// rewards for a single hotspot (the entity key is a path parameter).
+    pub async fn claim_hotspot_rewards(
+        &self,
+        entity_pub_key: &str,
+        req: &ClaimHotspotRewardsRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(&format!("/hotspots/{entity_pub_key}/claim-rewards"), req)
+            .await
     }
 
     /// `GET /swap/quote` — a Jupiter-backed quote for `amount` of `input_mint`

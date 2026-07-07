@@ -38,6 +38,7 @@ use std::time::{Duration, Instant};
 use types::{
     ActionResponse, ClaimHotspotRewardsRequest, ClaimRewardsRequest, DcBurnRequest,
     DcDelegateRequest, DcMintRequest, HotspotBurnRequest, MemoRequest, MultiTransferRequest,
+    SquadsExecuteProposalRequest, SquadsProposalVoteRequest, SquadsProposeConfigChangeRequest,
     StatusResponse, SubmitRequest, SubmitResponse, SwapInstructionsRequest, SwapQuote,
     TokenBurnRequest, TokenTransferRequest, TransactionData, UpdateInfoRequest,
     UpdateRewardsDestinationRequest,
@@ -258,6 +259,51 @@ impl Client {
     ) -> Result<ActionResponse, BlockchainApiError> {
         self.post(&format!("/hotspots/{entity_pub_key}/claim-rewards"), req)
             .await
+    }
+
+    // ---- Squads v4 proposal lifecycle (return the bare TransactionData) ----
+
+    /// `POST /squads/proposals/approve` — approve a proposal as `member`.
+    pub async fn approve_proposal(
+        &self,
+        req: &SquadsProposalVoteRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
+        self.post("/squads/proposals/approve", req).await
+    }
+
+    /// `POST /squads/proposals/reject` — reject a proposal as `member`.
+    pub async fn reject_proposal(
+        &self,
+        req: &SquadsProposalVoteRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
+        self.post("/squads/proposals/reject", req).await
+    }
+
+    /// `POST /squads/proposals/cancel` — cancel an approved proposal as `member`.
+    pub async fn cancel_proposal(
+        &self,
+        req: &SquadsProposalVoteRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
+        self.post("/squads/proposals/cancel", req).await
+    }
+
+    /// `POST /squads/proposals/execute` — execute an approved proposal (vault or
+    /// config; the server detects which).
+    pub async fn execute_proposal(
+        &self,
+        req: &SquadsExecuteProposalRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
+        self.post("/squads/proposals/execute", req).await
+    }
+
+    /// `POST /squads/proposals/config` — propose a config change (add/remove
+    /// member, change threshold). The assigned proposal index is returned in the
+    /// response's `actionMetadata.transactionIndex`.
+    pub async fn propose_config_change(
+        &self,
+        req: &SquadsProposeConfigChangeRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
+        self.post("/squads/proposals/config", req).await
     }
 
     /// `GET /swap/quote` — a Jupiter-backed quote for `amount` of `input_mint`

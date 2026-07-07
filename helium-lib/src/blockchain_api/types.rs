@@ -313,6 +313,14 @@ pub struct TokenTransferRequest {
     pub wallet_address: String,
     pub destination: String,
     pub token_amount: TokenAmountInput,
+    /// If set, build the transfer as a Squads v4 proposal from this multisig's
+    /// vault instead of a direct transfer. `wallet_address` is the proposing
+    /// member and outer fee payer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multisig: Option<String>,
+    /// Memo recorded on the Squads proposal (only meaningful with `multisig`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
 }
 
 /// A recipient in a multi-transfer.
@@ -511,6 +519,70 @@ pub struct ClaimHotspotRewardsRequest {
     pub network: Option<RewardNetwork>,
 }
 
+// ---- Squads v4 proposal lifecycle ----
+
+/// Shared body for the Squads v4 proposal votes: approve / reject / cancel.
+/// The `member` casting the vote is also the outer fee payer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadsProposalVoteRequest {
+    pub member: String,
+    pub multisig: String,
+    /// Transaction index of the target proposal (on-chain u64, sent as a string).
+    pub transaction_index: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+}
+
+/// `POST /squads/proposals/execute` — execute an approved proposal. Handles both
+/// vault and config transactions; the server detects which the index holds.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadsExecuteProposalRequest {
+    pub member: String,
+    pub multisig: String,
+    pub transaction_index: String,
+}
+
+/// A member permission bit for an [`SquadsConfigAction::AddMember`].
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SquadsPermission {
+    Initiate,
+    Vote,
+    Execute,
+}
+
+/// A single config change in a [`SquadsProposeConfigChangeRequest`].
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum SquadsConfigAction {
+    #[serde(rename_all = "camelCase")]
+    AddMember {
+        new_member: String,
+        /// Permissions granted to the new member; server defaults to all three.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        permissions: Option<Vec<SquadsPermission>>,
+    },
+    #[serde(rename_all = "camelCase")]
+    RemoveMember { old_member: String },
+    #[serde(rename_all = "camelCase")]
+    ChangeThreshold { new_threshold: u16 },
+}
+
+/// `POST /squads/proposals/config` — propose a config change (add/remove member,
+/// change threshold). The server assigns the proposal's transaction index and
+/// returns it in the response's `actionMetadata`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadsProposeConfigChangeRequest {
+    pub member: String,
+    pub multisig: String,
+    pub actions: Vec<SquadsConfigAction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,11 +645,45 @@ mod tests {
             wallet_address: "wallet".to_string(),
             destination: "dest".to_string(),
             token_amount: TokenAmountInput::new(&mint, 100_000_000),
+            multisig: None,
+            memo: None,
         };
         let v = serde_json::to_value(&req).expect("serialize request");
         assert_eq!(v["walletAddress"], "wallet");
         assert_eq!(v["tokenAmount"]["amount"], "100000000");
         assert_eq!(v["tokenAmount"]["mint"], mint.to_string());
+        // Omitted Squads fields must not appear on a direct transfer.
+        assert!(v.get("multisig").is_none());
+        assert!(v.get("memo").is_none());
+    }
+
+    #[test]
+    fn squads_config_action_serializes_tagged_camel_case() {
+        let add = SquadsConfigAction::AddMember {
+            new_member: "m".to_string(),
+            permissions: Some(vec![SquadsPermission::Initiate, SquadsPermission::Vote]),
+        };
+        let v = serde_json::to_value(&add).expect("serialize add member");
+        assert_eq!(v["type"], "addMember");
+        assert_eq!(v["newMember"], "m");
+        assert_eq!(v["permissions"][0], "initiate");
+        assert_eq!(v["permissions"][1], "vote");
+
+        let threshold = SquadsConfigAction::ChangeThreshold { new_threshold: 2 };
+        let tv = serde_json::to_value(&threshold).expect("serialize threshold");
+        assert_eq!(tv["type"], "changeThreshold");
+        assert_eq!(tv["newThreshold"], 2);
+
+        let vote = SquadsProposalVoteRequest {
+            member: "mem".to_string(),
+            multisig: "ms".to_string(),
+            transaction_index: "7".to_string(),
+            memo: None,
+        };
+        let vv = serde_json::to_value(&vote).expect("serialize vote");
+        assert_eq!(vv["member"], "mem");
+        assert_eq!(vv["transactionIndex"], "7");
+        assert!(vv.get("memo").is_none());
     }
 
     #[test]

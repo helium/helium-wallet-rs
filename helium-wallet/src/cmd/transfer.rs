@@ -6,7 +6,8 @@ use crate::{
     result::Result,
 };
 use helium_lib::{
-    keypair::{serde_pubkey, Pubkey},
+    blockchain_api::types::{TokenAmountInput, TokenTransferRequest},
+    keypair::{serde_pubkey, Pubkey, Signer},
     token::{self, Token, TokenAmount},
 };
 use serde::Deserialize;
@@ -89,9 +90,10 @@ impl PayCmd {
         let payments = self.collect_payments()?;
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let txn_opts = self.commit().transaction_opts(&client);
 
+        // Squads proposals still build locally (migrates in Phase 2).
         if let Some(squads_target) = self.squads().squads {
+            let txn_opts = self.commit().transaction_opts(&client);
             return cmd_squads::submit_proposal_with(
                 &client,
                 squads_target,
@@ -106,8 +108,30 @@ impl PayCmd {
             .await;
         }
 
-        let (tx, _) = token::transfer(&client, &payments, &*signer, &txn_opts).await?;
+        // A single-recipient transfer builds via the blockchain-api. Multi
+        // payments still build locally: they can mix tokens within one atomic
+        // transaction, which the single-mint multi-transfer endpoint cannot
+        // express (pending an API mapping decision).
+        if let [(destination, amount)] = payments.as_slice() {
+            let api = opts.blockchain_api()?;
+            let response = api
+                .token_transfer(&TokenTransferRequest {
+                    wallet_address: signer.pubkey().to_string(),
+                    destination: destination.to_string(),
+                    token_amount: TokenAmountInput::new(amount.token.mint(), amount.amount),
+                })
+                .await?;
+            return print_json(
+                &self
+                    .commit()
+                    .commit_via_api(&api, &client, &response, &*signer)
+                    .await?
+                    .to_json(),
+            );
+        }
 
+        let txn_opts = self.commit().transaction_opts(&client);
+        let (tx, _) = token::transfer(&client, &payments, &*signer, &txn_opts).await?;
         print_json(&self.commit().maybe_commit(tx, &client).await?.to_json())
     }
 

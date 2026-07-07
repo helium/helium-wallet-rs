@@ -2,7 +2,7 @@ use crate::cmd::{
     squads::{self as cmd_squads, SquadsOpts},
     *,
 };
-use helium_lib::{blockchain_api::types::DcDelegateRequest, dao::SubDao, dc, keypair::Signer};
+use helium_lib::{blockchain_api::types::DcDelegateRequest, dao::SubDao, keypair::Signer};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Delegate DC from this wallet to a given router
@@ -31,26 +31,15 @@ impl Cmd {
 
         let client = opts.client()?;
 
-        if let Some(squads_target) = self.squads.squads {
-            let transaction_opts = self.commit.transaction_opts(&client);
-            return cmd_squads::submit_proposal_with(
-                &client,
-                squads_target,
+        // In propose mode the memo rides on the Squads proposal; a direct
+        // delegate sends no in-tx memo (matching prior behavior).
+        let (multisig, memo) = match self.squads.squads {
+            Some(squads_target) => (
+                Some(cmd_squads::resolve_multisig(&client, squads_target).await?),
                 self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move {
-                    Ok(vec![dc::delegate_instruction(
-                        self.subdao,
-                        &self.payer,
-                        self.dc,
-                        vault.as_pubkey(),
-                    )])
-                },
-            )
-            .await;
-        }
+            ),
+            None => (None, None),
+        };
 
         let api = opts.blockchain_api()?;
         let response = api
@@ -59,7 +48,8 @@ impl Cmd {
                 router_key: self.payer.clone(),
                 amount: self.dc.to_string(),
                 mint: self.subdao.token().mint().to_string(),
-                memo: None,
+                memo,
+                multisig,
             })
             .await?;
         print_json(

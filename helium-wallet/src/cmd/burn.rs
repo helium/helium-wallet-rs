@@ -30,30 +30,23 @@ impl Cmd {
 
         let token_amount = token::TokenAmount::from_f64(self.subdao.token(), self.amount)?;
 
-        if let Some(squads_target) = self.squads.squads {
-            let txn_opts = self.commit.transaction_opts(&client);
-            return cmd_squads::submit_proposal_with(
-                &client,
-                squads_target,
+        // With `--squads`, the burn is built from the resolved vault and wrapped
+        // as a proposal by the API; otherwise it burns from the wallet directly.
+        let (multisig, memo) = match self.squads.squads {
+            Some(squads_target) => (
+                Some(cmd_squads::resolve_multisig(&client, squads_target).await?),
                 self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &txn_opts,
-                |vault| async move {
-                    Ok(vec![token::burn_instruction(
-                        vault.as_pubkey(),
-                        &token_amount,
-                    )?])
-                },
-            )
-            .await;
-        }
+            ),
+            None => (None, None),
+        };
 
         let api = opts.blockchain_api()?;
         let response = api
             .token_burn(&TokenBurnRequest {
                 wallet_address: signer.pubkey().to_string(),
                 token_amount: TokenAmountInput::new(token_amount.token.mint(), token_amount.amount),
+                multisig,
+                memo,
             })
             .await?;
         print_json(

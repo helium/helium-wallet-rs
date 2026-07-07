@@ -34,17 +34,23 @@ impl Cmd {
             if self.router.is_some() || self.subdao.is_some() {
                 bail!("--squads only supports the non-delegated burn path");
             }
-            let transaction_opts = self.commit.transaction_opts(&client);
-            return cmd_squads::submit_proposal_with(
-                &client,
-                squads_target,
-                self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move { Ok(vec![dc::burn_instruction(self.dc, vault.as_pubkey())]) },
-            )
-            .await;
+            let multisig = cmd_squads::resolve_multisig(&client, squads_target).await?;
+            let api = opts.blockchain_api()?;
+            let response = api
+                .dc_burn(&DcBurnRequest {
+                    owner: signer.pubkey().to_string(),
+                    amount: self.dc.to_string(),
+                    multisig: Some(multisig),
+                    memo: self.squads.memo.clone(),
+                })
+                .await?;
+            return print_json(
+                &self
+                    .commit
+                    .commit_via_api(&api, &client, &response, &*signer)
+                    .await?
+                    .to_json(),
+            );
         }
 
         match (&self.router, self.subdao) {
@@ -69,6 +75,8 @@ impl Cmd {
                     .dc_burn(&DcBurnRequest {
                         owner: signer.pubkey().to_string(),
                         amount: self.dc.to_string(),
+                        multisig: None,
+                        memo: None,
                     })
                     .await?;
                 print_json(

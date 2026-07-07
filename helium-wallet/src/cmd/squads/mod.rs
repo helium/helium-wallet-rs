@@ -50,6 +50,18 @@ pub(crate) async fn squads_vault<C: AsRef<helium_lib::client::SolanaRpcClient>>(
     Ok((multisig, vault, vault_index))
 }
 
+/// Resolve a `--squads <target>` (a multisig or vault PDA) to the multisig PDA
+/// string the blockchain-api propose endpoints expect. Keeps the vault/target
+/// resolution (a read) local while construction moves to the API.
+pub(crate) async fn resolve_multisig<C: AsRef<helium_lib::client::SolanaRpcClient>>(
+    client: &C,
+    squads_target: Pubkey,
+) -> Result<String> {
+    Ok(lib_squads::resolve_to_multisig(client, &squads_target)
+        .await?
+        .to_string())
+}
+
 /// End-to-end Squads proposal submission for `--squads`-aware wallet
 /// commands. Resolves the vault, runs `build_ixs(vault)` to produce
 /// the inner instruction list, wraps the result as a v4 proposal, and

@@ -3,7 +3,9 @@ use crate::cmd::{
     *,
 };
 use helium_lib::{
-    asset, entity_key,
+    asset,
+    blockchain_api::types::TransferHotspotRequest,
+    entity_key,
     keypair::{Pubkey, Signer},
     kta,
 };
@@ -29,41 +31,36 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
-        let kta = kta::for_entity_key(&self.entity_key.as_entity_key()?).await?;
 
+        // With `--squads` the API builds the transfer from the multisig's vault
+        // (which must own the asset) and wraps it as a proposal.
         if let Some(squads_target) = self.squads.squads {
-            let client_ref = &client;
-            let recipient = self.recipient;
-            let asset_id = kta.asset;
-            return cmd_squads::submit_proposal_with(
-                client_ref,
-                squads_target,
-                self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move {
-                    if vault.as_pubkey() == &recipient {
-                        bail!("recipient already owner of asset");
-                    }
-                    Ok(vec![
-                        asset::fetch_transfer_instruction(
-                            client_ref,
-                            &asset_id,
-                            &recipient,
-                            vault.as_pubkey(),
-                        )
-                        .await?,
-                    ])
-                },
-            )
-            .await;
+            let multisig = cmd_squads::resolve_multisig(&client, squads_target).await?;
+            let api = opts.blockchain_api()?;
+            let response = api
+                .transfer_hotspot(&TransferHotspotRequest {
+                    wallet_address: signer.pubkey().to_string(),
+                    hotspot_pubkey: self.entity_key.to_string(),
+                    recipient: self.recipient.to_string(),
+                    multisig: Some(multisig),
+                    memo: self.squads.memo.clone(),
+                })
+                .await?;
+            return print_json(
+                &self
+                    .commit
+                    .commit_via_api(&api, &client, &response, &*signer)
+                    .await?
+                    .to_json(),
+            );
         }
 
+        // Direct transfers still build locally (not yet migrated to the API).
         if signer.pubkey() == self.recipient {
             bail!("recipient already owner of asset");
         }
+        let transaction_opts = self.commit.transaction_opts(&client);
+        let kta = kta::for_entity_key(&self.entity_key.as_entity_key()?).await?;
         let (tx, _) = asset::transfer(
             &client,
             &kta.asset,

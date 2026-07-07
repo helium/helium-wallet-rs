@@ -2,7 +2,7 @@ use crate::cmd::{
     squads::{self as cmd_squads, SquadsOpts},
     *,
 };
-use helium_lib::{asset, blockchain_api::types::HotspotBurnRequest, entity_key, keypair::Signer};
+use helium_lib::{blockchain_api::types::HotspotBurnRequest, entity_key, keypair::Signer};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Burn a given asset (NFT)
@@ -24,33 +24,24 @@ impl Cmd {
         let client = opts.client()?;
         let signer = opts.load_signer()?;
 
-        if let Some(squads_target) = self.squads.squads {
-            let transaction_opts = self.commit.transaction_opts(&client);
-            let asset = asset::for_entity_key(&client, &self.entity_key.as_entity_key()?).await?;
-            let client_ref = &client;
-            let asset_id = asset.id;
-            return cmd_squads::submit_proposal_with(
-                client_ref,
-                squads_target,
+        // With `--squads` the API builds the burn from the multisig's vault
+        // (which must own the asset) and wraps it as a proposal; otherwise the
+        // wallet burns its own asset directly.
+        let (multisig, memo) = match self.squads.squads {
+            Some(squads_target) => (
+                Some(cmd_squads::resolve_multisig(&client, squads_target).await?),
                 self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move {
-                    Ok(vec![
-                        asset::fetch_burn_instruction(client_ref, &asset_id, vault.as_pubkey())
-                            .await?,
-                    ])
-                },
-            )
-            .await;
-        }
+            ),
+            None => (None, None),
+        };
 
         let api = opts.blockchain_api()?;
         let response = api
             .burn_hotspot(&HotspotBurnRequest {
                 wallet_address: signer.pubkey().to_string(),
                 hotspot_pubkey: self.entity_key.to_string(),
+                multisig,
+                memo,
             })
             .await?;
         print_json(

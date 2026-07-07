@@ -30,13 +30,15 @@
 
 pub mod types;
 
-use crate::{error::DecodeError, error::EncodeError, transaction::VersionedTransaction};
+use crate::{
+    error::DecodeError, error::EncodeError, keypair::Pubkey, transaction::VersionedTransaction,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::{Duration, Instant};
 use types::{
     ActionResponse, ClaimRewardsRequest, DcDelegateRequest, DcMintRequest, MultiTransferRequest,
-    StatusResponse, SubmitRequest, SubmitResponse, TokenTransferRequest, TransactionData,
-    UpdateInfoRequest, UpdateRewardsDestinationRequest,
+    StatusResponse, SubmitRequest, SubmitResponse, SwapInstructionsRequest, SwapQuote,
+    TokenTransferRequest, TransactionData, UpdateInfoRequest, UpdateRewardsDestinationRequest,
 };
 
 /// Environment variable holding the blockchain-api base URL (`…/api/v1`).
@@ -141,6 +143,20 @@ impl Client {
         parse(resp).await
     }
 
+    async fn get_query<Q, R>(&self, path: &str, query: &Q) -> Result<R, BlockchainApiError>
+    where
+        Q: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let resp = self
+            .client
+            .get(format!("{}{path}", self.base_url))
+            .query(query)
+            .send()
+            .await?;
+        parse(resp).await
+    }
+
     // ---- Action endpoints (return unsigned transactions) ----
 
     /// `POST /tokens/transfer` — single-recipient SPL transfer.
@@ -200,6 +216,37 @@ impl Client {
         req: &UpdateInfoRequest,
     ) -> Result<ActionResponse, BlockchainApiError> {
         self.post("/hotspots/update-info", req).await
+    }
+
+    /// `GET /swap/quote` — a Jupiter-backed quote for `amount` of `input_mint`
+    /// into `output_mint`. Pass the result back to [`Self::swap_instructions`].
+    pub async fn swap_quote(
+        &self,
+        input_mint: &Pubkey,
+        output_mint: &Pubkey,
+        amount: u64,
+        slippage_bps: u16,
+    ) -> Result<SwapQuote, BlockchainApiError> {
+        self.get_query(
+            "/swap/quote",
+            &[
+                ("inputMint", input_mint.to_string()),
+                ("outputMint", output_mint.to_string()),
+                ("amount", amount.to_string()),
+                ("slippageBps", slippage_bps.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// `POST /swap/instructions` — build the swap transaction for a quote.
+    /// Returns the bare [`TransactionData`] (no fee estimate), like the
+    /// data-credit endpoints.
+    pub async fn swap_instructions(
+        &self,
+        req: &SwapInstructionsRequest,
+    ) -> Result<TransactionData, BlockchainApiError> {
+        self.post("/swap/instructions", req).await
     }
 
     // ---- Submission + status ----

@@ -435,6 +435,37 @@ pub struct UpdateInfoRequest {
     pub deployment_info: Option<DeploymentInfo>,
 }
 
+/// A swap quote from `GET /swap/quote` (Jupiter-backed). The typed fields
+/// drive display and cost checks; `extra` captures the remainder (routePlan,
+/// platformFee, contextSlot, …) so the quote round-trips verbatim as the
+/// `quoteResponse` body for `POST /swap/instructions`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapQuote {
+    pub input_mint: String,
+    pub in_amount: String,
+    pub output_mint: String,
+    pub out_amount: String,
+    pub other_amount_threshold: String,
+    pub swap_mode: String,
+    pub slippage_bps: u32,
+    pub price_impact_pct: String,
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
+}
+
+/// `POST /swap/instructions` — build the swap transaction for a quote.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapInstructionsRequest {
+    /// The quote returned by `swap/quote`, passed back verbatim.
+    pub quote_response: SwapQuote,
+    /// The wallet that will sign and pay for the swap.
+    pub user_public_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination_token_account: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -535,6 +566,31 @@ mod tests {
         assert_eq!(v["dcAmount"], "100");
         assert!(v.get("hntAmount").is_none());
         assert!(v.get("recipient").is_none());
+    }
+
+    #[test]
+    fn swap_quote_round_trips_including_extra_fields() {
+        // The quote must re-serialize verbatim (routePlan, platformFee, …) so it
+        // can be sent back as `quoteResponse` to swap/instructions.
+        let json = serde_json::json!({
+            "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
+            "inAmount": "100000000",
+            "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "outAmount": "450000",
+            "otherAmountThreshold": "445500",
+            "swapMode": "ExactIn",
+            "slippageBps": 100,
+            "priceImpactPct": "0.01",
+            "routePlan": [{ "swapInfo": { "label": "Orca" }, "percent": 100 }],
+            "platformFee": null,
+            "contextSlot": 123456
+        });
+        let quote: SwapQuote =
+            serde_json::from_value(json.clone()).expect("deserialize swap quote");
+        assert_eq!(quote.out_amount, "450000");
+        assert_eq!(quote.price_impact_pct, "0.01");
+        // Re-serializing reproduces every field, including those in `extra`.
+        assert_eq!(serde_json::to_value(&quote).expect("serialize quote"), json);
     }
 
     #[test]

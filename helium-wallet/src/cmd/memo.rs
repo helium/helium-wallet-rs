@@ -1,4 +1,5 @@
 use crate::cmd::*;
+use helium_lib::{blockchain_api::types::MemoRequest, keypair::Signer};
 
 /// Send a memo to the blockchain
 #[derive(Debug, clap::Args)]
@@ -16,9 +17,19 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
-        let (tx, _) =
-            helium_lib::memo::memo(&client, &self.message, &*signer, &transaction_opts).await?;
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        let api = opts.blockchain_api()?;
+        let response = api
+            .memo(&MemoRequest {
+                wallet_address: signer.pubkey().to_string(),
+                memo: self.message.clone(),
+            })
+            .await?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(&api, &client, &response, &*signer)
+                .await?
+                .to_json(),
+        )
     }
 }

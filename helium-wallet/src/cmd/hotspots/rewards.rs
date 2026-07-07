@@ -114,18 +114,13 @@ impl LifetimeCmd {
 }
 
 #[derive(Clone, Debug, clap::Args)]
-/// Claim rewards for one or all Hotspots in a wallet
+/// Claim the full pending rewards for a Hotspot
 pub struct ClaimCmd {
     /// Token for command
     #[clap(long, default_value_t)]
     token: reward::ClaimableToken,
     /// Hotspot public key to send claim for
     hotspot: helium_crypto::PublicKey,
-    /// The optional amount to claim
-    ///
-    /// If not specific the full pending amount is claimed, limited by the maximum
-    /// claim amount for the subdao
-    pub amount: Option<f64>,
     /// Commit the claim transaction.
     #[command(flatten)]
     commit: CommitOpts,
@@ -136,7 +131,6 @@ impl From<&ClaimCmd> for crate::cmd::assets::claim::one::Cmd {
         Self {
             token: value.token,
             entity_key: EncodedEntityKey::from(&value.hotspot),
-            amount: value.amount,
             commit: value.commit.clone(),
         }
     }

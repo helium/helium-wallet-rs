@@ -2,7 +2,7 @@ use crate::cmd::{
     squads::{self as cmd_squads, SquadsOpts},
     *,
 };
-use helium_lib::{dao, dc};
+use helium_lib::{blockchain_api::types::DcBurnRequest, dao, dc, keypair::Signer};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Burn Data Credits (DC) from this wallet or delegated for the given router into oblivion.
@@ -29,12 +29,12 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
 
         if let Some(squads_target) = self.squads.squads {
             if self.router.is_some() || self.subdao.is_some() {
                 bail!("--squads only supports the non-delegated burn path");
             }
+            let transaction_opts = self.commit.transaction_opts(&client);
             return cmd_squads::submit_proposal_with(
                 &client,
                 squads_target,
@@ -47,9 +47,12 @@ impl Cmd {
             .await;
         }
 
-        let (tx, _) = match (&self.router, self.subdao) {
+        match (&self.router, self.subdao) {
             (Some(router_key), Some(subdao)) => {
-                dc::burn_delegated(
+                // Delegated burn still builds locally: the blockchain-api burn
+                // endpoint covers only the direct (non-delegated) path.
+                let transaction_opts = self.commit.transaction_opts(&client);
+                let (tx, _) = dc::burn_delegated(
                     &client,
                     subdao,
                     &*signer,
@@ -57,11 +60,26 @@ impl Cmd {
                     router_key,
                     &transaction_opts,
                 )
-                .await?
+                .await?;
+                print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
             }
-            (None, None) => dc::burn(&client, self.dc, &*signer, &transaction_opts).await?,
+            (None, None) => {
+                let api = opts.blockchain_api()?;
+                let response = api
+                    .dc_burn(&DcBurnRequest {
+                        owner: signer.pubkey().to_string(),
+                        amount: self.dc.to_string(),
+                    })
+                    .await?;
+                print_json(
+                    &self
+                        .commit
+                        .commit_via_api(&api, &client, &response, &*signer)
+                        .await?
+                        .to_json(),
+                )
+            }
             _ => bail!("both router and subdao must be specified"),
-        };
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        }
     }
 }

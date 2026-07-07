@@ -2,7 +2,7 @@ use crate::cmd::{
     squads::{self as cmd_squads, SquadsOpts},
     *,
 };
-use helium_lib::{asset, entity_key};
+use helium_lib::{asset, blockchain_api::types::HotspotBurnRequest, entity_key, keypair::Signer};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Burn a given asset (NFT)
@@ -23,10 +23,10 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
         let signer = opts.load_signer()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
-        let asset = asset::for_entity_key(&client, &self.entity_key.as_entity_key()?).await?;
 
         if let Some(squads_target) = self.squads.squads {
+            let transaction_opts = self.commit.transaction_opts(&client);
+            let asset = asset::for_entity_key(&client, &self.entity_key.as_entity_key()?).await?;
             let client_ref = &client;
             let asset_id = asset.id;
             return cmd_squads::submit_proposal_with(
@@ -46,8 +46,19 @@ impl Cmd {
             .await;
         }
 
-        let (tx, _) = asset::burn(&client, &asset.id, &*signer, &transaction_opts).await?;
-
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        let api = opts.blockchain_api()?;
+        let response = api
+            .burn_hotspot(&HotspotBurnRequest {
+                wallet_address: signer.pubkey().to_string(),
+                hotspot_pubkey: self.entity_key.to_string(),
+            })
+            .await?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(&api, &client, &response, &*signer)
+                .await?
+                .to_json(),
+        )
     }
 }

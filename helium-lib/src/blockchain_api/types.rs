@@ -388,12 +388,34 @@ pub struct UpdateRewardsDestinationRequest {
     pub lazy_distributors: Option<Vec<String>>,
 }
 
-/// `POST /hotspots/update-info` — assert location / antenna details.
+/// Mobile hotspot deployment info. Only WiFi is modeled; CBRS is defunct.
+/// Serializes to the API's tagged shape, e.g. `{"type":"WIFI", …}`. Absent
+/// fields are omitted; the server merges them with the current on-chain values.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type")]
+pub enum DeploymentInfo {
+    #[serde(rename = "WIFI", rename_all = "camelCase")]
+    Wifi {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        antenna: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        elevation: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        azimuth: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mechanical_down_tilt: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        electrical_down_tilt: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        serial: Option<String>,
+    },
+}
+
+/// `POST /hotspots/update-info` — assert location and device details.
 ///
-/// The API models this as a tagged union on `device_type` (iot vs mobile); we
-/// send the superset and skip absent fields. `gain`/`elevation`/`azimuth`
-/// apply to iot; `deployment_info` (opaque WIFI/CBRS object) applies to mobile.
-/// The server enforces the per-device field split.
+/// The API models this as a union on `device_type`: IoT uses
+/// `gain`/`elevation`; Mobile uses `deployment_info`. Both may set `location`.
+/// Absent fields are omitted and the server keeps the current on-chain value.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfoRequest {
@@ -402,14 +424,15 @@ pub struct UpdateInfoRequest {
     pub wallet_address: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<LatLng>,
+    /// IoT only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gain: Option<f64>,
+    /// IoT only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elevation: Option<f64>,
+    /// Mobile only.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub azimuth: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deployment_info: Option<serde_json::Value>,
+    pub deployment_info: Option<DeploymentInfo>,
 }
 
 #[cfg(test)]
@@ -479,6 +502,25 @@ mod tests {
         assert_eq!(v["walletAddress"], "wallet");
         assert_eq!(v["tokenAmount"]["amount"], "100000000");
         assert_eq!(v["tokenAmount"]["mint"], mint.to_string());
+    }
+
+    #[test]
+    fn wifi_deployment_info_serializes_tagged_camel_case() {
+        let info = DeploymentInfo::Wifi {
+            antenna: Some(3),
+            elevation: Some(5.0),
+            azimuth: None,
+            mechanical_down_tilt: Some(1.5),
+            electrical_down_tilt: None,
+            serial: None,
+        };
+        let v = serde_json::to_value(&info).expect("serialize deployment info");
+        assert_eq!(v["type"], "WIFI");
+        assert_eq!(v["antenna"], 3);
+        assert_eq!(v["mechanicalDownTilt"], 1.5);
+        // Absent fields omitted so the server keeps current values.
+        assert!(v.get("azimuth").is_none());
+        assert!(v.get("serial").is_none());
     }
 
     #[test]

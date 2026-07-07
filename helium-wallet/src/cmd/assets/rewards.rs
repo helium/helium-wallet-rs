@@ -1,5 +1,8 @@
 use crate::cmd::*;
-use helium_lib::{entity_key, reward, reward::ClaimableToken};
+use helium_lib::{
+    blockchain_api::types::UpdateRewardsDestinationRequest, entity_key, keypair::Signer, reward,
+    reward::ClaimableToken,
+};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -149,18 +152,26 @@ pub struct RecipientUpdateCmd {
 impl RecipientUpdateCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
         let signer = opts.load_signer()?;
-        let (tx, _) = reward::recipient::destination::update(
-            &client,
-            self.token,
-            &self.entity_key.as_entity_key()?,
-            &self.destination,
-            &*signer,
-            &transaction_opts,
+        let api = opts.blockchain_api()?;
+        // The server resolves `hotspotPubkey` to an asset id; for a hotspot
+        // entity key this is its base58 helium public key. The token selects
+        // which lazy distributor's recipient destination to update.
+        let response = api
+            .update_rewards_destination(&UpdateRewardsDestinationRequest {
+                wallet_address: signer.pubkey().to_string(),
+                hotspot_pubkey: self.entity_key.to_string(),
+                destination: self.destination.to_string(),
+                lazy_distributors: Some(vec![self.token.lazy_distributor_key().to_string()]),
+            })
+            .await?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(&api, &client, &response, &*signer)
+                .await?
+                .to_json(),
         )
-        .await?;
-        print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
     }
 }
 

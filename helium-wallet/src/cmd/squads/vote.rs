@@ -1,5 +1,6 @@
 use crate::cmd::*;
 use helium_lib::{
+    blockchain_api::types::SquadsProposalVoteRequest,
     keypair::{Pubkey, Signer},
     message, solana_sdk,
     squads::{self, MemberAction, ProposalTarget, SquadsError, Version},
@@ -140,7 +141,6 @@ impl VoteTarget {
     async fn run(&self, opts: Opts, kind: VoteKind) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let txn_opts = self.commit.transaction_opts(&client);
 
         let resolved = squads::resolve_proposal_target(&client, &self.target, self.index).await?;
         let member = signer.pubkey();
@@ -150,13 +150,41 @@ impl VoteTarget {
         // submission Squads will reject.
         squads::check_member_permission(&client, &resolved.multisig, &member, MemberAction::Vote)
             .await?;
-        let vote_ix = build_vote_ix(&resolved, member, &self.memo, kind)?;
 
-        let ixs = &[vote_ix];
-        let (msg, _block_height) =
-            message::mk_message(&client, ixs, &txn_opts.lut_addresses, &member).await?;
-        let tx = mk_transaction(msg, &[&*signer])?;
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        match resolved.version {
+            // v4 votes build via the blockchain-api.
+            Version::V4 => {
+                let api = opts.blockchain_api()?;
+                let req = SquadsProposalVoteRequest {
+                    member: member.to_string(),
+                    multisig: resolved.multisig.to_string(),
+                    transaction_index: resolved.index.to_string(),
+                    memo: self.memo.clone(),
+                };
+                let response = match kind {
+                    VoteKind::Approve => api.approve_proposal(&req).await?,
+                    VoteKind::Reject => api.reject_proposal(&req).await?,
+                    VoteKind::Cancel => api.cancel_proposal(&req).await?,
+                };
+                print_json(
+                    &self
+                        .commit
+                        .commit_via_api(&api, &client, &response, &*signer)
+                        .await?
+                        .to_json(),
+                )
+            }
+            // v3 (legacy) still builds locally: the API is v4-only.
+            Version::V3 => {
+                let txn_opts = self.commit.transaction_opts(&client);
+                let vote_ix = build_vote_ix(&resolved, member, &self.memo, kind)?;
+                let (msg, _block_height) =
+                    message::mk_message(&client, &[vote_ix], &txn_opts.lut_addresses, &member)
+                        .await?;
+                let tx = mk_transaction(msg, &[&*signer])?;
+                print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+            }
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::cmd::*;
 use helium_lib::{
+    blockchain_api::types::SquadsExecuteProposalRequest,
     keypair::{Pubkey, Signer},
     message,
     squads::{self, MemberAction, SquadsError, Version},
@@ -38,25 +39,40 @@ impl Cmd {
             MemberAction::Execute,
         )
         .await?;
-        let ix = match resolved.version {
+
+        match resolved.version {
+            // v4 executes build via the blockchain-api, which detects vault vs
+            // config transactions server-side.
             Version::V4 => {
-                // Dispatcher: routes to vault_transaction_execute or
-                // config_transaction_execute based on the on-chain
-                // transaction account's discriminator.
-                squads::v4::execute_ix(&client, resolved.multisig, resolved.index, member).await?
+                let api = opts.blockchain_api()?;
+                let response = api
+                    .execute_proposal(&SquadsExecuteProposalRequest {
+                        member: member.to_string(),
+                        multisig: resolved.multisig.to_string(),
+                        transaction_index: resolved.index.to_string(),
+                    })
+                    .await?;
+                print_json(
+                    &self
+                        .commit
+                        .commit_via_api(&api, &client, &response, &*signer)
+                        .await?
+                        .to_json(),
+                )
             }
+            // v3 (legacy) still builds locally: the API is v4-only.
             Version::V3 => {
                 let index = resolved.index;
                 let idx =
                     u32::try_from(index).map_err(|_| SquadsError::v3_index_out_of_range(index))?;
-                squads::v3::execute_transaction_ix(&client, resolved.multisig, idx, member).await?
+                let ix =
+                    squads::v3::execute_transaction_ix(&client, resolved.multisig, idx, member)
+                        .await?;
+                let (msg, _block_height) =
+                    message::mk_message(&client, &[ix], &txn_opts.lut_addresses, &member).await?;
+                let tx = mk_transaction(msg, &[&*signer])?;
+                print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
             }
-        };
-
-        let ixs = &[ix];
-        let (msg, _block_height) =
-            message::mk_message(&client, ixs, &txn_opts.lut_addresses, &member).await?;
-        let tx = mk_transaction(msg, &[&*signer])?;
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        }
     }
 }

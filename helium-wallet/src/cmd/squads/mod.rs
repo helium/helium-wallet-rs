@@ -1,5 +1,9 @@
 use crate::cmd::*;
 use helium_lib::{
+    blockchain_api::{
+        types::{SquadsConfigAction, SquadsProposeConfigChangeRequest},
+        Client,
+    },
     keypair::{Pubkey, Signer},
     message, solana_sdk,
     squads::{self as lib_squads, MemberAction, MultisigKey, VaultKey},
@@ -109,38 +113,47 @@ where
 /// multisig itself, not a vault.
 pub(crate) async fn submit_config_proposal<C>(
     client: &C,
+    api: &Client,
     target: Pubkey,
-    actions: Vec<helium_lib::squads::v4::ConfigActionInput>,
+    actions: Vec<SquadsConfigAction>,
     memo: Option<String>,
-    keypair: &dyn Signer,
+    keypair: &(dyn Signer + Send + Sync),
     commit: &CommitOpts,
-    txn_opts: &TransactionOpts,
 ) -> Result
 where
     C: AsRef<helium_lib::client::SolanaRpcClient>,
 {
     let multisig = lib_squads::resolve_to_multisig(client, &target).await?;
     let proposer = keypair.pubkey();
-    // Same Initiate-permission gate the vault-tx proposer side uses.
+    // Same Initiate-permission gate the vault-tx proposer side uses. Config
+    // proposals are v4-only, matching the API.
     lib_squads::check_member_permission(client, &multisig, &proposer, MemberAction::Initiate)
         .await?;
-    let on_chain_actions: Vec<_> = actions.into_iter().map(Into::into).collect();
-    let (proposal_ixs, transaction_index) = lib_squads::v4::propose_config_change_ixs(
-        client,
-        multisig,
-        proposer,
-        on_chain_actions,
-        memo,
-    )
-    .await?;
-    let (msg, _block_height) =
-        message::mk_message(client, &proposal_ixs, &txn_opts.lut_addresses, &proposer).await?;
-    let tx = mk_transaction(msg, &[keypair])?;
-    let response = commit.maybe_commit(tx, client).await?;
-    let mut json = response.to_json();
+    let response = api
+        .propose_config_change(&SquadsProposeConfigChangeRequest {
+            member: proposer.to_string(),
+            multisig: multisig.to_string(),
+            actions,
+            memo,
+        })
+        .await?;
+    // The server assigns the proposal's transaction index and returns it in the
+    // response's actionMetadata; surface it (plus the multisig) so reviewers can
+    // immediately `squads inspect` the proposal post-submit.
+    let transaction_index = response
+        .action_metadata
+        .as_ref()
+        .and_then(|m| m.get("transactionIndex"))
+        .cloned();
+    let commit_response = commit
+        .commit_via_api(api, client, &response, keypair)
+        .await?;
+    let mut json = commit_response.to_json();
     if let serde_json::Value::Object(map) = &mut json {
         map.insert("multisig".to_string(), multisig.to_string().into());
-        map.insert("transaction_index".to_string(), transaction_index.into());
+        if let Some(idx) = transaction_index {
+            map.insert("transaction_index".to_string(), idx);
+        }
     }
     print_json(&json)
 }

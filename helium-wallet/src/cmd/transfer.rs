@@ -86,35 +86,45 @@ impl PayCmd {
         let payments = self.collect_payments()?;
         let signer = opts.load_signer()?;
         let client = opts.client()?;
+        let squads = self.squads();
 
-        // Squads proposals still build locally (migrates in Phase 2).
-        if let Some(squads_target) = self.squads().squads {
-            let txn_opts = self.commit().transaction_opts(&client);
-            return cmd_squads::submit_proposal_with(
-                &client,
-                squads_target,
-                self.squads().memo.clone(),
-                &*signer,
-                self.commit(),
-                &txn_opts,
-                |vault| async move {
-                    Ok(token::transfer_instructions(vault.as_pubkey(), &payments)?)
-                },
-            )
-            .await;
+        // Multi-recipient Squads proposals still build locally: the
+        // multi-transfer endpoint has no propose mode. Single-recipient
+        // proposals go through tokens/transfer's multisig mode below.
+        if let Some(squads_target) = squads.squads {
+            if payments.len() > 1 {
+                let txn_opts = self.commit().transaction_opts(&client);
+                let memo = squads.memo.clone();
+                return cmd_squads::submit_proposal_with(
+                    &client,
+                    squads_target,
+                    memo,
+                    &*signer,
+                    self.commit(),
+                    &txn_opts,
+                    |vault| async move {
+                        Ok(token::transfer_instructions(vault.as_pubkey(), &payments)?)
+                    },
+                )
+                .await;
+            }
         }
 
         // Transfers build via the blockchain-api: a single recipient through
-        // tokens/transfer, multiple recipients through the single-mint
-        // multi-transfer endpoint. All transfers are HNT.
+        // tokens/transfer (with an optional multisig for a Squads proposal),
+        // multiple recipients through the single-mint multi-transfer endpoint.
+        // All transfers are HNT.
         let api = opts.blockchain_api()?;
         let wallet_address = signer.pubkey().to_string();
+        let multisig = squads.squads.map(|m| m.to_string());
         let response = match payments.as_slice() {
             [(destination, amount)] => {
                 api.token_transfer(&TokenTransferRequest {
                     wallet_address,
                     destination: destination.to_string(),
                     token_amount: TokenAmountInput::new(amount.token.mint(), amount.amount),
+                    multisig,
+                    memo: squads.memo.clone(),
                 })
                 .await?
             }

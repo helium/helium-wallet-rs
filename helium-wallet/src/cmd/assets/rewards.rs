@@ -99,9 +99,9 @@ impl RecipientGetCmd {
 
 /// Initialize the recipient for an asset
 ///
-/// Creates the on-chain recipient account for an asset. This is required before
-/// rewards can be claimed or a custom destination can be set. The recipient will
-/// default to the asset owner's wallet.
+/// Creates the on-chain recipient account for an asset, with the reward
+/// destination set to your wallet. Required before rewards can be claimed or a
+/// custom destination set.
 #[derive(Debug, Clone, clap::Args)]
 pub struct RecipientInitCmd {
     /// Token for command
@@ -117,17 +117,26 @@ pub struct RecipientInitCmd {
 impl RecipientInitCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
         let signer = opts.load_signer()?;
-        let (tx, _) = reward::recipient::init(
-            &client,
-            self.token,
-            &self.entity_key.as_entity_key()?,
-            &*signer,
-            &transaction_opts,
+        let api = opts.blockchain_api()?;
+        // The update-rewards-destination endpoint creates the recipient account
+        // if it doesn't exist, so initializing is just setting the destination
+        // to the caller's own wallet.
+        let response = api
+            .update_rewards_destination(&UpdateRewardsDestinationRequest {
+                wallet_address: signer.pubkey().to_string(),
+                hotspot_pubkey: self.entity_key.to_string(),
+                destination: signer.pubkey().to_string(),
+                lazy_distributors: Some(vec![self.token.lazy_distributor_key().to_string()]),
+            })
+            .await?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(&api, &client, &response, &*signer)
+                .await?
+                .to_json(),
         )
-        .await?;
-        print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
     }
 }
 

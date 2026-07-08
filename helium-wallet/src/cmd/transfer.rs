@@ -10,7 +10,7 @@ use helium_lib::{
         MultiTransferRequest, Recipient, TokenAmountInput, TokenTransferRequest,
     },
     keypair::{serde_pubkey, Pubkey, Signer},
-    token::{self, Token, TokenAmount},
+    token::{Token, TokenAmount},
 };
 use serde::Deserialize;
 
@@ -88,37 +88,19 @@ impl PayCmd {
         let client = opts.client()?;
         let squads = self.squads();
 
-        // Multi-recipient Squads proposals still build locally: the
-        // multi-transfer endpoint has no propose mode. Single-recipient
-        // proposals go through tokens/transfer's multisig mode below.
-        if let Some(squads_target) = squads.squads {
-            if payments.len() > 1 {
-                let txn_opts = self.commit().transaction_opts(&client);
-                let memo = squads.memo.clone();
-                return cmd_squads::submit_proposal_with(
-                    &client,
-                    squads_target,
-                    memo,
-                    &*signer,
-                    self.commit(),
-                    &txn_opts,
-                    |vault| async move {
-                        Ok(token::transfer_instructions(vault.as_pubkey(), &payments)?)
-                    },
-                )
-                .await;
-            }
-        }
-
-        // Transfers build via the blockchain-api: a single recipient through
-        // tokens/transfer (with an optional multisig for a Squads proposal),
-        // multiple recipients through the single-mint multi-transfer endpoint.
-        // All transfers are HNT.
+        // Transfers build via the blockchain-api. A single recipient goes
+        // through tokens/transfer (as a Squads vault proposal when --squads is
+        // set); multiple recipients go through the single-mint multi-transfer
+        // endpoint. --squads supports a single recipient only. All transfers
+        // are HNT.
         let api = opts.blockchain_api()?;
         let wallet_address = signer.pubkey().to_string();
-        let multisig = squads.squads.map(|m| m.to_string());
         let response = match payments.as_slice() {
             [(destination, amount)] => {
+                let multisig = match squads.squads {
+                    Some(target) => Some(cmd_squads::resolve_multisig(&client, target).await?),
+                    None => None,
+                };
                 api.token_transfer(&TokenTransferRequest {
                     wallet_address,
                     destination: destination.to_string(),
@@ -129,6 +111,9 @@ impl PayCmd {
                 .await?
             }
             recipients => {
+                if squads.squads.is_some() {
+                    bail!("--squads supports a single recipient only");
+                }
                 let recipients = recipients
                     .iter()
                     .map(|(destination, amount)| Recipient {

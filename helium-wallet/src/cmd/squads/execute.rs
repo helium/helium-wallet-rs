@@ -2,14 +2,11 @@ use crate::cmd::*;
 use helium_lib::{
     blockchain_api::types::SquadsExecuteProposalRequest,
     keypair::{Pubkey, Signer},
-    message,
-    squads::{self, MemberAction, SquadsError, Version},
-    transaction::mk_transaction,
+    squads::{self, MemberAction, Version},
 };
 
-/// Execute an approved Squads proposal. The wallet must hold a member
-/// keypair with `Execute` permission (v4) or be a member of the
-/// multisig (v3).
+/// Execute an approved Squads v4 proposal. The wallet must hold a member
+/// keypair with `Execute` permission.
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
     /// Multisig PDA, vault PDA, or transaction/proposal PDA.
@@ -25,13 +22,11 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let txn_opts = self.commit.transaction_opts(&client);
         let member = signer.pubkey();
 
         let resolved = squads::resolve_proposal_target(&client, &self.target, self.index).await?;
-        // Pre-flight: v4 requires the Execute permission; v3 has no
-        // per-member permissions but still requires membership. Catches
-        // "wrong wallet" before the on-chain program rejects.
+        // Pre-flight: v4 requires the Execute permission. Catches "wrong wallet"
+        // before the on-chain program rejects.
         squads::check_member_permission(
             &client,
             &resolved.multisig,
@@ -60,19 +55,12 @@ impl Cmd {
                         .to_json(),
                 )
             }
-            // v3 (legacy) still builds locally: the API is v4-only.
-            Version::V3 => {
-                let index = resolved.index;
-                let idx =
-                    u32::try_from(index).map_err(|_| SquadsError::v3_index_out_of_range(index))?;
-                let ix =
-                    squads::v3::execute_transaction_ix(&client, resolved.multisig, idx, member)
-                        .await?;
-                let (msg, _block_height) =
-                    message::mk_message(&client, &[ix], &txn_opts.lut_addresses, &member).await?;
-                let tx = mk_transaction(msg, &[&*signer])?;
-                print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
-            }
+            // v3 execution runs through v4-only paths; v3 multisigs are
+            // inspect-only here.
+            Version::V3 => bail!(
+                "Squads v3 execution is not supported (v4 only). \
+                 Inspect v3 multisigs with `squads inspect` and `squads list`."
+            ),
         }
     }
 }

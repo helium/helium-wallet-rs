@@ -55,7 +55,7 @@ impl Cmd {
             );
         }
 
-        // Direct transfers still build locally (not yet migrated to the API).
+        // Direct transfers build the transaction locally.
         if signer.pubkey() == self.recipient {
             bail!("recipient already owner of asset");
         }

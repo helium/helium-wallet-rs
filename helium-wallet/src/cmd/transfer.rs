@@ -1,8 +1,5 @@
 use crate::{
-    cmd::{
-        squads::{self as cmd_squads, SquadsOpts},
-        *,
-    },
+    cmd::{squads::SquadsOpts, *},
     result::Result,
 };
 use helium_lib::{
@@ -97,16 +94,13 @@ impl PayCmd {
         let wallet_address = signer.pubkey().to_string();
         let response = match payments.as_slice() {
             [(destination, amount)] => {
-                let multisig = match squads.squads {
-                    Some(target) => Some(cmd_squads::resolve_multisig(&client, target).await?),
-                    None => None,
-                };
+                let (multisig, memo) = squads.resolve(&client, &signer.pubkey()).await?;
                 api.token_transfer(&TokenTransferRequest {
                     wallet_address,
                     destination: destination.to_string(),
                     token_amount: TokenAmountInput::new(amount.token.mint(), amount.amount),
                     multisig,
-                    memo: squads.memo.clone(),
+                    memo,
                 })
                 .await?
             }

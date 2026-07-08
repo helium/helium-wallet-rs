@@ -1,7 +1,4 @@
-use crate::cmd::{
-    squads::{self as cmd_squads, SquadsOpts},
-    *,
-};
+use crate::cmd::{squads::SquadsOpts, *};
 use helium_lib::{blockchain_api::types::DcBurnRequest, keypair::Signer};
 
 #[derive(Debug, Clone, clap::Args)]
@@ -25,13 +22,7 @@ impl Cmd {
 
         // With `--squads` the API burns from the resolved vault as a proposal;
         // otherwise it burns directly from this wallet.
-        let (multisig, memo) = match self.squads.squads {
-            Some(squads_target) => (
-                Some(cmd_squads::resolve_multisig(&client, squads_target).await?),
-                self.squads.memo.clone(),
-            ),
-            None => (None, None),
-        };
+        let (multisig, memo) = self.squads.resolve(&client, &signer.pubkey()).await?;
 
         let api = opts.blockchain_api()?;
         let response = api

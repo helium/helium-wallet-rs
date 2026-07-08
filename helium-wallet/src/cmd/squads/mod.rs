@@ -32,16 +32,26 @@ pub struct SquadsOpts {
     pub memo: Option<String>,
 }
 
-/// Resolve a `--squads <target>` (a multisig or vault PDA) to the multisig PDA
-/// string the blockchain-api propose endpoints expect. Keeps the vault/target
-/// resolution (a read) local while construction moves to the API.
-pub(crate) async fn resolve_multisig<C: AsRef<helium_lib::client::SolanaRpcClient>>(
-    client: &C,
-    squads_target: Pubkey,
-) -> Result<String> {
-    Ok(lib_squads::resolve_to_multisig(client, &squads_target)
-        .await?
-        .to_string())
+impl SquadsOpts {
+    /// Resolve the propose-mode fields for an action command. When `--squads`
+    /// is set, resolve the target to its multisig and verify `proposer` holds
+    /// Initiate permission before it's used — so a non-member fails here rather
+    /// than after building, signing, and submitting a doomed proposal. Returns
+    /// `(multisig, memo)` for the action request, or `(None, None)` when
+    /// `--squads` is absent.
+    pub(crate) async fn resolve<C: AsRef<helium_lib::client::SolanaRpcClient>>(
+        &self,
+        client: &C,
+        proposer: &Pubkey,
+    ) -> Result<(Option<String>, Option<String>)> {
+        let Some(target) = self.squads else {
+            return Ok((None, None));
+        };
+        let multisig = lib_squads::resolve_to_multisig(client, &target).await?;
+        lib_squads::check_member_permission(client, &multisig, proposer, MemberAction::Initiate)
+            .await?;
+        Ok((Some(multisig.to_string()), self.memo.clone()))
+    }
 }
 
 /// Submit a ConfigTransaction proposal (member changes, threshold changes) to

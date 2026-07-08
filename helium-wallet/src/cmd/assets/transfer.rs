@@ -1,7 +1,4 @@
-use crate::cmd::{
-    squads::{self as cmd_squads, SquadsOpts},
-    *,
-};
+use crate::cmd::{squads::SquadsOpts, *};
 use helium_lib::{
     blockchain_api::types::TransferHotspotRequest,
     entity_key,
@@ -33,13 +30,7 @@ impl Cmd {
         // With `--squads` the transfer is built from the multisig's vault (which
         // must own the asset) and wrapped as a proposal; otherwise it transfers
         // from this wallet. Both build via the API.
-        let (multisig, memo) = match self.squads.squads {
-            Some(target) => (
-                Some(cmd_squads::resolve_multisig(&client, target).await?),
-                self.squads.memo.clone(),
-            ),
-            None => (None, None),
-        };
+        let (multisig, memo) = self.squads.resolve(&client, &signer.pubkey()).await?;
 
         let api = opts.blockchain_api()?;
         let response = api

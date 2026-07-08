@@ -53,8 +53,6 @@ use types::{
 pub const API_URL_ENV: &str = "HELIUM_BLOCKCHAIN_API_URL";
 /// Default interval between batch-status polls.
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
-/// Default deadline for batch-status polling (matches the CLI's 90s default).
-pub const DEFAULT_POLL_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_ERROR_BODY_LEN: usize = 300;
 
 /// Errors from the blockchain-api client.
@@ -76,8 +74,9 @@ pub enum BlockchainApiError {
     #[error("blockchain-api configuration error: {0}")]
     Config(String),
     /// Polling exceeded the deadline before the batch reached a terminal state.
-    #[error("timed out after {0:?} polling blockchain-api batch status")]
-    Timeout(Duration),
+    /// Carries the batch id so the caller can query it later to see if it landed.
+    #[error("timed out after {timeout:?} polling blockchain-api batch {batch_id}")]
+    Timeout { timeout: Duration, batch_id: String },
 }
 
 impl BlockchainApiError {
@@ -89,8 +88,11 @@ impl BlockchainApiError {
     fn api(status: u16, body: String) -> Self {
         let message = if body.is_empty() {
             format!("empty response (HTTP {status})")
-        } else if body.len() > MAX_ERROR_BODY_LEN {
-            format!("{}…", &body[..MAX_ERROR_BODY_LEN])
+        } else if body.chars().count() > MAX_ERROR_BODY_LEN {
+            // Truncate by characters, not bytes, so a multi-byte char straddling
+            // the cap can't panic the whole process on an error path.
+            let truncated: String = body.chars().take(MAX_ERROR_BODY_LEN).collect();
+            format!("{truncated}…")
         } else {
             body
         };
@@ -137,15 +139,6 @@ impl Client {
             .client
             .post(format!("{}{path}", self.base_url))
             .json(body)
-            .send()
-            .await?;
-        parse(resp).await
-    }
-
-    async fn get<R: DeserializeOwned>(&self, path: &str) -> Result<R, BlockchainApiError> {
-        let resp = self
-            .client
-            .get(format!("{}{path}", self.base_url))
             .send()
             .await?;
         parse(resp).await
@@ -504,9 +497,14 @@ impl Client {
         self.submit(&req).await
     }
 
-    /// `GET /transactions/{id}` — current status of a submitted batch.
+    /// `GET /transactions/{id}` — current status of a submitted batch. The
+    /// contract requires a `commitment` query param; we poll at `confirmed`.
     pub async fn status(&self, batch_id: &str) -> Result<StatusResponse, BlockchainApiError> {
-        self.get(&format!("/transactions/{batch_id}")).await
+        self.get_query(
+            &format!("/transactions/{batch_id}"),
+            &[("commitment", "confirmed")],
+        )
+        .await
     }
 
     /// Poll batch status until it reaches a terminal state or `timeout` elapses.
@@ -523,7 +521,10 @@ impl Client {
                 return Ok(status);
             }
             if Instant::now() >= deadline {
-                return Err(BlockchainApiError::Timeout(timeout));
+                return Err(BlockchainApiError::Timeout {
+                    timeout,
+                    batch_id: batch_id.to_string(),
+                });
             }
             futures_timer::Delay::new(interval).await;
         }

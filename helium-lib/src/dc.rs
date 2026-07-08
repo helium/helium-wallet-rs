@@ -1,12 +1,10 @@
 use crate::{
-    anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas},
+    anchor_lang::{InstructionData, ToAccountMetas},
     anchor_spl, circuit_breaker,
     client::{GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
-    entity_key::AsEntityKey,
     error::{DecodeError, Error},
-    helium_sub_daos,
     keypair::Pubkey,
     message,
     solana_sdk::{instruction::Instruction, signer::Signer},
@@ -192,81 +190,5 @@ pub async fn burn<C: AsRef<SolanaRpcClient>>(
     opts: &TransactionOpts,
 ) -> Result<(VersionedTransaction, u64), Error> {
     let msg = burn_message(client, amount, &keypair.pubkey(), opts).await?;
-    mk_signed_transaction(msg, &[keypair])
-}
-
-/// Builds a message that burns delegated data credits for a router.
-pub async fn burn_delegated_message<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
-    client: &C,
-    sub_dao: SubDao,
-    amount: u64,
-    router_key: &E,
-    payer: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(message::VersionedMessage, u64), Error> {
-    fn mk_accounts<E: AsEntityKey>(
-        sub_dao: SubDao,
-        router_key: &E,
-        dc_burn_authority: Pubkey,
-        registrar: Pubkey,
-    ) -> impl ToAccountMetas {
-        let delegated_data_credits = sub_dao.delegated_dc_key(router_key);
-        let escrow_account = sub_dao.escrow_key(&delegated_data_credits);
-
-        data_credits::client::accounts::BurnDelegatedDataCreditsV0 {
-            sub_dao_epoch_info: sub_dao.epoch_info_key(),
-            delegated_data_credits,
-            escrow_account,
-
-            dao: Dao::Hnt.key(),
-            sub_dao: sub_dao.key(),
-
-            account_payer: Dao::dc_account_payer(),
-            data_credits: Dao::dc_key(),
-            dc_burn_authority,
-            dc_mint: *Token::Dc.mint(),
-            registrar,
-
-            token_program: anchor_spl::token::ID,
-            helium_sub_daos_program: helium_sub_daos::ID,
-            system_program: solana_sdk::system_program::ID,
-        }
-    }
-
-    let (dc_burn_authority, registrar) = {
-        let account_data = client.as_ref().get_account_data(&sub_dao.key()).await?;
-        let sub_dao =
-            helium_sub_daos::accounts::SubDaoV0::try_deserialize(&mut account_data.as_ref())?;
-
-        let account_data = client.as_ref().get_account_data(&Dao::Hnt.key()).await?;
-        let dao = helium_sub_daos::accounts::DaoV0::try_deserialize(&mut account_data.as_ref())?;
-
-        (sub_dao.dc_burn_authority, dao.registrar)
-    };
-
-    let accounts = mk_accounts(sub_dao, router_key, dc_burn_authority, registrar);
-    let burn_ix = solana_sdk::instruction::Instruction {
-        program_id: data_credits::ID,
-        accounts: accounts.to_account_metas(None),
-        data: data_credits::client::args::BurnDelegatedDataCreditsV0 {
-            args: data_credits::types::BurnDelegatedDataCreditsArgsV0 { amount },
-        }
-        .data(),
-    };
-
-    message::mk_budgeted_message(client, 150_000, &[burn_ix], payer, opts).await
-}
-
-/// Burns delegated data credits and returns a signed transaction.
-pub async fn burn_delegated<C: AsRef<SolanaRpcClient>, E: AsEntityKey>(
-    client: &C,
-    sub_dao: SubDao,
-    keypair: &(dyn Signer + Sync),
-    amount: u64,
-    router_key: &E,
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let msg = burn_delegated_message(client, sub_dao, amount, router_key, &keypair.pubkey(), opts)
-        .await?;
     mk_signed_transaction(msg, &[keypair])
 }

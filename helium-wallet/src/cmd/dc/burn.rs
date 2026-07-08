@@ -2,22 +2,15 @@ use crate::cmd::{
     squads::{self as cmd_squads, SquadsOpts},
     *,
 };
-use helium_lib::{blockchain_api::types::DcBurnRequest, dao, dc, keypair::Signer};
+use helium_lib::{blockchain_api::types::DcBurnRequest, keypair::Signer};
 
 #[derive(Debug, Clone, clap::Args)]
-/// Burn Data Credits (DC) from this wallet or delegated for the given router into oblivion.
+/// Burn Data Credits (DC) from this wallet into oblivion.
 pub struct Cmd {
     /// Amount of DC to burn
     dc: u64,
-    /// Subdao to use for delegated burn
-    subdao: Option<dao::SubDao>,
-    /// Router key to burn on behalf of
-    ///
-    /// Note that the wallet keypair must be the burn authority for the router key
-    /// for the burn to succeed
-    router: Option<String>,
-    /// Only supported for the non-delegated (no router) burn path; the
-    /// DC is sourced from the resolved vault's DC ATA.
+    /// Burn from the resolved vault's DC ATA as a Squads v4 proposal instead of
+    /// from this wallet.
     #[command(flatten)]
     squads: SquadsOpts,
     /// Commit the burn
@@ -30,64 +23,31 @@ impl Cmd {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
 
-        if let Some(squads_target) = self.squads.squads {
-            if self.router.is_some() || self.subdao.is_some() {
-                bail!("--squads only supports the non-delegated burn path");
-            }
-            let multisig = cmd_squads::resolve_multisig(&client, squads_target).await?;
-            let api = opts.blockchain_api()?;
-            let response = api
-                .dc_burn(&DcBurnRequest {
-                    owner: signer.pubkey().to_string(),
-                    amount: self.dc.to_string(),
-                    multisig: Some(multisig),
-                    memo: self.squads.memo.clone(),
-                })
-                .await?;
-            return print_json(
-                &self
-                    .commit
-                    .commit_via_api(&api, &client, &response, &*signer)
-                    .await?
-                    .to_json(),
-            );
-        }
+        // With `--squads` the API burns from the resolved vault as a proposal;
+        // otherwise it burns directly from this wallet.
+        let (multisig, memo) = match self.squads.squads {
+            Some(squads_target) => (
+                Some(cmd_squads::resolve_multisig(&client, squads_target).await?),
+                self.squads.memo.clone(),
+            ),
+            None => (None, None),
+        };
 
-        match (&self.router, self.subdao) {
-            (Some(router_key), Some(subdao)) => {
-                // Delegated burn still builds locally: the blockchain-api burn
-                // endpoint covers only the direct (non-delegated) path.
-                let transaction_opts = self.commit.transaction_opts(&client);
-                let (tx, _) = dc::burn_delegated(
-                    &client,
-                    subdao,
-                    &*signer,
-                    self.dc,
-                    router_key,
-                    &transaction_opts,
-                )
-                .await?;
-                print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
-            }
-            (None, None) => {
-                let api = opts.blockchain_api()?;
-                let response = api
-                    .dc_burn(&DcBurnRequest {
-                        owner: signer.pubkey().to_string(),
-                        amount: self.dc.to_string(),
-                        multisig: None,
-                        memo: None,
-                    })
-                    .await?;
-                print_json(
-                    &self
-                        .commit
-                        .commit_via_api(&api, &client, &response, &*signer)
-                        .await?
-                        .to_json(),
-                )
-            }
-            _ => bail!("both router and subdao must be specified"),
-        }
+        let api = opts.blockchain_api()?;
+        let response = api
+            .dc_burn(&DcBurnRequest {
+                owner: signer.pubkey().to_string(),
+                amount: self.dc.to_string(),
+                multisig,
+                memo,
+            })
+            .await?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(&api, &client, &response, &*signer)
+                .await?
+                .to_json(),
+        )
     }
 }

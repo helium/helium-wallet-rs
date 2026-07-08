@@ -328,7 +328,7 @@ runs from the resolved vault when the proposal is later executed. A
 | `transfer one`, `transfer multi` | Token transfer from the vault |
 | `burn` | Subdao token burn from the vault |
 | `dc mint` | HNT → DC mint, sourced from the vault |
-| `dc burn` | DC burn from the vault (non-router branch only) |
+| `dc burn` | DC burn from the vault |
 | `dc delegate` | DC delegation from the vault |
 | `assets transfer`, `assets burn` | Compressed-NFT transfer/burn |
 | `hotspots transfer`, `hotspots burn` | Hotspot transfer/burn |

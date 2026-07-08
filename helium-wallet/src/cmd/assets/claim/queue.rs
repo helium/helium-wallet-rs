@@ -1,5 +1,9 @@
 use crate::cmd::*;
-use helium_lib::{keypair::Pubkey, queue, token};
+use helium_lib::{
+    blockchain_api::types::ClaimRewardsRequest,
+    keypair::{Pubkey, Signer},
+    queue, token,
+};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -13,7 +17,7 @@ impl Cmd {
     }
 }
 
-/// Queue claim transactions with Tuktuk
+/// Queue a one-time claim with Tuktuk
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum Command {
     Wallet(ClaimWalletCmd),
@@ -29,20 +33,17 @@ impl Command {
     }
 }
 
-/// Create and start a one time claim for all assets in a wallet using Tuktuk
+/// Queue a one-time claim of all this wallet's hotspots using Tuktuk
 ///
-/// The tuktuk system will fund the "claim_wallet" it uses to pay for claims
-/// with a small amount of SOL. When new hotspots are added, additional payee
-/// creation costs are incurred for that wallet.
+/// Tuktuk funds the "claim_wallet" it uses to pay for claims with a small amount
+/// of SOL. When new hotspots are added, additional payee creation costs are
+/// incurred for that wallet.
 ///
-/// Use the `queue info` option in this command to check on the balance of the
-/// claim_wallet. The suggested funded amount at the time of this writing is
-/// between 0.05 and 0.1 SOL, with the top end allowing for a lot of growth.
+/// Use `queue info` to check the balance of the claim_wallet. A funded amount
+/// between 0.05 and 0.1 SOL leaves room for growth. The transaction is built by
+/// the blockchain-api and signed locally.
 #[derive(Clone, Debug, clap::Args)]
 pub struct ClaimWalletCmd {
-    /// The wallet to claim all hotspots for.
-    /// Defaults to active wallet
-    pub wallet: Option<Pubkey>,
     /// Commit the claim request transaction.
     #[command(flatten)]
     commit: CommitOpts,
@@ -50,31 +51,35 @@ pub struct ClaimWalletCmd {
 
 impl ClaimWalletCmd {
     pub async fn run(&self, opts: Opts) -> Result {
-        let wallet = opts.maybe_wallet_key(self.wallet)?;
-        let client = opts.client()?;
-
         let signer = opts.load_signer()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
-        let (tx, _) = queue::claim_wallet(
-            &client,
-            &queue::TASK_QUEUE_ID,
-            &wallet,
-            &*signer,
-            &transaction_opts,
+        let client = opts.client()?;
+        let api = opts.blockchain_api()?;
+        let response = api
+            .claim_rewards(&ClaimRewardsRequest {
+                wallet_address: signer.pubkey().to_string(),
+                // HNT with the Tuktuk path queues a one-time whole-wallet claim.
+                network: None,
+                tuktuk: Some(true),
+                estimated_pending_rewards: None,
+            })
+            .await?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(&api, &client, &response, &*signer)
+                .await?
+                .to_json(),
         )
-        .await?;
-
-        print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
     }
 }
 
-/// Displays information about the queue for this wallet
+/// Display information about the claim queue for this wallet
 ///
-/// This includes the current balance of the claim wallet funding the claims
+/// This includes the current balance of the claim wallet funding the claims.
 #[derive(Clone, Debug, clap::Args)]
 pub struct InfoCmd {
-    /// The wallet to look up claim information for
-    /// Defaults to active wallet
+    /// The wallet to look up claim information for.
+    /// Defaults to the active wallet.
     pub wallet: Option<Pubkey>,
 }
 

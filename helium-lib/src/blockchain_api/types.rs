@@ -561,6 +561,85 @@ pub struct ClaimHotspotRewardsRequest {
     pub network: Option<RewardNetwork>,
 }
 
+// ---- Claim automation (one tuktuk claim cron per wallet) ----
+//
+// `wallet_address` is repeated in each body even though it is also the path
+// parameter (matching the server's input schema). The cron is set up empty and
+// claims are attached separately, so a single cron can mix whole-wallet and
+// per-hotspot claims.
+
+/// Body for `POST /hotspots/wallet/{walletAddress}/automation`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupAutomationRequest {
+    pub wallet_address: String,
+    /// Raw crontab string (clockwork format) the cron fires on.
+    pub cron_schedule: String,
+    /// Number of claim cycles to pre-fund.
+    pub duration: u32,
+    pub total_hotspots: u32,
+}
+
+/// Body for `POST /hotspots/wallet/{walletAddress}/automation/fund`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FundAutomationRequest {
+    pub wallet_address: String,
+    /// Additional claim cycles to fund across both pools.
+    pub additional_duration: u32,
+}
+
+/// Body for `POST /hotspots/wallet/{walletAddress}/automation/close`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseAutomationRequest {
+    pub wallet_address: String,
+}
+
+/// Body for `POST /hotspots/wallet/{walletAddress}/automation/requeue`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequeueAutomationRequest {
+    pub wallet_address: String,
+}
+
+/// Body for `POST /hotspots/wallet/{walletAddress}/automation/add-wallet`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddWalletToAutomationRequest {
+    pub wallet_address: String,
+}
+
+/// Body for `POST /hotspots/wallet/{walletAddress}/automation/add-entity`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddEntityToAutomationRequest {
+    pub wallet_address: String,
+    /// Base58 helium public key of the hotspot to claim.
+    pub entity_key: String,
+}
+
+/// Body for `POST /hotspots/wallet/{walletAddress}/automation/remove-entity`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveEntityFromAutomationRequest {
+    pub wallet_address: String,
+    /// Cron-transaction index of the claim entry to remove.
+    pub index: u32,
+}
+
+/// Body for `POST /hotspots/automation/top-up` — operator floor top-up. For each
+/// target wallet whose cron/claim pool is at or below `floor_lamports`, the
+/// operator funds it with `fund_lamports`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopUpAutomationRequest {
+    pub operator_address: String,
+    pub floor_lamports: u64,
+    pub fund_lamports: u64,
+    pub targets: Vec<String>,
+}
+
 // ---- Squads v4 proposal lifecycle ----
 
 /// Shared body for the Squads v4 proposal votes: approve / reject / cancel.

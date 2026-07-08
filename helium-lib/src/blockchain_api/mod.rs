@@ -38,12 +38,15 @@ use crate::{
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::{Duration, Instant};
 use types::{
-    ActionResponse, ClaimHotspotRewardsRequest, ClaimRewardsRequest, DcBurnRequest,
-    DcDelegateRequest, DcMintRequest, HotspotBurnRequest, MemoRequest, MultiTransferRequest,
-    SquadsExecuteProposalRequest, SquadsProposalVoteRequest, SquadsProposeConfigChangeRequest,
-    StatusResponse, SubmitRequest, SubmitResponse, SwapInstructionsRequest, SwapQuote,
-    TokenBurnRequest, TokenTransferRequest, TransactionData, TransferHotspotRequest,
-    UpdateInfoRequest, UpdateRewardsDestinationRequest,
+    ActionResponse, AddEntityToAutomationRequest, AddWalletToAutomationRequest,
+    ClaimHotspotRewardsRequest, ClaimRewardsRequest, CloseAutomationRequest, DcBurnRequest,
+    DcDelegateRequest, DcMintRequest, FundAutomationRequest, HotspotBurnRequest, MemoRequest,
+    MultiTransferRequest, RemoveEntityFromAutomationRequest, RequeueAutomationRequest,
+    SetupAutomationRequest, SquadsExecuteProposalRequest, SquadsProposalVoteRequest,
+    SquadsProposeConfigChangeRequest, StatusResponse, SubmitRequest, SubmitResponse,
+    SwapInstructionsRequest, SwapQuote, TokenBurnRequest, TokenTransferRequest,
+    TopUpAutomationRequest, TransactionData, TransferHotspotRequest, UpdateInfoRequest,
+    UpdateRewardsDestinationRequest,
 };
 
 /// Environment variable holding the blockchain-api base URL (`…/api/v1`).
@@ -314,6 +317,122 @@ impl Client {
         req: &SquadsProposeConfigChangeRequest,
     ) -> Result<TransactionData, BlockchainApiError> {
         self.post("/squads/proposals/config", req).await
+    }
+
+    // ---- Claim automation (one tuktuk claim cron per wallet) ----
+    //
+    // All return the `{transactionData, estimatedSolFee}` envelope. The cron is
+    // set up empty, then whole-wallet and/or per-hotspot claims are attached to
+    // it. Funding is by claim-cycle count (`duration`) across both pools (the
+    // cron-crank pool and the claim-payer pool).
+
+    /// `POST /hotspots/wallet/{wallet}/automation` — set up the claim cron on a
+    /// raw crontab schedule, pre-funded for `duration` claim cycles.
+    pub async fn setup_automation(
+        &self,
+        req: &SetupAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(
+            &format!("/hotspots/wallet/{}/automation", req.wallet_address),
+            req,
+        )
+        .await
+    }
+
+    /// `POST /hotspots/wallet/{wallet}/automation/fund` — fund `additional_duration`
+    /// more claim cycles across both pools.
+    pub async fn fund_automation(
+        &self,
+        req: &FundAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(
+            &format!("/hotspots/wallet/{}/automation/fund", req.wallet_address),
+            req,
+        )
+        .await
+    }
+
+    /// `POST /hotspots/wallet/{wallet}/automation/close` — remove all claims and
+    /// close the cron, refunding rent.
+    pub async fn close_automation(
+        &self,
+        req: &CloseAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(
+            &format!("/hotspots/wallet/{}/automation/close", req.wallet_address),
+            req,
+        )
+        .await
+    }
+
+    /// `POST /hotspots/wallet/{wallet}/automation/requeue` — requeue a cron that
+    /// ran out of SOL (fund it first).
+    pub async fn requeue_automation(
+        &self,
+        req: &RequeueAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(
+            &format!("/hotspots/wallet/{}/automation/requeue", req.wallet_address),
+            req,
+        )
+        .await
+    }
+
+    /// `POST /hotspots/wallet/{wallet}/automation/add-wallet` — add a whole-wallet
+    /// claim (claims every hotspot the wallet owns) to the cron.
+    pub async fn add_wallet_to_automation(
+        &self,
+        req: &AddWalletToAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(
+            &format!(
+                "/hotspots/wallet/{}/automation/add-wallet",
+                req.wallet_address
+            ),
+            req,
+        )
+        .await
+    }
+
+    /// `POST /hotspots/wallet/{wallet}/automation/add-entity` — add a single
+    /// hotspot's claim to the cron.
+    pub async fn add_entity_to_automation(
+        &self,
+        req: &AddEntityToAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(
+            &format!(
+                "/hotspots/wallet/{}/automation/add-entity",
+                req.wallet_address
+            ),
+            req,
+        )
+        .await
+    }
+
+    /// `POST /hotspots/wallet/{wallet}/automation/remove-entity` — remove a single
+    /// claim entry from the cron by its transaction index.
+    pub async fn remove_entity_from_automation(
+        &self,
+        req: &RemoveEntityFromAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post(
+            &format!(
+                "/hotspots/wallet/{}/automation/remove-entity",
+                req.wallet_address
+            ),
+            req,
+        )
+        .await
+    }
+
+    /// `POST /hotspots/automation/top-up` — operator floor top-up of a batch of
+    /// wallets' claim-cron pools (the operator signs and funds).
+    pub async fn top_up_automation(
+        &self,
+        req: &TopUpAutomationRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post("/hotspots/automation/top-up", req).await
     }
 
     /// `GET /swap/quote` — a Jupiter-backed quote for `amount` of `input_mint`

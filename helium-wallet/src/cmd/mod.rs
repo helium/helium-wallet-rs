@@ -2,6 +2,7 @@ use crate::{
     result::{anyhow, bail, Error, Result},
     wallet::Wallet,
 };
+use dialoguer::Confirm;
 use helium_lib::{
     b64,
     blockchain_api::{
@@ -18,6 +19,7 @@ use helium_lib::{
 use serde_json::json;
 use std::{
     env, fs, io,
+    io::IsTerminal,
     ops::Deref,
     path::{Path, PathBuf},
     str::FromStr,
@@ -207,6 +209,18 @@ impl Opts {
                 blockchain_api::API_URL_ENV
             );
         }
+        // Default to the mainnet API. Warn when the RPC cluster isn't a
+        // recognized mainnet alias, so a custom/other-cluster `--url` doesn't
+        // silently build and submit against mainnet.
+        if !matches!(self.url.as_str(), "m" | "mainnet" | "mainnet-beta") {
+            eprintln!(
+                "warning: {env} is unset; defaulting to the mainnet blockchain-api \
+                 ({DEFAULT_BLOCKCHAIN_API_URL}) while --url is {url:?}. Set {env} if this \
+                 cluster uses a different blockchain-api.",
+                env = blockchain_api::API_URL_ENV,
+                url = self.url,
+            );
+        }
         Ok(blockchain_api::Client::new(DEFAULT_BLOCKCHAIN_API_URL))
     }
 }
@@ -280,17 +294,19 @@ impl CommitOpts {
     ///
     /// Decodes the unsigned transactions in `response`, shows them for review,
     /// signs each locally with `signer`, then:
-    /// - with `--commit`: submits the batch via the API and polls until it
-    ///   reaches a terminal status;
-    /// - without `--commit`: simulates each signed transaction locally against
-    ///   `rpc` and broadcasts nothing.
+    /// - with `--commit`: sign and submit the batch via the API, polling until
+    ///   it reaches a terminal status;
+    /// - without `--commit`, interactive: simulate, then prompt to commit; sign
+    ///   and submit only on confirmation;
+    /// - without `--commit`, non-interactive (piped/CI): simulate and stop,
+    ///   broadcasting nothing — so scripts never hang on a prompt or submit
+    ///   unexpectedly.
     ///
-    /// The `signing` mode controls how each transaction is signed:
-    /// [`ApiSigning::FreshBlockhash`] refreshes the blockhash just before
-    /// signing to widen the validity window (a slow Ledger approval can
-    /// otherwise outlive the server's blockhash), while
-    /// [`ApiSigning::PreserveCosigned`] keeps the server's message, blockhash,
-    /// and any co-signatures intact.
+    /// Signing happens only once a submit is decided, so a Ledger is never
+    /// touched for a dry run or a declined action. `signing` controls how:
+    /// [`ApiSigning::FreshBlockhash`] refreshes the blockhash and signs as sole
+    /// signer; [`ApiSigning::PreserveCosigned`] fills only the wallet's slot,
+    /// keeping the server's message/blockhash/co-signatures intact.
     ///
     /// The blockchain-api sets priority fee, compute budget, and lookup tables
     /// server-side; there are no local priority-fee knobs.
@@ -311,64 +327,101 @@ impl CommitOpts {
         display_action_for_review(data, response.estimated_sol_fee(), &unsigned);
 
         let solana = rpc.as_ref();
-        let signed = match signing {
-            // Server-built, single-signer transactions: refresh the blockhash
-            // and sign as the sole signer.
-            ApiSigning::FreshBlockhash => {
-                let (blockhash, _) = solana
-                    .get_latest_blockhash_with_commitment(solana.commitment())
-                    .await?;
-                unsigned
-                    .into_iter()
-                    .map(|mut tx| {
-                        tx.message.set_recent_blockhash(blockhash);
-                        VersionedTransaction::try_new(tx.message, &[signer])
-                    })
-                    .collect::<std::result::Result<Vec<_>, _>>()?
+
+        // Decide whether to submit BEFORE signing, so a Ledger is never touched
+        // for a dry run or a declined action.
+        let submit = if self.commit {
+            true
+        } else {
+            // Simulate for feedback, then either ask (interactive) or stop
+            // (non-interactive — a safe no-op so scripts never hang on a prompt
+            // or submit unexpectedly).
+            simulate_unsigned(solana, &unsigned).await?;
+            if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+                Confirm::new()
+                    .with_prompt("Commit and submit these transaction(s)?")
+                    .default(false)
+                    .interact()?
+            } else {
+                false
             }
-            // Co-signed transactions (e.g. the ECC-verifier-signed data-only
-            // issue tx): preserve the message, blockhash, and existing
-            // signatures, filling in only the wallet's slot. Refreshing the
-            // blockhash or re-signing from scratch would drop the co-signature.
-            ApiSigning::PreserveCosigned => unsigned
-                .into_iter()
-                .map(|tx| sign_owner_in_place(tx, signer))
-                .collect::<Result<Vec<_>>>()?,
         };
 
-        self.finish_via_api(api, solana, data, signed).await
-    }
+        if !submit {
+            return Ok(CommitResponse::None);
+        }
 
-    /// Shared tail for the API commit paths: submit the signed batch and poll,
-    /// or (without `--commit`) simulate each transaction to surface errors.
-    async fn finish_via_api(
-        &self,
-        api: &blockchain_api::Client,
-        solana: &SolanaRpcClient,
-        data: &blockchain_api::types::TransactionData,
-        signed: Vec<VersionedTransaction>,
-    ) -> Result<CommitResponse> {
-        if self.commit {
-            let submitted = api.submit_signed(data, &signed, true).await?;
-            let timeout = Duration::from_secs(self.confirm_timeout_secs);
-            let status = api
-                .poll_status(
-                    &submitted.batch_id,
-                    blockchain_api::DEFAULT_POLL_INTERVAL,
-                    timeout,
-                )
+        let signed = sign_for_submit(solana, unsigned, signer, signing).await?;
+        let submitted = api.submit_signed(data, &signed, true).await?;
+        let timeout = Duration::from_secs(self.confirm_timeout_secs);
+        let status = api
+            .poll_status(
+                &submitted.batch_id,
+                blockchain_api::DEFAULT_POLL_INTERVAL,
+                timeout,
+            )
+            .await?;
+        commit_response_from_status(status)
+    }
+}
+
+/// Sign the server-built transactions for submission. Fetches a fresh blockhash
+/// only here (not on the dry-run path), and only for the [`ApiSigning::FreshBlockhash`]
+/// case; [`ApiSigning::PreserveCosigned`] keeps the server's message intact.
+async fn sign_for_submit(
+    solana: &SolanaRpcClient,
+    unsigned: Vec<VersionedTransaction>,
+    signer: &(dyn Signer + Send + Sync),
+    signing: ApiSigning,
+) -> Result<Vec<VersionedTransaction>> {
+    match signing {
+        ApiSigning::FreshBlockhash => {
+            let (blockhash, _) = solana
+                .get_latest_blockhash_with_commitment(solana.commitment())
                 .await?;
-            commit_response_from_status(status)
-        } else {
-            for tx in &signed {
-                let result = solana.simulate_transaction(tx).await.map_err(context_err)?;
-                if let Some(err) = result.value.err {
-                    return Err(err.into());
-                }
-            }
-            Ok(CommitResponse::None)
+            unsigned
+                .into_iter()
+                .map(|mut tx| {
+                    tx.message.set_recent_blockhash(blockhash);
+                    VersionedTransaction::try_new(tx.message, &[signer]).map_err(Error::from)
+                })
+                .collect()
+        }
+        ApiSigning::PreserveCosigned => unsigned
+            .into_iter()
+            .map(|tx| sign_owner_in_place(tx, signer))
+            .collect(),
+    }
+}
+
+/// Simulate each unsigned transaction (no signature check, server-replaced
+/// blockhash) to surface errors before signing/submitting. Includes the program
+/// logs in the error so a failing CPI is diagnosable.
+async fn simulate_unsigned(
+    solana: &SolanaRpcClient,
+    unsigned: &[VersionedTransaction],
+) -> Result<()> {
+    use helium_lib::solana_client::rpc_config::RpcSimulateTransactionConfig;
+    let config = RpcSimulateTransactionConfig {
+        sig_verify: false,
+        replace_recent_blockhash: true,
+        ..Default::default()
+    };
+    for tx in unsigned {
+        let result = solana
+            .simulate_transaction_with_config(tx, config.clone())
+            .await
+            .map_err(context_err)?;
+        if let Some(err) = result.value.err {
+            let logs = result.value.logs.unwrap_or_default().join("\n");
+            return Err(if logs.is_empty() {
+                anyhow!("transaction simulation failed: {err}")
+            } else {
+                anyhow!("transaction simulation failed: {err}\n{logs}")
+            });
         }
     }
+    Ok(())
 }
 
 /// How [`CommitOpts::commit_via_api`] signs the transactions the blockchain-api
@@ -386,8 +439,8 @@ pub enum ApiSigning {
 
 /// Fill in the wallet's signature on a server-built transaction without
 /// altering the message, its blockhash, or any co-signatures already present.
-/// The wallet (fee payer) is always account index 0, so its signature goes in
-/// the matching slot; other signers' slots are left untouched.
+/// Locates the wallet among the required signers and writes only that slot;
+/// other signers' slots are left untouched.
 fn sign_owner_in_place(
     mut tx: VersionedTransaction,
     signer: &(dyn Signer + Send + Sync),
@@ -400,6 +453,16 @@ fn sign_owner_in_place(
         .position(|key| *key == owner)
         .filter(|index| *index < tx.message.header().num_required_signatures as usize)
         .ok_or_else(|| anyhow!("wallet is not a required signer of the transaction"))?;
+
+    // A well-formed tx sizes `signatures` to `num_required_signatures`; guard
+    // against a malformed server response so a short vector errors cleanly
+    // instead of panicking on the index.
+    if index >= tx.signatures.len() {
+        bail!(
+            "transaction has {} signature slot(s) but the wallet must sign at index {index}",
+            tx.signatures.len(),
+        );
+    }
 
     let message_data = tx.message.serialize();
     let signature = signer
@@ -570,6 +633,15 @@ pub enum CommitResponse {
         signatures: Vec<helium_lib::keypair::Signature>,
     },
     None,
+}
+
+impl CommitResponse {
+    /// Whether transactions were actually submitted on-chain (as opposed to a
+    /// dry run or declined commit). True for both a single signature and a
+    /// confirmed batch.
+    pub fn committed(&self) -> bool {
+        matches!(self, Self::Signature(_) | Self::Batch { .. })
+    }
 }
 
 impl From<helium_lib::keypair::Signature> for CommitResponse {

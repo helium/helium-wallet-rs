@@ -1,10 +1,7 @@
 use crate::{
     client::SolanaRpcClient,
     message,
-    solana_sdk::{
-        address_lookup_table::AddressLookupTableAccount, commitment_config::CommitmentConfig,
-        instruction::Instruction, signature::Signature, signers::Signers,
-    },
+    solana_sdk::{commitment_config::CommitmentConfig, signature::Signature, signers::Signers},
     Error,
 };
 use solana_transaction_status::TransactionConfirmationStatus;
@@ -72,15 +69,6 @@ pub fn mk_signed_transaction<T: Signers + ?Sized>(
 ) -> Result<(VersionedTransaction, u64), Error> {
     let txn = mk_transaction(msg, signers)?;
     Ok((txn, block_height))
-}
-
-/// Pack multiple instruction groups into size-limited transactions.
-pub fn pack_instructions(
-    instructions: &[&[Instruction]],
-    lookup_tables: Option<Vec<AddressLookupTableAccount>>,
-) -> Result<Vec<PackedTransaction>, Error> {
-    solana_transaction_utils::pack::pack_instructions_into_transactions(instructions, lookup_tables)
-        .map_err(Error::from)
 }
 
 /// Check status of multiple signatures in one RPC call.

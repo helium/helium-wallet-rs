@@ -120,17 +120,6 @@ mod base {
     }
 }
 
-/// Return placeholder compute-budget and compute-price instructions for
-/// transaction size estimation.
-pub fn compute_placeholder_instructions() -> [Instruction; 2] {
-    [
-        // Set budget high, will be updated by client or simulation
-        compute_budget_instruction(1_000_000),
-        compute_price_instruction(MIN_PRIORITY_FEE),
-    ]
-}
-
-/// Creates a `SetComputeUnitLimit` instruction.
 pub fn compute_budget_instruction(compute_limit: u32) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(compute_limit)
 }

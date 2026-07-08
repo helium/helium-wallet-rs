@@ -15,14 +15,8 @@ pub mod blockchain_api;
 /// Solana RPC and DAS client wrappers.
 pub mod client;
 
-/// Hex boosting activation for mobile coverage areas.
-pub mod boosting;
 /// Helium DAO and sub-DAO account lookups.
 pub mod dao;
-/// Data Credit minting, delegation, and burning.
-pub mod dc;
-/// Ed25519 signature verification instructions.
-pub mod ed25519_instruction;
 /// Entity key encoding for hotspots and other network entities.
 pub mod entity_key;
 /// Error types used throughout the library.
@@ -35,8 +29,6 @@ pub mod jupiter;
 pub mod keypair;
 /// Key-to-asset (KTA) account lookups and caching.
 pub mod kta;
-/// Transaction memo encoding.
-pub mod memo;
 /// Versioned message construction with address lookup tables.
 pub mod message;
 /// Maker onboarding server client.

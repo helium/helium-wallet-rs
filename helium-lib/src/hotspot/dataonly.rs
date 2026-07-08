@@ -9,7 +9,7 @@ use crate::{
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::Pubkey,
-    kta, message,
+    message,
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
     solana_sdk::{
         instruction::Instruction,
@@ -193,33 +193,6 @@ pub fn onboard_instruction(
     }
 }
 
-/// Builds an unsigned transaction to onboard a data-only hotspot.
-pub async fn onboard_transaction<
-    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
->(
-    client: &C,
-    subdao: SubDao,
-    hotspot_key: &helium_crypto::PublicKey,
-    assertion: &HotspotInfoUpdate,
-    owner: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let kta = kta::for_entity_key(hotspot_key).await?;
-    let (asset, asset_proof) = asset::for_kta_with_proof(client, &kta).await?;
-    build_onboard_transaction(
-        client,
-        subdao,
-        hotspot_key,
-        (&asset, &asset_proof),
-        assertion,
-        owner,
-        opts,
-    )
-    .await
-}
-
-/// Builds an unsigned onboard transaction using a pre-fetched asset, skipping the asset re-fetch.
-///
 /// Use this when the caller already holds a fresh `Asset` for `hotspot_key` (e.g. just returned
 /// by [`asset::wait_for_entity_key`]) so onboard's DAS round-trip can be replaced with a
 /// proof-only fetch.
@@ -276,30 +249,6 @@ async fn build_onboard_transaction<
     let (msg, block_height) =
         message::mk_budgeted_message(client, 300_000, &[ix], &asset.ownership.owner, opts).await?;
     let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
-    Ok((txn, block_height))
-}
-
-/// Signs and returns a transaction to onboard a data-only hotspot for a sub-DAO.
-pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
-    client: &C,
-    subdao: SubDao,
-    hotspot_key: &helium_crypto::PublicKey,
-    assertion: &HotspotInfoUpdate,
-    keypair: &(dyn Signer + Sync),
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let (mut txn, block_height) = onboard_transaction(
-        client,
-        subdao,
-        hotspot_key,
-        assertion,
-        &keypair.pubkey(),
-        opts,
-    )
-    .await?;
-    let message_data = txn.message.serialize();
-    let signature = keypair.try_sign_message(&message_data)?;
-    txn.signatures[0] = signature;
     Ok((txn, block_height))
 }
 
@@ -452,15 +401,6 @@ pub fn issue_token(gw_keypair: &helium_crypto::Keypair) -> Result<IssueToken, Er
     })
 }
 
-/// Decodes a base64 add-gateway token back into its protobuf transaction.
-pub fn issue_token_to_add_tx(token: &str) -> Result<BlockchainTxnAddGatewayV1, Error> {
-    let envelope: BlockchainTxn = b64::decode_message(token)?;
-    match envelope.txn {
-        Some(Txn::AddGateway(txn)) => Ok(txn),
-        _ => Err(DecodeError::other("unsupported transaction").into()),
-    }
-}
-
 /// Signs and returns a transaction to issue a new data-only hotspot entity on-chain.
 pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
@@ -514,21 +454,4 @@ async fn verify_helium_key(
         bincode::deserialize(&hex::decode(response.transaction).map_err(DecodeError::from)?)
             .map_err(DecodeError::from)?;
     Ok(signed_tx)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::rngs::OsRng;
-
-    #[test]
-    fn roundtrip_issue_token() {
-        let gw_keypair = helium_crypto::Keypair::generate(Default::default(), &mut OsRng);
-        let issue_token = issue_token(&gw_keypair).expect("issue token");
-        let gw_pubkey = issue_token.hotspot.key;
-        let decoded = issue_token_to_add_tx(&issue_token.token).expect("decoded issue token");
-        let decoded_gw_pubkey =
-            helium_crypto::PublicKey::try_from(decoded.gateway).expect("decoded hotspot key");
-        assert_eq!(gw_pubkey, decoded_gw_pubkey);
-    }
 }

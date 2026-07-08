@@ -30,11 +30,10 @@ where
 /// Polls for an entity's asset until it becomes visible to the DAS indexer or `timeout` elapses.
 ///
 /// The DAS indexer can trail Solana confirmation by a few seconds after a
-/// `dataonly::issue` transaction commits, so an immediate read via `for_entity_key`
-/// (or anything that goes through it, like `dataonly::onboard_transaction`) bubbles
-/// up a transient `AccountNotFound`. This helper retries only `AccountNotFound` at
-/// `poll_interval` cadence; every other error passes through. Signature mirrors
-/// `transaction::confirm_signatures` so both poll helpers behave consistently.
+/// data-only hotspot is issued, so an immediate read via `for_entity_key`
+/// bubbles up a transient `AccountNotFound`. This helper retries only
+/// `AccountNotFound` at `poll_interval` cadence; every other error passes
+/// through.
 pub async fn wait_for_entity_key<E, C>(
     client: &C,
     entity_key: &E,

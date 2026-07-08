@@ -11,11 +11,9 @@ use helium_lib::{
     client::{self, SolanaRpcClient},
     keypair::{to_pubkey, Keypair, Pubkey, Signature, Signer},
     solana_client::{
-        self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
-        rpc_response::RpcSimulateTransactionResult,
+        self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
     },
-    solana_sdk::{commitment_config::CommitmentConfig, transaction::VersionedTransaction},
-    transaction::{self as lib_transaction, SignatureStatus},
+    solana_sdk::transaction::VersionedTransaction,
 };
 use serde_json::json;
 use std::{
@@ -232,9 +230,6 @@ fn print_blind_sign_hash(hash: &[u8; 32]) {
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct CommitOpts {
-    /// Skip pre-flight
-    #[arg(long)]
-    skip_preflight: bool,
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
@@ -281,65 +276,6 @@ fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
 }
 
 impl CommitOpts {
-    pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>, T: Into<VersionedTransaction>>(
-        &self,
-        tx: T,
-        client: &C,
-    ) -> Result<CommitResponse> {
-        let versioned_tx = tx.into();
-        if self.commit {
-            let config = RpcSendTransactionConfig {
-                skip_preflight: self.skip_preflight,
-                ..Default::default()
-            };
-            let signature = client
-                .as_ref()
-                .send_transaction_with_config(&versioned_tx, config)
-                .await
-                .map_err(context_err)?;
-
-            // Submission ≠ confirmation. Solana's send_transaction returns
-            // the locally-computed signature regardless of whether the tx
-            // ever lands — by far the most common Ledger failure mode is
-            // the recent_blockhash expiring while the user reads the device
-            // and approves. Poll for confirmation so a non-landing tx
-            // surfaces as an error instead of looking identical to a
-            // successful one. See `transaction::confirm_signatures` in
-            // helium-lib for the underlying primitive.
-            let timeout = Duration::from_secs(self.confirm_timeout_secs);
-            let poll_interval = Duration::from_secs(2);
-            let statuses = lib_transaction::confirm_signatures(
-                client,
-                &[signature],
-                CommitmentConfig::confirmed(),
-                timeout,
-                poll_interval,
-            )
-            .await?;
-
-            match statuses.get(&signature) {
-                Some(SignatureStatus::Confirmed) => Ok(CommitResponse::Signature(signature)),
-                Some(SignatureStatus::Failed(err)) => {
-                    Err(anyhow!("transaction failed on-chain: {err}"))
-                }
-                Some(SignatureStatus::NotFound) | None => Err(anyhow!(
-                    "transaction did not confirm within {}s — likely the blockhash \
-                     expired while signing on the device, or the RPC dropped it before \
-                     reaching leaders. Submitted signature: {signature}",
-                    timeout.as_secs(),
-                )),
-            }
-        } else {
-            client
-                .as_ref()
-                .simulate_transaction(&versioned_tx)
-                .await
-                .map_err(context_err)?
-                .value
-                .try_into()
-        }
-    }
-
     /// Sign and commit transactions built by the blockchain-api.
     ///
     /// Decodes the unsigned transactions in `response`, shows them for review,

@@ -23,18 +23,10 @@ pub mod entity_key;
 pub mod error;
 /// Hotspot onboarding, configuration, and info queries.
 pub mod hotspot;
-/// Jupiter DEX swap integration.
-pub mod jupiter;
 /// Solana keypair management with optional BIP39 mnemonic support.
 pub mod keypair;
 /// Key-to-asset (KTA) account lookups and caching.
 pub mod kta;
-/// Versioned message construction with address lookup tables.
-pub mod message;
-/// Maker onboarding server client.
-pub mod onboarding;
-/// Compute unit price estimation for transaction priority fees.
-pub mod priority_fee;
 /// Anchor program ID and account definitions.
 pub mod programs;
 /// Reward claim queuing via task queues.
@@ -47,7 +39,7 @@ pub mod schedule;
 pub mod squads;
 /// Token operations: transfers, burns, balances, and prices.
 pub mod token;
-/// Transaction building, signing, and confirmation.
+/// Transaction signing and confirmation.
 pub mod transaction;
 
 pub use crate::programs::{
@@ -95,105 +87,13 @@ where
     value == &T::ZERO
 }
 
-use client::SolanaRpcClient;
 use error::Error;
 use keypair::Pubkey;
-use solana_sdk::{instruction::Instruction, transaction::Transaction};
-use std::{ops::RangeInclusive, sync::Arc};
+use std::sync::Arc;
 
 /// Initializes the global KTA (key-to-asset) cache.
 ///
 /// Must be called before any KTA lookups. Requires an active Solana RPC client.
 pub fn init(solana_client: Arc<client::SolanaRpcClient>) -> Result<(), error::Error> {
     kta::init(solana_client)
-}
-
-/// Options controlling transaction priority fees and address lookup tables.
-pub struct TransactionOpts {
-    /// Minimum priority fee in micro-lamports per compute unit.
-    pub min_priority_fee: u64,
-    /// Maximum priority fee in micro-lamports per compute unit.
-    pub max_priority_fee: u64,
-    /// Address lookup tables to include for transaction compression.
-    pub lut_addresses: Vec<Pubkey>,
-}
-
-/// Returns the default LUT addresses for the cluster identified by `url`,
-/// selecting the devnet common LUT for devnet URLs and the mainnet common
-/// LUT otherwise. See [`client::is_devnet`] for how the cluster is detected.
-fn default_lut_addresses_for_url(url: &str) -> Vec<Pubkey> {
-    if client::is_devnet(url) {
-        vec![message::COMMON_LUT_DEVNET]
-    } else {
-        vec![message::COMMON_LUT]
-    }
-}
-
-impl Default for TransactionOpts {
-    /// Default options assuming the **mainnet** cluster. When the target
-    /// cluster is not known to be mainnet, build options with
-    /// [`TransactionOpts::for_url`] or [`TransactionOpts::for_client`] so the
-    /// correct (devnet vs mainnet) common lookup table is selected.
-    fn default() -> Self {
-        Self {
-            min_priority_fee: priority_fee::MIN_PRIORITY_FEE,
-            max_priority_fee: priority_fee::MAX_PRIORITY_FEE,
-            lut_addresses: vec![message::COMMON_LUT],
-        }
-    }
-}
-
-impl TransactionOpts {
-    /// Builds options for the cluster identified by `url`, selecting the
-    /// devnet or mainnet common lookup table accordingly. Priority fees use
-    /// the same defaults as [`TransactionOpts::default`].
-    pub fn for_url(url: &str) -> Self {
-        Self {
-            lut_addresses: default_lut_addresses_for_url(url),
-            ..Self::default()
-        }
-    }
-
-    /// Builds options for the cluster `client` is connected to, selecting the
-    /// devnet or mainnet common lookup table accordingly. Priority fees use
-    /// the same defaults as [`TransactionOpts::default`].
-    pub fn for_client<C: AsRef<SolanaRpcClient>>(client: &C) -> Self {
-        Self::for_url(&client.as_ref().url())
-    }
-
-    fn fee_range(&self) -> RangeInclusive<u64> {
-        RangeInclusive::new(self.min_priority_fee, self.max_priority_fee)
-    }
-}
-
-/// Creates a transaction with a fresh blockhash, returning the transaction and block height.
-pub async fn mk_transaction_with_blockhash<C: AsRef<SolanaRpcClient>>(
-    client: &C,
-    ixs: &[Instruction],
-    payer: &Pubkey,
-) -> Result<(Transaction, u64), Error> {
-    let mut txn = Transaction::new_with_payer(ixs, Some(payer));
-    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
-    let (latest_blockhash, latest_block_height) = solana_client
-        .get_latest_blockhash_with_commitment(solana_client.commitment())
-        .await?;
-    txn.message.recent_blockhash = latest_blockhash;
-    Ok((txn, latest_block_height))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn transaction_opts_selects_devnet_lut_for_devnet_url() {
-        let opts = TransactionOpts::for_url(client::SOLANA_URL_DEVNET);
-        assert_eq!(opts.lut_addresses, vec![message::COMMON_LUT_DEVNET]);
-    }
-
-    #[test]
-    fn transaction_opts_selects_mainnet_lut_for_mainnet_url() {
-        let opts = TransactionOpts::for_url(client::SOLANA_URL_MAINNET);
-        assert_eq!(opts.lut_addresses, vec![message::COMMON_LUT]);
-    }
 }

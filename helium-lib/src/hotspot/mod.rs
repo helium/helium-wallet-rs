@@ -2,13 +2,12 @@ use crate::{
     asset, bs58,
     client::{DasClient, DasSearchAssetsParams, GetAnchorAccount},
     dao::SubDao,
-    error::{DecodeError, EncodeError, Error},
+    error::{DecodeError, Error},
     helium_entity_manager, is_zero,
     keypair::{pubkey, serde_opt_pubkey, serde_pubkey, Pubkey},
     kta,
 };
 use angry_purple_tiger::AnimalName;
-use chrono::Utc;
 use futures::TryFutureExt;
 use helium_proto::services::mobile_config;
 use itertools::{izip, Itertools};
@@ -17,13 +16,10 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
 pub mod cert;
-pub mod dataonly;
 pub mod info;
 
 /// The well-known creator address used to identify Helium hotspot compressed NFTs.
 pub const HOTSPOT_CREATOR: Pubkey = pubkey!("Fv5hf1Fg58htfC7YEXKNEfkpuogUUQDDTLgjGWxxv48H");
-/// The on-chain ECC verifier used to validate gateway signatures during data-only hotspot issuance.
-pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
 pub fn entity_key_from_kta(
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
@@ -409,143 +405,6 @@ impl From<mobile_config::CbrsRadioDeploymentInfo> for CbrsRadioInfo {
     }
 }
 
-/// A hotspot info update that has been committed on-chain, including block and timestamp metadata.
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub struct CommittedHotspotInfoUpdate {
-    pub block: u64,
-    pub timestamp: chrono::DateTime<Utc>,
-    pub signature: String,
-    #[serde(with = "serde_pubkey")]
-    pub info_key: Pubkey,
-    pub update: HotspotInfoUpdate,
-}
-
-/// A pending update to hotspot on-chain info, scoped to a specific sub-DAO.
-///
-/// `Iot` updates may include gain, elevation, and location.
-/// `Mobile` updates include only location.
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "lowercase", untagged)]
-pub enum HotspotInfoUpdate {
-    /// IoT hotspot update with optional gain, elevation, and location fields.
-    Iot {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        gain: Option<Decimal>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        elevation: Option<i32>,
-        #[serde(flatten)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        location: Option<HotspotLocation>,
-    },
-    /// Mobile hotspot update with an optional location change.
-    Mobile {
-        #[serde(flatten)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        location: Option<HotspotLocation>,
-    },
-}
-
-impl HotspotInfoUpdate {
-    pub fn subdao(&self) -> SubDao {
-        match self {
-            Self::Iot { .. } => SubDao::Iot,
-            Self::Mobile { .. } => SubDao::Mobile,
-        }
-    }
-
-    pub fn for_subdao(subdao: SubDao) -> Self {
-        match subdao {
-            SubDao::Iot => Self::Iot {
-                gain: None,
-                elevation: None,
-                location: None,
-            },
-            SubDao::Mobile => Self::Mobile { location: None },
-        }
-    }
-
-    pub fn location(&self) -> &Option<HotspotLocation> {
-        match self {
-            Self::Iot { location, .. } => location,
-            Self::Mobile { location, .. } => location,
-        }
-    }
-
-    pub fn set_location(mut self, new_location: Option<h3o::CellIndex>) -> Self {
-        let hotspot_location = new_location.map(HotspotLocation::from);
-        match self {
-            Self::Iot {
-                ref mut location, ..
-            } => *location = hotspot_location,
-            Self::Mobile {
-                ref mut location, ..
-            } => *location = hotspot_location,
-        }
-        self
-    }
-
-    pub fn set_geo(self, lat: Option<f64>, lon: Option<f64>) -> Result<Self, EncodeError> {
-        let location: Option<h3o::CellIndex> = match (lat, lon) {
-            (Some(lat), Some(lon)) => Some(
-                h3o::LatLng::new(lat, lon)
-                    .map_err(EncodeError::from)?
-                    .to_cell(h3o::Resolution::Twelve),
-            ),
-            (None, None) => None,
-            _ => return Err(EncodeError::other("Both lat and lon must be specified")),
-        };
-        Ok(self.set_location(location))
-    }
-
-    pub fn location_u64(&self) -> Option<u64> {
-        self.location().map(Into::into)
-    }
-
-    pub fn set_elevation(mut self, new_elevation: Option<i32>) -> Self {
-        if let Self::Iot {
-            ref mut elevation, ..
-        } = self
-        {
-            *elevation = new_elevation
-        };
-        self
-    }
-
-    pub fn elevation(&self) -> &Option<i32> {
-        match self {
-            Self::Iot { elevation, .. } => elevation,
-            Self::Mobile { .. } => &None,
-        }
-    }
-
-    pub fn gain_i32(&self) -> Option<i32> {
-        self.gain().and_then(|gain| {
-            f32::try_from(gain)
-                .map(|fgain| (fgain * 10.0).trunc() as i32)
-                .ok()
-        })
-    }
-
-    pub fn gain(&self) -> &Option<Decimal> {
-        match self {
-            Self::Iot { gain, .. } => gain,
-            Self::Mobile { .. } => &None,
-        }
-    }
-
-    pub fn set_gain(mut self, new_gain: Option<f64>) -> Self {
-        match self {
-            Self::Iot { ref mut gain, .. } => {
-                *gain = new_gain
-                    .and_then(|gain| Decimal::from_f64(gain).map(|dec| dec.trunc_with_scale(1)))
-            }
-            Self::Mobile { .. } => (),
-        }
-        self
-    }
-}
-
 /// The hardware type of a Mobile network hotspot.
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Default, Hash, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
@@ -741,60 +600,6 @@ impl From<helium_entity_manager::types::RadioInfoV0> for CbrsRadioInfo {
         Self {
             radio_id: value.radio_id,
             elevation: value.elevation,
-        }
-    }
-}
-
-impl From<helium_entity_manager::types::UpdateIotInfoArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::types::UpdateIotInfoArgsV0) -> Self {
-        Self::Iot {
-            gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
-            elevation: value.elevation,
-            location: HotspotLocation::from_maybe(value.location),
-        }
-    }
-}
-
-impl From<helium_entity_manager::types::OnboardIotHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::types::OnboardIotHotspotArgsV0) -> Self {
-        Self::Iot {
-            gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
-            elevation: value.elevation,
-            location: HotspotLocation::from_maybe(value.location),
-        }
-    }
-}
-
-impl From<helium_entity_manager::types::OnboardDataOnlyIotHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::types::OnboardDataOnlyIotHotspotArgsV0) -> Self {
-        Self::Iot {
-            gain: value.gain.map(|gain| Decimal::new(gain.into(), 1)),
-            elevation: value.elevation,
-            location: HotspotLocation::from_maybe(value.location),
-        }
-    }
-}
-
-impl From<helium_entity_manager::types::UpdateMobileInfoArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::types::UpdateMobileInfoArgsV0) -> Self {
-        Self::Mobile {
-            location: HotspotLocation::from_maybe(value.location),
-        }
-    }
-}
-
-impl From<helium_entity_manager::types::OnboardMobileHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::types::OnboardMobileHotspotArgsV0) -> Self {
-        Self::Mobile {
-            location: HotspotLocation::from_maybe(value.location),
-        }
-    }
-}
-
-impl From<helium_entity_manager::types::OnboardDataOnlyMobileHotspotArgsV0> for HotspotInfoUpdate {
-    fn from(value: helium_entity_manager::types::OnboardDataOnlyMobileHotspotArgsV0) -> Self {
-        Self::Mobile {
-            location: HotspotLocation::from_maybe(value.location),
         }
     }
 }

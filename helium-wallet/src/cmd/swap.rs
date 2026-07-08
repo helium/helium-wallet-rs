@@ -54,7 +54,13 @@ impl Cmd {
 
         let committed = self
             .commit
-            .commit_via_api(&api, &client, &response, &*signer)
+            .commit_via_api(
+                &api,
+                &client,
+                &response,
+                &*signer,
+                ApiSigning::FreshBlockhash,
+            )
             .await?;
 
         let mut json = committed.to_json();

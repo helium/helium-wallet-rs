@@ -46,7 +46,13 @@ impl Cmd {
             .await?;
         let claim_response = self
             .commit
-            .commit_via_api(&api, &client, &response, &*signer)
+            .commit_via_api(
+                &api,
+                &client,
+                &response,
+                &*signer,
+                ApiSigning::FreshBlockhash,
+            )
             .await
             .context("while claiming rewards")?;
         print_json(&claim_response.to_json())

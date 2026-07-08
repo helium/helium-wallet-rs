@@ -76,7 +76,13 @@ impl IotCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )
@@ -134,7 +140,13 @@ impl MobileCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )

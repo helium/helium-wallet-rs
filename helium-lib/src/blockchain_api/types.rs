@@ -561,6 +561,45 @@ pub struct ClaimHotspotRewardsRequest {
     pub network: Option<RewardNetwork>,
 }
 
+// ---- Data-only hotspot onboarding ----
+
+/// IoT or Mobile sub-DAO selector for data-only onboarding.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DataOnlyNetwork {
+    Iot,
+    Mobile,
+}
+
+/// Body for `POST /hotspots/data-only/issue`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueDataOnlyHotspotRequest {
+    pub wallet_address: String,
+    /// Base64 add-gateway token (BlockchainTxnAddGatewayV1 envelope).
+    pub add_gateway_txn: String,
+}
+
+/// Body for `POST /hotspots/data-only/onboard`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardDataOnlyHotspotRequest {
+    pub wallet_address: String,
+    pub network: DataOnlyNetwork,
+    /// Base58 helium public key of the hotspot to onboard.
+    pub hotspot_address: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lat: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lng: Option<f64>,
+    /// IoT only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation: Option<i32>,
+    /// IoT only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gain: Option<f64>,
+}
+
 // ---- Claim automation (one tuktuk claim cron per wallet) ----
 //
 // `wallet_address` is repeated in each body even though it is also the path

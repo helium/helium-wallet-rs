@@ -132,7 +132,13 @@ impl PayCmd {
         print_json(
             &self
                 .commit()
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )

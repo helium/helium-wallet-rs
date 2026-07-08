@@ -10,14 +10,12 @@ use helium_lib::{
     },
     client::{self, SolanaRpcClient},
     keypair::{to_pubkey, Keypair, Pubkey, Signature, Signer},
-    priority_fee,
     solana_client::{
         self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
         rpc_response::RpcSimulateTransactionResult,
     },
     solana_sdk::{commitment_config::CommitmentConfig, transaction::VersionedTransaction},
     transaction::{self as lib_transaction, SignatureStatus},
-    TransactionOpts,
 };
 use serde_json::json;
 use std::{
@@ -237,12 +235,6 @@ pub struct CommitOpts {
     /// Skip pre-flight
     #[arg(long)]
     skip_preflight: bool,
-    /// Minimum priority fee in micro lamports
-    #[arg(long, default_value_t = priority_fee::MIN_PRIORITY_FEE)]
-    min_priority_fee: u64,
-    /// Maximum priority fee in micro lamports
-    #[arg(long, default_value_t = priority_fee::MAX_PRIORITY_FEE)]
-    max_priority_fee: u64,
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
@@ -348,14 +340,6 @@ impl CommitOpts {
         }
     }
 
-    pub fn transaction_opts<C: AsRef<SolanaRpcClient>>(&self, client: &C) -> TransactionOpts {
-        TransactionOpts {
-            min_priority_fee: self.min_priority_fee,
-            max_priority_fee: self.max_priority_fee,
-            ..TransactionOpts::for_client(client)
-        }
-    }
-
     /// Sign and commit transactions built by the blockchain-api.
     ///
     /// Decodes the unsigned transactions in `response`, shows them for review,
@@ -365,19 +349,22 @@ impl CommitOpts {
     /// - without `--commit`: simulates each signed transaction locally against
     ///   `rpc` and broadcasts nothing.
     ///
-    /// The blockhash is refreshed just before signing to widen the validity
-    /// window — a slow Ledger approval can otherwise outlive the blockhash the
-    /// server built the transaction with.
+    /// The `signing` mode controls how each transaction is signed:
+    /// [`ApiSigning::FreshBlockhash`] refreshes the blockhash just before
+    /// signing to widen the validity window (a slow Ledger approval can
+    /// otherwise outlive the server's blockhash), while
+    /// [`ApiSigning::PreserveCosigned`] keeps the server's message, blockhash,
+    /// and any co-signatures intact.
     ///
-    /// Note: `min_priority_fee` / `max_priority_fee` do not apply here; the
-    /// blockchain-api sets priority fee, compute budget, and lookup tables
-    /// server-side.
+    /// The blockchain-api sets priority fee, compute budget, and lookup tables
+    /// server-side; there are no local priority-fee knobs.
     pub async fn commit_via_api<C, R>(
         &self,
         api: &blockchain_api::Client,
         rpc: &C,
         response: &R,
         signer: &(dyn Signer + Send + Sync),
+        signing: ApiSigning,
     ) -> Result<CommitResponse>
     where
         C: AsRef<SolanaRpcClient>,
@@ -388,17 +375,43 @@ impl CommitOpts {
         display_action_for_review(data, response.estimated_sol_fee(), &unsigned);
 
         let solana = rpc.as_ref();
-        let (blockhash, _) = solana
-            .get_latest_blockhash_with_commitment(solana.commitment())
-            .await?;
-        let signed = unsigned
-            .into_iter()
-            .map(|mut tx| {
-                tx.message.set_recent_blockhash(blockhash);
-                VersionedTransaction::try_new(tx.message, &[signer])
-            })
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let signed = match signing {
+            // Server-built, single-signer transactions: refresh the blockhash
+            // and sign as the sole signer.
+            ApiSigning::FreshBlockhash => {
+                let (blockhash, _) = solana
+                    .get_latest_blockhash_with_commitment(solana.commitment())
+                    .await?;
+                unsigned
+                    .into_iter()
+                    .map(|mut tx| {
+                        tx.message.set_recent_blockhash(blockhash);
+                        VersionedTransaction::try_new(tx.message, &[signer])
+                    })
+                    .collect::<std::result::Result<Vec<_>, _>>()?
+            }
+            // Co-signed transactions (e.g. the ECC-verifier-signed data-only
+            // issue tx): preserve the message, blockhash, and existing
+            // signatures, filling in only the wallet's slot. Refreshing the
+            // blockhash or re-signing from scratch would drop the co-signature.
+            ApiSigning::PreserveCosigned => unsigned
+                .into_iter()
+                .map(|tx| sign_owner_in_place(tx, signer))
+                .collect::<Result<Vec<_>>>()?,
+        };
 
+        self.finish_via_api(api, solana, data, signed).await
+    }
+
+    /// Shared tail for the API commit paths: submit the signed batch and poll,
+    /// or (without `--commit`) simulate each transaction to surface errors.
+    async fn finish_via_api(
+        &self,
+        api: &blockchain_api::Client,
+        solana: &SolanaRpcClient,
+        data: &blockchain_api::types::TransactionData,
+        signed: Vec<VersionedTransaction>,
+    ) -> Result<CommitResponse> {
         if self.commit {
             let submitted = api.submit_signed(data, &signed, true).await?;
             let timeout = Duration::from_secs(self.confirm_timeout_secs);
@@ -420,6 +433,44 @@ impl CommitOpts {
             Ok(CommitResponse::None)
         }
     }
+}
+
+/// How [`CommitOpts::commit_via_api`] signs the transactions the blockchain-api
+/// built.
+#[derive(Debug, Clone, Copy)]
+pub enum ApiSigning {
+    /// Refresh the blockhash and sign as the sole signer. The default for the
+    /// server-built, single-signer transactions the API returns.
+    FreshBlockhash,
+    /// Preserve the message, blockhash, and any co-signatures already present,
+    /// filling in only the wallet's slot. Required for the ECC-verifier-co-signed
+    /// data-only issue transaction.
+    PreserveCosigned,
+}
+
+/// Fill in the wallet's signature on a server-built transaction without
+/// altering the message, its blockhash, or any co-signatures already present.
+/// The wallet (fee payer) is always account index 0, so its signature goes in
+/// the matching slot; other signers' slots are left untouched.
+fn sign_owner_in_place(
+    mut tx: VersionedTransaction,
+    signer: &(dyn Signer + Send + Sync),
+) -> Result<VersionedTransaction> {
+    let owner = signer.pubkey();
+    let index = tx
+        .message
+        .static_account_keys()
+        .iter()
+        .position(|key| *key == owner)
+        .filter(|index| *index < tx.message.header().num_required_signatures as usize)
+        .ok_or_else(|| anyhow!("wallet is not a required signer of the transaction"))?;
+
+    let message_data = tx.message.serialize();
+    let signature = signer
+        .try_sign_message(&message_data)
+        .map_err(|err| anyhow!("failed to sign transaction: {err}"))?;
+    tx.signatures[index] = signature;
+    Ok(tx)
 }
 
 /// Map a terminal blockchain-api batch status into a [`CommitResponse`].

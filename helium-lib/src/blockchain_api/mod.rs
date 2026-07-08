@@ -40,13 +40,13 @@ use std::time::{Duration, Instant};
 use types::{
     ActionResponse, AddEntityToAutomationRequest, AddWalletToAutomationRequest,
     ClaimHotspotRewardsRequest, ClaimRewardsRequest, CloseAutomationRequest, DcBurnRequest,
-    DcDelegateRequest, DcMintRequest, FundAutomationRequest, HotspotBurnRequest, MemoRequest,
-    MultiTransferRequest, RemoveEntityFromAutomationRequest, RequeueAutomationRequest,
-    SetupAutomationRequest, SquadsExecuteProposalRequest, SquadsProposalVoteRequest,
-    SquadsProposeConfigChangeRequest, StatusResponse, SubmitRequest, SubmitResponse,
-    SwapInstructionsRequest, SwapQuote, TokenBurnRequest, TokenTransferRequest,
-    TopUpAutomationRequest, TransactionData, TransferHotspotRequest, UpdateInfoRequest,
-    UpdateRewardsDestinationRequest,
+    DcDelegateRequest, DcMintRequest, FundAutomationRequest, HotspotBurnRequest,
+    IssueDataOnlyHotspotRequest, MemoRequest, MultiTransferRequest, OnboardDataOnlyHotspotRequest,
+    RemoveEntityFromAutomationRequest, RequeueAutomationRequest, SetupAutomationRequest,
+    SquadsExecuteProposalRequest, SquadsProposalVoteRequest, SquadsProposeConfigChangeRequest,
+    StatusResponse, SubmitRequest, SubmitResponse, SwapInstructionsRequest, SwapQuote,
+    TokenBurnRequest, TokenTransferRequest, TopUpAutomationRequest, TransactionData,
+    TransferHotspotRequest, UpdateInfoRequest, UpdateRewardsDestinationRequest,
 };
 
 /// Environment variable holding the blockchain-api base URL (`…/api/v1`).
@@ -317,6 +317,25 @@ impl Client {
         req: &SquadsProposeConfigChangeRequest,
     ) -> Result<TransactionData, BlockchainApiError> {
         self.post("/squads/proposals/config", req).await
+    }
+
+    /// `POST /hotspots/data-only/issue` — issue (mint) a data-only hotspot. The
+    /// onboarding server co-signs against the ECC verifier; the returned tx
+    /// needs only the owner signature.
+    pub async fn issue_data_only_hotspot(
+        &self,
+        req: &IssueDataOnlyHotspotRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post("/hotspots/data-only/issue", req).await
+    }
+
+    /// `POST /hotspots/data-only/onboard` — onboard a data-only hotspot into a
+    /// sub-DAO, asserting location (and, for IoT, gain/elevation).
+    pub async fn onboard_data_only_hotspot(
+        &self,
+        req: &OnboardDataOnlyHotspotRequest,
+    ) -> Result<ActionResponse, BlockchainApiError> {
+        self.post("/hotspots/data-only/onboard", req).await
     }
 
     // ---- Claim automation (one tuktuk claim cron per wallet) ----

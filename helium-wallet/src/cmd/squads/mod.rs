@@ -84,7 +84,7 @@ where
         .and_then(|m| m.get("transactionIndex"))
         .cloned();
     let commit_response = commit
-        .commit_via_api(api, client, &response, keypair)
+        .commit_via_api(api, client, &response, keypair, ApiSigning::FreshBlockhash)
         .await?;
     let mut json = commit_response.to_json();
     if let serde_json::Value::Object(map) = &mut json {

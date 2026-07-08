@@ -98,7 +98,13 @@ impl InitCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )
@@ -132,7 +138,13 @@ impl FundCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )
@@ -161,7 +173,13 @@ impl WalletCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )
@@ -191,7 +209,13 @@ impl OneCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )
@@ -225,7 +249,13 @@ impl RemoveCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )
@@ -254,7 +284,13 @@ impl RequeueCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )
@@ -283,7 +319,13 @@ impl CloseCmd {
         print_json(
             &self
                 .commit
-                .commit_via_api(&api, &client, &response, &*signer)
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
                 .await?
                 .to_json(),
         )

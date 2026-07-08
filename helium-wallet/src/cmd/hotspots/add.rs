@@ -1,13 +1,15 @@
 use crate::{cmd::*, result::Context, txn_envelope::TxnEnvelope};
 use chrono::{DateTime, Utc};
-use helium_crypto::{KeyTag, PublicKey};
+use helium_crypto::{KeyTag, Keypair, PublicKey, Sign};
 use helium_lib::{
-    asset,
-    client::{VERIFIER_URL_DEVNET, VERIFIER_URL_MAINNET},
-    dao::SubDao,
-    hotspot::{self, cert, HotspotInfoUpdate},
+    asset, b64,
+    blockchain_api::types::{
+        DataOnlyNetwork, IssueDataOnlyHotspotRequest, OnboardDataOnlyHotspotRequest,
+    },
+    hotspot::{self, cert},
+    keypair::Signer,
 };
-use helium_proto::BlockchainTxnAddGatewayV1;
+use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use rand::rngs::OsRng;
 use serde::Serialize;
 use std::{io::Write, time::Duration};
@@ -44,140 +46,156 @@ impl AddCmd {
 
 /// Add an IOT Hotspot to the blockchain.
 ///
-/// The required transaction is created by a
-/// Hotspot and supplied here for owner signing.
+/// The required transaction is created by a Hotspot and supplied here for owner
+/// signing. The issue and onboard transactions are built by the blockchain-api
+/// (which co-signs issue with the ECC verifier) and signed locally.
 #[derive(Clone, Debug, clap::Args)]
 struct IotCmd {
     /// Latitude of Hotspot location to assert.
     ///
-    /// Defaults to the last asserted value. For negative values use '=', for
-    /// example: "--lat=-xx.xxxxxxx".
+    /// For negative values use '=', for example: "--lat=-xx.xxxxxxx".
     #[arg(long)]
     lat: Option<f64>,
 
     /// Longitude of Hotspot location to assert.
     ///
-    /// Defaults to the last asserted value. For negative values use '=', for
-    /// example: "--lon=-xx.xxxxxxx".
+    /// For negative values use '=', for example: "--lon=-xx.xxxxxxx".
     #[arg(long)]
     lon: Option<f64>,
 
     /// The antenna gain for the asserted IoT Hotspot in dBi, with one digit of
-    /// accuracy.
-    ///
-    /// Defaults to the last asserted value. Note that the gain is truncated to
-    /// the nearest 0.1 dBi.
+    /// accuracy. Truncated to the nearest 0.1 dBi.
     #[arg(long)]
     gain: Option<f64>,
 
     /// The elevation for the asserted IoT Hotspot in meters above ground level.
     ///
-    /// Defaults to the last asserted value. For negative values use '=', for
-    /// example: "--elevation=-xx".
+    /// For negative values use '=', for example: "--elevation=-xx".
     #[arg(long)]
     elevation: Option<i32>,
 
     /// Base64 encoded Hotspot transaction.
     txn: Transaction,
 
-    /// Optional url for the ecc signature verifier.
-    ///
-    /// If the main API URL is one of the shortcuts (like "m" or "d") the
-    /// default verifier for that network will be used.
-    #[arg(long)]
-    verifier: Option<String>,
-
     /// Commit the Hotspot add.
     #[command(flatten)]
     commit: CommitOpts,
 }
 
+/// Location and antenna details to assert when onboarding. `gain`/`elevation`
+/// apply to IoT only.
+struct AddAssertion {
+    lat: Option<f64>,
+    lon: Option<f64>,
+    gain: Option<f64>,
+    elevation: Option<i32>,
+}
+
 async fn perform_add(
-    subdao: SubDao,
-    mut txn: BlockchainTxnAddGatewayV1,
-    update: HotspotInfoUpdate,
-    verifier: &Option<String>,
+    network: DataOnlyNetwork,
+    add_txn: BlockchainTxnAddGatewayV1,
+    assertion: AddAssertion,
     commit: &CommitOpts,
     opts: &Opts,
 ) -> Result {
     let signer = opts.load_signer()?;
-    let gateway = helium_crypto::PublicKey::from_bytes(&txn.gateway)?;
     let client = opts.client()?;
-    // Capture the Asset on the precheck so we can hand it to onboard later and
-    // skip the duplicate DAS fetch (`onboard_transaction` would otherwise read
-    // it again as part of `for_kta_with_proof`).
-    let mut prefetched_asset = asset::for_entity_key(&client, &gateway).await.ok();
-    let hotspot_issued = prefetched_asset.is_some();
-    let verifier_key = verifier.as_ref().unwrap_or(&opts.url);
-    let verifier = match verifier_key.as_str() {
-        "m" | "mainnet-beta" => VERIFIER_URL_MAINNET,
-        "d" | "devnet" => VERIFIER_URL_DEVNET,
-        url => url,
-    };
-    let transaction_opts = &commit.transaction_opts(&client);
+    let api = opts.blockchain_api()?;
+    let wallet = signer.pubkey().to_string();
+    let gateway = helium_crypto::PublicKey::from_bytes(&add_txn.gateway)?;
 
-    let issue_response = if !hotspot_issued {
-        let (tx, _) =
-            hotspot::dataonly::issue(&client, verifier, &mut txn, &*signer, transaction_opts)
-                .await?;
-        commit.maybe_commit(tx, &client).await?
+    // Re-encode the add-gateway envelope so the issue endpoint can co-sign it
+    // with the ECC verifier.
+    let add_gateway_txn = b64::encode_message(&BlockchainTxn {
+        txn: Some(Txn::AddGateway(add_txn)),
+    })?;
+
+    // Skip issuing if the hotspot NFT already exists (idempotent re-runs).
+    let hotspot_issued = asset::for_entity_key(&client, &gateway).await.is_ok();
+
+    let issue_response = if hotspot_issued {
+        CommitResponse::None
+    } else {
+        let response = api
+            .issue_data_only_hotspot(&IssueDataOnlyHotspotRequest {
+                wallet_address: wallet.clone(),
+                add_gateway_txn,
+            })
+            .await?;
+        // The onboarding server co-signs issue with the ECC verifier; preserve
+        // that signature and the server's blockhash when adding the owner's.
+        commit
+            .commit_via_api(
+                &api,
+                &client,
+                &response,
+                &*signer,
+                ApiSigning::PreserveCosigned,
+            )
+            .await
+            .context("while issuing the hotspot")?
+    };
+
+    // The DAS indexer lags on-chain confirmation by a few seconds; wait for the
+    // freshly-issued asset to become visible before onboarding, which the
+    // onboarding server resolves through DAS.
+    if matches!(issue_response, CommitResponse::Signature(_)) {
+        asset::wait_for_entity_key(
+            &client,
+            &gateway,
+            ISSUED_ASSET_VISIBILITY_TIMEOUT,
+            ISSUED_ASSET_POLL_INTERVAL,
+        )
+        .await?;
+    }
+
+    // Onboard only once the hotspot exists on-chain: either it was already
+    // issued, or `--commit` submitted the issue above. Without this, a dry run
+    // of a brand-new hotspot has nothing to onboard.
+    let onboard_response = if hotspot_issued || commit.commit {
+        let response = api
+            .onboard_data_only_hotspot(&OnboardDataOnlyHotspotRequest {
+                wallet_address: wallet,
+                network,
+                hotspot_address: gateway.to_string(),
+                lat: assertion.lat,
+                lng: assertion.lon,
+                elevation: assertion.elevation,
+                gain: assertion.gain,
+            })
+            .await?;
+        commit
+            .commit_via_api(
+                &api,
+                &client,
+                &response,
+                &*signer,
+                ApiSigning::FreshBlockhash,
+            )
+            .await
+            .context("while onboarding the hotspot")?
     } else {
         CommitResponse::None
     };
-    // The DAS indexer can lag the on-chain confirmation by a few seconds.
-    // If we just committed an issue tx, give the asset a chance to become
-    // visible before invoking onboard, which queries it through DAS and
-    // would otherwise bubble up a transient AccountNotFound (#398).
-    if matches!(issue_response, CommitResponse::Signature(_)) {
-        prefetched_asset = Some(
-            asset::wait_for_entity_key(
-                &client,
-                &gateway,
-                ISSUED_ASSET_VISIBILITY_TIMEOUT,
-                ISSUED_ASSET_POLL_INTERVAL,
-            )
-            .await?,
-        );
-    }
-    // Only assert the Hotspot if either (a) it has already been issued before this cli
-    // was run or (b) `commit` is enabled which means the previous command should have created it.
-    // Without this, the command will always fail for brand new hotspots when --commit is not
-    // enabled, as it cannot find the key_to_asset account or asset account.
-    let onboard_response = match prefetched_asset {
-        Some(asset) if hotspot_issued || commit.commit => {
-            let (tx, _) = hotspot::dataonly::onboard_with_asset(
-                &client,
-                subdao,
-                &gateway,
-                &asset,
-                &update,
-                &*signer,
-                transaction_opts,
-            )
-            .await?;
-            commit.maybe_commit(tx, &client).await?
-        }
-        _ => CommitResponse::None,
-    };
-    let json = json!({
+
+    print_json(&json!({
         "issue": issue_response.to_json(),
         "onboard": onboard_response.to_json(),
-    });
-    print_json(&json)
+    }))
 }
 
 impl IotCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let txn = BlockchainTxnAddGatewayV1::from_envelope(&self.txn)?;
-        let update = HotspotInfoUpdate::for_subdao(SubDao::Iot)
-            .set_gain(self.gain)
-            .set_elevation(self.elevation)
-            .set_geo(self.lat, self.lon)?;
         perform_add(
-            SubDao::Iot,
+            DataOnlyNetwork::Iot,
             txn,
-            update,
-            &self.verifier,
+            AddAssertion {
+                lat: self.lat,
+                lon: self.lon,
+                gain: self.gain,
+                elevation: self.elevation,
+            },
             &self.commit,
             &opts,
         )
@@ -186,8 +204,6 @@ impl IotCmd {
 }
 
 /// Add a MOBILE Hotspot to the blockchain.
-///
-/// The required transaction is created by using the 'txn' subcommand
 #[derive(Debug, Clone, clap::Args)]
 struct MobileCmd {
     #[command(subcommand)]
@@ -217,46 +233,78 @@ impl MobileCommand {
     }
 }
 
-/// Create an onboarding transaction for a mobile data-only Hotspot
+/// A newly generated data-only hotspot key with its animal name.
+#[derive(Debug, Serialize)]
+struct IssueHotspot {
+    key: PublicKey,
+    name: String,
+}
+
+/// A base64-encoded add-gateway token paired with the hotspot it was generated
+/// for.
+#[derive(Debug, Serialize)]
+struct IssueToken {
+    hotspot: IssueHotspot,
+    token: String,
+}
+
+/// Generate a fresh gateway keypair and a signed add-gateway token for it. This
+/// is offline: no chain interaction, just key generation and a helium-key
+/// signature over the add-gateway envelope.
+fn issue_token(gw_keypair: &Keypair) -> Result<IssueToken> {
+    let mut txn = BlockchainTxnAddGatewayV1 {
+        gateway: gw_keypair.public_key().to_vec(),
+        gateway_signature: vec![],
+        owner: vec![],
+        owner_signature: vec![],
+        payer: vec![],
+        payer_signature: vec![],
+        fee: 0,
+        staking_fee: 0,
+    };
+    txn.gateway_signature = gw_keypair.sign(&txn.encode_to_vec())?;
+
+    let envelope = BlockchainTxn {
+        txn: Some(Txn::AddGateway(txn)),
+    };
+    Ok(IssueToken {
+        hotspot: IssueHotspot {
+            key: gw_keypair.public_key().clone(),
+            name: hotspot::name(gw_keypair.public_key()),
+        },
+        token: b64::encode_message(&envelope)?,
+    })
+}
+
+/// Create an add-gateway token for a mobile data-only Hotspot
 #[derive(Debug, Clone, clap::Args)]
 struct MobileToken {}
 
 impl MobileToken {
     pub async fn run(&self, _opts: Opts) -> Result {
-        let gw_keypair = helium_crypto::Keypair::generate(KeyTag::default(), &mut OsRng);
-        let issue_token = hotspot::dataonly::issue_token(&gw_keypair)?;
-        print_json(&issue_token)
+        let gw_keypair = Keypair::generate(KeyTag::default(), &mut OsRng);
+        print_json(&issue_token(&gw_keypair)?)
     }
 }
 
-/// Onboard the given Hotspot given a transaction
+/// Onboard the given mobile data-only Hotspot.
 ///
-/// Issues the mobile Hotspot NFT and onboards it given the created data-only transaction,
-/// and Location details
+/// Issues the mobile Hotspot NFT and onboards it given the add-gateway token
+/// (from the `token` command) and location details.
 #[derive(Debug, Clone, clap::Args)]
 struct MobileOnboard {
     /// Latitude of Hotspot location to assert.
     ///
-    /// Defaults to the last asserted value. For negative values use '=', for
-    /// example: "--lat=-xx.xxxxxxx".
+    /// For negative values use '=', for example: "--lat=-xx.xxxxxxx".
     #[arg(long)]
     lat: f64,
     /// Longitude of Hotspot location to assert.
     ///
-    /// Defaults to the last asserted value. For negative values use '=', for
-    /// example: "--lon=-xx.xxxxxxx".
+    /// For negative values use '=', for example: "--lon=-xx.xxxxxxx".
     #[arg(long)]
     lon: f64,
-    /// Base64 encoded add Hotspot token.
-    ///
-    /// The token is generated by the 'token' command
+    /// Base64 encoded add Hotspot token (from the 'token' command).
     token: Transaction,
-    /// Optional url for the ecc signature verifier.
-    ///
-    /// If the main API URL is one of the shortcuts (like "m" or "d") the
-    /// default verifier for that network will be used.
-    #[arg(long)]
-    verifier: Option<String>,
     /// Commit the Hotspot add.
     #[command(flatten)]
     commit: CommitOpts,
@@ -265,13 +313,15 @@ struct MobileOnboard {
 impl MobileOnboard {
     pub async fn run(&self, opts: Opts) -> Result {
         let txn = BlockchainTxnAddGatewayV1::from_envelope(&self.token)?;
-        let update = HotspotInfoUpdate::for_subdao(SubDao::Mobile)
-            .set_geo(Some(self.lat), Some(self.lon))?;
         perform_add(
-            SubDao::Mobile,
+            DataOnlyNetwork::Mobile,
             txn,
-            update,
-            &self.verifier,
+            AddAssertion {
+                lat: Some(self.lat),
+                lon: Some(self.lon),
+                gain: None,
+                elevation: None,
+            },
             &self.commit,
             &opts,
         )

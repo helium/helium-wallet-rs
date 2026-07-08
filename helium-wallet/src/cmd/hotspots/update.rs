@@ -176,7 +176,17 @@ impl MobileCmd {
 /// given; a partial pair is rejected since the API location requires both.
 fn location(lat: Option<f64>, lon: Option<f64>) -> Result<Option<LatLng>> {
     match (lat, lon) {
-        (Some(lat), Some(lng)) => Ok(Some(LatLng { lat, lng })),
+        (Some(lat), Some(lng)) => {
+            // Reject out-of-range coordinates locally so a typo fails fast
+            // instead of round-tripping to the server or asserting nonsense.
+            if !(-90.0..=90.0).contains(&lat) {
+                bail!("latitude {lat} is out of range [-90, 90]");
+            }
+            if !(-180.0..=180.0).contains(&lng) {
+                bail!("longitude {lng} is out of range [-180, 180]");
+            }
+            Ok(Some(LatLng { lat, lng }))
+        }
         (None, None) => Ok(None),
         _ => bail!("both --lat and --lon are required to assert a location"),
     }

@@ -138,8 +138,9 @@ async fn perform_add(
 
     // The DAS indexer lags on-chain confirmation by a few seconds; wait for the
     // freshly-issued asset to become visible before onboarding, which the
-    // onboarding server resolves through DAS.
-    if matches!(issue_response, CommitResponse::Signature(_)) {
+    // onboarding server resolves through DAS. Any committed issue (single tx or
+    // batch) needs the wait.
+    if issue_response.committed() {
         asset::wait_for_entity_key(
             &client,
             &gateway,

@@ -196,6 +196,10 @@ impl Client {
     }
 
     /// `POST /hotspots/claim-rewards`.
+    ///
+    /// The direct (non-tuktuk) claim is paginated server-side (`hasMore`), but
+    /// [`ActionResponse`] does not surface that flag, so this is only used with
+    /// `tuktuk: true` — a single queued whole-wallet claim that never paginates.
     pub async fn claim_rewards(
         &self,
         req: &ClaimRewardsRequest,

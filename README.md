@@ -89,10 +89,7 @@ Most commands that submit transactions accept these options via `--commit`:
 
 | Option | Description |
 |---|---|
-| `--commit` | Submit the transaction. Without this flag the transaction is simulated (dry run) |
-| `--skip-preflight` | Skip Solana preflight checks |
-| `--min-priority-fee <u64>` | Minimum priority fee in micro-lamports |
-| `--max-priority-fee <u64>` | Maximum priority fee in micro-lamports |
+| `--commit` | Submit the transaction without prompting. Without this flag, an interactive run simulates and asks for confirmation before submitting; a non-interactive run simulates and stops |
 
 ## Commands
 

@@ -212,8 +212,8 @@ pub struct Payee {
     address: Pubkey,
     /// Amount of the token to send.
     amount: f64,
-    /// Token to send (iot, mobile, hnt, sol, usdc).
-    #[arg(value_parser = Token::transferrable_value_parser)]
+    /// Token to send (iot, mobile, hnt, sol, usdc). Defaults to hnt.
+    #[arg(default_value_t = Token::Hnt, value_parser = Token::transferrable_value_parser)]
     token: Token,
 }
 

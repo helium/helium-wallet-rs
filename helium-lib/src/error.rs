@@ -34,9 +34,6 @@ pub enum Error {
     Solana(Box<solana_client::client_error::ClientError>),
     #[error("instruction: {0}")]
     Instruction(#[from] solana_sdk::instruction::InstructionError),
-    /// Transaction building/packing errors from solana-transaction-utils
-    #[error("transaction: {0}")]
-    Transaction(#[from] solana_transaction_utils::error::Error),
     #[error("message: {0}")]
     Compile(#[from] solana_sdk::message::CompileError),
     #[error("signing: {0}")]

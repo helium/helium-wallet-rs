@@ -53,6 +53,9 @@ pub struct IotCmd {
     /// Elevation in meters above ground level. Defaults to the current value.
     #[arg(long)]
     elevation: Option<f64>,
+    /// Antenna azimuth in degrees (0-360). Defaults to the current value.
+    #[arg(long)]
+    azimuth: Option<f64>,
     #[command(flatten)]
     commit: CommitOpts,
 }
@@ -70,6 +73,7 @@ impl IotCmd {
                 location: location(self.lat, self.lon)?,
                 gain: self.gain,
                 elevation: self.elevation,
+                azimuth: self.azimuth,
                 deployment_info: None,
             })
             .await?;
@@ -134,6 +138,9 @@ impl MobileCmd {
                 location: location(self.lat, self.lon)?,
                 gain: None,
                 elevation: None,
+                // Mobile azimuth is carried in deployment_info (WIFI); the
+                // top-level azimuth field is IoT-only.
+                azimuth: None,
                 deployment_info: self.deployment_info(),
             })
             .await?;

@@ -90,9 +90,6 @@ impl InitCmd {
                 wallet_address: signer.pubkey().to_string(),
                 cron_schedule: self.schedule.clone(),
                 duration: self.duration,
-                // Required by the API; the server recomputes the real hotspot
-                // count when sizing the funding.
-                total_hotspots: 1,
             })
             .await?;
         print_json(
@@ -359,16 +356,20 @@ impl InfoCmd {
         let cron_job_key = schedule::cron_job_key_for_wallet(&wallet, 0);
         let claim_wallet = queue::claim_wallet_key(&queue::TASK_QUEUE_ID, &wallet);
 
+        // The two balances and the cron account are independent reads; fetch
+        // them in one round trip.
+        let (claim_balance, cron_balance, cronjob) = tokio::try_join!(
+            token::balance_for_address(&client, &claim_wallet),
+            token::balance_for_address(&client, &cron_job_key),
+            schedule::get(&client, &cron_job_key),
+        )?;
+
         let mut info = CronJobInfo {
-            claim_wallet: token::balance_for_address(&client, &claim_wallet)
-                .await?
-                .unwrap_or(token::Token::Sol.to_balance(claim_wallet, 0)),
-            cron_wallet: token::balance_for_address(&client, &cron_job_key)
-                .await?
-                .unwrap_or(token::Token::Sol.to_balance(cron_job_key, 0)),
+            claim_wallet: claim_balance.unwrap_or(token::Token::Sol.to_balance(claim_wallet, 0)),
+            cron_wallet: cron_balance.unwrap_or(token::Token::Sol.to_balance(cron_job_key, 0)),
             ..Default::default()
         };
-        if let Some(cronjob) = schedule::get(&client, &cron_job_key).await? {
+        if let Some(cronjob) = cronjob {
             info.schedule = cronjob.schedule;
             info.cron_jobs = cronjob.num_transactions;
         };

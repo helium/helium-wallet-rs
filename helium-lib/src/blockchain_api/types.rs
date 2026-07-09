@@ -397,8 +397,8 @@ pub struct UpdateRewardsDestinationRequest {
     pub wallet_address: String,
     pub hotspot_pubkey: String,
     pub destination: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lazy_distributors: Option<Vec<String>>,
+    /// Lazy distributors to update; the endpoint requires at least one.
+    pub lazy_distributors: Vec<String>,
 }
 
 /// Mobile hotspot deployment info. Only WiFi is modeled; CBRS is defunct.
@@ -443,6 +443,9 @@ pub struct UpdateInfoRequest {
     /// IoT only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elevation: Option<f64>,
+    /// IoT only. Antenna azimuth in degrees (0-360).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub azimuth: Option<f64>,
     /// Mobile only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_info: Option<DeploymentInfo>,
@@ -616,7 +619,6 @@ pub struct SetupAutomationRequest {
     pub cron_schedule: String,
     /// Number of claim cycles to pre-fund.
     pub duration: u32,
-    pub total_hotspots: u32,
 }
 
 /// Body for `POST /hotspots/wallet/{walletAddress}/automation/fund`.

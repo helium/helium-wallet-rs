@@ -127,7 +127,7 @@ impl RecipientInitCmd {
                 wallet_address: signer.pubkey().to_string(),
                 hotspot_pubkey: self.entity_key.to_string(),
                 destination: signer.pubkey().to_string(),
-                lazy_distributors: Some(vec![self.token.lazy_distributor_key().to_string()]),
+                lazy_distributors: vec![self.token.lazy_distributor_key().to_string()],
             })
             .await?;
         print_json(
@@ -177,7 +177,7 @@ impl RecipientUpdateCmd {
                 wallet_address: signer.pubkey().to_string(),
                 hotspot_pubkey: self.entity_key.to_string(),
                 destination: self.destination.to_string(),
-                lazy_distributors: Some(vec![self.token.lazy_distributor_key().to_string()]),
+                lazy_distributors: vec![self.token.lazy_distributor_key().to_string()],
             })
             .await?;
         print_json(

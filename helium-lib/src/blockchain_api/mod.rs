@@ -536,12 +536,14 @@ impl Client {
 }
 
 async fn parse<R: DeserializeOwned>(resp: reqwest::Response) -> Result<R, BlockchainApiError> {
-    let status = resp.status().as_u16();
-    if (200..300).contains(&status) {
+    let status = resp.status();
+    if status.is_success() {
         Ok(resp.json::<R>().await?)
     } else {
+        // Capture the response body for the error; `error_for_status` would
+        // discard it, and the body carries the API's failure detail.
         let body = resp.text().await.unwrap_or_default();
-        Err(BlockchainApiError::api(status, body))
+        Err(BlockchainApiError::api(status.as_u16(), body))
     }
 }
 

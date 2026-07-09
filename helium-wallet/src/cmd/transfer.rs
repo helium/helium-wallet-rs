@@ -240,6 +240,15 @@ fn assert_hnt_transfers(
     expected: &[ExpectedTransfer],
 ) -> Result<()> {
     let spl_token = KnownProgram::SplToken.id();
+    // A transfer transaction legitimately touches only these programs: the
+    // token program (the transfer itself), the associated-token program
+    // (idempotent creation of the recipient's ATA), and the compute-budget
+    // program (fee/limit). Any other program — including the system program
+    // (a bundled SOL transfer) or an attacker program that CPIs a token
+    // transfer — is rejected below, so "moves the requested HNT and nothing
+    // else" actually holds rather than only bounding token-program instructions.
+    let compute_budget = KnownProgram::ComputeBudget.id();
+    let associated_token = KnownProgram::SplAssociatedToken.id();
     let sender_ata = Token::Hnt.associated_token_address(wallet);
 
     // Expected destination ATA -> total raw amount (summed so a recipient listed
@@ -269,8 +278,14 @@ fn assert_hnt_transfers(
                 .ok_or_else(|| {
                     anyhow!("transfer references a lookup-table program; cannot verify it safely")
                 })?;
-            if program != spl_token {
+            if program == compute_budget || program == associated_token {
                 continue;
+            }
+            if program != spl_token {
+                bail!(
+                    "transfer transaction invokes an unexpected program ({program}); \
+                     refusing to sign"
+                );
             }
             // The only SPL-token instruction a transfer should contain is a
             // (checked) transfer; account layouts are [source, dest, authority]
@@ -506,6 +521,52 @@ mod tests {
             wallet,
             KnownProgram::SplToken.id(),
         );
+        assert!(assert_hnt_transfers(
+            &[tx],
+            &wallet,
+            &[ExpectedTransfer {
+                recipient,
+                amount: 250
+            }]
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn transfer_assert_rejects_bundled_foreign_program() {
+        let wallet = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+        // A correct HNT transfer bundled with an instruction to another program
+        // (here the system program — e.g. a SOL drain) must be refused even
+        // though the HNT amounts balance.
+        let mut data = vec![12u8];
+        data.extend_from_slice(&250u64.to_le_bytes());
+        data.push(8);
+        let transfer_ix = Instruction {
+            program_id: KnownProgram::SplToken.id(),
+            accounts: vec![
+                AccountMeta::new(ata(&wallet), false),
+                AccountMeta::new_readonly(Pubkey::new_unique(), false),
+                AccountMeta::new(ata(&recipient), false),
+                AccountMeta::new_readonly(wallet, true),
+            ],
+            data,
+        };
+        let system_ix = Instruction {
+            program_id: helium_lib::solana_sdk::system_program::ID,
+            accounts: vec![
+                AccountMeta::new(wallet, true),
+                AccountMeta::new(Pubkey::new_unique(), false),
+            ],
+            data: vec![2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        let tx = VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::Legacy(Message::new(
+                &[transfer_ix, system_ix],
+                Some(&wallet),
+            )),
+        };
         assert!(assert_hnt_transfers(
             &[tx],
             &wallet,

@@ -3,6 +3,7 @@ use crate::{
     result::Result,
 };
 use helium_lib::{
+    anchor_spl::token::spl_token,
     blockchain_api::types::{
         ApiTransactions, MultiTransferRequest, Recipient, TokenAmountInput, TokenTransferRequest,
     },
@@ -27,14 +28,14 @@ impl Cmd {
 }
 
 #[derive(Debug, clap::Subcommand)]
-/// Send one (or more) HNT payments to given addresses.
+/// Send one (or more) token payments to given addresses.
 ///
-/// The payment is not submitted to the system unless the '--commit' option is
-/// given.
+/// Supported tokens: iot, mobile, hnt, sol, usdc. The payment is not submitted
+/// unless the '--commit' option is given.
 pub enum PayCmd {
-    /// Pay a single payee in HNT (8 decimals of precision).
+    /// Pay a single payee in the given token.
     One(One),
-    /// Pay multiple payees in HNT
+    /// Pay multiple payees in a single token.
     Multi(Multi),
 }
 
@@ -51,9 +52,9 @@ pub struct One {
 
 /// Multiple payment descriptor file
 ///
-/// The input file for multiple payments is expected to be a json file with a
-/// list of payees and amounts. All payments are in HNT.
-/// Notes:
+/// The input file is a json list of payees and amounts; every payee is paid in
+/// the single token given by `--token` (mixing tokens in one batch is not
+/// supported). Notes:
 ///   "address" is required.
 ///   "amount" is required and must be a positive number.
 ///
@@ -74,6 +75,9 @@ pub struct One {
 pub struct Multi {
     /// File to read multiple payments from.
     path: PathBuf,
+    /// Token to send to every payee (iot, mobile, hnt, sol, usdc).
+    #[arg(long, default_value_t = Token::Hnt, value_parser = Token::transferrable_value_parser)]
+    token: Token,
     #[command(flatten)]
     squads: SquadsOpts,
     /// Commit the payments
@@ -84,6 +88,13 @@ pub struct Multi {
 impl PayCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let payments = self.collect_payments()?;
+        // A batch is a single token (mixing is unsupported); take it from the
+        // first payment and drive both the request mint and the assert with it.
+        let token = payments
+            .first()
+            .ok_or_else(|| anyhow!("no payments to send"))?
+            .1
+            .token;
         let signer = opts.load_signer()?;
         let client = opts.client()?;
         let squads = self.squads();
@@ -91,8 +102,7 @@ impl PayCmd {
         // Transfers build via the blockchain-api. A single recipient goes
         // through tokens/transfer (as a Squads vault proposal when --squads is
         // set); multiple recipients go through the single-mint multi-transfer
-        // endpoint. --squads supports a single recipient only. All transfers
-        // are HNT.
+        // endpoint. --squads supports a single recipient only.
         let api = opts.blockchain_api()?;
         let wallet = signer.pubkey();
         let wallet_address = wallet.to_string();
@@ -107,7 +117,10 @@ impl PayCmd {
                 api.token_transfer(&TokenTransferRequest {
                     wallet_address,
                     destination: destination.to_string(),
-                    token_amount: TokenAmountInput::new(amount.token.mint(), amount.amount),
+                    token_amount: TokenAmountInput::new(
+                        &transfer_mint(amount.token),
+                        amount.amount,
+                    ),
                     multisig,
                     memo,
                 })
@@ -126,7 +139,7 @@ impl PayCmd {
                     .collect();
                 api.multi_transfer(&MultiTransferRequest {
                     wallet_address,
-                    mint: Token::Hnt.mint().to_string(),
+                    mint: transfer_mint(token).to_string(),
                     recipients,
                 })
                 .await?
@@ -134,9 +147,9 @@ impl PayCmd {
         };
 
         // Before signing, independently decode the server-built transaction(s)
-        // and confirm they move exactly the HNT we asked for, to the recipients
-        // we asked for — a compromised or buggy server cannot redirect or alter
-        // funds without this failing first.
+        // and confirm they move exactly the tokens we asked for, to the
+        // recipients we asked for — a compromised or buggy server cannot
+        // redirect or alter funds without this failing first.
         if !is_proposal {
             let expected: Vec<ExpectedTransfer> = payments
                 .iter()
@@ -146,7 +159,7 @@ impl PayCmd {
                 })
                 .collect();
             let unsigned = response.transaction_data().decode_transactions()?;
-            assert_hnt_transfers(&unsigned, &wallet, &expected)?;
+            assert_transfers(&unsigned, &wallet, token, &expected)?;
         }
 
         print_json(
@@ -176,10 +189,10 @@ impl PayCmd {
             Self::One(one) => Ok(vec![(one.payee.address, one.payee.token_amount()?)]),
             Self::Multi(multi) => {
                 let file = std::fs::File::open(multi.path.clone())?;
-                let payees: Vec<Payee> = serde_json::from_reader(file)?;
+                let payees: Vec<MultiPayee> = serde_json::from_reader(file)?;
                 payees
                     .iter()
-                    .map(|p| Ok((p.address, p.token_amount()?)))
+                    .map(|p| Ok((p.address, TokenAmount::from_f64(multi.token, p.amount)?)))
                     .collect()
             }
         }
@@ -193,50 +206,86 @@ impl PayCmd {
     }
 }
 
-// deny_unknown_fields so a typo'd or unsupported key in a multi-payment
-// file (e.g. "token", dropped when transfers became HNT-only, or "memo",
-// which the old doc advertised but was silently dropped) is an error
-// instead of being ignored.
-#[derive(Debug, Deserialize, clap::Args)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, clap::Args)]
 pub struct Payee {
-    /// Address to send the HNT to.
-    #[serde(with = "serde_pubkey")]
+    /// Address to send tokens to.
     address: Pubkey,
-    /// Amount of HNT to send
+    /// Amount of the token to send.
     amount: f64,
+    /// Token to send (iot, mobile, hnt, sol, usdc).
+    #[arg(value_parser = Token::transferrable_value_parser)]
+    token: Token,
 }
 
 impl Payee {
     pub fn token_amount(&self) -> Result<TokenAmount> {
-        Ok(TokenAmount::from_f64(Token::Hnt, self.amount)?)
+        Ok(TokenAmount::from_f64(self.token, self.amount)?)
+    }
+}
+
+// One entry in a multi-payment file. The token is chosen per-batch via
+// `--token`, so it is not a field here. deny_unknown_fields so a typo'd or
+// unsupported key (e.g. a per-payee "token", which mixed-token batches would
+// need but the single-mint endpoint does not support) is an error rather than
+// silently ignored.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MultiPayee {
+    #[serde(with = "serde_pubkey")]
+    address: Pubkey,
+    amount: f64,
+}
+
+/// The mint the blockchain-api expects for `token`. helium-lib models native
+/// SOL's "mint" as the system program, but the API keys SOL transfers off the
+/// wrapped-SOL mint, so translate here.
+fn transfer_mint(token: Token) -> Pubkey {
+    match token {
+        Token::Sol => spl_token::native_mint::ID,
+        other => *other.mint(),
     }
 }
 
 /// One payment the CLI asked the blockchain-api to build: the recipient's
-/// wallet and the raw (base-unit) HNT amount.
+/// wallet and the raw (base-unit) amount.
 struct ExpectedTransfer {
     recipient: Pubkey,
     amount: u64,
 }
 
 /// Independently decode the server-built transfer transaction(s) and confirm
-/// they move exactly the HNT the CLI was asked to send — the expected amount to
-/// each recipient's HNT associated-token account, out of this wallet's own HNT
-/// account, and nothing else. Aborts before signing on any mismatch so a
-/// compromised or buggy server cannot redirect or alter funds.
-///
-/// Soundness without resolving lookup tables: the accounts that pin the outcome
-/// (this wallet's HNT ATA as the source, the wallet as the authority, and each
-/// recipient's HNT ATA as the destination) are all wallet-specific and are
-/// never packed into the shared Helium lookup table, so they are always static
-/// keys. Requiring the source to be this wallet's HNT ATA fixes the mint to HNT
-/// without reading the (possibly table-loaded) mint account. If any account we
-/// must check is table-loaded, or any non-transfer SPL-token instruction is
-/// present, we fail closed rather than sign something we cannot verify.
-fn assert_hnt_transfers(
+/// they move exactly the tokens the CLI was asked to send, to the recipients we
+/// asked for, and nothing else. Aborts before signing on any mismatch so a
+/// compromised or buggy server cannot redirect or alter funds. Native SOL is a
+/// system-program transfer; every other token is an SPL transfer.
+fn assert_transfers(
     unsigned: &[VersionedTransaction],
     wallet: &Pubkey,
+    token: Token,
+    expected: &[ExpectedTransfer],
+) -> Result<()> {
+    match token {
+        Token::Sol => assert_sol_transfers(unsigned, wallet, expected),
+        _ => assert_spl_transfers(unsigned, wallet, token, expected),
+    }
+}
+
+/// Verify an SPL-token transfer batch for `token`: the expected amount to each
+/// recipient's `token` associated-token account, out of this wallet's own
+/// `token` account, and nothing else.
+///
+/// Soundness without resolving lookup tables: the accounts that pin the outcome
+/// (this wallet's `token` ATA as the source, the wallet as the authority, and
+/// each recipient's `token` ATA as the destination) are wallet-specific and are
+/// never packed into the shared Helium lookup table, so they are always static
+/// keys. Requiring the source to be this wallet's `token` ATA fixes the mint
+/// without reading the (possibly table-loaded) mint account. If any account we
+/// must check is table-loaded, or any unexpected program or non-transfer
+/// SPL-token instruction is present, we fail closed.
+fn assert_spl_transfers(
+    unsigned: &[VersionedTransaction],
+    wallet: &Pubkey,
+    token: Token,
     expected: &[ExpectedTransfer],
 ) -> Result<()> {
     let spl_token = KnownProgram::SplToken.id();
@@ -245,17 +294,17 @@ fn assert_hnt_transfers(
     // (idempotent creation of the recipient's ATA), and the compute-budget
     // program (fee/limit). Any other program — including the system program
     // (a bundled SOL transfer) or an attacker program that CPIs a token
-    // transfer — is rejected below, so "moves the requested HNT and nothing
+    // transfer — is rejected below, so "moves the requested token and nothing
     // else" actually holds rather than only bounding token-program instructions.
     let compute_budget = KnownProgram::ComputeBudget.id();
     let associated_token = KnownProgram::SplAssociatedToken.id();
-    let sender_ata = Token::Hnt.associated_token_address(wallet);
+    let sender_ata = token.associated_token_address(wallet);
 
     // Expected destination ATA -> total raw amount (summed so a recipient listed
     // more than once still balances).
     let mut want: HashMap<Pubkey, u64> = HashMap::new();
     for transfer in expected {
-        let dest_ata = Token::Hnt.associated_token_address(&transfer.recipient);
+        let dest_ata = token.associated_token_address(&transfer.recipient);
         *want.entry(dest_ata).or_default() += transfer.amount;
     }
 
@@ -309,7 +358,7 @@ fn assert_hnt_transfers(
                 bail!("transfer is authorized by {owner}, not this wallet");
             }
             if source != sender_ata {
-                bail!("transfer moves funds from {source}, not this wallet's HNT account");
+                bail!("transfer moves funds from {source}, not this wallet's {token} account");
             }
             *got.entry(dest).or_default() += transfer_amount(&ix.data)?;
         }
@@ -325,11 +374,93 @@ fn assert_hnt_transfers(
     }
 
     for transfer in expected {
-        let dest_ata = Token::Hnt.associated_token_address(&transfer.recipient);
+        let dest_ata = token.associated_token_address(&transfer.recipient);
         eprintln!(
-            "→ verified: {} HNT to {} (token account {dest_ata})",
+            "→ verified: {} {token} to {} (token account {dest_ata})",
             f64::from(&TokenAmount {
-                token: Token::Hnt,
+                token,
+                amount: transfer.amount,
+            }),
+            transfer.recipient,
+        );
+    }
+    Ok(())
+}
+
+/// Verify a native-SOL transfer batch: each system-program transfer moves the
+/// expected lamports from this wallet to the requested recipient, and the
+/// transaction contains no other fund-moving instruction. Only the system
+/// program (the transfer) and the compute-budget program are allowed.
+fn assert_sol_transfers(
+    unsigned: &[VersionedTransaction],
+    wallet: &Pubkey,
+    expected: &[ExpectedTransfer],
+) -> Result<()> {
+    let system = KnownProgram::SystemProgram.id();
+    let compute_budget = KnownProgram::ComputeBudget.id();
+
+    let mut want: HashMap<Pubkey, u64> = HashMap::new();
+    for transfer in expected {
+        *want.entry(transfer.recipient).or_default() += transfer.amount;
+    }
+
+    let mut got: HashMap<Pubkey, u64> = HashMap::new();
+    for tx in unsigned {
+        let keys = tx.message.static_account_keys();
+        for ix in tx.message.instructions() {
+            let program = keys
+                .get(ix.program_id_index as usize)
+                .copied()
+                .ok_or_else(|| {
+                    anyhow!("transfer references a lookup-table program; cannot verify it safely")
+                })?;
+            if program == compute_budget {
+                continue;
+            }
+            if program != system {
+                bail!("SOL transfer invokes an unexpected program ({program}); refusing to sign");
+            }
+            // system-program Transfer: 4-byte little-endian instruction index 2,
+            // then the u64 lamports; accounts are [from, to]. Reject any other
+            // system instruction (create-account, assign, ...).
+            if ix.data.len() < 12 || u32::from_le_bytes(ix.data[0..4].try_into().unwrap()) != 2 {
+                bail!("SOL transfer contains an unexpected system-program instruction");
+            }
+            let resolve = |slot: usize| -> Result<Pubkey> {
+                let account_index = *ix
+                    .accounts
+                    .get(slot)
+                    .ok_or_else(|| anyhow!("SOL transfer is missing an account"))?
+                    as usize;
+                keys.get(account_index).copied().ok_or_else(|| {
+                    anyhow!("transfer references a lookup-table account; cannot verify it safely")
+                })
+            };
+            let from = resolve(0)?;
+            let to = resolve(1)?;
+            if from != *wallet {
+                bail!("SOL transfer moves funds from {from}, not this wallet");
+            }
+            let lamports =
+                u64::from_le_bytes(ix.data[4..12].try_into().expect("slice of length 8"));
+            *got.entry(to).or_default() += lamports;
+        }
+    }
+
+    if got != want {
+        bail!(
+            "the server-built transfer does not match the requested payment(s); \
+             refusing to sign. expected {}, decoded {}",
+            format_transfers(&want),
+            format_transfers(&got),
+        );
+    }
+
+    for transfer in expected {
+        eprintln!(
+            "→ verified: {} SOL to {}",
+            f64::from(&TokenAmount {
+                token: Token::Sol,
                 amount: transfer.amount,
             }),
             transfer.recipient,
@@ -424,9 +555,10 @@ mod tests {
             wallet,
             KnownProgram::SplToken.id(),
         );
-        assert!(assert_hnt_transfers(
+        assert!(assert_transfers(
             &[tx],
             &wallet,
+            Token::Hnt,
             &[ExpectedTransfer {
                 recipient,
                 amount: 250
@@ -449,9 +581,10 @@ mod tests {
             wallet,
             KnownProgram::SplToken.id(),
         );
-        assert!(assert_hnt_transfers(
+        assert!(assert_transfers(
             &[tx],
             &wallet,
+            Token::Hnt,
             &[ExpectedTransfer {
                 recipient,
                 amount: 250
@@ -472,9 +605,10 @@ mod tests {
             wallet,
             KnownProgram::SplToken.id(),
         );
-        assert!(assert_hnt_transfers(
+        assert!(assert_transfers(
             &[tx],
             &wallet,
+            Token::Hnt,
             &[ExpectedTransfer {
                 recipient,
                 amount: 250
@@ -497,9 +631,10 @@ mod tests {
             wallet,
             KnownProgram::SplToken.id(),
         );
-        assert!(assert_hnt_transfers(
+        assert!(assert_transfers(
             &[tx],
             &wallet,
+            Token::Hnt,
             &[ExpectedTransfer {
                 recipient,
                 amount: 250
@@ -521,9 +656,10 @@ mod tests {
             wallet,
             KnownProgram::SplToken.id(),
         );
-        assert!(assert_hnt_transfers(
+        assert!(assert_transfers(
             &[tx],
             &wallet,
+            Token::Hnt,
             &[ExpectedTransfer {
                 recipient,
                 amount: 250
@@ -567,9 +703,10 @@ mod tests {
                 Some(&wallet),
             )),
         };
-        assert!(assert_hnt_transfers(
+        assert!(assert_transfers(
             &[tx],
             &wallet,
+            Token::Hnt,
             &[ExpectedTransfer {
                 recipient,
                 amount: 250
@@ -593,9 +730,10 @@ mod tests {
             signatures: vec![],
             message: VersionedMessage::Legacy(Message::new(&[ix], Some(&wallet))),
         };
-        assert!(assert_hnt_transfers(
+        assert!(assert_transfers(
             &[tx],
             &wallet,
+            Token::Hnt,
             &[ExpectedTransfer {
                 recipient,
                 amount: 250
@@ -604,47 +742,134 @@ mod tests {
         .is_err());
     }
 
+    /// Build a legacy `VersionedTransaction` with a single system-program
+    /// transfer of `lamports` from `from` to `to`.
+    fn sol_tx(from: Pubkey, to: Pubkey, lamports: u64) -> VersionedTransaction {
+        let mut data = vec![2u8, 0, 0, 0];
+        data.extend_from_slice(&lamports.to_le_bytes());
+        let ix = Instruction {
+            program_id: KnownProgram::SystemProgram.id(),
+            accounts: vec![AccountMeta::new(from, true), AccountMeta::new(to, false)],
+            data,
+        };
+        VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::Legacy(Message::new(&[ix], Some(&from))),
+        }
+    }
+
     #[test]
-    fn test_json_hnt_input() {
-        let json_hnt_input = "{\
+    fn sol_transfer_assert_accepts_matching() {
+        let wallet = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+        let tx = sol_tx(wallet, recipient, 500);
+        assert!(assert_transfers(
+            &[tx],
+            &wallet,
+            Token::Sol,
+            &[ExpectedTransfer {
+                recipient,
+                amount: 500
+            }]
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn sol_transfer_assert_rejects_redirected() {
+        let wallet = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+        let attacker = Pubkey::new_unique();
+        let tx = sol_tx(wallet, attacker, 500);
+        assert!(assert_transfers(
+            &[tx],
+            &wallet,
+            Token::Sol,
+            &[ExpectedTransfer {
+                recipient,
+                amount: 500
+            }]
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn sol_transfer_assert_rejects_bundled_spl_instruction() {
+        let wallet = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+        // A SOL transfer bundled with an SPL-token instruction (not a program a
+        // native-SOL transfer should touch) must be refused.
+        let mut sol_data = vec![2u8, 0, 0, 0];
+        sol_data.extend_from_slice(&500u64.to_le_bytes());
+        let sol_ix = Instruction {
+            program_id: KnownProgram::SystemProgram.id(),
+            accounts: vec![
+                AccountMeta::new(wallet, true),
+                AccountMeta::new(recipient, false),
+            ],
+            data: sol_data,
+        };
+        let mut spl_data = vec![3u8];
+        spl_data.extend_from_slice(&1u64.to_le_bytes());
+        let spl_ix = Instruction {
+            program_id: KnownProgram::SplToken.id(),
+            accounts: vec![
+                AccountMeta::new(ata(&wallet), false),
+                AccountMeta::new(ata(&recipient), false),
+                AccountMeta::new_readonly(wallet, true),
+            ],
+            data: spl_data,
+        };
+        let tx = VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::Legacy(Message::new(&[sol_ix, spl_ix], Some(&wallet))),
+        };
+        assert!(assert_transfers(
+            &[tx],
+            &wallet,
+            Token::Sol,
+            &[ExpectedTransfer {
+                recipient,
+                amount: 500
+            }]
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn multi_payee_parses_address_and_amount() {
+        let json = "{\
             \"address\": \"JBjajLx1b2MsugerDALTffjh9dVdNx5XTvgJd8SpwUPf\",\
             \"amount\": 1.6\
         }";
-
-        let payee: Payee = serde_json::from_str(json_hnt_input).expect("payee");
+        let payee: MultiPayee = serde_json::from_str(json).expect("payee");
+        assert_eq!(payee.amount, 1.6);
         assert_eq!(
-            TokenAmount {
-                amount: 160_000_000,
-                token: Token::Hnt
-            },
-            payee.token_amount().expect("token amount")
+            payee.address.to_string(),
+            "JBjajLx1b2MsugerDALTffjh9dVdNx5XTvgJd8SpwUPf"
         );
     }
 
     #[test]
-    fn test_json_rejects_token_field() {
-        // Transfers are HNT-only; a leftover "token" key must be rejected
-        // rather than silently ignored (deny_unknown_fields).
-        let json_with_token = "{\
+    fn multi_payee_rejects_per_payee_token() {
+        // The batch token is chosen via --token; a per-payee "token" key in the
+        // file must be rejected rather than silently ignored.
+        let json = "{\
             \"address\": \"JBjajLx1b2MsugerDALTffjh9dVdNx5XTvgJd8SpwUPf\",\
             \"amount\": 0.5,\
             \"token\": \"mobile\"\
         }";
-
-        let result: std::result::Result<Payee, serde_json::Error> =
-            serde_json::from_str(json_with_token);
+        let result: std::result::Result<MultiPayee, serde_json::Error> = serde_json::from_str(json);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_json_bad_amount() {
-        let json_hnt_input = "{\
+    fn multi_payee_rejects_bad_amount() {
+        let json = "{\
             \"address\": \"JBjajLx1b2MsugerDALTffjh9dVdNx5XTvgJd8SpwUPf\",\
             \"amount\": \"foo\"\
         }";
-
-        let result: std::result::Result<Payee, serde_json::Error> =
-            serde_json::from_str(json_hnt_input);
+        let result: std::result::Result<MultiPayee, serde_json::Error> = serde_json::from_str(json);
         assert!(result.is_err());
     }
 }

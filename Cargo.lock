@@ -151,7 +151,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "anchor-attribute-access-control"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-syn 0.31.1",
  "proc-macro2",
@@ -174,7 +174,7 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-account"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-syn 0.31.1",
  "bs58",
@@ -199,7 +199,7 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-constant"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-syn 0.31.1",
  "quote",
@@ -220,7 +220,7 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-error"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-syn 0.31.1",
  "quote",
@@ -241,7 +241,7 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-event"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-syn 0.31.1",
  "proc-macro2",
@@ -264,9 +264,9 @@ dependencies = [
 [[package]]
 name = "anchor-attribute-program"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
- "anchor-lang-idl 0.1.2 (git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey)",
+ "anchor-lang-idl 0.1.2 (git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5)",
  "anchor-syn 0.31.1",
  "anyhow",
  "bs58",
@@ -316,7 +316,7 @@ dependencies = [
 [[package]]
 name = "anchor-derive-accounts"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-syn 0.31.1",
  "quote",
@@ -337,7 +337,7 @@ dependencies = [
 [[package]]
 name = "anchor-derive-serde"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-syn 0.31.1",
  "borsh-derive-internal",
@@ -362,7 +362,7 @@ dependencies = [
 [[package]]
 name = "anchor-derive-space"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -383,7 +383,7 @@ dependencies = [
 [[package]]
 name = "anchor-lang"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anchor-attribute-access-control 0.31.1",
  "anchor-attribute-account 0.31.1",
@@ -394,7 +394,7 @@ dependencies = [
  "anchor-derive-accounts 0.31.1",
  "anchor-derive-serde 0.31.1",
  "anchor-derive-space 0.31.1",
- "anchor-lang-idl 0.1.2 (git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey)",
+ "anchor-lang-idl 0.1.2 (git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5)",
  "base64 0.21.7",
  "bincode",
  "borsh 0.10.4",
@@ -462,9 +462,9 @@ dependencies = [
 [[package]]
 name = "anchor-lang-idl"
 version = "0.1.2"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
- "anchor-lang-idl-spec 0.1.0 (git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey)",
+ "anchor-lang-idl-spec 0.1.0 (git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5)",
  "anyhow",
  "heck 0.3.3",
  "regex",
@@ -486,7 +486,7 @@ dependencies = [
 [[package]]
 name = "anchor-lang-idl-spec"
 version = "0.1.0"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anyhow",
  "serde",
@@ -525,7 +525,7 @@ dependencies = [
 [[package]]
 name = "anchor-syn"
 version = "0.31.1"
-source = "git+https://github.com/madninja/anchor.git?branch=madninja%2Fconst_pubkey#1dfe80386037379325c30095dcdb51e152c1e3c5"
+source = "git+https://github.com/madninja/anchor.git?rev=1dfe80386037379325c30095dcdb51e152c1e3c5#1dfe80386037379325c30095dcdb51e152c1e3c5"
 dependencies = [
  "anyhow",
  "bs58",
@@ -2598,7 +2598,7 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#e81cec790eca9a5bd3bebc8df78b4eb190949013"
+source = "git+https://github.com/helium/proto?rev=e81cec790eca9a5bd3bebc8df78b4eb190949013#e81cec790eca9a5bd3bebc8df78b4eb190949013"
 dependencies = [
  "bytes",
  "msg-signature",
@@ -3536,7 +3536,7 @@ dependencies = [
 [[package]]
 name = "msg-signature"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#e81cec790eca9a5bd3bebc8df78b4eb190949013"
+source = "git+https://github.com/helium/proto?rev=e81cec790eca9a5bd3bebc8df78b4eb190949013#e81cec790eca9a5bd3bebc8df78b4eb190949013"
 dependencies = [
  "msg-signature-macro",
 ]
@@ -3544,7 +3544,7 @@ dependencies = [
 [[package]]
 name = "msg-signature-macro"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#e81cec790eca9a5bd3bebc8df78b4eb190949013"
+source = "git+https://github.com/helium/proto?rev=e81cec790eca9a5bd3bebc8df78b4eb190949013#e81cec790eca9a5bd3bebc8df78b4eb190949013"
 dependencies = [
  "quote",
  "syn 2.0.114",
@@ -8062,7 +8062,7 @@ dependencies = [
 [[package]]
 name = "squads-multisig-program"
 version = "2.1.0"
-source = "git+https://github.com/Squads-Protocol/v4.git?branch=main#edbca83427b10cbe58bf65fc9b597e8eb7b17cc1"
+source = "git+https://github.com/Squads-Protocol/v4.git?rev=edbca83427b10cbe58bf65fc9b597e8eb7b17cc1#edbca83427b10cbe58bf65fc9b597e8eb7b17cc1"
 dependencies = [
  "anchor-lang 0.32.1",
  "anchor-spl 0.32.1",
@@ -8684,7 +8684,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "tuktuk-program"
 version = "0.3.2"
-source = "git+https://github.com/helium/tuktuk.git?branch=main#1b281ae0189e96dfaf27c7206ad2e72b98a5fb34"
+source = "git+https://github.com/helium/tuktuk.git?rev=1b281ae0189e96dfaf27c7206ad2e72b98a5fb34#1b281ae0189e96dfaf27c7206ad2e72b98a5fb34"
 dependencies = [
  "anchor-lang 0.31.1",
 ]
@@ -8692,7 +8692,7 @@ dependencies = [
 [[package]]
 name = "tuktuk-sdk"
 version = "0.4.0"
-source = "git+https://github.com/helium/tuktuk.git?branch=main#1b281ae0189e96dfaf27c7206ad2e72b98a5fb34"
+source = "git+https://github.com/helium/tuktuk.git?rev=1b281ae0189e96dfaf27c7206ad2e72b98a5fb34#1b281ae0189e96dfaf27c7206ad2e72b98a5fb34"
 dependencies = [
  "anchor-lang 0.31.1",
  "async-trait",

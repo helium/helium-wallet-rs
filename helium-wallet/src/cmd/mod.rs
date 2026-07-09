@@ -11,6 +11,7 @@ use helium_lib::{
     },
     client::{self, SolanaRpcClient},
     keypair::{to_pubkey, Keypair, Pubkey, Signature, Signer},
+    programs::KnownProgram,
     solana_client::{
         self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
     },
@@ -531,15 +532,30 @@ fn review_lines(
             .and_then(|metadata| metadata.get("description"))
             .and_then(serde_json::Value::as_str)
             .unwrap_or("(no description)");
-        let payer = tx
-            .message
-            .static_account_keys()
+        let keys = tx.message.static_account_keys();
+        let payer = keys
             .first()
             .map(ToString::to_string)
             .unwrap_or_else(|| "<none>".to_string());
+        // The description is the server's own label; the program list is decoded
+        // from the transaction itself, so an unexpected program is visible even
+        // when signing blind (only `transfer` verifies content semantically).
+        let mut programs: Vec<String> = Vec::new();
+        for ix in tx.message.instructions() {
+            let program = match keys.get(ix.program_id_index as usize) {
+                Some(pubkey) => KnownProgram::from_pubkey(pubkey)
+                    .map(|program| program.name().to_string())
+                    .unwrap_or_else(|| pubkey.to_string()),
+                None => "<via lookup table>".to_string(),
+            };
+            if !programs.contains(&program) {
+                programs.push(program);
+            }
+        }
         lines.push(format!(
-            "[{i}] {description} (fee payer {payer}, {} instruction(s))",
+            "[{i}] {description} (fee payer {payer}, {} instruction(s); invokes: {})",
             tx.message.instructions().len(),
+            programs.join(", "),
         ));
     }
     lines

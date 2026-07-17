@@ -170,7 +170,13 @@ pub fn entropy_to_mnemonic(entropy: &[u8]) -> Result<Vec<String>, MnmemonicError
 
     let midpoint = entropy.len() / 2;
     let (front, back) = entropy.split_at(midpoint);
-    let working_entropy = if front == back { front } else { entropy };
+    // mnemonic_to_entropy expands 128-bit entropy to 32 bytes by duplicating it.
+    // Only collapse that representation; a native 16-byte input can also have matching halves.
+    let working_entropy = if entropy.len() == MAX_ENTROPY_BITS / 8 && front == back {
+        front
+    } else {
+        entropy
+    };
     let working_bits = working_entropy.len() * 8;
 
     if !working_bits.is_multiple_of(ENTROPY_MULTIPLE)
@@ -368,6 +374,17 @@ mod tests {
         let expected_words =
             "ritual ice harbor gas modify seed control solve burden people stay million";
         let words = entropy_to_mnemonic(&entropy).expect("mnemonic").join(" ");
+        assert_eq!(expected_words, words);
+    }
+
+    #[test]
+    fn encode_bip39_128_bit_entropy_with_matching_halves() {
+        let entropy = [0u8; 16];
+        let expected_words =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+        let words = entropy_to_mnemonic(&entropy).expect("mnemonic").join(" ");
+
         assert_eq!(expected_words, words);
     }
 

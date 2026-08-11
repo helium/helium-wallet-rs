@@ -166,23 +166,29 @@ helium-wallet balance
 
 Displays balances for HNT, MOBILE, IOT, DC, SOL, and USDC.
 
-### `transfer` -- Send HNT
+### `transfer` -- Send Tokens
 
-Transfers are in HNT (8 decimal places).
+Tokens: `hnt`, `mobile`, `iot`, `usdc`, `sol`. HNT supports 8 decimal
+places; MOBILE and IOT support 6.
 
 #### Single Payee
 
 ```
-helium-wallet transfer one <address> <amount>
-helium-wallet transfer one <address> <amount> --commit
+helium-wallet transfer one <address> <amount> [token]
+helium-wallet transfer one <address> <amount> [token] --commit
 ```
+
+`token` defaults to `hnt`.
 
 #### Multiple Payees
 
 ```
-helium-wallet transfer multi <path-to-json>
-helium-wallet transfer multi <path-to-json> --commit
+helium-wallet transfer multi <path-to-json> --token <token>
+helium-wallet transfer multi <path-to-json> --token <token> --commit
 ```
+
+Every payee in a batch is paid in the single token given by `--token`
+(default `hnt`); mixing tokens in one batch is not supported.
 
 JSON format:
 
@@ -193,7 +199,8 @@ JSON format:
 ]
 ```
 
-Fields: `address` (required), `amount` (required, number).
+Fields: `address` (required), `amount` (required, number). A per-payee
+`token` key is rejected -- the token is chosen per batch.
 
 ### `swap` -- Swap Tokens via Jupiter
 
@@ -333,7 +340,7 @@ runs from the resolved vault when the proposal is later executed. A
 Example:
 
 ```
-helium-wallet transfer one <recipient> 5 --squads <vault> --memo "Q2 disbursement" --commit
+helium-wallet transfer one <recipient> 5 hnt --squads <vault> --memo "Q2 disbursement" --commit
 ```
 
 ### `sign` -- Sign and Verify

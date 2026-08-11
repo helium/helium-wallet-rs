@@ -62,9 +62,10 @@ impl Command {
 /// `schedule one`, and add more funding with `schedule fund`.
 #[derive(Clone, Debug, clap::Args)]
 pub struct InitCmd {
-    /// The schedule to claim on, as a crontab string.
+    /// The schedule to claim on: `daily`, `weekly`, `monthly`, or a crontab string.
     ///
-    /// The schedule is specified in an [enhanced crontab format](https://github.com/clockwork-xyz/clockwork/blob/main/cron/README.md#%EF%B8%8F-syntax),
+    /// The preset cadences are resolved to a crontab server-side. A custom
+    /// schedule is specified in an [enhanced crontab format](https://github.com/clockwork-xyz/clockwork/blob/main/cron/README.md#%EF%B8%8F-syntax),
     /// which requires at least one more field than the basic crontab format.
     ///
     /// For example:
@@ -88,7 +89,7 @@ impl InitCmd {
         let response = api
             .setup_automation(&SetupAutomationRequest {
                 wallet_address: signer.pubkey().to_string(),
-                cron_schedule: self.schedule.clone(),
+                schedule: self.schedule.clone(),
                 duration: self.duration,
             })
             .await?;

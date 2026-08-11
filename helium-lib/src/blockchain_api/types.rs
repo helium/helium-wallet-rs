@@ -605,8 +605,8 @@ pub struct OnboardDataOnlyHotspotRequest {
 
 // ---- Claim automation (one tuktuk claim cron per wallet) ----
 //
-// `wallet_address` is repeated in each body even though it is also the path
-// parameter (matching the server's input schema). The cron is set up empty and
+// `wallet_address` carries the path parameter and is never serialized into the
+// body: the endpoints take the wallet from the URL. The cron is set up empty and
 // claims are attached separately, so a single cron can mix whole-wallet and
 // per-hotspot claims.
 
@@ -614,9 +614,12 @@ pub struct OnboardDataOnlyHotspotRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupAutomationRequest {
+    #[serde(skip_serializing)]
     pub wallet_address: String,
-    /// Raw crontab string (clockwork format) the cron fires on.
-    pub cron_schedule: String,
+    /// How often the cron fires: a preset cadence (`daily`, `weekly`,
+    /// `monthly`), or a raw crontab string in clockwork format. Presets are
+    /// resolved to a crontab server-side.
+    pub schedule: String,
     /// Number of claim cycles to pre-fund.
     pub duration: u32,
 }
@@ -625,6 +628,7 @@ pub struct SetupAutomationRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FundAutomationRequest {
+    #[serde(skip_serializing)]
     pub wallet_address: String,
     /// Additional claim cycles to fund across both pools.
     pub additional_duration: u32,
@@ -634,6 +638,7 @@ pub struct FundAutomationRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseAutomationRequest {
+    #[serde(skip_serializing)]
     pub wallet_address: String,
 }
 
@@ -641,6 +646,7 @@ pub struct CloseAutomationRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequeueAutomationRequest {
+    #[serde(skip_serializing)]
     pub wallet_address: String,
 }
 
@@ -648,6 +654,7 @@ pub struct RequeueAutomationRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddWalletToAutomationRequest {
+    #[serde(skip_serializing)]
     pub wallet_address: String,
 }
 
@@ -655,6 +662,7 @@ pub struct AddWalletToAutomationRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddEntityToAutomationRequest {
+    #[serde(skip_serializing)]
     pub wallet_address: String,
     /// Base58 helium public key of the hotspot to claim.
     pub entity_key: String,
@@ -664,6 +672,7 @@ pub struct AddEntityToAutomationRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveEntityFromAutomationRequest {
+    #[serde(skip_serializing)]
     pub wallet_address: String,
     /// Cron-transaction index of the claim entry to remove.
     pub index: u32,
@@ -957,6 +966,64 @@ mod tests {
             serde_json::to_value(&memo).expect("serialize memo")["memo"],
             "hi"
         );
+    }
+
+    #[test]
+    fn automation_requests_send_schedule_and_omit_the_path_wallet() {
+        // The wallet is the URL's path parameter, so it must not appear in the
+        // body; `schedule` is the server's field name for the cadence.
+        let setup = SetupAutomationRequest {
+            wallet_address: "w".to_string(),
+            schedule: "0 0 0 1 * * *".to_string(),
+            duration: 30,
+        };
+        let v = serde_json::to_value(&setup).expect("serialize setup");
+        assert_eq!(v["schedule"], "0 0 0 1 * * *");
+        assert_eq!(v["duration"], 30);
+        assert!(v.get("cronSchedule").is_none());
+        assert!(v.get("walletAddress").is_none());
+
+        let fund = FundAutomationRequest {
+            wallet_address: "w".to_string(),
+            additional_duration: 5,
+        };
+        let fv = serde_json::to_value(&fund).expect("serialize fund");
+        assert_eq!(fv["additionalDuration"], 5);
+        assert!(fv.get("walletAddress").is_none());
+
+        let add_entity = AddEntityToAutomationRequest {
+            wallet_address: "w".to_string(),
+            entity_key: "e".to_string(),
+        };
+        let av = serde_json::to_value(&add_entity).expect("serialize add entity");
+        assert_eq!(av["entityKey"], "e");
+        assert!(av.get("walletAddress").is_none());
+
+        let remove_entity = RemoveEntityFromAutomationRequest {
+            wallet_address: "w".to_string(),
+            index: 2,
+        };
+        let rv = serde_json::to_value(&remove_entity).expect("serialize remove entity");
+        assert_eq!(rv["index"], 2);
+        assert!(rv.get("walletAddress").is_none());
+
+        // The wallet-only bodies carry nothing at all.
+        for body in [
+            serde_json::to_value(CloseAutomationRequest {
+                wallet_address: "w".to_string(),
+            })
+            .expect("serialize close"),
+            serde_json::to_value(RequeueAutomationRequest {
+                wallet_address: "w".to_string(),
+            })
+            .expect("serialize requeue"),
+            serde_json::to_value(AddWalletToAutomationRequest {
+                wallet_address: "w".to_string(),
+            })
+            .expect("serialize add wallet"),
+        ] {
+            assert_eq!(body, serde_json::json!({}));
+        }
     }
 
     #[test]

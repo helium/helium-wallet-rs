@@ -1,0 +1,93 @@
+use crate::{
+    client::SolanaRpcClient,
+    keypair::pubkey,
+    priority_fee,
+    solana_sdk::{
+        address_lookup_table::{state::AddressLookupTable, AddressLookupTableAccount},
+        instruction::Instruction,
+        message::v0,
+    },
+    Error, Pubkey, TransactionOpts,
+};
+use itertools::Itertools;
+
+/// Common address lookup table on devnet.
+pub const COMMON_LUT_DEVNET: Pubkey = pubkey!("FnqYkQ6ZKnVKdkvYCGsEeiP5qgGqVbcFUkGduy2ta4gA");
+/// Common address lookup table on mainnet.
+pub const COMMON_LUT: Pubkey = pubkey!("43eY9L2spbM2b1MPDFFBStUiFGt29ziZ1nc1xbpzsfVt");
+
+pub use solana_sdk::message::VersionedMessage;
+
+/// Fetches and deserializes address lookup table accounts from on-chain.
+pub async fn get_lut_accounts<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    addresses: &[Pubkey],
+) -> Result<Vec<AddressLookupTableAccount>, Error> {
+    itertools::izip!(
+        addresses,
+        client.as_ref().get_multiple_accounts(addresses).await?
+    )
+    .filter_map(|(address, maybe_account)| {
+        maybe_account.map(|account| {
+            AddressLookupTable::deserialize(&account.data)
+                .map_err(Error::from)
+                .map(|lut| AddressLookupTableAccount {
+                    key: *address,
+                    addresses: lut.addresses.to_vec(),
+                })
+        })
+    })
+    .try_collect()
+}
+
+/// Compile instructions and lookup tables into a V0 versioned message.
+pub fn mk_raw_message(
+    ixs: &[Instruction],
+    lut_accounts: &[AddressLookupTableAccount],
+    payer: &Pubkey,
+) -> Result<VersionedMessage, Error> {
+    let msg = VersionedMessage::V0(v0::Message::try_compile(
+        payer,
+        ixs,
+        lut_accounts,
+        Default::default(),
+    )?);
+    Ok(msg)
+}
+
+/// Builds a versioned message with a fresh blockhash, resolving LUT addresses on-chain.
+pub async fn mk_message<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    ixs: &[Instruction],
+    lut_accounts: &[Pubkey],
+    payer: &Pubkey,
+) -> Result<(VersionedMessage, u64), Error> {
+    let solana_client = AsRef::<SolanaRpcClient>::as_ref(client);
+    let lut_accounts = get_lut_accounts(client, lut_accounts).await?;
+    let (recent_blockhash, recent_blockheight) = solana_client
+        .get_latest_blockhash_with_commitment(solana_client.commitment())
+        .await?;
+    let mut msg = mk_raw_message(ixs, &lut_accounts, payer)?;
+    msg.set_recent_blockhash(recent_blockhash);
+    Ok((msg, recent_blockheight))
+}
+
+/// Builds a versioned message like [`mk_message`], prepending a
+/// compute-budget instruction with the given compute unit limit and a
+/// compute-price instruction with a priority fee estimated from the
+/// writable accounts of `ixs`, clamped to the fee range in `opts`.
+pub async fn mk_budgeted_message<C: AsRef<SolanaRpcClient>>(
+    client: &C,
+    compute_limit: u32,
+    ixs: &[Instruction],
+    payer: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedMessage, u64), Error> {
+    let budget_ixs = [
+        priority_fee::compute_budget_instruction(compute_limit),
+        priority_fee::compute_price_instruction_for_instructions(client, ixs, opts.fee_range())
+            .await?,
+    ];
+    let all_ixs = [&budget_ixs[..], ixs].concat();
+    mk_message(client, &all_ixs, &opts.lut_addresses, payer).await
+}

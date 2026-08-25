@@ -17,6 +17,9 @@ pub mod client;
 
 /// Helium DAO and sub-DAO account lookups.
 pub mod dao;
+/// Data-credit minting. Requires the `txn` feature.
+#[cfg(feature = "txn")]
+pub mod dc;
 /// Entity key encoding for hotspots and other network entities.
 pub mod entity_key;
 /// Error types used throughout the library.
@@ -27,6 +30,13 @@ pub mod hotspot;
 pub mod keypair;
 /// Key-to-asset (KTA) account lookups and caching.
 pub mod kta;
+/// Versioned-message assembly with address lookup tables. Requires the `txn`
+/// feature.
+#[cfg(feature = "txn")]
+pub mod message;
+/// Compute-budget and priority-fee instructions. Requires the `txn` feature.
+#[cfg(feature = "txn")]
+pub mod priority_fee;
 /// Anchor program ID and account definitions.
 pub mod programs;
 /// Reward claim queuing via task queues.
@@ -55,6 +65,70 @@ pub use solana_sdk;
 pub use solana_sdk::bs58;
 pub use solana_transaction_status;
 pub use tuktuk_sdk;
+
+/// Options controlling transaction priority fees and address lookup tables.
+///
+/// Requires the `txn` feature.
+#[cfg(feature = "txn")]
+pub struct TransactionOpts {
+    /// Minimum priority fee in micro-lamports per compute unit.
+    pub min_priority_fee: u64,
+    /// Maximum priority fee in micro-lamports per compute unit.
+    pub max_priority_fee: u64,
+    /// Address lookup tables to include for transaction compression.
+    pub lut_addresses: Vec<Pubkey>,
+}
+
+/// Returns the default LUT addresses for the cluster identified by `url`,
+/// selecting the devnet common LUT for devnet URLs and the mainnet common
+/// LUT otherwise. See [`client::is_devnet`] for how the cluster is detected.
+#[cfg(feature = "txn")]
+fn default_lut_addresses_for_url(url: &str) -> Vec<Pubkey> {
+    if client::is_devnet(url) {
+        vec![message::COMMON_LUT_DEVNET]
+    } else {
+        vec![message::COMMON_LUT]
+    }
+}
+
+#[cfg(feature = "txn")]
+impl Default for TransactionOpts {
+    /// Default options assuming the **mainnet** cluster. When the target
+    /// cluster is not known to be mainnet, build options with
+    /// [`TransactionOpts::for_url`] or [`TransactionOpts::for_client`] so the
+    /// correct (devnet vs mainnet) common lookup table is selected.
+    fn default() -> Self {
+        Self {
+            min_priority_fee: priority_fee::MIN_PRIORITY_FEE,
+            max_priority_fee: priority_fee::MAX_PRIORITY_FEE,
+            lut_addresses: vec![message::COMMON_LUT],
+        }
+    }
+}
+
+#[cfg(feature = "txn")]
+impl TransactionOpts {
+    /// Builds options for the cluster identified by `url`, selecting the
+    /// devnet or mainnet common lookup table accordingly. Priority fees use
+    /// the same defaults as [`TransactionOpts::default`].
+    pub fn for_url(url: &str) -> Self {
+        Self {
+            lut_addresses: default_lut_addresses_for_url(url),
+            ..Self::default()
+        }
+    }
+
+    /// Builds options for the cluster `client` is connected to, selecting the
+    /// devnet or mainnet common lookup table accordingly. Priority fees use
+    /// the same defaults as [`TransactionOpts::default`].
+    pub fn for_client<C: AsRef<client::SolanaRpcClient>>(client: &C) -> Self {
+        Self::for_url(&client.as_ref().url())
+    }
+
+    fn fee_range(&self) -> std::ops::RangeInclusive<u64> {
+        std::ops::RangeInclusive::new(self.min_priority_fee, self.max_priority_fee)
+    }
+}
 
 pub(crate) trait Zero {
     const ZERO: Self;

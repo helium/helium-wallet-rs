@@ -8,6 +8,11 @@ version = "0.2.0"
 [features]
 clap = ["dep:clap"]
 mnemonic = ["helium-mnemonic"]
+# Build Solana transactions locally instead of via the blockchain-api. The
+# wallet CLI does not need this; consumers that assemble their own instructions
+# do, either because they bundle several actions into one atomic transaction or
+# because they serve a transaction shape of their own.
+txn = ["dep:spl-memo", "dep:solana-system-interface", "dep:solana-transaction-utils"]
 
 [dependencies]
 hex = "0.4"
@@ -40,6 +45,11 @@ reqwest = { version = "0.11", default-features = false, features = [
   "rustls-tls",
 ] }
 spl-associated-token-account = { version = "6", features = ["no-entrypoint"] }
+spl-memo = { version = "6", optional = true }
+solana-system-interface = { version = "1.0.0", features = [
+  "bincode",
+], optional = true }
+solana-transaction-utils = { version = ">= 0.4", optional = true }
 tonic = { version = "0.14", features = ["tls-ring", "tls-native-roots"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

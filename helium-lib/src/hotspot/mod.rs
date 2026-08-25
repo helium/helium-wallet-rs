@@ -15,7 +15,30 @@ use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
+#[cfg(feature = "txn")]
+use crate::{
+    anchor_lang::{InstructionData, ToAccountMetas},
+    bubblegum,
+    client::SolanaRpcClient,
+    dao::Dao,
+    data_credits,
+    error::EncodeError,
+    message,
+    solana_sdk::{
+        instruction::{AccountMeta, Instruction},
+        signature::NullSigner,
+        signer::Signer,
+    },
+    spl_account_compression,
+    token::Token,
+    transaction::{mk_transaction, VersionedTransaction},
+    TransactionOpts,
+};
+
 pub mod cert;
+/// Data-only hotspot issue and onboard. Requires the `txn` feature.
+#[cfg(feature = "txn")]
+pub mod dataonly;
 pub mod info;
 
 /// The well-known creator address used to identify Helium hotspot compressed NFTs.
@@ -602,4 +625,304 @@ impl From<helium_entity_manager::types::RadioInfoV0> for CbrsRadioInfo {
             elevation: value.elevation,
         }
     }
+}
+
+// ---- Local transaction construction (`txn` feature) ----
+//
+// Instruction-level builders are public so a caller can bundle several
+// actions into one atomic transaction sharing a single merkle proof, which
+// the blockchain-api cannot express: it builds one action per request.
+
+#[cfg(feature = "txn")]
+/// The on-chain ECC verifier used to validate gateway signatures during data-only hotspot issuance.
+pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
+
+#[cfg(feature = "txn")]
+/// A pending update to hotspot on-chain info, scoped to a specific sub-DAO.
+///
+/// `Iot` updates may include gain, elevation, and location.
+/// `Mobile` updates include only location.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "lowercase", untagged)]
+pub enum HotspotInfoUpdate {
+    /// IoT hotspot update with optional gain, elevation, and location fields.
+    Iot {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        gain: Option<Decimal>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        elevation: Option<i32>,
+        #[serde(flatten)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        location: Option<HotspotLocation>,
+    },
+    /// Mobile hotspot update with an optional location change.
+    Mobile {
+        #[serde(flatten)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        location: Option<HotspotLocation>,
+    },
+}
+
+#[cfg(feature = "txn")]
+impl HotspotInfoUpdate {
+    pub fn subdao(&self) -> SubDao {
+        match self {
+            Self::Iot { .. } => SubDao::Iot,
+            Self::Mobile { .. } => SubDao::Mobile,
+        }
+    }
+
+    pub fn for_subdao(subdao: SubDao) -> Self {
+        match subdao {
+            SubDao::Iot => Self::Iot {
+                gain: None,
+                elevation: None,
+                location: None,
+            },
+            SubDao::Mobile => Self::Mobile { location: None },
+        }
+    }
+
+    pub fn location(&self) -> &Option<HotspotLocation> {
+        match self {
+            Self::Iot { location, .. } => location,
+            Self::Mobile { location, .. } => location,
+        }
+    }
+
+    pub fn set_location(mut self, new_location: Option<h3o::CellIndex>) -> Self {
+        let hotspot_location = new_location.map(HotspotLocation::from);
+        match self {
+            Self::Iot {
+                ref mut location, ..
+            } => *location = hotspot_location,
+            Self::Mobile {
+                ref mut location, ..
+            } => *location = hotspot_location,
+        }
+        self
+    }
+
+    pub fn set_geo(self, lat: Option<f64>, lon: Option<f64>) -> Result<Self, EncodeError> {
+        let location: Option<h3o::CellIndex> = match (lat, lon) {
+            (Some(lat), Some(lon)) => Some(
+                h3o::LatLng::new(lat, lon)
+                    .map_err(EncodeError::from)?
+                    .to_cell(h3o::Resolution::Twelve),
+            ),
+            (None, None) => None,
+            _ => return Err(EncodeError::other("Both lat and lon must be specified")),
+        };
+        Ok(self.set_location(location))
+    }
+
+    pub fn location_u64(&self) -> Option<u64> {
+        self.location().map(Into::into)
+    }
+
+    pub fn set_elevation(mut self, new_elevation: Option<i32>) -> Self {
+        if let Self::Iot {
+            ref mut elevation, ..
+        } = self
+        {
+            *elevation = new_elevation
+        };
+        self
+    }
+
+    pub fn elevation(&self) -> &Option<i32> {
+        match self {
+            Self::Iot { elevation, .. } => elevation,
+            Self::Mobile { .. } => &None,
+        }
+    }
+
+    pub fn gain_i32(&self) -> Option<i32> {
+        self.gain().and_then(|gain| {
+            f32::try_from(gain)
+                .map(|fgain| (fgain * 10.0).trunc() as i32)
+                .ok()
+        })
+    }
+
+    pub fn gain(&self) -> &Option<Decimal> {
+        match self {
+            Self::Iot { gain, .. } => gain,
+            Self::Mobile { .. } => &None,
+        }
+    }
+
+    pub fn set_gain(mut self, new_gain: Option<f64>) -> Self {
+        match self {
+            Self::Iot { ref mut gain, .. } => {
+                *gain = new_gain
+                    .and_then(|gain| Decimal::from_f64(gain).map(|dec| dec.trunc_with_scale(1)))
+            }
+            Self::Mobile { .. } => (),
+        }
+        self
+    }
+}
+
+#[cfg(feature = "txn")]
+/// Builds an instruction to update hotspot info directly on-chain (no onboarding server).
+pub fn direct_update_instruction(
+    kta: &helium_entity_manager::accounts::KeyToAssetV0,
+    asset: &asset::Asset,
+    asset_proof: &asset::AssetProof,
+    update: &HotspotInfoUpdate,
+    owner: &Pubkey,
+) -> Result<Instruction, Error> {
+    fn mk_accounts(
+        subdao: SubDao,
+        kta: &helium_entity_manager::accounts::KeyToAssetV0,
+        asset: &asset::Asset,
+        owner: &Pubkey,
+    ) -> Vec<AccountMeta> {
+        use helium_entity_manager::client::accounts::{UpdateIotInfoV0, UpdateMobileInfoV0};
+        macro_rules! mk_update_info {
+            ($name:ident, $info:ident) => {
+                $name {
+                    bubblegum_program: bubblegum::ID,
+                    payer: owner.to_owned(),
+                    dc_fee_payer: owner.to_owned(),
+                    $info: subdao.info_key(&kta.entity_key),
+                    hotspot_owner: owner.to_owned(),
+                    merkle_tree: asset.compression.tree,
+                    tree_authority: asset::merkle_tree_authority(&asset.compression.tree),
+                    dc_burner: Token::Dc.associated_token_address(owner),
+                    rewardable_entity_config: subdao.rewardable_entity_config_key(),
+                    dao: Dao::Hnt.key(),
+                    sub_dao: subdao.key(),
+                    dc_mint: *Token::Dc.mint(),
+                    dc: Dao::dc_key(),
+                    compression_program: spl_account_compression::ID,
+                    data_credits_program: data_credits::ID,
+                    token_program: anchor_spl::token::ID,
+                    associated_token_program: spl_associated_token_account::ID,
+                    system_program: solana_sdk::system_program::id(),
+                }
+                .to_account_metas(None)
+            };
+        }
+        match subdao {
+            SubDao::Iot => mk_update_info!(UpdateIotInfoV0, iot_info),
+            SubDao::Mobile => mk_update_info!(UpdateMobileInfoV0, mobile_info),
+        }
+    }
+
+    macro_rules! mk_update_data {
+        ($ix_struct:ident, $arg_struct:ident, $($manual_fields:tt)*) => {
+            $ix_struct {
+                args: $arg_struct {
+                    root: asset_proof.root.to_bytes(),
+                    data_hash: asset.compression.data_hash,
+                    creator_hash: asset.compression.creator_hash,
+                    index: asset.compression.leaf_id()?,
+                    $($manual_fields)*
+                },
+            }
+            .data()
+        };
+    }
+
+    let mut accounts = mk_accounts(update.subdao(), kta, asset, owner);
+    accounts.extend(asset_proof.proof()?);
+
+    use helium_entity_manager::{
+        client::args::{
+            UpdateIotInfoV0 as IxUpdateIotInfo, UpdateMobileInfoV0 as IxUpdateMobileInfo,
+        },
+        types::{
+            UpdateIotInfoArgsV0 as ArgsUpdateIotInfo,
+            UpdateMobileInfoArgsV0 as ArgsUpdateMobileInfo,
+        },
+    };
+    let data = match update.subdao() {
+        SubDao::Iot => {
+            mk_update_data!(IxUpdateIotInfo , ArgsUpdateIotInfo,
+                elevation: *update.elevation(),
+                gain: update.gain_i32(),
+                location: update.location_u64())
+        }
+        SubDao::Mobile => {
+            mk_update_data!(IxUpdateMobileInfo, ArgsUpdateMobileInfo,
+            location: update.location_u64(),
+            deployment_info: None,
+            )
+        }
+    };
+    let ix = Instruction {
+        program_id: helium_entity_manager::ID,
+        accounts: accounts.to_account_metas(None),
+        data,
+    };
+    Ok(ix)
+}
+
+#[cfg(feature = "txn")]
+/// Builds an unsigned transaction for a direct on-chain hotspot info update.
+pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot: &helium_crypto::PublicKey,
+    update: &HotspotInfoUpdate,
+    owner: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot).await?;
+    let (asset, asset_proof) = asset::for_kta_with_proof(&client, &kta).await?;
+    let ix = direct_update_instruction(&kta, &asset, &asset_proof, update, owner)?;
+
+    let (msg, block_height) =
+        message::mk_budgeted_message(client, 200_000, &[ix], owner, opts).await?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(owner)])?;
+    Ok((txn, block_height))
+}
+
+#[cfg(feature = "txn")]
+/// Signs and returns a transaction to update hotspot info directly on-chain.
+///
+/// Unlike [`update`], this bypasses the onboarding server and submits directly to Solana.
+pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot: &helium_crypto::PublicKey,
+    update: &HotspotInfoUpdate,
+    keypair: &(dyn Signer + Sync),
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (mut txn, block_height) =
+        direct_update_transaction(client, hotspot, update, &keypair.pubkey(), opts).await?;
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
+    Ok((txn, block_height))
+}
+
+#[cfg(feature = "txn")]
+/// Gets an unsigned transaction for a hotspot transfer.
+///
+/// The Hotspot is transferred from the owner of the Hotspot to the given recipient
+/// Note that the owner is currently expected to sign this transaction and pay for
+/// transaction fees.
+pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    recipient: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::transfer_transaction(client, &kta.asset, recipient, opts).await
+}
+
+#[cfg(feature = "txn")]
+/// Signs and returns a transaction to transfer a hotspot to a new owner.
+pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    hotspot_key: &helium_crypto::PublicKey,
+    recipient: &Pubkey,
+    keypair: &(dyn Signer + Sync),
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let kta = kta::for_entity_key(hotspot_key).await?;
+    asset::transfer(client, &kta.asset, recipient, keypair, opts).await
 }

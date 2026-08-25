@@ -15,6 +15,14 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr, time::Duration};
 
+#[cfg(feature = "txn")]
+use crate::{
+    message,
+    solana_sdk::{signature::NullSigner, signer::Signer},
+    transaction::{mk_transaction, VersionedTransaction},
+    TransactionOpts,
+};
+
 /// Fetches a compressed NFT asset for a given Helium entity key (e.g., hotspot public key).
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
     client: &C,
@@ -689,4 +697,92 @@ pub mod serde_hash {
             .try_into()
             .map_err(|_| de::Error::custom("invalid hash"))
     }
+}
+
+/// Builds a bubblegum transfer instruction for a compressed NFT, moving it to
+/// `recipient`.
+///
+/// Instruction-level so a caller can bundle the transfer with other
+/// instructions in one transaction, sharing a single merkle proof. Requires the
+/// `txn` feature.
+#[cfg(feature = "txn")]
+pub fn transfer_instruction(
+    recipient: &Pubkey,
+    asset: &Asset,
+    asset_proof: &AssetProof,
+) -> Result<crate::solana_sdk::instruction::Instruction, Error> {
+    use crate::{
+        anchor_lang::{InstructionData, ToAccountMetas},
+        programs::SPL_NOOP_PROGRAM_ID,
+        solana_sdk::{self, instruction::Instruction},
+        spl_account_compression,
+    };
+    use bubblegum::client::{
+        accounts::Transfer as TransferAccounts, args::Transfer as TransferArgs,
+    };
+    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
+    let mut accounts = TransferAccounts {
+        leaf_owner: asset.ownership.owner,
+        leaf_delegate,
+        new_leaf_owner: *recipient,
+        tree_authority: merkle_tree_authority(&asset_proof.tree_id),
+        merkle_tree: asset_proof.tree_id,
+        log_wrapper: SPL_NOOP_PROGRAM_ID,
+        compression_program: spl_account_compression::ID,
+        system_program: solana_sdk::system_program::id(),
+    }
+    .to_account_metas(None);
+    accounts.extend(asset_proof.proof()?);
+
+    let data = TransferArgs {
+        creator_hash: asset.compression.creator_hash,
+        root: asset_proof.root.to_bytes(),
+        data_hash: asset.compression.data_hash,
+        index: asset.compression.leaf_id()?,
+        nonce: asset.compression.leaf_id,
+    }
+    .data();
+
+    Ok(Instruction {
+        program_id: bubblegum::ID,
+        accounts,
+        data,
+    })
+}
+
+#[cfg(feature = "txn")]
+/// Gets an unsigned transaction for an asset transfer.
+///
+/// The asset is transferred from the owner to the given recipient
+/// Note that the owner is currently expected to sign this transaction and pay for
+/// transaction fees.
+pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+    let ix = transfer_instruction(recipient, &asset, &asset_proof)?;
+
+    let (msg, block_height) =
+        message::mk_budgeted_message(client, 200_000, &[ix], &asset.ownership.owner, opts).await?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
+    Ok((txn, block_height))
+}
+
+#[cfg(feature = "txn")]
+/// Signs and returns a transaction to transfer a compressed NFT to a new owner.
+pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    keypair: &(dyn Signer + Sync),
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (mut txn, block_height) = transfer_transaction(client, pubkey, recipient, opts).await?;
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
+    Ok((txn, block_height))
 }

@@ -13,3 +13,81 @@ pub fn claim_wallet_key(task_queue_key: &Pubkey, wallet: &Pubkey) -> Pubkey {
 pub fn task_queue_authority_key(task_queue_key: &Pubkey, queue_authority: &Pubkey) -> Pubkey {
     tuktuk::task_queue::task_queue_authority_key(task_queue_key, queue_authority)
 }
+
+// ---- Local transaction construction (`txn` feature) ----
+
+#[cfg(feature = "txn")]
+use crate::{
+    client::{DasClient, GetAnchorAccount, SolanaRpcClient},
+    error::Error,
+    message,
+    programs::hpl_crons,
+    solana_sdk::instruction::Instruction,
+    transaction::{mk_signed_transaction, VersionedTransaction},
+    TransactionOpts,
+};
+#[cfg(feature = "txn")]
+use anchor_lang::{InstructionData, ToAccountMetas};
+#[cfg(feature = "txn")]
+use solana_sdk::signer::Signer;
+#[cfg(feature = "txn")]
+use tuktuk_sdk::{tuktuk_program, tuktuk_program::TaskQueueV0};
+
+#[cfg(feature = "txn")]
+/// Builds an instruction to queue a wallet reward claim.
+pub fn claim_wallet_instruction(
+    task_queue_key: &Pubkey,
+    task_queue: &TaskQueueV0,
+    wallet: &Pubkey,
+    payer: &Pubkey,
+) -> Result<Instruction, Error> {
+    fn mk_accounts(
+        task_queue_key: &Pubkey,
+        task_id: u16,
+        wallet: &Pubkey,
+        payer: &Pubkey,
+    ) -> impl ToAccountMetas {
+        let queue_authority = tuktuk::task_queue::queue_authority_key(&hpl_crons::ID);
+        hpl_crons::client::accounts::QueueWalletClaimV0 {
+            payer: *payer,
+            wallet: *wallet,
+            pda_wallet: claim_wallet_key(task_queue_key, wallet),
+            system_program: solana_sdk::system_program::ID,
+            tuktuk_program: tuktuk_program::tuktuk::ID,
+            queue_authority,
+            task_queue: *task_queue_key,
+            task_queue_authority: tuktuk::task_queue::task_queue_authority_key(
+                task_queue_key,
+                &queue_authority,
+            ),
+            task: tuktuk::task::key(task_queue_key, task_id),
+        }
+    }
+    let free_task_id = tuktuk::task_queue::next_available_task_ids(task_queue, 1)?[0];
+    let accounts = mk_accounts(task_queue_key, free_task_id, wallet, payer);
+    let ix = Instruction {
+        program_id: hpl_crons::ID,
+        accounts: accounts.to_account_metas(None),
+        data: hpl_crons::client::args::QueueWalletClaimV0 {
+            args: hpl_crons::types::QueueWalletClaimArgsV0 { free_task_id },
+        }
+        .data(),
+    };
+    Ok(ix)
+}
+
+#[cfg(feature = "txn")]
+/// Queues a wallet reward claim and returns a signed transaction.
+pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
+    client: &C,
+    task_queue_key: &Pubkey,
+    wallet: &Pubkey,
+    keypair: &(dyn Signer + Sync),
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let task_queue = client.anchor_account(task_queue_key).await?;
+
+    let ix = claim_wallet_instruction(task_queue_key, &task_queue, wallet, &keypair.pubkey())?;
+    let msg = message::mk_budgeted_message(client, 100_000, &[ix], &keypair.pubkey(), opts).await?;
+    mk_signed_transaction(msg, &[keypair])
+}

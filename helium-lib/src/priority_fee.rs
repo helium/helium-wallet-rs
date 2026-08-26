@@ -1,3 +1,4 @@
+#[cfg(feature = "txn")]
 use crate::{
     anchor_lang::ToAccountMetas,
     client::{SolanaRpcClient, SOLANA_URL_MAINNET},
@@ -6,10 +7,13 @@ use crate::{
     solana_client,
     solana_sdk::instruction::Instruction,
 };
+#[cfg(feature = "txn")]
 use itertools::Itertools;
+#[cfg(feature = "txn")]
 use std::ops::RangeInclusive;
 
 /// Maximum number of writable accounts sampled for fee estimation.
+#[cfg(feature = "txn")]
 pub const MAX_RECENT_PRIORITY_FEE_ACCOUNTS: usize = 128;
 /// Floor for computed priority fees (micro-lamports per CU).
 pub const MIN_PRIORITY_FEE: u64 = 1;
@@ -20,6 +24,7 @@ pub const MAX_PRIORITY_FEE: u64 = 2500000;
 ///
 /// Uses the Helius priority-fee API on mainnet, falls back to median
 /// recent fees otherwise.
+#[cfg(feature = "txn")]
 pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
@@ -33,6 +38,7 @@ pub async fn get_estimate<C: AsRef<SolanaRpcClient>>(
     }
 }
 
+#[cfg(feature = "txn")]
 fn account_keys(accounts: &impl ToAccountMetas) -> impl Iterator<Item = Pubkey> {
     accounts
         .to_account_metas(None)
@@ -43,6 +49,7 @@ fn account_keys(accounts: &impl ToAccountMetas) -> impl Iterator<Item = Pubkey> 
         .take(MAX_RECENT_PRIORITY_FEE_ACCOUNTS)
 }
 
+#[cfg(feature = "txn")]
 mod helius {
     use super::*;
     use serde::Deserialize;
@@ -79,6 +86,7 @@ mod helius {
     }
 }
 
+#[cfg(feature = "txn")]
 mod base {
     use super::*;
 
@@ -121,16 +129,19 @@ mod base {
 }
 
 /// Creates a `SetComputeUnitLimit` instruction.
+#[cfg(feature = "txn")]
 pub fn compute_budget_instruction(compute_limit: u32) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(compute_limit)
 }
 
 /// Creates a `SetComputeUnitPrice` instruction.
+#[cfg(feature = "txn")]
 pub fn compute_price_instruction(priority_fee: u64) -> Instruction {
     solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_price(priority_fee)
 }
 
 /// Estimate the priority fee for the given accounts and return the instruction.
+#[cfg(feature = "txn")]
 pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
     client: &C,
     accounts: &impl ToAccountMetas,
@@ -141,6 +152,7 @@ pub async fn compute_price_instruction_for_accounts<C: AsRef<SolanaRpcClient>>(
 }
 
 /// Estimate the priority fee from instruction account lists and return the instruction.
+#[cfg(feature = "txn")]
 pub async fn compute_price_instruction_for_instructions<C: AsRef<SolanaRpcClient>>(
     client: &C,
     instructions: &[Instruction],

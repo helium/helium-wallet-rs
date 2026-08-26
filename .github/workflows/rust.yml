@@ -101,7 +101,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build | Compile
-        run: cargo build --all --locked --release
+        run: cargo build --all --locked --release --all-features
 
       - name: Build | Name
         shell: bash

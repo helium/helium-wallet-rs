@@ -349,7 +349,13 @@ impl CommitOpts {
     {
         let data = response.transaction_data();
         let unsigned = data.decode_transactions()?;
-        display_action_for_review(data, response.estimated_sol_fee(), &unsigned);
+        let max_priority_fee = assert_priority_fee_within_cap(&unsigned)?;
+        display_action_for_review(
+            data,
+            response.estimated_sol_fee(),
+            &unsigned,
+            max_priority_fee,
+        );
 
         let solana = rpc.as_ref();
 
@@ -388,6 +394,75 @@ impl CommitOpts {
             .await?;
         commit_response_from_status(status)
     }
+}
+
+/// Solana charges `limit x price / 1e6` lamports in prioritization fee, rounded
+/// up, on top of the per-signature base fee. The limit defaults to 200k compute
+/// units per instruction, capped at the 1.4M block maximum.
+const MAX_COMPUTE_UNIT_LIMIT: u64 = 1_400_000;
+const DEFAULT_COMPUTE_UNITS_PER_IX: u64 = 200_000;
+
+/// Worst-case prioritization fee, in lamports, that a server-built transaction
+/// can charge.
+///
+/// The compute-budget program is not a Helium program and carries no intent, so
+/// the review summary cannot make it legible to a signer; the only useful
+/// control is a ceiling. `price` is micro-lamports per compute unit.
+fn max_prioritization_fee(tx: &VersionedTransaction) -> u64 {
+    use helium_lib::programs::KnownProgram;
+    let compute_budget = KnownProgram::ComputeBudget.id();
+    let keys = tx.message.static_account_keys();
+    let (mut price, mut limit) = (0u64, None);
+    for ix in tx.message.instructions() {
+        if keys.get(ix.program_id_index as usize) != Some(&compute_budget) {
+            continue;
+        }
+        match ix.data.split_first() {
+            // SetComputeUnitLimit(u32)
+            Some((2, rest)) if rest.len() >= 4 => {
+                limit = Some(u64::from(u32::from_le_bytes(
+                    rest[..4].try_into().expect("4 bytes"),
+                )));
+            }
+            // SetComputeUnitPrice(u64)
+            Some((3, rest)) if rest.len() >= 8 => {
+                price = u64::from_le_bytes(rest[..8].try_into().expect("8 bytes"));
+            }
+            _ => {}
+        }
+    }
+    // An absent limit means the runtime default, which is what the fee is
+    // actually charged against, so it must be priced too.
+    let limit = limit.unwrap_or_else(|| {
+        (tx.message.instructions().len() as u64 * DEFAULT_COMPUTE_UNITS_PER_IX)
+            .min(MAX_COMPUTE_UNIT_LIMIT)
+    });
+    limit.saturating_mul(price).div_ceil(1_000_000)
+}
+
+/// Refuse to sign when a server-built transaction prices its compute units
+/// above the ceiling the local builder clamps to.
+///
+/// Without this the transfer guard's program allowlist admits an unbounded
+/// `SetComputeUnitPrice`, so a transaction carrying exactly the requested
+/// transfer can still take the wallet's whole SOL balance as priority fee. The
+/// estimate shown for review is the server's own figure and would not reveal it.
+fn assert_priority_fee_within_cap(unsigned: &[VersionedTransaction]) -> Result<u64> {
+    let mut total = 0u64;
+    for tx in unsigned {
+        let fee = max_prioritization_fee(tx);
+        let cap = helium_lib::priority_fee::MAX_PRIORITY_FEE
+            .saturating_mul(MAX_COMPUTE_UNIT_LIMIT)
+            .div_ceil(1_000_000);
+        if fee > cap {
+            bail!(
+                "server-built transaction prices its compute units at up to {fee} lamports \
+                 in priority fee, above the {cap} lamport ceiling; refusing to sign"
+            );
+        }
+        total = total.saturating_add(fee);
+    }
+    Ok(total)
 }
 
 /// Sign the server-built transactions for submission. Fetches a fresh blockhash
@@ -540,11 +615,16 @@ fn review_lines(
     data: &TransactionData,
     fee: Option<&TokenAmount>,
     unsigned: &[VersionedTransaction],
+    max_priority_fee: u64,
 ) -> Vec<String> {
+    // The estimate is the server's own figure. The priority-fee ceiling is
+    // derived from the compute-budget instructions in the transaction, so it
+    // holds even when the estimate does not.
     let fee_summary = match fee {
         Some(fee) => format!("est. fee ~{} SOL", fee.ui_amount_string),
         None => "fee set server-side".to_string(),
     };
+    let fee_summary = format!("{fee_summary}, priority fee at most {max_priority_fee} lamports");
     let mut lines = vec![format!(
         "{} transaction(s) built by the blockchain-api, {fee_summary}",
         unsigned.len(),
@@ -592,8 +672,9 @@ fn display_action_for_review(
     data: &TransactionData,
     fee: Option<&TokenAmount>,
     unsigned: &[VersionedTransaction],
+    max_priority_fee: u64,
 ) {
-    for line in review_lines(data, fee, unsigned) {
+    for line in review_lines(data, fee, unsigned, max_priority_fee) {
         eprintln!("→ {line}");
     }
 }
@@ -757,7 +838,8 @@ pub trait ToJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helium_lib::keypair::Signature;
+    use helium_lib::keypair::{Pubkey, Signature};
+    use helium_lib::solana_sdk::message::{Message, MessageHeader, VersionedMessage};
 
     #[test]
     fn commit_response_signature_serializes_with_committed_true() {
@@ -905,10 +987,112 @@ mod tests {
             &response.transaction_data,
             Some(&response.estimated_sol_fee),
             &[tx],
+            0,
         );
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("est. fee ~0.000895934 SOL"));
+        assert!(lines[0].contains("priority fee at most 0 lamports"));
         assert!(lines[1].contains("Transfer HNT"));
         assert!(lines[1].contains(&payer.to_string()));
+    }
+    /// Build a transaction carrying the given compute-budget instructions.
+    fn compute_budget_tx(ixs: Vec<(u8, Vec<u8>)>) -> VersionedTransaction {
+        use helium_lib::programs::KnownProgram;
+        use helium_lib::solana_sdk::instruction::CompiledInstruction;
+        let instructions = ixs
+            .into_iter()
+            .map(|(tag, mut rest)| {
+                let mut data = vec![tag];
+                data.append(&mut rest);
+                CompiledInstruction {
+                    program_id_index: 1,
+                    accounts: vec![],
+                    data,
+                }
+            })
+            .collect();
+        VersionedTransaction {
+            signatures: vec![Default::default()],
+            message: VersionedMessage::Legacy(Message {
+                header: MessageHeader {
+                    num_required_signatures: 1,
+                    num_readonly_signed_accounts: 0,
+                    num_readonly_unsigned_accounts: 1,
+                },
+                account_keys: vec![Pubkey::new_unique(), KnownProgram::ComputeBudget.id()],
+                recent_blockhash: Default::default(),
+                instructions,
+            }),
+        }
+    }
+
+    #[test]
+    fn priority_fee_is_limit_times_price() {
+        // 1.4M CU at 1000 micro-lamports/CU = 1400 lamports.
+        let tx = compute_budget_tx(vec![
+            (2, 1_400_000u32.to_le_bytes().to_vec()),
+            (3, 1_000u64.to_le_bytes().to_vec()),
+        ]);
+        assert_eq!(max_prioritization_fee(&tx), 1_400);
+        assert_eq!(
+            assert_priority_fee_within_cap(&[tx]).expect("within cap"),
+            1_400
+        );
+    }
+
+    #[test]
+    fn absent_price_costs_nothing() {
+        let tx = compute_budget_tx(vec![(2, 1_400_000u32.to_le_bytes().to_vec())]);
+        assert_eq!(max_prioritization_fee(&tx), 0);
+    }
+
+    #[test]
+    fn absent_limit_is_priced_at_the_runtime_default() {
+        // No SetComputeUnitLimit: one instruction defaults to 200k CU.
+        let tx = compute_budget_tx(vec![(3, 1_000_000u64.to_le_bytes().to_vec())]);
+        assert_eq!(max_prioritization_fee(&tx), 200_000);
+    }
+
+    #[test]
+    fn refuses_a_whole_balance_priority_fee() {
+        // The reviewed attack: a correct transfer plus a compute-unit price
+        // sized to take ~1 SOL from the wallet.
+        let tx = compute_budget_tx(vec![
+            (2, 1_400_000u32.to_le_bytes().to_vec()),
+            (3, 714_285_714u64.to_le_bytes().to_vec()),
+        ]);
+        assert_eq!(max_prioritization_fee(&tx), 1_000_000_000);
+        let err = assert_priority_fee_within_cap(&[tx]).expect_err("must refuse");
+        assert!(err.to_string().contains("refusing to sign"), "{err}");
+    }
+
+    #[test]
+    fn accepts_a_price_at_the_local_builders_ceiling() {
+        // MAX_PRIORITY_FEE is what the local builder clamps to, so a server
+        // quoting exactly that must still be signable.
+        let tx = compute_budget_tx(vec![
+            (2, 1_400_000u32.to_le_bytes().to_vec()),
+            (
+                3,
+                helium_lib::priority_fee::MAX_PRIORITY_FEE
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+        ]);
+        assert_priority_fee_within_cap(&[tx]).expect("the local ceiling must be accepted");
+    }
+
+    #[test]
+    fn fees_are_summed_across_a_batch() {
+        let one = || {
+            compute_budget_tx(vec![
+                (2, 1_000_000u32.to_le_bytes().to_vec()),
+                (3, 1_000u64.to_le_bytes().to_vec()),
+            ])
+        };
+        assert_eq!(
+            assert_priority_fee_within_cap(&[one(), one()]).expect("within cap"),
+            2_000
+        );
     }
 }

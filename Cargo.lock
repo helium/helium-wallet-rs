@@ -2571,9 +2571,7 @@ dependencies = [
  "solana-sdk",
  "solana-system-interface",
  "solana-transaction-status",
- "solana-transaction-utils",
  "spl-associated-token-account 6.0.0",
- "spl-memo",
  "squads-multisig-program",
  "tempfile",
  "thiserror 1.0.69",
@@ -7278,33 +7276,6 @@ dependencies = [
  "solana-transaction-context",
  "solana-transaction-error",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "solana-transaction-utils"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98ad76945fd44ec4b6f23f9ad88ec80e29268803e89e7d9b8196603c7677eb2a"
-dependencies = [
- "bincode",
- "dashmap",
- "futures",
- "futures-core",
- "futures-util",
- "indicatif",
- "itertools 0.13.0",
- "solana-client",
- "solana-program",
- "solana-quic-client",
- "solana-rpc-client",
- "solana-rpc-client-api",
- "solana-sdk",
- "solana-tpu-client",
- "solana-transaction-status",
- "thiserror 1.0.69",
- "tokio",
- "tokio-graceful-shutdown",
- "tracing",
 ]
 
 [[package]]

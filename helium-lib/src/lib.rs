@@ -34,8 +34,9 @@ pub mod kta;
 /// feature.
 #[cfg(feature = "txn")]
 pub mod message;
-/// Compute-budget and priority-fee instructions. Requires the `txn` feature.
-#[cfg(feature = "txn")]
+/// Priority-fee bounds, plus compute-budget and fee-estimation helpers. The
+/// bounds are always available so callers can hold a server-built transaction
+/// to the same ceiling the local builder applies; the helpers need `txn`.
 pub mod priority_fee;
 /// Anchor program ID and account definitions.
 pub mod programs;

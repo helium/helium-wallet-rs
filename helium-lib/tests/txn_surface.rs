@@ -14,6 +14,7 @@
 // proofs, and a window where the hotspot is reset but still owned.
 use helium_lib::{
     asset::transfer_instruction,
+    dao::SubDao,
     dc::mint,
     hotspot::{direct_update, direct_update_instruction, transfer, HotspotInfoUpdate},
     message::{mk_budgeted_message, mk_raw_message},
@@ -28,15 +29,35 @@ use helium_lib::{
 // it builds locally rather than proxying the blockchain-api.
 use helium_lib::{
     hotspot::{
-        dataonly::{issue_token, issue_token_to_add_tx, issue_transaction, onboard_transaction},
+        dataonly::{
+            issue_token, issue_token_to_add_tx, issue_transaction, onboard_transaction, IssueToken,
+        },
         direct_update_transaction, transfer_transaction,
     },
     priority_fee::MIN_PRIORITY_FEE,
 };
 
 #[test]
-fn default_opts_carry_a_usable_fee_range() {
+fn default_opts_target_mainnet() {
     let opts = TransactionOpts::default();
     assert!(opts.min_priority_fee <= opts.max_priority_fee);
-    assert!(!opts.lut_addresses.is_empty(), "a common LUT is expected");
+    // Every consumer builds from `default()`, so this list IS the cluster the
+    // library assumes. Asserting only that it is non-empty lets a devnet LUT
+    // through, which would compile each consumer's mainnet transaction against
+    // the wrong lookup table.
+    assert_eq!(
+        opts.lut_addresses,
+        vec![helium_lib::message::COMMON_LUT],
+        "the default must be the mainnet common LUT"
+    );
+}
+
+/// Both consumers build a `HotspotInfoUpdate` through these methods rather than
+/// constructing the enum, so the type resolving is not enough.
+#[test]
+fn hotspot_info_update_builders_resolve() {
+    let update = HotspotInfoUpdate::for_subdao(SubDao::Mobile)
+        .set_geo(Some(37.7), Some(-122.4))
+        .expect("a valid lat/lon");
+    assert!(update.location().is_some());
 }

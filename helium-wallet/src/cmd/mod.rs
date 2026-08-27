@@ -2,7 +2,6 @@ use crate::{
     result::{anyhow, bail, Error, Result},
     wallet::Wallet,
 };
-use dialoguer::Confirm;
 use helium_lib::{
     b64,
     blockchain_api::{
@@ -20,7 +19,6 @@ use helium_lib::{
 use serde_json::json;
 use std::{
     env, fs, io,
-    io::IsTerminal,
     ops::Deref,
     path::{Path, PathBuf},
     str::FromStr,
@@ -319,16 +317,13 @@ impl CommitOpts {
     ///
     /// Decodes the unsigned transactions in `response`, shows them for review,
     /// signs each locally with `signer`, then:
-    /// - with `--commit`: sign and submit the batch via the API, polling until
-    ///   it reaches a terminal status;
-    /// - without `--commit`, interactive: simulate, then prompt to commit; sign
-    ///   and submit only on confirmation;
-    /// - without `--commit`, non-interactive (piped/CI): simulate and stop,
-    ///   broadcasting nothing — so scripts never hang on a prompt or submit
-    ///   unexpectedly.
+    /// Every run simulates. Without `--commit` it stops there and broadcasts
+    /// nothing; with `--commit` it signs and submits the batch via the API,
+    /// polling until the batch reaches a terminal status. The flag is the only
+    /// decision point, and it behaves the same piped as it does on a terminal.
     ///
-    /// Signing happens only once a submit is decided, so a Ledger is never
-    /// touched for a dry run or a declined action. `signing` controls how:
+    /// Signing happens only once `--commit` is given, so a Ledger is never
+    /// touched for a dry run. `signing` controls how:
     /// [`ApiSigning::FreshBlockhash`] refreshes the blockhash and signs as sole
     /// signer; [`ApiSigning::PreserveCosigned`] fills only the wallet's slot,
     /// keeping the server's message/blockhash/co-signatures intact.
@@ -359,26 +354,12 @@ impl CommitOpts {
 
         let solana = rpc.as_ref();
 
-        // Decide whether to submit BEFORE signing, so a Ledger is never touched
-        // for a dry run or a declined action.
-        let submit = if self.commit {
-            true
-        } else {
-            // Simulate for feedback, then either ask (interactive) or stop
-            // (non-interactive — a safe no-op so scripts never hang on a prompt
-            // or submit unexpectedly).
-            simulate_unsigned(solana, &unsigned).await?;
-            if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
-                Confirm::new()
-                    .with_prompt("Commit and submit these transaction(s)?")
-                    .default(false)
-                    .interact()?
-            } else {
-                false
-            }
-        };
+        // Simulate on both paths. Without `--commit` that is the whole point of
+        // the run; with it, a transaction that cannot succeed is caught before a
+        // Ledger is touched.
+        simulate_unsigned(solana, &unsigned).await?;
 
-        if !submit {
+        if !self.commit {
             return Ok(CommitResponse::None);
         }
 
@@ -392,8 +373,65 @@ impl CommitOpts {
                 timeout,
             )
             .await?;
-        commit_response_from_status(status)
+        let response = commit_response_from_status(status)?;
+        confirm_against_rpc(solana, &response).await?;
+        Ok(response)
     }
+}
+
+/// Refuse a message anchored to a durable nonce rather than a recent blockhash.
+///
+/// [`ApiSigning::PreserveCosigned`] keeps the server's blockhash so an existing
+/// co-signature stays valid, which is also exactly what a durable nonce needs.
+/// A nonce-anchored transaction does not expire, so signing one hands out a
+/// signature the counterparty can submit at a time of its choosing rather than
+/// within the blockhash's lifetime. `FreshBlockhash` overwrites the blockhash
+/// and so cannot be anchored this way.
+fn assert_not_nonce_anchored(tx: &VersionedTransaction) -> Result<()> {
+    use helium_lib::programs::KnownProgram;
+    // A durable nonce must be advanced by the transaction's first instruction.
+    let Some(ix) = tx.message.instructions().first() else {
+        return Ok(());
+    };
+    let keys = tx.message.static_account_keys();
+    let Some(program) = keys.get(ix.program_id_index as usize) else {
+        bail!("transaction references a lookup-table program; cannot verify it safely");
+    };
+    // System-program tags are little-endian u32; 4 is AdvanceNonceAccount.
+    if *program == KnownProgram::SystemProgram.id() && ix.data.starts_with(&[4, 0, 0, 0]) {
+        bail!("transaction is anchored to a durable nonce, so it would never expire; refusing to sign");
+    }
+    Ok(())
+}
+
+/// Confirm the batch really landed, by asking the wallet's own RPC.
+///
+/// Submission and polling both go through the transaction-building service, so
+/// on its own a reported success is that service's claim. Re-checking the
+/// signatures against `--url` turns it from an oracle into a relay.
+async fn confirm_against_rpc(solana: &SolanaRpcClient, response: &CommitResponse) -> Result<()> {
+    let signatures = response.signatures();
+    if signatures.is_empty() {
+        return Ok(());
+    }
+    let statuses = solana
+        .get_signature_statuses(&signatures)
+        .await
+        .map_err(context_err)?
+        .value;
+    for (signature, status) in signatures.iter().zip(statuses) {
+        match status {
+            Some(status) if status.err.is_none() => {}
+            Some(status) => bail!(
+                "the service reported {signature} confirmed, but this RPC reports it failed: {:?}",
+                status.err
+            ),
+            None => bail!(
+                "the service reported {signature} confirmed, but this RPC has no record of it"
+            ),
+        }
+    }
+    Ok(())
 }
 
 /// Solana charges `limit x price / 1e6` lamports in prioritization fee, rounded
@@ -489,7 +527,10 @@ async fn sign_for_submit(
         }
         ApiSigning::PreserveCosigned => unsigned
             .into_iter()
-            .map(|tx| sign_owner_in_place(tx, signer))
+            .map(|tx| {
+                assert_not_nonce_anchored(&tx)?;
+                sign_owner_in_place(tx, signer)
+            })
             .collect(),
     }
 }
@@ -760,6 +801,16 @@ impl CommitResponse {
     /// Whether transactions were actually submitted on-chain (as opposed to a
     /// dry run or declined commit). True for both a single signature and a
     /// confirmed batch.
+    /// The signatures this response reports, for re-checking against an RPC
+    /// other than the one that produced it.
+    pub fn signatures(&self) -> Vec<helium_lib::keypair::Signature> {
+        match self {
+            Self::Signature(signature) => vec![*signature],
+            Self::Batch { signatures } => signatures.clone(),
+            Self::None => Vec::new(),
+        }
+    }
+
     pub fn committed(&self) -> bool {
         matches!(self, Self::Signature(_) | Self::Batch { .. })
     }
@@ -1094,5 +1145,55 @@ mod tests {
             assert_priority_fee_within_cap(&[one(), one()]).expect("within cap"),
             2_000
         );
+    }
+    /// A transaction whose first instruction is the given system-program tag.
+    fn system_first_ix(tag: u32) -> VersionedTransaction {
+        use helium_lib::programs::KnownProgram;
+        use helium_lib::solana_sdk::instruction::CompiledInstruction;
+        VersionedTransaction {
+            signatures: vec![Default::default()],
+            message: VersionedMessage::Legacy(Message {
+                header: MessageHeader {
+                    num_required_signatures: 1,
+                    num_readonly_signed_accounts: 0,
+                    num_readonly_unsigned_accounts: 1,
+                },
+                account_keys: vec![Pubkey::new_unique(), KnownProgram::SystemProgram.id()],
+                recent_blockhash: Default::default(),
+                instructions: vec![CompiledInstruction {
+                    program_id_index: 1,
+                    accounts: vec![],
+                    data: tag.to_le_bytes().to_vec(),
+                }],
+            }),
+        }
+    }
+
+    #[test]
+    fn refuses_a_durable_nonce_anchored_transaction() {
+        // Tag 4 is AdvanceNonceAccount: the transaction would never expire.
+        let err = assert_not_nonce_anchored(&system_first_ix(4))
+            .expect_err("a nonce-anchored transaction must be refused");
+        assert!(err.to_string().contains("durable nonce"), "{err}");
+    }
+
+    #[test]
+    fn allows_an_ordinary_first_instruction() {
+        // Tag 2 is Transfer, which is not a nonce advance.
+        assert_not_nonce_anchored(&system_first_ix(2)).expect("an ordinary transaction");
+    }
+
+    #[test]
+    fn commit_response_reports_its_signatures() {
+        let sig = Signature::from([3u8; 64]);
+        assert_eq!(CommitResponse::Signature(sig).signatures(), vec![sig]);
+        assert_eq!(
+            CommitResponse::Batch {
+                signatures: vec![sig, sig]
+            }
+            .signatures(),
+            vec![sig, sig]
+        );
+        assert!(CommitResponse::None.signatures().is_empty());
     }
 }

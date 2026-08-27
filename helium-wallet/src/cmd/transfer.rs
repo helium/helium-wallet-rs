@@ -146,10 +146,15 @@ impl PayCmd {
             }
         };
 
-        // Before signing, independently decode the server-built transaction(s)
-        // and confirm they move exactly the tokens we asked for, to the
-        // recipients we asked for — a compromised or buggy server cannot
-        // redirect or alter funds without this failing first.
+        // Before signing, independently decode the server-built transaction(s).
+        // A direct transfer must move exactly the tokens asked for to the
+        // recipients asked for. A proposal wraps the transfer inside a Squads
+        // instruction this cannot read, so it is instead held to moving nothing
+        // at the top level: without that, a plain SPL transfer returned in place
+        // of a proposal would drain the proposer's own wallet unverified.
+        if is_proposal {
+            assert_wraps_no_transfer(&response.decode_transactions()?)?;
+        }
         if !is_proposal {
             let expected: Vec<ExpectedTransfer> = payments
                 .iter()
@@ -291,11 +296,14 @@ fn assert_spl_transfers(
     let spl_token = KnownProgram::SplToken.id();
     // A transfer transaction legitimately touches only these programs: the
     // token program (the transfer itself), the associated-token program
-    // (idempotent creation of the recipient's ATA), and the compute-budget
-    // program (fee/limit). Any other program — including the system program
-    // (a bundled SOL transfer) or an attacker program that CPIs a token
-    // transfer — is rejected below, so "moves the requested token and nothing
-    // else" actually holds rather than only bounding token-program instructions.
+    // (idempotent creation of a destination ATA), and the compute-budget
+    // program. Any other program — including the system program (a bundled SOL
+    // transfer) or an attacker program that CPIs a token transfer — is rejected
+    // below.
+    //
+    // The compute-budget instructions bound the SOL this can cost, which is
+    // checked where every command inherits it (`CommitOpts::commit_via_api`)
+    // rather than here.
     let compute_budget = KnownProgram::ComputeBudget.id();
     let associated_token = KnownProgram::SplAssociatedToken.id();
     let sender_ata = token.associated_token_address(wallet);
@@ -327,8 +335,22 @@ fn assert_spl_transfers(
                 .ok_or_else(|| {
                     anyhow!("transfer references a lookup-table program; cannot verify it safely")
                 })?;
-            if program == compute_budget || program == associated_token {
+            if program == compute_budget {
                 continue;
+            }
+            if program == associated_token {
+                // Tag 1 is CreateIdempotent, the only reason a transfer creates
+                // an account. Tag 0 (Create) funds a new ATA from the signer at
+                // rent cost, for any owner the caller picks, which the amount
+                // comparison below does not see.
+                match ix.data.first() {
+                    Some(1) => continue,
+                    other => bail!(
+                        "transfer creates an associated token account \
+                         (instruction {other:?}) rather than creating one idempotently; \
+                         refusing to sign"
+                    ),
+                }
             }
             if program != spl_token {
                 bail!(
@@ -383,6 +405,40 @@ fn assert_spl_transfers(
             }),
             transfer.recipient,
         );
+    }
+    Ok(())
+}
+
+/// Verify a Squads proposal moves nothing at the top level.
+///
+/// The proposal encodes the real transfer as data inside a Squads instruction,
+/// which this does not decode; what it can establish is that the outer
+/// transaction is a proposal and not a transfer in its own right. Any SPL-token
+/// or system-program instruction at the top level means the response is not the
+/// proposal that was asked for.
+fn assert_wraps_no_transfer(unsigned: &[VersionedTransaction]) -> Result<()> {
+    let compute_budget = KnownProgram::ComputeBudget.id();
+    for tx in unsigned {
+        let keys = tx.message.static_account_keys();
+        for ix in tx.message.instructions() {
+            let program = keys
+                .get(ix.program_id_index as usize)
+                .copied()
+                .ok_or_else(|| {
+                    anyhow!("proposal references a lookup-table program; cannot verify it safely")
+                })?;
+            if program == compute_budget {
+                continue;
+            }
+            if program == KnownProgram::SplToken.id()
+                || program == helium_lib::solana_sdk::system_program::id()
+            {
+                bail!(
+                    "a Squads proposal must not move funds at the top level, but this \
+                     transaction invokes {program}; refusing to sign"
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -666,6 +722,74 @@ mod tests {
             }]
         )
         .is_err());
+    }
+
+    /// A correct HNT transfer with an extra associated-token instruction of the
+    /// given tag bundled in.
+    fn transfer_with_ata_ix(tag: u8, wallet: Pubkey, payee: Pubkey) -> VersionedTransaction {
+        let transfer = Instruction {
+            program_id: KnownProgram::SplToken.id(),
+            accounts: vec![
+                AccountMeta::new(ata(&wallet), false),
+                AccountMeta::new(ata(&payee), false),
+                AccountMeta::new_readonly(wallet, true),
+            ],
+            data: {
+                let mut d = vec![3u8];
+                d.extend_from_slice(&100u64.to_le_bytes());
+                d
+            },
+        };
+        let ata_ix = Instruction {
+            program_id: KnownProgram::SplAssociatedToken.id(),
+            accounts: vec![AccountMeta::new(wallet, true)],
+            data: vec![tag],
+        };
+        VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::Legacy(Message::new(&[ata_ix, transfer], Some(&wallet))),
+        }
+    }
+
+    #[test]
+    fn transfer_allows_an_idempotent_ata_creation() {
+        let (wallet, payee) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let expected = vec![ExpectedTransfer {
+            recipient: payee,
+            amount: 100,
+        }];
+        // Tag 1 is CreateIdempotent, which a legitimate transfer uses to make
+        // the recipient's account.
+        assert_transfers(
+            &[transfer_with_ata_ix(1, wallet, payee)],
+            &wallet,
+            Token::Hnt,
+            &expected,
+        )
+        .expect("an idempotent create must be allowed");
+    }
+
+    #[test]
+    fn transfer_rejects_a_non_idempotent_ata_creation() {
+        let (wallet, payee) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let expected = vec![ExpectedTransfer {
+            recipient: payee,
+            amount: 100,
+        }];
+        // Tag 0 is Create: funds a brand-new account from the signer at rent
+        // cost, for any owner the caller picks. The amount comparison cannot
+        // see it, so only this check refuses it.
+        let err = assert_transfers(
+            &[transfer_with_ata_ix(0, wallet, payee)],
+            &wallet,
+            Token::Hnt,
+            &expected,
+        )
+        .expect_err("a non-idempotent create must be refused");
+        assert!(
+            err.to_string().contains("creating one idempotently"),
+            "{err}"
+        );
     }
 
     #[test]

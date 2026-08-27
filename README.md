@@ -89,7 +89,10 @@ Most commands that submit transactions accept these options via `--commit`:
 
 | Option | Description |
 |---|---|
-| `--commit` | Submit the transaction without prompting. Without this flag, an interactive run simulates and asks for confirmation before submitting; a non-interactive run simulates and stops |
+| `--commit` | Submit the transaction. Without this flag the transaction is simulated and nothing is broadcast (dry run) |
+
+Every run simulates first, so `--commit` adds submission rather than replacing the
+dry run, and behaves the same piped as it does on a terminal.
 
 ## Commands
 

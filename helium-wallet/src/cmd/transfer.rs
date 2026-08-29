@@ -280,100 +280,19 @@ fn assert_transfers(
 /// recipient's `token` associated-token account, out of this wallet's own
 /// `token` account, and nothing else.
 ///
-/// Soundness without resolving lookup tables: the accounts that pin the outcome
-/// (this wallet's `token` ATA as the source, the wallet as the authority, and
-/// each recipient's `token` ATA as the destination) are wallet-specific and are
-/// never packed into the shared Helium lookup table, so they are always static
-/// keys. Requiring the source to be this wallet's `token` ATA fixes the mint
-/// without reading the (possibly table-loaded) mint account. If any account we
-/// must check is table-loaded, or any unexpected program or non-transfer
-/// SPL-token instruction is present, we fail closed.
+/// Verify an SPL transfer batch against what was asked for, then report each
+/// verified payment.
 fn assert_spl_transfers(
     unsigned: &[VersionedTransaction],
     wallet: &Pubkey,
     token: Token,
     expected: &[ExpectedTransfer],
 ) -> Result<()> {
-    let spl_token = KnownProgram::SplToken.id();
-    // A transfer transaction legitimately touches only these programs: the
-    // token program (the transfer itself), the associated-token program
-    // (idempotent creation of a destination ATA), and the compute-budget
-    // program. Any other program — including the system program (a bundled SOL
-    // transfer) or an attacker program that CPIs a token transfer — is rejected
-    // below.
-    //
-    // The compute-budget instructions bound the SOL this can cost, which is
-    // checked where every command inherits it (`CommitOpts::commit_via_api`)
-    // rather than here.
-    let compute_budget = KnownProgram::ComputeBudget.id();
-    let associated_token = KnownProgram::SplAssociatedToken.id();
-    let sender_ata = token.associated_token_address(wallet);
-
-    // Expected destination ATA -> total raw amount (summed so a recipient listed
-    // more than once still balances).
-    let mut want: HashMap<Pubkey, u64> = HashMap::new();
-    for transfer in expected {
-        let dest_ata = token.associated_token_address(&transfer.recipient);
-        *want.entry(dest_ata).or_default() += transfer.amount;
-    }
-
-    let mut got: HashMap<Pubkey, u64> = HashMap::new();
-    for tx in unsigned {
-        for ix in tx.message.instructions() {
-            let program = verify::instruction_program(tx, ix)?;
-            if program == compute_budget {
-                continue;
-            }
-            if program == associated_token {
-                // Tag 1 is CreateIdempotent, the only reason a transfer creates
-                // an account. Tag 0 (Create) funds a new ATA from the signer at
-                // rent cost, for any owner the caller picks, which the amount
-                // comparison below does not see.
-                match ix.data.first() {
-                    Some(1) => continue,
-                    other => bail!(
-                        "transfer creates an associated token account \
-                         (instruction {other:?}) rather than creating one idempotently; \
-                         refusing to sign"
-                    ),
-                }
-            }
-            if program != spl_token {
-                bail!(
-                    "transfer transaction invokes an unexpected program ({program}); \
-                     refusing to sign"
-                );
-            }
-            // The only SPL-token instruction a transfer should contain is a
-            // (checked) transfer; account layouts are [source, dest, authority]
-            // for Transfer (tag 3) and [source, mint, dest, authority] for
-            // TransferChecked (tag 12). Anything else — burn, approve, close,
-            // set-authority — could move or destroy funds, so refuse to sign.
-            let account = |slot: usize| verify::instruction_account(tx, ix, slot);
-            let (source, dest, owner) = match ix.data.first() {
-                Some(3) => (account(0)?, account(1)?, account(2)?),
-                Some(12) => (account(0)?, account(2)?, account(3)?),
-                _ => bail!("transfer transaction contains an unexpected SPL-token instruction"),
-            };
-            if owner != *wallet {
-                bail!("transfer is authorized by {owner}, not this wallet");
-            }
-            if source != sender_ata {
-                bail!("transfer moves funds from {source}, not this wallet's {token} account");
-            }
-            *got.entry(dest).or_default() += transfer_amount(&ix.data)?;
-        }
-    }
-
-    if got != want {
-        bail!(
-            "the server-built transfer does not match the requested payment(s); \
-             refusing to sign. expected {}, decoded {}",
-            format_transfers(&want),
-            format_transfers(&got),
-        );
-    }
-
+    let pairs: Vec<(Pubkey, u64)> = expected
+        .iter()
+        .map(|transfer| (transfer.recipient, transfer.amount))
+        .collect();
+    verify::assert_spl_transfers(unsigned, wallet, token, &pairs)?;
     for transfer in expected {
         let dest_ata = token.associated_token_address(&transfer.recipient);
         eprintln!(
@@ -480,17 +399,6 @@ fn assert_sol_transfers(
         );
     }
     Ok(())
-}
-
-/// Read the little-endian `u64` amount that both Transfer and TransferChecked
-/// carry immediately after their one-byte tag.
-fn transfer_amount(data: &[u8]) -> Result<u64> {
-    let bytes: [u8; 8] = data
-        .get(1..9)
-        .ok_or_else(|| anyhow!("SPL-token transfer has a truncated amount"))?
-        .try_into()
-        .expect("slice of length 8");
-    Ok(u64::from_le_bytes(bytes))
 }
 
 /// Render a destination-ATA -> raw-amount map as a stable, sorted string for
@@ -743,8 +651,11 @@ mod tests {
             &expected,
         )
         .expect_err("a non-idempotent create must be refused");
+        // Names the associated-token program rather than a phrase, so the
+        // assertion survives a reworded refusal.
         assert!(
-            err.to_string().contains("creating one idempotently"),
+            err.to_string()
+                .contains(&KnownProgram::SplAssociatedToken.id().to_string()),
             "{err}"
         );
     }

@@ -9,6 +9,8 @@
 //! Available without the `txn` feature, since a caller that no longer builds
 //! transactions still has to inspect them.
 
+use std::collections::HashMap;
+
 use crate::{
     keypair::Pubkey, programs::KnownProgram, solana_sdk::instruction::CompiledInstruction,
     transaction::VersionedTransaction,
@@ -45,6 +47,21 @@ pub enum VerifyError {
     /// The transaction is anchored to a durable nonce, so it never expires.
     #[error("transaction is anchored to a durable nonce and would never expire")]
     NonceAnchored,
+    /// An allowed program is invoked with an instruction that is not.
+    #[error("{program} is invoked with an instruction that is not expected here")]
+    UnexpectedInstruction { program: Pubkey },
+    /// A transfer is authorized by a wallet other than the expected one.
+    #[error("transfer is authorized by {actual}, not {expected}")]
+    WrongAuthority { expected: Pubkey, actual: Pubkey },
+    /// A transfer moves funds out of an account other than the expected one.
+    #[error("transfer moves funds from {actual}, not {expected}")]
+    WrongSource { expected: Pubkey, actual: Pubkey },
+    /// The amounts or recipients do not match what was asked for.
+    #[error("the transfers do not match what was requested")]
+    TransfersDiffer,
+    /// Instruction data is too short to read a field the check needs.
+    #[error("{what} could not be read")]
+    Malformed { what: &'static str },
 }
 
 /// The program a compiled instruction invokes.
@@ -163,6 +180,111 @@ pub fn assert_programs_within(
         if !allowed.contains(&program) {
             return Err(VerifyError::UnexpectedProgram { program });
         }
+    }
+    Ok(())
+}
+
+/// SPL-token instruction tags that move a balance: `Transfer` and
+/// `TransferChecked`. Their account layouts differ, which is why the tag has to
+/// be read before the accounts mean anything.
+const SPL_TRANSFER_TAGS: [u8; 2] = [3, 12];
+
+/// The raw amount an SPL transfer moves, from its instruction data.
+fn spl_transfer_amount(data: &[u8]) -> Result<u64, VerifyError> {
+    data.get(1..9)
+        .and_then(|bytes| bytes.try_into().ok())
+        .map(u64::from_le_bytes)
+        .ok_or(VerifyError::Malformed {
+            what: "an SPL-token transfer amount",
+        })
+}
+
+/// Refuse a transaction unless it moves exactly `expected` of `token` out of
+/// `wallet`, and does nothing else.
+///
+/// `expected` is (recipient, raw amount) pairs; a recipient listed twice is
+/// summed, so the comparison is against totals rather than instruction order.
+///
+/// The accounts that pin the outcome are the wallet's own token account as the
+/// source, the wallet as the authority, and each recipient's token account as
+/// the destination. Those are wallet-specific and are never packed into the
+/// shared lookup table, so they are always static keys. Requiring the source to
+/// be the wallet's `token` account fixes the mint without reading a mint
+/// account that might itself be table-loaded.
+pub fn assert_spl_transfers(
+    unsigned: &[VersionedTransaction],
+    wallet: &Pubkey,
+    token: crate::token::Token,
+    expected: &[(Pubkey, u64)],
+) -> Result<(), VerifyError> {
+    let spl_token = KnownProgram::SplToken.id();
+    let compute_budget = KnownProgram::ComputeBudget.id();
+    let associated_token = KnownProgram::SplAssociatedToken.id();
+    let source_account = token.associated_token_address(wallet);
+
+    let mut want: HashMap<Pubkey, u64> = HashMap::new();
+    for (recipient, amount) in expected {
+        *want
+            .entry(token.associated_token_address(recipient))
+            .or_default() += amount;
+    }
+
+    let mut got: HashMap<Pubkey, u64> = HashMap::new();
+    for tx in unsigned {
+        for ix in tx.message.instructions() {
+            let program = instruction_program(tx, ix)?;
+            if program == compute_budget {
+                continue;
+            }
+            if program == associated_token {
+                // Tag 1 is CreateIdempotent, the only reason a transfer creates
+                // an account. Tag 0 funds a brand-new account from the signer at
+                // rent cost, for any owner, which the amount totals do not see.
+                match ix.data.first() {
+                    Some(1) => continue,
+                    _ => return Err(VerifyError::UnexpectedInstruction { program }),
+                }
+            }
+            if program != spl_token {
+                return Err(VerifyError::UnexpectedProgram { program });
+            }
+            let tag = ix.data.first().copied().unwrap_or(u8::MAX);
+            if !SPL_TRANSFER_TAGS.contains(&tag) {
+                return Err(VerifyError::UnexpectedInstruction { program });
+            }
+            // Transfer is [source, dest, authority]; TransferChecked inserts the
+            // mint, giving [source, mint, dest, authority].
+            let (source, dest, authority) = if tag == 12 {
+                (
+                    instruction_account(tx, ix, 0)?,
+                    instruction_account(tx, ix, 2)?,
+                    instruction_account(tx, ix, 3)?,
+                )
+            } else {
+                (
+                    instruction_account(tx, ix, 0)?,
+                    instruction_account(tx, ix, 1)?,
+                    instruction_account(tx, ix, 2)?,
+                )
+            };
+            if authority != *wallet {
+                return Err(VerifyError::WrongAuthority {
+                    expected: *wallet,
+                    actual: authority,
+                });
+            }
+            if source != source_account {
+                return Err(VerifyError::WrongSource {
+                    expected: source_account,
+                    actual: source,
+                });
+            }
+            *got.entry(dest).or_default() += spl_transfer_amount(&ix.data)?;
+        }
+    }
+
+    if got != want {
+        return Err(VerifyError::TransfersDiffer);
     }
     Ok(())
 }

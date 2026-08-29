@@ -11,6 +11,7 @@ use helium_lib::{
     programs::KnownProgram,
     solana_sdk::transaction::VersionedTransaction,
     token::{Token, TokenAmount},
+    verify,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -318,23 +319,8 @@ fn assert_spl_transfers(
 
     let mut got: HashMap<Pubkey, u64> = HashMap::new();
     for tx in unsigned {
-        let keys = tx.message.static_account_keys();
-        let resolve = |slot: usize, accounts: &[u8]| -> Result<Pubkey> {
-            let account_index = *accounts
-                .get(slot)
-                .ok_or_else(|| anyhow!("SPL-token transfer is missing an account"))?
-                as usize;
-            keys.get(account_index).copied().ok_or_else(|| {
-                anyhow!("transfer references a lookup-table account; cannot verify it safely")
-            })
-        };
         for ix in tx.message.instructions() {
-            let program = keys
-                .get(ix.program_id_index as usize)
-                .copied()
-                .ok_or_else(|| {
-                    anyhow!("transfer references a lookup-table program; cannot verify it safely")
-                })?;
+            let program = verify::instruction_program(tx, ix)?;
             if program == compute_budget {
                 continue;
             }
@@ -363,17 +349,10 @@ fn assert_spl_transfers(
             // for Transfer (tag 3) and [source, mint, dest, authority] for
             // TransferChecked (tag 12). Anything else — burn, approve, close,
             // set-authority — could move or destroy funds, so refuse to sign.
+            let account = |slot: usize| verify::instruction_account(tx, ix, slot);
             let (source, dest, owner) = match ix.data.first() {
-                Some(3) => (
-                    resolve(0, &ix.accounts)?,
-                    resolve(1, &ix.accounts)?,
-                    resolve(2, &ix.accounts)?,
-                ),
-                Some(12) => (
-                    resolve(0, &ix.accounts)?,
-                    resolve(2, &ix.accounts)?,
-                    resolve(3, &ix.accounts)?,
-                ),
+                Some(3) => (account(0)?, account(1)?, account(2)?),
+                Some(12) => (account(0)?, account(2)?, account(3)?),
                 _ => bail!("transfer transaction contains an unexpected SPL-token instruction"),
             };
             if owner != *wallet {
@@ -419,14 +398,8 @@ fn assert_spl_transfers(
 fn assert_wraps_no_transfer(unsigned: &[VersionedTransaction]) -> Result<()> {
     let compute_budget = KnownProgram::ComputeBudget.id();
     for tx in unsigned {
-        let keys = tx.message.static_account_keys();
         for ix in tx.message.instructions() {
-            let program = keys
-                .get(ix.program_id_index as usize)
-                .copied()
-                .ok_or_else(|| {
-                    anyhow!("proposal references a lookup-table program; cannot verify it safely")
-                })?;
+            let program = verify::instruction_program(tx, ix)?;
             if program == compute_budget {
                 continue;
             }
@@ -462,14 +435,8 @@ fn assert_sol_transfers(
 
     let mut got: HashMap<Pubkey, u64> = HashMap::new();
     for tx in unsigned {
-        let keys = tx.message.static_account_keys();
         for ix in tx.message.instructions() {
-            let program = keys
-                .get(ix.program_id_index as usize)
-                .copied()
-                .ok_or_else(|| {
-                    anyhow!("transfer references a lookup-table program; cannot verify it safely")
-                })?;
+            let program = verify::instruction_program(tx, ix)?;
             if program == compute_budget {
                 continue;
             }
@@ -482,18 +449,8 @@ fn assert_sol_transfers(
             if ix.data.len() < 12 || u32::from_le_bytes(ix.data[0..4].try_into().unwrap()) != 2 {
                 bail!("SOL transfer contains an unexpected system-program instruction");
             }
-            let resolve = |slot: usize| -> Result<Pubkey> {
-                let account_index = *ix
-                    .accounts
-                    .get(slot)
-                    .ok_or_else(|| anyhow!("SOL transfer is missing an account"))?
-                    as usize;
-                keys.get(account_index).copied().ok_or_else(|| {
-                    anyhow!("transfer references a lookup-table account; cannot verify it safely")
-                })
-            };
-            let from = resolve(0)?;
-            let to = resolve(1)?;
+            let from = verify::instruction_account(tx, ix, 0)?;
+            let to = verify::instruction_account(tx, ix, 1)?;
             if from != *wallet {
                 bail!("SOL transfer moves funds from {from}, not this wallet");
             }

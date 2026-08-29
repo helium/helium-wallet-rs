@@ -36,8 +36,6 @@ use crate::{
 };
 
 pub mod cert;
-/// Data-only hotspot issue and onboard. Requires the `txn` feature.
-#[cfg(feature = "txn")]
 pub mod dataonly;
 pub mod info;
 

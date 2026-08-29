@@ -105,7 +105,7 @@ pub fn instruction_account(
 /// Solana charges `limit x price / 1e6`, rounded up. An absent limit means the
 /// runtime default, which the fee is still charged against, so it is priced
 /// too.
-pub fn max_prioritization_fee(tx: &VersionedTransaction) -> u64 {
+fn max_prioritization_fee(tx: &VersionedTransaction) -> u64 {
     let compute_budget = KnownProgram::ComputeBudget.id();
     let keys = tx.message.static_account_keys();
     let (mut price, mut limit) = (0u64, None);
@@ -170,18 +170,60 @@ pub fn assert_sole_signer(tx: &VersionedTransaction, wallet: &Pubkey) -> Result<
     }
 }
 
-/// Refuse any top-level program outside `allowed`.
-pub fn assert_programs_within(
-    tx: &VersionedTransaction,
-    allowed: &[Pubkey],
-) -> Result<(), VerifyError> {
-    for ix in tx.message.instructions() {
-        let program = instruction_program(tx, ix)?;
-        if !allowed.contains(&program) {
-            return Err(VerifyError::UnexpectedProgram { program });
+/// A top-level instruction [`find_methods`] matched, with the transaction it
+/// came from so its accounts can be resolved.
+#[derive(Debug)]
+pub struct NamedInstruction<'a> {
+    tx: &'a VersionedTransaction,
+    instruction: &'a CompiledInstruction,
+    /// The Anchor method name, for naming the action in a refusal.
+    pub method: &'static str,
+}
+
+impl NamedInstruction<'_> {
+    /// The account this instruction passes in position `index`.
+    pub fn account(&self, index: usize) -> Result<Pubkey, VerifyError> {
+        instruction_account(self.tx, self.instruction, index)
+    }
+}
+
+/// Every top-level instruction across `txs` that invokes `program` by one of
+/// `methods`.
+///
+/// A caller checks the accounts of what this returns, so what it does not
+/// return is as load-bearing as what it does: an instruction whose program has
+/// no shipped IDL, or whose discriminator that IDL does not name, is not a
+/// match. Pair it with an emptiness check, or an action that was never built
+/// reads the same as one that was built correctly.
+pub fn find_methods<'a>(
+    txs: &'a [VersionedTransaction],
+    program: KnownProgram,
+    methods: &[&str],
+) -> Result<Vec<NamedInstruction<'a>>, VerifyError> {
+    let id = program.id();
+    let mut found = Vec::new();
+    for tx in txs {
+        for instruction in tx.message.instructions() {
+            if instruction_program(tx, instruction)? != id {
+                continue;
+            }
+            let Some(bytes) = instruction.data.get(..8) else {
+                continue;
+            };
+            let discriminator: [u8; 8] = bytes.try_into().expect("8 bytes");
+            let Some(method) = program.method_name(&discriminator) else {
+                continue;
+            };
+            if methods.contains(&method) {
+                found.push(NamedInstruction {
+                    tx,
+                    instruction,
+                    method,
+                });
+            }
         }
     }
-    Ok(())
+    Ok(found)
 }
 
 /// SPL-token instruction tags that move a balance: `Transfer` and
@@ -421,17 +463,85 @@ mod tests {
         );
     }
 
+    /// `sha256("global:mint_data_credits_v0")[..8]`, the discriminator the
+    /// data-credits IDL declares for that method.
+    const MINT_DC: [u8; 8] = [78, 109, 169, 132, 144, 94, 221, 57];
+
     #[test]
-    fn programs_outside_the_allowlist_are_refused() {
-        let cb = KnownProgram::ComputeBudget.id();
-        let other = Pubkey::new_unique();
-        let t = tx(Pubkey::new_unique(), 1, &[(cb, vec![2]), (other, vec![0])]);
-        assert_programs_within(&t, &[cb, other]).expect("both allowed");
-        let err = assert_programs_within(&t, &[cb]).expect_err("the second must be refused");
+    fn a_named_method_on_the_named_program_is_found() {
+        let dc = KnownProgram::DataCredits.id();
+        let t = tx(Pubkey::new_unique(), 1, &[(dc, MINT_DC.to_vec())]);
+        let found = find_methods(
+            std::slice::from_ref(&t),
+            KnownProgram::DataCredits,
+            &["mint_data_credits_v0"],
+        )
+        .expect("a readable transaction");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].method, "mint_data_credits_v0");
+    }
+
+    #[test]
+    fn the_same_discriminator_on_a_different_program_is_not_a_match() {
+        // Anchor discriminators are per-method, not per-program, so a matching
+        // 8 bytes on another program must not answer for the one asked about.
+        let other = KnownProgram::Fanout.id();
+        let t = tx(Pubkey::new_unique(), 1, &[(other, MINT_DC.to_vec())]);
+        let found = find_methods(
+            std::slice::from_ref(&t),
+            KnownProgram::DataCredits,
+            &["mint_data_credits_v0"],
+        )
+        .expect("a readable transaction");
         assert!(
-            matches!(err, VerifyError::UnexpectedProgram { program } if program == other),
-            "{err}"
+            found.is_empty(),
+            "matched {} on the wrong program",
+            found.len()
         );
+    }
+
+    #[test]
+    fn a_method_outside_the_requested_set_is_not_a_match() {
+        let dc = KnownProgram::DataCredits.id();
+        let t = tx(Pubkey::new_unique(), 1, &[(dc, MINT_DC.to_vec())]);
+        let found = find_methods(
+            std::slice::from_ref(&t),
+            KnownProgram::DataCredits,
+            &["burn_without_tracking_v0"],
+        )
+        .expect("a readable transaction");
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn an_instruction_too_short_to_carry_a_discriminator_is_not_a_match() {
+        let dc = KnownProgram::DataCredits.id();
+        let t = tx(Pubkey::new_unique(), 1, &[(dc, vec![78, 109, 169])]);
+        let found = find_methods(
+            std::slice::from_ref(&t),
+            KnownProgram::DataCredits,
+            &["mint_data_credits_v0"],
+        )
+        .expect("a readable transaction");
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn a_program_loaded_from_a_lookup_table_is_refused_rather_than_skipped() {
+        // Skipping it would let an instruction the caller cannot read pass as
+        // an instruction that is not there.
+        let dc = KnownProgram::DataCredits.id();
+        let mut t = tx(Pubkey::new_unique(), 1, &[(dc, MINT_DC.to_vec())]);
+        if let VersionedMessage::Legacy(msg) = &mut t.message {
+            msg.instructions[0].program_id_index = 99;
+        }
+        let err = find_methods(
+            std::slice::from_ref(&t),
+            KnownProgram::DataCredits,
+            &["mint_data_credits_v0"],
+        )
+        .expect_err("an unreadable program must be refused");
+        assert!(matches!(err, VerifyError::LookupTable { .. }), "{err}");
     }
 
     #[test]
@@ -440,7 +550,8 @@ mod tests {
         if let VersionedMessage::Legacy(msg) = &mut t.message {
             msg.instructions[0].program_id_index = 99;
         }
-        let err = assert_programs_within(&t, &[]).expect_err("an unreadable program is refused");
+        let ix = &t.message.instructions()[0];
+        let err = instruction_program(&t, ix).expect_err("an unreadable program is refused");
         assert!(matches!(err, VerifyError::LookupTable { .. }), "{err}");
     }
 

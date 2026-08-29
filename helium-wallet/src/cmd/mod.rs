@@ -971,3 +971,113 @@ mod tests {
         assert!(CommitResponse::None.signatures().is_empty());
     }
 }
+
+/// Commands that decode what the service built and hold it to what was asked
+/// for, before `commit_via_api` signs anything.
+///
+/// Each guard has its own tests. Its call site does not: it sits in a `run`
+/// reached only through a live API and RPC, so nothing here exercises it and a
+/// guard that stopped being called would keep a green suite. These pin the call
+/// instead, which is weaker than running it -- it cannot see a guard called
+/// with the wrong arguments -- and is what separates a guard that is wired up
+/// from one that is merely defined.
+#[cfg(test)]
+mod guard_call_sites {
+    /// The command's own code: line comments removed, so a guard named in
+    /// prose does not read as a guard that is called (`:` before `//` keeps a
+    /// URL intact), and everything from the test module onward dropped, so a
+    /// guard exercised only by its tests does not read as one that is wired
+    /// into the command.
+    fn strip_comments(source: &str) -> String {
+        let source = match source.find("#[cfg(test)]") {
+            Some(at) => &source[..at],
+            None => source,
+        };
+        source
+            .lines()
+            .map(|line| match line.find("//") {
+                Some(0) => "",
+                Some(at) if !line[..at].ends_with(':') => &line[..at],
+                _ => line,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Where `code` calls `guard`.
+    ///
+    /// The guard's own `fn` definition sits above its call in every one of
+    /// these files, so a match that is a definition is not a call; counting it
+    /// would let the call be deleted while these still passed.
+    fn call_sites(code: &str, guard: &str) -> Vec<usize> {
+        code.match_indices(&format!("{guard}("))
+            .filter(|(at, _)| !code[..*at].trim_end().ends_with("fn"))
+            .map(|(at, _)| at)
+            .collect()
+    }
+
+    /// Assert `source` calls `guard` before it reaches `commit_via_api`.
+    fn assert_guarded(source: &str, guard: &str) {
+        let code = strip_comments(source);
+        let commit = code
+            .find(".commit_via_api(")
+            .expect("a guarded command commits through the API");
+        assert!(
+            call_sites(&code, guard).iter().any(|at| *at < commit),
+            "{guard} is not called before the transaction is signed"
+        );
+    }
+
+    #[test]
+    fn a_definition_is_not_counted_as_a_call() {
+        // The filter above is what makes a deleted call visible, and it is
+        // load-bearing only in the case these tests never see: a file whose
+        // guard is defined and never called.
+        let defined_only = "fn assert_thing(a: u8) {}\n";
+        assert!(call_sites(defined_only, "assert_thing").is_empty());
+        assert_eq!(
+            call_sites(
+                "fn assert_thing(a: u8) {}\nassert_thing(1);\n",
+                "assert_thing"
+            )
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_asset_transfer_checks_where_the_asset_goes() {
+        assert_guarded(include_str!("assets/transfer.rs"), "assert_transfers_asset");
+    }
+
+    #[test]
+    fn an_asset_transfer_proposal_checks_it_moves_nothing_itself() {
+        assert_guarded(
+            include_str!("assets/transfer.rs"),
+            "assert_wraps_no_asset_transfer",
+        );
+    }
+
+    #[test]
+    fn a_data_credits_mint_checks_who_is_credited() {
+        assert_guarded(include_str!("dc/mint.rs"), "assert_mints_to");
+    }
+
+    #[test]
+    fn both_rewards_destination_paths_check_the_destination() {
+        // Init and update call the same endpoint with the same standing
+        // redirect to set, so leaving either unchecked leaves the redirect
+        // unchecked.
+        let source = strip_comments(include_str!("assets/rewards.rs"));
+        assert_eq!(
+            call_sites(&source, "assert_updates_destination").len(),
+            2,
+            "expected the init and update paths to both check"
+        );
+    }
+
+    #[test]
+    fn a_token_transfer_checks_its_recipients_and_amounts() {
+        assert_guarded(include_str!("transfer.rs"), "assert_transfers");
+    }
+}

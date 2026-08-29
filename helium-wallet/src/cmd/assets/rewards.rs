@@ -130,6 +130,10 @@ impl RecipientInitCmd {
                 lazy_distributors: vec![self.token.lazy_distributor_key().to_string()],
             })
             .await?;
+        // Initializing points rewards at this wallet, so it is the same
+        // standing redirect the update path sets and is held to the same check.
+        let wallet = signer.pubkey();
+        assert_updates_destination(&response.decode_transactions()?, &wallet, &wallet)?;
         print_json(
             &self
                 .commit
@@ -185,36 +189,24 @@ fn assert_updates_destination(
     destination: &Pubkey,
 ) -> Result {
     use helium_lib::{programs::KnownProgram, verify};
-    let mut seen = 0usize;
-    for tx in unsigned {
-        for ix in tx.message.instructions() {
-            let program = verify::instruction_program(tx, ix)?;
-            let Some(known) = KnownProgram::from_pubkey(&program) else {
-                continue;
-            };
-            let Some(discriminator) = ix.data.get(..8) else {
-                continue;
-            };
-            let discriminator: [u8; 8] = discriminator.try_into().expect("8 bytes");
-            let Some(method) = known.method_name(&discriminator) else {
-                continue;
-            };
-            if !UPDATE_DESTINATION_METHODS.contains(&method) {
-                continue;
-            }
-            let got = verify::instruction_account(tx, ix, DESTINATION_ACCOUNT_INDEX)?;
-            if got != *destination {
-                bail!("{method} would send rewards to {got}, not the requested {destination}");
-            }
-            let owner = verify::instruction_account(tx, ix, OWNER_ACCOUNT_INDEX)?;
-            if owner != *wallet {
-                bail!("{method} is authorized by {owner}, not this wallet");
-            }
-            seen += 1;
-        }
-    }
-    if seen == 0 {
+    let found = verify::find_methods(
+        unsigned,
+        KnownProgram::LazyDistributor,
+        UPDATE_DESTINATION_METHODS,
+    )?;
+    if found.is_empty() {
         bail!("no rewards-destination update found in the transaction; refusing to sign");
+    }
+    for ix in &found {
+        let method = ix.method;
+        let got = ix.account(DESTINATION_ACCOUNT_INDEX)?;
+        if got != *destination {
+            bail!("{method} would send rewards to {got}, not the requested {destination}");
+        }
+        let owner = ix.account(OWNER_ACCOUNT_INDEX)?;
+        if owner != *wallet {
+            bail!("{method} is authorized by {owner}, not this wallet");
+        }
     }
     Ok(())
 }

@@ -52,6 +52,8 @@ pub mod squads;
 pub mod token;
 /// Transaction signing and confirmation.
 pub mod transaction;
+/// Checks a caller applies to a transaction built somewhere else.
+pub mod verify;
 
 pub use crate::programs::{
     bubblegum, circuit_breaker, data_credits, helium_entity_manager, helium_sub_daos, hexboosting,

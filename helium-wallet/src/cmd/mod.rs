@@ -10,11 +10,13 @@ use helium_lib::{
     },
     client::{self, SolanaRpcClient},
     keypair::{to_pubkey, Keypair, Pubkey, Signature, Signer},
+    priority_fee,
     programs::KnownProgram,
     solana_client::{
         self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
     },
     solana_sdk::transaction::VersionedTransaction,
+    verify,
 };
 use serde_json::json;
 use std::{
@@ -344,7 +346,10 @@ impl CommitOpts {
     {
         let data = response.transaction_data();
         let unsigned = data.decode_transactions()?;
-        let max_priority_fee = assert_priority_fee_within_cap(&unsigned)?;
+        let max_priority_fee = unsigned
+            .iter()
+            .map(|tx| verify::assert_priority_fee_within(tx, priority_fee::MAX_PRIORITY_FEE))
+            .sum::<std::result::Result<u64, _>>()?;
         display_action_for_review(
             data,
             response.estimated_sol_fee(),
@@ -379,31 +384,6 @@ impl CommitOpts {
     }
 }
 
-/// Refuse a message anchored to a durable nonce rather than a recent blockhash.
-///
-/// [`ApiSigning::PreserveCosigned`] keeps the server's blockhash so an existing
-/// co-signature stays valid, which is also exactly what a durable nonce needs.
-/// A nonce-anchored transaction does not expire, so signing one hands out a
-/// signature the counterparty can submit at a time of its choosing rather than
-/// within the blockhash's lifetime. `FreshBlockhash` overwrites the blockhash
-/// and so cannot be anchored this way.
-fn assert_not_nonce_anchored(tx: &VersionedTransaction) -> Result<()> {
-    use helium_lib::programs::KnownProgram;
-    // A durable nonce must be advanced by the transaction's first instruction.
-    let Some(ix) = tx.message.instructions().first() else {
-        return Ok(());
-    };
-    let keys = tx.message.static_account_keys();
-    let Some(program) = keys.get(ix.program_id_index as usize) else {
-        bail!("transaction references a lookup-table program; cannot verify it safely");
-    };
-    // System-program tags are little-endian u32; 4 is AdvanceNonceAccount.
-    if *program == KnownProgram::SystemProgram.id() && ix.data.starts_with(&[4, 0, 0, 0]) {
-        bail!("transaction is anchored to a durable nonce, so it would never expire; refusing to sign");
-    }
-    Ok(())
-}
-
 /// Confirm the batch really landed, by asking the wallet's own RPC.
 ///
 /// Submission and polling both go through the transaction-building service, so
@@ -434,75 +414,6 @@ async fn confirm_against_rpc(solana: &SolanaRpcClient, response: &CommitResponse
     Ok(())
 }
 
-/// Solana charges `limit x price / 1e6` lamports in prioritization fee, rounded
-/// up, on top of the per-signature base fee. The limit defaults to 200k compute
-/// units per instruction, capped at the 1.4M block maximum.
-const MAX_COMPUTE_UNIT_LIMIT: u64 = 1_400_000;
-const DEFAULT_COMPUTE_UNITS_PER_IX: u64 = 200_000;
-
-/// Worst-case prioritization fee, in lamports, that a server-built transaction
-/// can charge.
-///
-/// The compute-budget program is not a Helium program and carries no intent, so
-/// the review summary cannot make it legible to a signer; the only useful
-/// control is a ceiling. `price` is micro-lamports per compute unit.
-fn max_prioritization_fee(tx: &VersionedTransaction) -> u64 {
-    use helium_lib::programs::KnownProgram;
-    let compute_budget = KnownProgram::ComputeBudget.id();
-    let keys = tx.message.static_account_keys();
-    let (mut price, mut limit) = (0u64, None);
-    for ix in tx.message.instructions() {
-        if keys.get(ix.program_id_index as usize) != Some(&compute_budget) {
-            continue;
-        }
-        match ix.data.split_first() {
-            // SetComputeUnitLimit(u32)
-            Some((2, rest)) if rest.len() >= 4 => {
-                limit = Some(u64::from(u32::from_le_bytes(
-                    rest[..4].try_into().expect("4 bytes"),
-                )));
-            }
-            // SetComputeUnitPrice(u64)
-            Some((3, rest)) if rest.len() >= 8 => {
-                price = u64::from_le_bytes(rest[..8].try_into().expect("8 bytes"));
-            }
-            _ => {}
-        }
-    }
-    // An absent limit means the runtime default, which is what the fee is
-    // actually charged against, so it must be priced too.
-    let limit = limit.unwrap_or_else(|| {
-        (tx.message.instructions().len() as u64 * DEFAULT_COMPUTE_UNITS_PER_IX)
-            .min(MAX_COMPUTE_UNIT_LIMIT)
-    });
-    limit.saturating_mul(price).div_ceil(1_000_000)
-}
-
-/// Refuse to sign when a server-built transaction prices its compute units
-/// above the ceiling the local builder clamps to.
-///
-/// Without this the transfer guard's program allowlist admits an unbounded
-/// `SetComputeUnitPrice`, so a transaction carrying exactly the requested
-/// transfer can still take the wallet's whole SOL balance as priority fee. The
-/// estimate shown for review is the server's own figure and would not reveal it.
-fn assert_priority_fee_within_cap(unsigned: &[VersionedTransaction]) -> Result<u64> {
-    let mut total = 0u64;
-    for tx in unsigned {
-        let fee = max_prioritization_fee(tx);
-        let cap = helium_lib::priority_fee::MAX_PRIORITY_FEE
-            .saturating_mul(MAX_COMPUTE_UNIT_LIMIT)
-            .div_ceil(1_000_000);
-        if fee > cap {
-            bail!(
-                "server-built transaction prices its compute units at up to {fee} lamports \
-                 in priority fee, above the {cap} lamport ceiling; refusing to sign"
-            );
-        }
-        total = total.saturating_add(fee);
-    }
-    Ok(total)
-}
-
 /// Sign the server-built transactions for submission. Fetches a fresh blockhash
 /// only here (not on the dry-run path), and only for the [`ApiSigning::FreshBlockhash`]
 /// case; [`ApiSigning::PreserveCosigned`] keeps the server's message intact.
@@ -528,7 +439,7 @@ async fn sign_for_submit(
         ApiSigning::PreserveCosigned => unsigned
             .into_iter()
             .map(|tx| {
-                assert_not_nonce_anchored(&tx)?;
+                verify::assert_not_nonce_anchored(&tx)?;
                 sign_owner_in_place(tx, signer)
             })
             .collect(),
@@ -890,7 +801,6 @@ pub trait ToJson {
 mod tests {
     use super::*;
     use helium_lib::keypair::{Pubkey, Signature};
-    use helium_lib::solana_sdk::message::{Message, MessageHeader, VersionedMessage};
 
     #[test]
     fn commit_response_signature_serializes_with_committed_true() {
@@ -1045,142 +955,6 @@ mod tests {
         assert!(lines[0].contains("priority fee at most 0 lamports"));
         assert!(lines[1].contains("Transfer HNT"));
         assert!(lines[1].contains(&payer.to_string()));
-    }
-    /// Build a transaction carrying the given compute-budget instructions.
-    fn compute_budget_tx(ixs: Vec<(u8, Vec<u8>)>) -> VersionedTransaction {
-        use helium_lib::programs::KnownProgram;
-        use helium_lib::solana_sdk::instruction::CompiledInstruction;
-        let instructions = ixs
-            .into_iter()
-            .map(|(tag, mut rest)| {
-                let mut data = vec![tag];
-                data.append(&mut rest);
-                CompiledInstruction {
-                    program_id_index: 1,
-                    accounts: vec![],
-                    data,
-                }
-            })
-            .collect();
-        VersionedTransaction {
-            signatures: vec![Default::default()],
-            message: VersionedMessage::Legacy(Message {
-                header: MessageHeader {
-                    num_required_signatures: 1,
-                    num_readonly_signed_accounts: 0,
-                    num_readonly_unsigned_accounts: 1,
-                },
-                account_keys: vec![Pubkey::new_unique(), KnownProgram::ComputeBudget.id()],
-                recent_blockhash: Default::default(),
-                instructions,
-            }),
-        }
-    }
-
-    #[test]
-    fn priority_fee_is_limit_times_price() {
-        // 1.4M CU at 1000 micro-lamports/CU = 1400 lamports.
-        let tx = compute_budget_tx(vec![
-            (2, 1_400_000u32.to_le_bytes().to_vec()),
-            (3, 1_000u64.to_le_bytes().to_vec()),
-        ]);
-        assert_eq!(max_prioritization_fee(&tx), 1_400);
-        assert_eq!(
-            assert_priority_fee_within_cap(&[tx]).expect("within cap"),
-            1_400
-        );
-    }
-
-    #[test]
-    fn absent_price_costs_nothing() {
-        let tx = compute_budget_tx(vec![(2, 1_400_000u32.to_le_bytes().to_vec())]);
-        assert_eq!(max_prioritization_fee(&tx), 0);
-    }
-
-    #[test]
-    fn absent_limit_is_priced_at_the_runtime_default() {
-        // No SetComputeUnitLimit: one instruction defaults to 200k CU.
-        let tx = compute_budget_tx(vec![(3, 1_000_000u64.to_le_bytes().to_vec())]);
-        assert_eq!(max_prioritization_fee(&tx), 200_000);
-    }
-
-    #[test]
-    fn refuses_a_whole_balance_priority_fee() {
-        // The reviewed attack: a correct transfer plus a compute-unit price
-        // sized to take ~1 SOL from the wallet.
-        let tx = compute_budget_tx(vec![
-            (2, 1_400_000u32.to_le_bytes().to_vec()),
-            (3, 714_285_714u64.to_le_bytes().to_vec()),
-        ]);
-        assert_eq!(max_prioritization_fee(&tx), 1_000_000_000);
-        let err = assert_priority_fee_within_cap(&[tx]).expect_err("must refuse");
-        assert!(err.to_string().contains("refusing to sign"), "{err}");
-    }
-
-    #[test]
-    fn accepts_a_price_at_the_local_builders_ceiling() {
-        // MAX_PRIORITY_FEE is what the local builder clamps to, so a server
-        // quoting exactly that must still be signable.
-        let tx = compute_budget_tx(vec![
-            (2, 1_400_000u32.to_le_bytes().to_vec()),
-            (
-                3,
-                helium_lib::priority_fee::MAX_PRIORITY_FEE
-                    .to_le_bytes()
-                    .to_vec(),
-            ),
-        ]);
-        assert_priority_fee_within_cap(&[tx]).expect("the local ceiling must be accepted");
-    }
-
-    #[test]
-    fn fees_are_summed_across_a_batch() {
-        let one = || {
-            compute_budget_tx(vec![
-                (2, 1_000_000u32.to_le_bytes().to_vec()),
-                (3, 1_000u64.to_le_bytes().to_vec()),
-            ])
-        };
-        assert_eq!(
-            assert_priority_fee_within_cap(&[one(), one()]).expect("within cap"),
-            2_000
-        );
-    }
-    /// A transaction whose first instruction is the given system-program tag.
-    fn system_first_ix(tag: u32) -> VersionedTransaction {
-        use helium_lib::programs::KnownProgram;
-        use helium_lib::solana_sdk::instruction::CompiledInstruction;
-        VersionedTransaction {
-            signatures: vec![Default::default()],
-            message: VersionedMessage::Legacy(Message {
-                header: MessageHeader {
-                    num_required_signatures: 1,
-                    num_readonly_signed_accounts: 0,
-                    num_readonly_unsigned_accounts: 1,
-                },
-                account_keys: vec![Pubkey::new_unique(), KnownProgram::SystemProgram.id()],
-                recent_blockhash: Default::default(),
-                instructions: vec![CompiledInstruction {
-                    program_id_index: 1,
-                    accounts: vec![],
-                    data: tag.to_le_bytes().to_vec(),
-                }],
-            }),
-        }
-    }
-
-    #[test]
-    fn refuses_a_durable_nonce_anchored_transaction() {
-        // Tag 4 is AdvanceNonceAccount: the transaction would never expire.
-        let err = assert_not_nonce_anchored(&system_first_ix(4))
-            .expect_err("a nonce-anchored transaction must be refused");
-        assert!(err.to_string().contains("durable nonce"), "{err}");
-    }
-
-    #[test]
-    fn allows_an_ordinary_first_instruction() {
-        // Tag 2 is Transfer, which is not a nonce advance.
-        assert_not_nonce_anchored(&system_first_ix(2)).expect("an ordinary transaction");
     }
 
     #[test]

@@ -184,15 +184,12 @@ fn assert_updates_destination(
     wallet: &Pubkey,
     destination: &Pubkey,
 ) -> Result {
-    use helium_lib::programs::KnownProgram;
+    use helium_lib::{programs::KnownProgram, verify};
     let mut seen = 0usize;
     for tx in unsigned {
-        let keys = tx.message.static_account_keys();
         for ix in tx.message.instructions() {
-            let Some(program) = keys.get(ix.program_id_index as usize) else {
-                bail!("rewards update references a lookup-table program; cannot verify it safely");
-            };
-            let Some(known) = KnownProgram::from_pubkey(program) else {
+            let program = verify::instruction_program(tx, ix)?;
+            let Some(known) = KnownProgram::from_pubkey(&program) else {
                 continue;
             };
             let Some(discriminator) = ix.data.get(..8) else {
@@ -205,21 +202,11 @@ fn assert_updates_destination(
             if !UPDATE_DESTINATION_METHODS.contains(&method) {
                 continue;
             }
-            let resolve = |slot: usize| -> Result<Pubkey> {
-                let index = *ix.accounts.get(slot).ok_or_else(|| {
-                    anyhow!("{method} is missing account {slot}; cannot verify it safely")
-                })? as usize;
-                keys.get(index).copied().ok_or_else(|| {
-                    anyhow!(
-                        "{method} account {slot} is lookup-table loaded; cannot verify it safely"
-                    )
-                })
-            };
-            let got = resolve(DESTINATION_ACCOUNT_INDEX)?;
+            let got = verify::instruction_account(tx, ix, DESTINATION_ACCOUNT_INDEX)?;
             if got != *destination {
                 bail!("{method} would send rewards to {got}, not the requested {destination}");
             }
-            let owner = resolve(OWNER_ACCOUNT_INDEX)?;
+            let owner = verify::instruction_account(tx, ix, OWNER_ACCOUNT_INDEX)?;
             if owner != *wallet {
                 bail!("{method} is authorized by {owner}, not this wallet");
             }

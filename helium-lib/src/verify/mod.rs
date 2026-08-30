@@ -93,6 +93,10 @@ pub enum VerifyError {
     /// A proposal carries an action at the top level that it should only wrap.
     #[error("a proposal carries a top-level {action} instead of wrapping it")]
     ActionNotWrapped { action: &'static str },
+    /// A builder returned a different number of transactions than the single
+    /// one the action was expected to need.
+    #[error("expected one transaction, got {found}")]
+    TransactionCount { found: usize },
     /// A quote does not describe the swap that was asked for.
     #[error("the swap quote {detail}")]
     Quote { detail: String },
@@ -181,6 +185,38 @@ fn max_prioritization_fee(tx: &VersionedTransaction) -> u64 {
             .min(MAX_COMPUTE_UNIT_LIMIT)
     });
     limit.saturating_mul(price).div_ceil(1_000_000)
+}
+
+/// The single transaction a builder returned, held to what any caller is
+/// willing to authorize before its contents are looked at.
+///
+/// One transaction, because an action expected to need one that arrives as
+/// several is not that action. Priced within `max_micro_lamports`, because the
+/// compute-budget instructions carry no intent a reviewer can read. And
+/// requiring only `sole_signer`'s signature when one is named -- `None` allows
+/// a co-signature, which some actions legitimately carry.
+///
+/// This is the preamble to every per-action check; those say what the
+/// transaction must *do*, this says what shape it has to arrive in.
+pub fn sole_signable(
+    data: &crate::blockchain_api::types::TransactionData,
+    sole_signer: Option<&Pubkey>,
+    max_micro_lamports: u64,
+) -> Result<VersionedTransaction, VerifyError> {
+    let mut txns = data
+        .decode_transactions()
+        .map_err(|_| VerifyError::Malformed {
+            what: "a returned transaction",
+        })?;
+    if txns.len() != 1 {
+        return Err(VerifyError::TransactionCount { found: txns.len() });
+    }
+    let txn = txns.remove(0);
+    assert_priority_fee_within(&txn, max_micro_lamports)?;
+    if let Some(signer) = sole_signer {
+        assert_sole_signer(&txn, signer)?;
+    }
+    Ok(txn)
 }
 
 /// Refuse a transaction whose compute-unit price exceeds `max_micro_lamports`.

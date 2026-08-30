@@ -277,6 +277,28 @@ impl std::hash::Hash for HotspotLocation {
     }
 }
 
+/// The h3 cell a lat/lon pair names, at the resolution hotspot info is stored
+/// at. `None` for an unset pair; an error if only one of the two is given.
+///
+/// Shared so a caller asserting a location against a transaction built
+/// elsewhere derives the same cell the update would.
+pub fn cell_for(
+    lat: Option<f64>,
+    lon: Option<f64>,
+) -> Result<Option<h3o::CellIndex>, crate::error::EncodeError> {
+    match (lat, lon) {
+        (Some(lat), Some(lon)) => Ok(Some(
+            h3o::LatLng::new(lat, lon)
+                .map_err(crate::error::EncodeError::from)?
+                .to_cell(h3o::Resolution::Twelve),
+        )),
+        (None, None) => Ok(None),
+        _ => Err(crate::error::EncodeError::other(
+            "Both lat and lon must be specified",
+        )),
+    }
+}
+
 impl From<h3o::CellIndex> for HotspotLocation {
     fn from(value: h3o::CellIndex) -> Self {
         Self {
@@ -702,16 +724,7 @@ impl HotspotInfoUpdate {
     }
 
     pub fn set_geo(self, lat: Option<f64>, lon: Option<f64>) -> Result<Self, EncodeError> {
-        let location: Option<h3o::CellIndex> = match (lat, lon) {
-            (Some(lat), Some(lon)) => Some(
-                h3o::LatLng::new(lat, lon)
-                    .map_err(EncodeError::from)?
-                    .to_cell(h3o::Resolution::Twelve),
-            ),
-            (None, None) => None,
-            _ => return Err(EncodeError::other("Both lat and lon must be specified")),
-        };
-        Ok(self.set_location(location))
+        Ok(self.set_location(cell_for(lat, lon)?))
     }
 
     pub fn location_u64(&self) -> Option<u64> {

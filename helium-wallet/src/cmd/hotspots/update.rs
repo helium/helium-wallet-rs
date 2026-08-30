@@ -2,7 +2,66 @@ use crate::cmd::*;
 use helium_lib::{
     blockchain_api::types::{DeploymentInfo, DeviceType, LatLng, UpdateInfoRequest},
     keypair::Signer,
+    programs::KnownProgram,
+    transaction::VersionedTransaction,
+    verify,
 };
+
+/// Both update instructions name the hotspot's owner at account index 3 and
+/// carry the asserted location in their arguments.
+const UPDATE_METHODS: &[&str] = &["update_iot_info_v0", "update_mobile_info_v0"];
+const HOTSPOT_OWNER_INDEX: usize = 3;
+
+/// Refuse to sign unless the update asserts the location that was asked for,
+/// on a hotspot this wallet owns, and changes nothing that was not asked for.
+///
+/// Location is the field rewards are paid against, and it is compared exactly:
+/// the cell is derived from the same coordinates that were sent. Gain and
+/// elevation are checked only for presence, so an update that quietly adds one
+/// is refused while their unit conversion stays the service's to define --
+/// duplicating its rounding here would refuse honest updates the day it changes.
+fn assert_updates_hotspot(
+    unsigned: &[VersionedTransaction],
+    wallet: &Pubkey,
+    request: &UpdateInfoRequest,
+) -> Result<()> {
+    let found = verify::find_methods(unsigned, KnownProgram::HeliumEntityManager, UPDATE_METHODS)?;
+    let [update] = found.as_slice() else {
+        bail!(
+            "expected exactly one hotspot info update, found {}; refusing to sign",
+            found.len()
+        );
+    };
+    let owner = update.account(HOTSPOT_OWNER_INDEX)?;
+    if owner != *wallet {
+        bail!("the update is for a hotspot owned by {owner}, not this wallet");
+    }
+
+    let args = update
+        .args()
+        .ok_or_else(|| anyhow!("the update's arguments could not be read; refusing to sign"))?;
+    let args = &args["args"];
+
+    let (lat, lon) = match request.location {
+        Some(LatLng { lat, lng }) => (Some(lat), Some(lng)),
+        None => (None, None),
+    };
+    let want = helium_lib::hotspot::cell_for(lat, lon)?.map(u64::from);
+    let got = args["location"].as_u64();
+    if got != want {
+        bail!("the update asserts location {got:?}, not the requested {want:?}");
+    }
+
+    for (field, requested) in [
+        ("gain", request.gain.is_some()),
+        ("elevation", request.elevation.is_some()),
+    ] {
+        if !requested && !args[field].is_null() {
+            bail!("the update sets {field}, which was not asked for; refusing to sign");
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, clap::Args)]
 /// Assert a Hotspot's on-chain info (location and device details).
@@ -65,18 +124,18 @@ impl IotCmd {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
         let api = opts.blockchain_api()?;
-        let response = api
-            .update_info(&UpdateInfoRequest {
-                device_type: DeviceType::Iot,
-                entity_pub_key: self.gateway.to_string(),
-                wallet_address: signer.pubkey().to_string(),
-                location: location(self.lat, self.lon)?,
-                gain: self.gain,
-                elevation: self.elevation,
-                azimuth: self.azimuth,
-                deployment_info: None,
-            })
-            .await?;
+        let request = UpdateInfoRequest {
+            device_type: DeviceType::Iot,
+            entity_pub_key: self.gateway.to_string(),
+            wallet_address: signer.pubkey().to_string(),
+            location: location(self.lat, self.lon)?,
+            gain: self.gain,
+            elevation: self.elevation,
+            azimuth: self.azimuth,
+            deployment_info: None,
+        };
+        let response = api.update_info(&request).await?;
+        assert_updates_hotspot(&response.decode_transactions()?, &signer.pubkey(), &request)?;
         print_json(
             &self
                 .commit
@@ -130,20 +189,20 @@ impl MobileCmd {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
         let api = opts.blockchain_api()?;
-        let response = api
-            .update_info(&UpdateInfoRequest {
-                device_type: DeviceType::Mobile,
-                entity_pub_key: self.gateway.to_string(),
-                wallet_address: signer.pubkey().to_string(),
-                location: location(self.lat, self.lon)?,
-                gain: None,
-                elevation: None,
-                // Mobile azimuth is carried in deployment_info (WIFI); the
-                // top-level azimuth field is IoT-only.
-                azimuth: None,
-                deployment_info: self.deployment_info(),
-            })
-            .await?;
+        let request = UpdateInfoRequest {
+            device_type: DeviceType::Mobile,
+            entity_pub_key: self.gateway.to_string(),
+            wallet_address: signer.pubkey().to_string(),
+            location: location(self.lat, self.lon)?,
+            gain: None,
+            elevation: None,
+            // Mobile azimuth is carried in deployment_info (WIFI); the
+            // top-level azimuth field is IoT-only.
+            azimuth: None,
+            deployment_info: self.deployment_info(),
+        };
+        let response = api.update_info(&request).await?;
+        assert_updates_hotspot(&response.decode_transactions()?, &signer.pubkey(), &request)?;
         print_json(
             &self
                 .commit
@@ -196,5 +255,182 @@ fn location(lat: Option<f64>, lon: Option<f64>) -> Result<Option<LatLng>> {
         }
         (None, None) => Ok(None),
         _ => bail!("both --lat and --lon are required to assert a location"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use helium_lib::{
+        keypair::Pubkey,
+        solana_sdk::{
+            instruction::{AccountMeta, Instruction},
+            message::{Message, VersionedMessage},
+        },
+    };
+
+    /// The discriminator the entity-manager IDL declares for this method.
+    const UPDATE_IOT: [u8; 8] = [211, 235, 205, 29, 109, 86, 153, 39];
+
+    const LAT: f64 = 37.7749;
+    const LON: f64 = -122.4194;
+
+    fn cell(lat: f64, lon: f64) -> u64 {
+        u64::from(
+            helium_lib::hotspot::cell_for(Some(lat), Some(lon))
+                .expect("a valid coordinate")
+                .expect("a cell"),
+        )
+    }
+
+    /// `UpdateIotInfoArgsV0` in IDL field order: location, elevation, gain,
+    /// then the merkle proof fields the guard does not read.
+    fn update_tx(
+        owner: Pubkey,
+        location: Option<u64>,
+        elevation: Option<i32>,
+        gain: Option<i32>,
+    ) -> VersionedTransaction {
+        let mut data = UPDATE_IOT.to_vec();
+        let mut opt_u64 = |v: Option<u64>| match v {
+            Some(v) => {
+                data.push(1);
+                data.extend_from_slice(&v.to_le_bytes());
+            }
+            None => data.push(0),
+        };
+        opt_u64(location);
+        for v in [elevation, gain] {
+            match v {
+                Some(v) => {
+                    data.push(1);
+                    data.extend_from_slice(&v.to_le_bytes());
+                }
+                None => data.push(0),
+            }
+        }
+        data.extend_from_slice(&[0u8; 32]); // data_hash
+        data.extend_from_slice(&[0u8; 32]); // creator_hash
+        data.extend_from_slice(&[0u8; 32]); // root
+        data.extend_from_slice(&0u32.to_le_bytes()); // index
+
+        let accounts = [
+            Pubkey::new_unique(), // payer
+            Pubkey::new_unique(), // dc_fee_payer
+            Pubkey::new_unique(), // iot_info
+            owner,
+        ];
+        let ix = Instruction {
+            program_id: KnownProgram::HeliumEntityManager.id(),
+            accounts: accounts
+                .iter()
+                .map(|key| AccountMeta::new(*key, false))
+                .collect(),
+            data,
+        };
+        VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::Legacy(Message::new(&[ix], Some(&owner))),
+        }
+    }
+
+    fn request(lat: Option<f64>, lon: Option<f64>, gain: Option<f64>) -> UpdateInfoRequest {
+        UpdateInfoRequest {
+            device_type: DeviceType::Iot,
+            entity_pub_key: "gw".to_string(),
+            wallet_address: "w".to_string(),
+            location: location(lat, lon).expect("a valid coordinate"),
+            gain,
+            elevation: None,
+            azimuth: None,
+            deployment_info: None,
+        }
+    }
+
+    #[test]
+    fn the_requested_assertion_is_accepted() {
+        let wallet = Pubkey::new_unique();
+        assert_updates_hotspot(
+            &[update_tx(wallet, Some(cell(LAT, LON)), None, None)],
+            &wallet,
+            &request(Some(LAT), Some(LON), None),
+        )
+        .expect("the requested assertion");
+    }
+
+    #[test]
+    fn an_assertion_at_another_location_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let err = assert_updates_hotspot(
+            &[update_tx(wallet, Some(cell(51.5074, -0.1278)), None, None)],
+            &wallet,
+            &request(Some(LAT), Some(LON), None),
+        )
+        .expect_err("a substituted location must be refused");
+        assert!(err.to_string().contains("not the requested"), "{err}");
+    }
+
+    #[test]
+    fn an_update_to_someone_elses_hotspot_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let err = assert_updates_hotspot(
+            &[update_tx(
+                Pubkey::new_unique(),
+                Some(cell(LAT, LON)),
+                None,
+                None,
+            )],
+            &wallet,
+            &request(Some(LAT), Some(LON), None),
+        )
+        .expect_err("another owner's hotspot must be refused");
+        assert!(err.to_string().contains("not this wallet"), "{err}");
+    }
+
+    #[test]
+    fn an_update_setting_a_gain_that_was_not_asked_for_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let err = assert_updates_hotspot(
+            &[update_tx(wallet, Some(cell(LAT, LON)), None, Some(30))],
+            &wallet,
+            &request(Some(LAT), Some(LON), None),
+        )
+        .expect_err("an unrequested gain must be refused");
+        assert!(err.to_string().contains("gain"), "{err}");
+    }
+
+    #[test]
+    fn an_update_setting_a_location_that_was_not_asked_for_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let err = assert_updates_hotspot(
+            &[update_tx(wallet, Some(cell(LAT, LON)), None, None)],
+            &wallet,
+            &request(None, None, None),
+        )
+        .expect_err("an unrequested location must be refused");
+        assert!(err.to_string().contains("not the requested"), "{err}");
+    }
+
+    #[test]
+    fn a_second_update_smuggled_alongside_the_first_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let err = assert_updates_hotspot(
+            &[
+                update_tx(wallet, Some(cell(LAT, LON)), None, None),
+                update_tx(wallet, Some(cell(51.5074, -0.1278)), None, None),
+            ],
+            &wallet,
+            &request(Some(LAT), Some(LON), None),
+        )
+        .expect_err("a batch updating twice must be refused");
+        assert!(err.to_string().contains("found 2"), "{err}");
+    }
+
+    #[test]
+    fn a_response_carrying_no_update_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let err = assert_updates_hotspot(&[], &wallet, &request(Some(LAT), Some(LON), None))
+            .expect_err("an action that was never built must be refused");
+        assert!(err.to_string().contains("found 0"), "{err}");
     }
 }

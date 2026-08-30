@@ -1016,15 +1016,27 @@ mod guard_call_sites {
             .collect()
     }
 
-    /// Assert `source` calls `guard` before it reaches `commit_via_api`.
+    /// Assert `source` calls `guard` before its first `commit_via_api`.
     fn assert_guarded(source: &str, guard: &str) {
+        assert_guarded_before(source, guard, 1);
+    }
+
+    /// Assert `source` calls `guard` before its `nth` (1-based)
+    /// `commit_via_api`.
+    ///
+    /// A command that commits twice signs two different transactions, and a
+    /// guard for the second necessarily sits after the first commit. Checking
+    /// every guard against the first commit would read that as unguarded.
+    fn assert_guarded_before(source: &str, guard: &str, nth: usize) {
         let code = strip_comments(source);
         let commit = code
-            .find(".commit_via_api(")
-            .expect("a guarded command commits through the API");
+            .match_indices(".commit_via_api(")
+            .nth(nth - 1)
+            .unwrap_or_else(|| panic!("the command has no commit number {nth}"))
+            .0;
         assert!(
             call_sites(&code, guard).iter().any(|at| *at < commit),
-            "{guard} is not called before the transaction is signed"
+            "{guard} is not called before transaction {nth} is signed"
         );
     }
 
@@ -1073,6 +1085,48 @@ mod guard_call_sites {
             call_sites(&source, "assert_updates_destination").len(),
             2,
             "expected the init and update paths to both check"
+        );
+    }
+
+    #[test]
+    fn a_dc_burn_checks_its_amount_and_holder() {
+        assert_guarded(include_str!("dc/burn.rs"), "assert_burns");
+        assert_guarded(include_str!("dc/burn.rs"), "assert_wraps_no_burn");
+    }
+
+    #[test]
+    fn a_token_burn_checks_its_amount_and_source() {
+        assert_guarded(include_str!("burn.rs"), "verify::assert_spl_burn");
+        assert_guarded(include_str!("burn.rs"), "assert_wraps_no_burn");
+    }
+
+    #[test]
+    fn an_asset_burn_checks_it_destroys_one_owned_asset() {
+        assert_guarded(
+            include_str!("assets/burn.rs"),
+            "assert_burns_one_owned_asset",
+        );
+        assert_guarded(include_str!("assets/burn.rs"), "assert_wraps_no_burn");
+    }
+
+    #[test]
+    fn a_hotspot_update_checks_its_owner_and_location() {
+        assert_guarded(include_str!("hotspots/update.rs"), "assert_updates_hotspot");
+    }
+
+    #[test]
+    fn adding_a_hotspot_checks_who_it_is_issued_and_onboarded_to() {
+        // Two commits: the issue, then the onboard. Each guard is checked
+        // against the transaction it actually guards.
+        assert_guarded_before(
+            include_str!("hotspots/add.rs"),
+            "assert_issues_to_wallet",
+            1,
+        );
+        assert_guarded_before(
+            include_str!("hotspots/add.rs"),
+            "assert_onboards_to_wallet",
+            2,
         );
     }
 

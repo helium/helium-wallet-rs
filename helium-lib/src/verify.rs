@@ -68,6 +68,9 @@ pub enum VerifyError {
     /// The amounts or recipients do not match what was asked for.
     #[error("the transfers do not match what was requested")]
     TransfersDiffer,
+    /// The transaction destroys a different amount than was asked for.
+    #[error("the transaction burns {actual}, not the requested {expected}")]
+    BurnDiffers { expected: u64, actual: u64 },
     /// Instruction data is too short to read a field the check needs.
     #[error("{what} could not be read")]
     Malformed { what: &'static str },
@@ -352,6 +355,74 @@ pub fn assert_quote_matches(
             "sets a minimum output of {threshold}, below the {floor} implied by \
              {max_slippage_bps} bps on an output of {out}"
         ));
+    }
+    Ok(())
+}
+
+/// SPL-token instruction tags that destroy a balance: `Burn` and `BurnChecked`.
+/// Both lay out `[account, mint, authority]`, so only the trailing decimals byte
+/// differs and the amount sits in the same place.
+const SPL_BURN_TAGS: [u8; 2] = [8, 15];
+
+/// Refuse unless the transaction burns exactly `amount` of `token` from
+/// `wallet`'s associated account, and does nothing else that moves a balance.
+///
+/// A burn is not recoverable, so the amount and the account it comes out of are
+/// the whole of what a signer is agreeing to.
+pub fn assert_spl_burn(
+    unsigned: &[VersionedTransaction],
+    wallet: &Pubkey,
+    token: crate::token::Token,
+    amount: u64,
+) -> Result<(), VerifyError> {
+    let spl_token = KnownProgram::SplToken.id();
+    let compute_budget = KnownProgram::ComputeBudget.id();
+    let source = token.associated_token_address(wallet);
+    let mut burned: u64 = 0;
+    let mut seen = 0usize;
+
+    for tx in unsigned {
+        for ix in tx.message.instructions() {
+            let program = instruction_program(tx, ix)?;
+            if program == compute_budget {
+                continue;
+            }
+            if program != spl_token {
+                return Err(VerifyError::UnexpectedProgram { program });
+            }
+            let tag = ix.data.first().copied().unwrap_or(u8::MAX);
+            if !SPL_BURN_TAGS.contains(&tag) {
+                return Err(VerifyError::UnexpectedInstruction {
+                    program,
+                    tag: ix.data.first().copied(),
+                });
+            }
+            let from = instruction_account(tx, ix, 0)?;
+            if from != source {
+                return Err(VerifyError::WrongSource {
+                    expected: source,
+                    actual: from,
+                });
+            }
+            let authority = instruction_account(tx, ix, 2)?;
+            if authority != *wallet {
+                return Err(VerifyError::WrongAuthority {
+                    expected: *wallet,
+                    actual: authority,
+                });
+            }
+            burned = burned.saturating_add(spl_transfer_amount(&ix.data)?);
+            seen += 1;
+        }
+    }
+
+    // `seen == 0` is its own case: a response carrying no burn at all would
+    // otherwise pass whenever the requested amount happened to be zero.
+    if seen == 0 || burned != amount {
+        return Err(VerifyError::BurnDiffers {
+            expected: amount,
+            actual: burned,
+        });
     }
     Ok(())
 }
@@ -781,6 +852,116 @@ mod tests {
         let err =
             check_quote(&quote(&[]), 20_000).expect_err("an impossible slippage must be refused");
         assert!(err.to_string().contains("whole output"), "{err}");
+    }
+
+    /// An SPL `Burn` (tag 8) laid out `[account, mint, authority]`.
+    fn burn_ix(source: Pubkey, authority: Pubkey, amount: u64) -> VersionedTransaction {
+        let mut data = vec![8u8];
+        data.extend_from_slice(&amount.to_le_bytes());
+        let keys = vec![
+            authority,
+            KnownProgram::SplToken.id(),
+            source,
+            Pubkey::new_unique(),
+        ];
+        VersionedTransaction {
+            signatures: vec![Default::default()],
+            message: VersionedMessage::Legacy(Message {
+                header: MessageHeader {
+                    num_required_signatures: 1,
+                    num_readonly_signed_accounts: 0,
+                    num_readonly_unsigned_accounts: 0,
+                },
+                account_keys: keys,
+                recent_blockhash: Default::default(),
+                instructions: vec![CompiledInstruction {
+                    program_id_index: 1,
+                    // [source, mint, authority]
+                    accounts: vec![2, 3, 0],
+                    data,
+                }],
+            }),
+        }
+    }
+
+    #[test]
+    fn a_burn_of_the_requested_amount_is_accepted() {
+        let wallet = Pubkey::new_unique();
+        let source = crate::token::Token::Hnt.associated_token_address(&wallet);
+        assert_spl_burn(
+            std::slice::from_ref(&burn_ix(source, wallet, 500)),
+            &wallet,
+            crate::token::Token::Hnt,
+            500,
+        )
+        .expect("the requested burn");
+    }
+
+    #[test]
+    fn a_burn_of_a_different_amount_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let source = crate::token::Token::Hnt.associated_token_address(&wallet);
+        let err = assert_spl_burn(
+            std::slice::from_ref(&burn_ix(source, wallet, 501)),
+            &wallet,
+            crate::token::Token::Hnt,
+            500,
+        )
+        .expect_err("a substituted amount must be refused");
+        assert!(
+            matches!(
+                err,
+                VerifyError::BurnDiffers {
+                    expected: 500,
+                    actual: 501
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_burn_from_another_account_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let err = assert_spl_burn(
+            std::slice::from_ref(&burn_ix(Pubkey::new_unique(), wallet, 500)),
+            &wallet,
+            crate::token::Token::Hnt,
+            500,
+        )
+        .expect_err("a burn from another account must be refused");
+        assert!(matches!(err, VerifyError::WrongSource { .. }), "{err}");
+    }
+
+    #[test]
+    fn a_response_carrying_no_burn_is_refused_even_for_zero() {
+        // Zero is the case an emptiness check has to be separate for: without
+        // it, a response carrying nothing would satisfy a burn of nothing.
+        let wallet = Pubkey::new_unique();
+        let err = assert_spl_burn(&[], &wallet, crate::token::Token::Hnt, 0)
+            .expect_err("a response with no burn must be refused");
+        assert!(matches!(err, VerifyError::BurnDiffers { .. }), "{err}");
+    }
+
+    #[test]
+    fn a_transfer_bundled_with_a_burn_is_refused() {
+        let wallet = Pubkey::new_unique();
+        let source = crate::token::Token::Hnt.associated_token_address(&wallet);
+        let mut t = burn_ix(source, wallet, 500);
+        if let VersionedMessage::Legacy(msg) = &mut t.message {
+            msg.instructions[0].data[0] = 3; // Transfer
+        }
+        let err = assert_spl_burn(
+            std::slice::from_ref(&t),
+            &wallet,
+            crate::token::Token::Hnt,
+            500,
+        )
+        .expect_err("a transfer must not pass as a burn");
+        assert!(
+            matches!(err, VerifyError::UnexpectedInstruction { tag: Some(3), .. }),
+            "{err}"
+        );
     }
 
     #[test]

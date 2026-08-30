@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
 use crate::error::EncodeError;
-#[cfg(feature = "txn")]
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     bubblegum,
@@ -647,7 +646,6 @@ impl From<helium_entity_manager::types::RadioInfoV0> for CbrsRadioInfo {
 // actions into one atomic transaction sharing a single merkle proof, which
 // the blockchain-api cannot express: it builds one action per request.
 
-#[cfg(feature = "txn")]
 /// The on-chain ECC verifier used to validate gateway signatures during data-only hotspot issuance.
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
@@ -767,7 +765,6 @@ impl HotspotInfoUpdate {
     }
 }
 
-#[cfg(feature = "txn")]
 /// Builds an instruction to update hotspot info directly on-chain (no onboarding server).
 pub fn direct_update_instruction(
     kta: &helium_entity_manager::accounts::KeyToAssetV0,
@@ -863,7 +860,6 @@ pub fn direct_update_instruction(
     Ok(ix)
 }
 
-#[cfg(feature = "txn")]
 /// Builds an unsigned transaction for a direct on-chain hotspot info update.
 pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,
@@ -882,7 +878,6 @@ pub async fn direct_update_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClie
     Ok((txn, block_height))
 }
 
-#[cfg(feature = "txn")]
 /// Signs and returns a transaction to update hotspot info directly on-chain.
 ///
 /// Unlike [`update`], this bypasses the onboarding server and submits directly to Solana.
@@ -901,7 +896,6 @@ pub async fn direct_update<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
-#[cfg(feature = "txn")]
 /// Gets an unsigned transaction for a hotspot transfer.
 ///
 /// The Hotspot is transferred from the owner of the Hotspot to the given recipient
@@ -917,7 +911,6 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     asset::transfer_transaction(client, &kta.asset, recipient, opts).await
 }
 
-#[cfg(feature = "txn")]
 /// Signs and returns a transaction to transfer a hotspot to a new owner.
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,

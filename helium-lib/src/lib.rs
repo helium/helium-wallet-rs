@@ -18,7 +18,6 @@ pub mod client;
 /// Helium DAO and sub-DAO account lookups.
 pub mod dao;
 /// Data-credit minting. Requires the `txn` feature.
-#[cfg(feature = "txn")]
 pub mod dc;
 /// Entity key encoding for hotspots and other network entities.
 pub mod entity_key;
@@ -32,7 +31,6 @@ pub mod keypair;
 pub mod kta;
 /// Versioned-message assembly with address lookup tables. Requires the `txn`
 /// feature.
-#[cfg(feature = "txn")]
 pub mod message;
 /// Priority-fee bounds, plus compute-budget and fee-estimation helpers. The
 /// bounds are always available so callers can hold a server-built transaction
@@ -72,7 +70,6 @@ pub use tuktuk_sdk;
 /// Options controlling transaction priority fees and address lookup tables.
 ///
 /// Requires the `txn` feature.
-#[cfg(feature = "txn")]
 pub struct TransactionOpts {
     /// Minimum priority fee in micro-lamports per compute unit.
     pub min_priority_fee: u64,
@@ -85,7 +82,6 @@ pub struct TransactionOpts {
 /// Returns the default LUT addresses for the cluster identified by `url`,
 /// selecting the devnet common LUT for devnet URLs and the mainnet common
 /// LUT otherwise. See [`client::is_devnet`] for how the cluster is detected.
-#[cfg(feature = "txn")]
 fn default_lut_addresses_for_url(url: &str) -> Vec<Pubkey> {
     if client::is_devnet(url) {
         vec![message::COMMON_LUT_DEVNET]
@@ -94,7 +90,6 @@ fn default_lut_addresses_for_url(url: &str) -> Vec<Pubkey> {
     }
 }
 
-#[cfg(feature = "txn")]
 impl Default for TransactionOpts {
     /// Default options assuming the **mainnet** cluster. When the target
     /// cluster is not known to be mainnet, build options with
@@ -109,7 +104,6 @@ impl Default for TransactionOpts {
     }
 }
 
-#[cfg(feature = "txn")]
 impl TransactionOpts {
     /// Builds options for the cluster identified by `url`, selecting the
     /// devnet or mainnet common lookup table accordingly. Priority fees use

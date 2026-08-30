@@ -574,7 +574,6 @@ impl Token {
 
 // ---- Local transaction construction (`txn` feature) ----
 
-#[cfg(feature = "txn")]
 use crate::{
     message,
     solana_sdk::{self, signer::Signer},
@@ -582,26 +581,22 @@ use crate::{
     TransactionOpts,
 };
 
-#[cfg(feature = "txn")]
 /// Number of Compute Units need to execute SetComputeUnitLimit and
 /// ComputeBudget, together.
 /// (Observed value: 450)
 const SYS_PROGRAM_SETUP_CU: u32 = 600;
 
-#[cfg(feature = "txn")]
 /// Number of Compute Units need to execute a System Program: Transfer
 /// instruction.
 /// (Actual value: 150)
 const SYS_PROGRAM_TRANSFER_CU: u32 = 200;
 
-#[cfg(feature = "txn")]
 /// Number of Compute Units needed to execute an SPL_CreateIdempotent
 /// instruction in its worst case; the case in which it must actually create
 /// an ATA.
 /// (Actual value: 30998, observed on-chain 2025-01)
 const SPL_CREATE_IDEMPOTENT_CU: u32 = 32000;
 
-#[cfg(feature = "txn")]
 /// Number of Compute Units needed to execute an SPL_TransferChecked instruction.
 /// (Actual value: 6199, observed on-chain 2025-02-09)
 const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
@@ -610,7 +605,6 @@ const SPL_TRANSFER_CHECKED_CU: u32 = 7000;
 /// `payer` as the source authority. Without the compute-budget framing
 /// `transfer_message` adds, so a caller bundling these with other
 /// instructions supplies its own budget for the whole transaction.
-#[cfg(feature = "txn")]
 pub fn transfer_instructions(
     payer: &Pubkey,
     transfers: &[(Pubkey, TokenAmount)],
@@ -652,7 +646,6 @@ pub fn transfer_instructions(
     Ok(ixs)
 }
 
-#[cfg(feature = "txn")]
 /// Builds a versioned message that transfers tokens to one or more recipients.
 pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     client: &C,
@@ -675,7 +668,6 @@ pub async fn transfer_message<C: AsRef<SolanaRpcClient>>(
     message::mk_budgeted_message(client, cu_budget, &ixs, payer, opts).await
 }
 
-#[cfg(feature = "txn")]
 /// Transfer tokens to one or more recipients, returning a signed transaction.
 pub async fn transfer<C: AsRef<SolanaRpcClient>>(
     client: &C,

@@ -3,7 +3,6 @@ pub use solana_sdk::transaction::VersionedTransaction;
 /// Builds a signed versioned transaction from a message and signers.
 ///
 /// Requires the `txn` feature.
-#[cfg(feature = "txn")]
 pub fn mk_transaction<T: solana_sdk::signers::Signers + ?Sized>(
     msg: crate::message::VersionedMessage,
     signers: &T,
@@ -15,7 +14,6 @@ pub fn mk_transaction<T: solana_sdk::signers::Signers + ?Sized>(
 /// builders, preserving the block height for confirmation tracking.
 ///
 /// Requires the `txn` feature.
-#[cfg(feature = "txn")]
 pub fn mk_signed_transaction<T: solana_sdk::signers::Signers + ?Sized>(
     (msg, block_height): (crate::message::VersionedMessage, u64),
     signers: &T,

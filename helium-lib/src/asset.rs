@@ -15,7 +15,6 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr, time::Duration};
 
-#[cfg(feature = "txn")]
 use crate::{
     message,
     solana_sdk::{signature::NullSigner, signer::Signer},
@@ -705,7 +704,6 @@ pub mod serde_hash {
 /// Instruction-level so a caller can bundle the transfer with other
 /// instructions in one transaction, sharing a single merkle proof. Requires the
 /// `txn` feature.
-#[cfg(feature = "txn")]
 pub fn transfer_instruction(
     recipient: &Pubkey,
     asset: &Asset,
@@ -750,7 +748,6 @@ pub fn transfer_instruction(
     })
 }
 
-#[cfg(feature = "txn")]
 /// Gets an unsigned transaction for an asset transfer.
 ///
 /// The asset is transferred from the owner to the given recipient
@@ -771,7 +768,6 @@ pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     Ok((txn, block_height))
 }
 
-#[cfg(feature = "txn")]
 /// Signs and returns a transaction to transfer a compressed NFT to a new owner.
 pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     client: &C,

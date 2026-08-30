@@ -12,7 +12,6 @@ use crate::{
 use helium_crypto::{PublicKey, Sign};
 use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 
-#[cfg(feature = "txn")]
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     asset, bubblegum,
@@ -32,10 +31,8 @@ use crate::{
     transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
-#[cfg(feature = "txn")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "txn")]
 mod iot {
     use super::*;
 
@@ -102,7 +99,6 @@ mod iot {
     }
 }
 
-#[cfg(feature = "txn")]
 mod mobile {
     use super::*;
 
@@ -177,7 +173,6 @@ mod mobile {
 /// Data-only hotspots are lighter-weight hotspots that transfer data but do not
 /// participate in Proof-of-Coverage. They are cheaper to onboard and require
 /// fewer DC fees than full hotspots.
-#[cfg(feature = "txn")]
 fn onboard_instruction(
     subdao: SubDao,
     hotspot_key: &helium_crypto::PublicKey,
@@ -208,7 +203,6 @@ fn onboard_instruction(
 }
 
 /// Builds an unsigned transaction to onboard a data-only hotspot.
-#[cfg(feature = "txn")]
 pub async fn onboard_transaction<
     C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
 >(
@@ -233,7 +227,6 @@ pub async fn onboard_transaction<
     .await
 }
 
-#[cfg(feature = "txn")]
 async fn build_onboard_transaction<
     C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
 >(
@@ -267,7 +260,6 @@ async fn build_onboard_transaction<
 }
 
 /// Builds an unsigned transaction to issue (mint) a new data-only hotspot entity on-chain.
-#[cfg(feature = "txn")]
 pub async fn issue_transaction<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,
     verifier: &str,
@@ -398,7 +390,6 @@ pub fn issue_token_to_add_tx(token: &str) -> Result<BlockchainTxnAddGatewayV1, E
     }
 }
 
-#[cfg(feature = "txn")]
 async fn verify_helium_key(
     verifier: &str,
     msg: &[u8],

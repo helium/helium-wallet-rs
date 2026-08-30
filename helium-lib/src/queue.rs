@@ -16,7 +16,6 @@ pub fn task_queue_authority_key(task_queue_key: &Pubkey, queue_authority: &Pubke
 
 // ---- Local transaction construction (`txn` feature) ----
 
-#[cfg(feature = "txn")]
 use crate::{
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
     error::Error,
@@ -26,14 +25,10 @@ use crate::{
     transaction::{mk_signed_transaction, VersionedTransaction},
     TransactionOpts,
 };
-#[cfg(feature = "txn")]
 use anchor_lang::{InstructionData, ToAccountMetas};
-#[cfg(feature = "txn")]
 use solana_sdk::signer::Signer;
-#[cfg(feature = "txn")]
 use tuktuk_sdk::{tuktuk_program, tuktuk_program::TaskQueueV0};
 
-#[cfg(feature = "txn")]
 /// Builds an instruction to queue a wallet reward claim.
 pub fn claim_wallet_instruction(
     task_queue_key: &Pubkey,
@@ -76,7 +71,6 @@ pub fn claim_wallet_instruction(
     Ok(ix)
 }
 
-#[cfg(feature = "txn")]
 /// Queues a wallet reward claim and returns a signed transaction.
 pub async fn claim_wallet<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
     client: &C,

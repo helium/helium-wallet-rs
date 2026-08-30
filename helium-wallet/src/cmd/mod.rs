@@ -1059,20 +1059,23 @@ mod guard_call_sites {
 
     #[test]
     fn an_asset_transfer_checks_where_the_asset_goes() {
-        assert_guarded(include_str!("assets/transfer.rs"), "assert_transfers_asset");
+        assert_guarded(
+            include_str!("assets/transfer.rs"),
+            "verify::assert_asset_transfer",
+        );
     }
 
     #[test]
     fn an_asset_transfer_proposal_checks_it_moves_nothing_itself() {
         assert_guarded(
             include_str!("assets/transfer.rs"),
-            "assert_wraps_no_asset_transfer",
+            "verify::wrapped::asset_transfer",
         );
     }
 
     #[test]
     fn a_data_credits_mint_checks_who_is_credited() {
-        assert_guarded(include_str!("dc/mint.rs"), "assert_mints_to");
+        assert_guarded(include_str!("dc/mint.rs"), "verify::assert_dc_mint");
     }
 
     #[test]
@@ -1082,7 +1085,7 @@ mod guard_call_sites {
         // unchecked.
         let source = strip_comments(include_str!("assets/rewards.rs"));
         assert_eq!(
-            call_sites(&source, "assert_updates_destination").len(),
+            call_sites(&source, "verify::assert_rewards_destination").len(),
             2,
             "expected the init and update paths to both check"
         );
@@ -1090,8 +1093,8 @@ mod guard_call_sites {
 
     #[test]
     fn a_dc_burn_checks_its_amount_and_holder() {
-        assert_guarded(include_str!("dc/burn.rs"), "assert_burns");
-        assert_guarded(include_str!("dc/burn.rs"), "assert_wraps_no_burn");
+        assert_guarded(include_str!("dc/burn.rs"), "verify::assert_dc_burn");
+        assert_guarded(include_str!("dc/burn.rs"), "verify::wrapped::dc_burn");
     }
 
     #[test]
@@ -1102,11 +1105,11 @@ mod guard_call_sites {
 
     #[test]
     fn an_asset_burn_checks_it_destroys_one_owned_asset() {
+        assert_guarded(include_str!("assets/burn.rs"), "verify::assert_asset_burn");
         assert_guarded(
             include_str!("assets/burn.rs"),
-            "assert_burns_one_owned_asset",
+            "verify::wrapped::asset_burn",
         );
-        assert_guarded(include_str!("assets/burn.rs"), "assert_wraps_no_burn");
     }
 
     #[test]
@@ -1120,20 +1123,23 @@ mod guard_call_sites {
         // against the transaction it actually guards.
         assert_guarded_before(
             include_str!("hotspots/add.rs"),
-            "assert_issues_to_wallet",
+            "verify::assert_hotspot_issue",
             1,
         );
         assert_guarded_before(
             include_str!("hotspots/add.rs"),
-            "assert_onboards_to_wallet",
+            "verify::assert_hotspot_onboard",
             2,
         );
     }
 
     #[test]
     fn a_dc_delegation_checks_its_router_subdao_and_amount() {
-        assert_guarded(include_str!("dc/delegate.rs"), "assert_delegates_to");
-        assert_guarded(include_str!("dc/delegate.rs"), "assert_wraps_no_delegation");
+        assert_guarded(include_str!("dc/delegate.rs"), "verify::assert_dc_delegate");
+        assert_guarded(
+            include_str!("dc/delegate.rs"),
+            "verify::wrapped::dc_delegate",
+        );
     }
 
     #[test]

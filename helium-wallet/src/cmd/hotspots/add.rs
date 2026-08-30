@@ -8,82 +8,12 @@ use helium_lib::{
     },
     hotspot::{self, cert},
     keypair::Signer,
-    programs::KnownProgram,
-    transaction::VersionedTransaction,
     verify,
 };
 use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use rand::rngs::OsRng;
 use serde::Serialize;
 use std::{io::Write, time::Duration};
-
-/// `issue_data_only_entity_v0` names the wallet the new hotspot is minted to at
-/// account index 10.
-const ISSUE_METHODS: &[&str] = &["issue_data_only_entity_v0"];
-const ISSUE_RECIPIENT_INDEX: usize = 10;
-
-/// Both onboard instructions name the hotspot's owner at account index 3 and
-/// carry the asserted location in their arguments.
-const ONBOARD_METHODS: &[&str] = &[
-    "onboard_data_only_iot_hotspot_v0",
-    "onboard_data_only_mobile_hotspot_v0",
-];
-const ONBOARD_OWNER_INDEX: usize = 3;
-
-/// Refuse to sign unless the hotspot is minted to this wallet.
-///
-/// The recipient is the whole of what issuing decides: a hotspot minted to
-/// another wallet is that wallet's, and the add-gateway token it was minted
-/// from cannot be spent twice to correct it.
-fn assert_issues_to_wallet(unsigned: &[VersionedTransaction], wallet: &Pubkey) -> Result<()> {
-    let found = verify::find_methods(unsigned, KnownProgram::HeliumEntityManager, ISSUE_METHODS)?;
-    let [issue] = found.as_slice() else {
-        bail!(
-            "expected exactly one hotspot issue, found {}; refusing to sign",
-            found.len()
-        );
-    };
-    let recipient = issue.account(ISSUE_RECIPIENT_INDEX)?;
-    if recipient != *wallet {
-        bail!("the hotspot would be issued to {recipient}, not this wallet");
-    }
-    Ok(())
-}
-
-/// Refuse to sign unless the onboard is for a hotspot this wallet owns, at the
-/// location that was asserted.
-///
-/// Location is compared exactly, from the same coordinates that were sent.
-/// Elevation and gain are left to the service's own unit conversion, as
-/// duplicating its rounding here would refuse honest onboards the day it
-/// changes.
-fn assert_onboards_to_wallet(
-    unsigned: &[VersionedTransaction],
-    wallet: &Pubkey,
-    lat: Option<f64>,
-    lon: Option<f64>,
-) -> Result<()> {
-    let found = verify::find_methods(unsigned, KnownProgram::HeliumEntityManager, ONBOARD_METHODS)?;
-    let [onboard] = found.as_slice() else {
-        bail!(
-            "expected exactly one hotspot onboard, found {}; refusing to sign",
-            found.len()
-        );
-    };
-    let owner = onboard.account(ONBOARD_OWNER_INDEX)?;
-    if owner != *wallet {
-        bail!("the onboard is for a hotspot owned by {owner}, not this wallet");
-    }
-    let args = onboard
-        .args()
-        .ok_or_else(|| anyhow!("the onboard's arguments could not be read; refusing to sign"))?;
-    let want = hotspot::cell_for(lat, lon)?.map(u64::from);
-    let got = args["args"]["location"].as_u64();
-    if got != want {
-        bail!("the onboard asserts location {got:?}, not the requested {want:?}");
-    }
-    Ok(())
-}
 
 const ISSUED_ASSET_VISIBILITY_TIMEOUT: Duration = Duration::from_secs(60);
 const ISSUED_ASSET_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -193,7 +123,7 @@ async fn perform_add(
                 add_gateway_txn,
             })
             .await?;
-        assert_issues_to_wallet(&response.decode_transactions()?, &signer.pubkey())?;
+        verify::assert_hotspot_issue(&response.decode_transactions()?, &signer.pubkey())?;
         // The onboarding server co-signs issue with the ECC verifier; preserve
         // that signature and the server's blockhash when adding the owner's.
         commit
@@ -237,7 +167,7 @@ async fn perform_add(
                 gain: assertion.gain,
             })
             .await?;
-        assert_onboards_to_wallet(
+        verify::assert_hotspot_onboard(
             &response.decode_transactions()?,
             &signer.pubkey(),
             assertion.lat,
@@ -504,182 +434,5 @@ impl MobileCert {
         };
 
         print_json(&result)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use helium_lib::{
-        keypair::Pubkey,
-        solana_sdk::{
-            instruction::{AccountMeta, Instruction},
-            message::{Message, VersionedMessage},
-        },
-    };
-
-    /// Discriminators the entity-manager IDL declares for these methods.
-    const ISSUE: [u8; 8] = [191, 96, 245, 46, 63, 73, 207, 17];
-    const ONBOARD_IOT: [u8; 8] = [98, 179, 127, 51, 58, 191, 174, 188];
-
-    const LAT: f64 = 37.7749;
-    const LON: f64 = -122.4194;
-
-    fn anchor_tx(
-        discriminator: [u8; 8],
-        body: Vec<u8>,
-        accounts: &[Pubkey],
-    ) -> VersionedTransaction {
-        let mut data = discriminator.to_vec();
-        data.extend_from_slice(&body);
-        let ix = Instruction {
-            program_id: KnownProgram::HeliumEntityManager.id(),
-            accounts: accounts
-                .iter()
-                .map(|key| AccountMeta::new(*key, false))
-                .collect(),
-            data,
-        };
-        VersionedTransaction {
-            signatures: vec![],
-            message: VersionedMessage::Legacy(Message::new(&[ix], Some(&accounts[0]))),
-        }
-    }
-
-    /// `recipient` sits at index 10, so the first ten are filler.
-    fn issue_tx(recipient: Pubkey) -> VersionedTransaction {
-        let mut accounts: Vec<Pubkey> = (0..10).map(|_| Pubkey::new_unique()).collect();
-        accounts.push(recipient);
-        anchor_tx(ISSUE, vec![], &accounts)
-    }
-
-    /// `OnboardDataOnlyIotHotspotArgsV0`: the proof fields, then the options.
-    fn onboard_tx(owner: Pubkey, location: Option<u64>) -> VersionedTransaction {
-        let mut body = Vec::new();
-        body.extend_from_slice(&[0u8; 32]); // data_hash
-        body.extend_from_slice(&[0u8; 32]); // creator_hash
-        body.extend_from_slice(&[0u8; 32]); // root
-        body.extend_from_slice(&0u32.to_le_bytes()); // index
-        match location {
-            Some(v) => {
-                body.push(1);
-                body.extend_from_slice(&v.to_le_bytes());
-            }
-            None => body.push(0),
-        }
-        body.push(0); // elevation: None
-        body.push(0); // gain: None
-        let accounts = [
-            Pubkey::new_unique(), // payer
-            Pubkey::new_unique(), // dc_fee_payer
-            Pubkey::new_unique(), // iot_info
-            owner,
-        ];
-        anchor_tx(ONBOARD_IOT, body, &accounts)
-    }
-
-    fn cell(lat: f64, lon: f64) -> u64 {
-        u64::from(
-            hotspot::cell_for(Some(lat), Some(lon))
-                .expect("a valid coordinate")
-                .expect("a cell"),
-        )
-    }
-
-    #[test]
-    fn a_hotspot_issued_to_this_wallet_is_accepted() {
-        let wallet = Pubkey::new_unique();
-        assert_issues_to_wallet(&[issue_tx(wallet)], &wallet).expect("issued to this wallet");
-    }
-
-    #[test]
-    fn a_hotspot_issued_to_another_wallet_is_refused() {
-        let wallet = Pubkey::new_unique();
-        let err = assert_issues_to_wallet(&[issue_tx(Pubkey::new_unique())], &wallet)
-            .expect_err("a substituted recipient must be refused");
-        assert!(err.to_string().contains("not this wallet"), "{err}");
-    }
-
-    #[test]
-    fn a_response_carrying_no_issue_is_refused() {
-        let wallet = Pubkey::new_unique();
-        let err = assert_issues_to_wallet(&[], &wallet)
-            .expect_err("an action that was never built must be refused");
-        assert!(err.to_string().contains("found 0"), "{err}");
-    }
-
-    #[test]
-    fn a_batch_issuing_twice_is_refused() {
-        let wallet = Pubkey::new_unique();
-        let err = assert_issues_to_wallet(&[issue_tx(wallet), issue_tx(wallet)], &wallet)
-            .expect_err("a batch issuing twice must be refused");
-        assert!(err.to_string().contains("found 2"), "{err}");
-    }
-
-    #[test]
-    fn an_onboard_at_the_asserted_location_is_accepted() {
-        let wallet = Pubkey::new_unique();
-        assert_onboards_to_wallet(
-            &[onboard_tx(wallet, Some(cell(LAT, LON)))],
-            &wallet,
-            Some(LAT),
-            Some(LON),
-        )
-        .expect("the asserted location");
-    }
-
-    #[test]
-    fn an_onboard_at_another_location_is_refused() {
-        let wallet = Pubkey::new_unique();
-        let err = assert_onboards_to_wallet(
-            &[onboard_tx(wallet, Some(cell(51.5074, -0.1278)))],
-            &wallet,
-            Some(LAT),
-            Some(LON),
-        )
-        .expect_err("a substituted location must be refused");
-        assert!(err.to_string().contains("not the requested"), "{err}");
-    }
-
-    #[test]
-    fn an_onboard_for_another_owner_is_refused() {
-        let wallet = Pubkey::new_unique();
-        let err = assert_onboards_to_wallet(
-            &[onboard_tx(Pubkey::new_unique(), Some(cell(LAT, LON)))],
-            &wallet,
-            Some(LAT),
-            Some(LON),
-        )
-        .expect_err("another owner must be refused");
-        assert!(err.to_string().contains("not this wallet"), "{err}");
-    }
-
-    #[test]
-    fn a_batch_onboarding_twice_is_refused() {
-        let wallet = Pubkey::new_unique();
-        let err = assert_onboards_to_wallet(
-            &[
-                onboard_tx(wallet, Some(cell(LAT, LON))),
-                onboard_tx(wallet, Some(cell(LAT, LON))),
-            ],
-            &wallet,
-            Some(LAT),
-            Some(LON),
-        )
-        .expect_err("a batch onboarding twice must be refused");
-        assert!(err.to_string().contains("found 2"), "{err}");
-    }
-
-    #[test]
-    fn an_onboard_asserting_a_location_that_was_not_requested_is_refused() {
-        let wallet = Pubkey::new_unique();
-        let err = assert_onboards_to_wallet(
-            &[onboard_tx(wallet, Some(cell(LAT, LON)))],
-            &wallet,
-            None,
-            None,
-        )
-        .expect_err("an unrequested assertion must be refused");
-        assert!(err.to_string().contains("not the requested"), "{err}");
     }
 }

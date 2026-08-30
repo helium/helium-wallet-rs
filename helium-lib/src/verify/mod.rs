@@ -9,6 +9,9 @@
 //! Available without the `txn` feature, since a caller that no longer builds
 //! transactions still has to inspect them.
 
+mod action;
+pub use action::*;
+
 use std::collections::HashMap;
 
 use crate::{
@@ -56,6 +59,40 @@ pub enum VerifyError {
     /// reads without the transaction in front of them.
     #[error("{program} is invoked with instruction {tag:?}, which is not expected here")]
     UnexpectedInstruction { program: Pubkey, tag: Option<u8> },
+    /// The transaction carries a different number of the requested action than
+    /// the one it was asked for. Zero is the important case: an action that was
+    /// never built otherwise reads the same as one built correctly.
+    #[error("expected exactly one {action}, found {found}")]
+    ActionCount { action: &'static str, found: usize },
+    /// An account the action names is not the one that was requested.
+    #[error("{action} names {actual} as its {role}, not the requested {expected}")]
+    ActionAccount {
+        action: &'static str,
+        role: &'static str,
+        expected: Pubkey,
+        actual: Pubkey,
+    },
+    /// A value in the action's arguments is not the one that was requested.
+    #[error("{action} carries {actual} as its {field}, not the requested {expected}")]
+    ActionValue {
+        action: &'static str,
+        field: &'static str,
+        expected: String,
+        actual: String,
+    },
+    /// The action sets a field the caller did not ask it to.
+    #[error("{action} sets {field}, which was not requested")]
+    ActionUnrequested {
+        action: &'static str,
+        field: &'static str,
+    },
+    /// The action's arguments do not decode against the program's IDL, so a
+    /// check against them cannot be made. Unreadable is not absent.
+    #[error("{action} arguments could not be read")]
+    ActionUnreadable { action: &'static str },
+    /// A proposal carries an action at the top level that it should only wrap.
+    #[error("a proposal carries a top-level {action} instead of wrapping it")]
+    ActionNotWrapped { action: &'static str },
     /// A quote does not describe the swap that was asked for.
     #[error("the swap quote {detail}")]
     Quote { detail: String },

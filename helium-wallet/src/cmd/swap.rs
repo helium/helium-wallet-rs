@@ -3,6 +3,7 @@ use helium_lib::{
     blockchain_api::types::SwapInstructionsRequest,
     keypair::Signer,
     token::{Token, TokenAmount},
+    verify,
 };
 
 /// Default slippage tolerance in basis points (100 = 1%).
@@ -44,6 +45,16 @@ impl Cmd {
         let quote = api
             .swap_quote(input_mint, output_mint, raw_amount, self.slippage_bps)
             .await?;
+        // The quote is handed back verbatim to build the route, and its
+        // threshold becomes the on-chain minimum output, so it is checked
+        // before it is spent rather than after.
+        verify::assert_quote_matches(
+            &quote,
+            input_mint,
+            output_mint,
+            raw_amount,
+            self.slippage_bps,
+        )?;
         let response = api
             .swap_instructions(&SwapInstructionsRequest {
                 quote_response: quote.clone(),
@@ -51,6 +62,8 @@ impl Cmd {
                 destination_token_account: None,
             })
             .await?;
+
+        verify::assert_swap_only(&response.decode_transactions()?)?;
 
         let committed = self
             .commit

@@ -12,7 +12,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    keypair::Pubkey, programs::KnownProgram, solana_sdk::instruction::CompiledInstruction,
+    blockchain_api::types::SwapQuote,
+    keypair::{pubkey, Pubkey},
+    programs::KnownProgram,
+    solana_sdk::instruction::CompiledInstruction,
     transaction::VersionedTransaction,
 };
 
@@ -50,6 +53,9 @@ pub enum VerifyError {
     /// An allowed program is invoked with an instruction that is not.
     #[error("{program} is invoked with an instruction that is not expected here")]
     UnexpectedInstruction { program: Pubkey },
+    /// A quote does not describe the swap that was asked for.
+    #[error("the swap quote {detail}")]
+    Quote { detail: String },
     /// A transfer is authorized by a wallet other than the expected one.
     #[error("transfer is authorized by {actual}, not {expected}")]
     WrongAuthority { expected: Pubkey, actual: Pubkey },
@@ -224,6 +230,112 @@ pub fn find_methods<'a>(
         }
     }
     Ok(found)
+}
+
+/// Jupiter aggregator v6, the program that executes a swap route. Taken from a
+/// transaction the blockchain-api built for HNT->USDC, which invokes exactly
+/// this and the compute-budget program.
+pub const JUPITER_AGGREGATOR_V6: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+
+/// SPL-token instruction tags a swap may legitimately carry. Wrapping and
+/// unwrapping SOL is the only reason one appears at the top level, so the tags
+/// that move or delegate a balance are absent by design.
+const SWAP_ALLOWED_SPL_TAGS: &[u8] = &[
+    9,  // CloseAccount, unwrapping the temporary wSOL account
+    17, // SyncNative
+    18, // InitializeAccount3
+];
+
+/// Refuse a swap that carries anything but the swap.
+///
+/// A signature check admits every transaction this wallet's key can authorize,
+/// which is each token transfer, delegation and authority change it owns. What
+/// makes a route safe to sign is that it invokes only the aggregator and the
+/// account plumbing a swap needs, so that is checked rather than inferred from
+/// the endpoint that built it.
+pub fn assert_swap_only(txs: &[VersionedTransaction]) -> Result<(), VerifyError> {
+    let compute_budget = KnownProgram::ComputeBudget.id();
+    let spl_token = KnownProgram::SplToken.id();
+    let associated_token = KnownProgram::SplAssociatedToken.id();
+    for tx in txs {
+        for ix in tx.message.instructions() {
+            let program = instruction_program(tx, ix)?;
+            if program == JUPITER_AGGREGATOR_V6
+                || program == associated_token
+                || program == compute_budget
+            {
+                continue;
+            }
+            if program == spl_token {
+                let tag = ix.data.first().copied().unwrap_or(u8::MAX);
+                if !SWAP_ALLOWED_SPL_TAGS.contains(&tag) {
+                    return Err(VerifyError::UnexpectedInstruction { program });
+                }
+                continue;
+            }
+            return Err(VerifyError::UnexpectedProgram { program });
+        }
+    }
+    Ok(())
+}
+
+/// Confirm a quote describes the swap that was asked for, before it is sent
+/// back to be built into a transaction.
+///
+/// `other_amount_threshold` becomes the route's on-chain minimum output, so it
+/// is the only thing holding execution to a price. Left unchecked, a quote
+/// reporting a healthy `price_impact_pct` can still carry a threshold of 1.
+pub fn assert_quote_matches(
+    quote: &SwapQuote,
+    input_mint: &Pubkey,
+    output_mint: &Pubkey,
+    amount: u64,
+    max_slippage_bps: u16,
+) -> Result<(), VerifyError> {
+    let mismatch = |detail: String| Err(VerifyError::Quote { detail });
+    if quote.input_mint != input_mint.to_string() || quote.output_mint != output_mint.to_string() {
+        return mismatch(format!(
+            "is for {} -> {}, not {input_mint} -> {output_mint}",
+            quote.input_mint, quote.output_mint
+        ));
+    }
+    if quote.swap_mode != "ExactIn" {
+        return mismatch(format!("swap mode is {}, not ExactIn", quote.swap_mode));
+    }
+    let parse = |what: &str, raw: &str| {
+        raw.parse::<u64>().map_err(|_| VerifyError::Quote {
+            detail: format!("{what} {raw} is not a u64"),
+        })
+    };
+    let in_amount = parse("in_amount", &quote.in_amount)?;
+    if in_amount != amount {
+        return mismatch(format!("is for {in_amount}, not the {amount} requested"));
+    }
+    // Above the full 10000 bps there is no output floor to imply, and the
+    // subtraction below would wrap.
+    if max_slippage_bps > 10_000 {
+        return mismatch(format!(
+            "cannot be held to {max_slippage_bps} bps, which is more than the whole output"
+        ));
+    }
+    if quote.slippage_bps > u32::from(max_slippage_bps) {
+        return mismatch(format!(
+            "slippage {} bps exceeds the {max_slippage_bps} bps requested",
+            quote.slippage_bps
+        ));
+    }
+    let out = parse("out_amount", &quote.out_amount)?;
+    let threshold = parse("threshold", &quote.other_amount_threshold)?;
+    let floor = out
+        .saturating_mul(u64::from(10_000 - max_slippage_bps))
+        .div_ceil(10_000);
+    if threshold < floor {
+        return mismatch(format!(
+            "sets a minimum output of {threshold}, below the {floor} implied by \
+             {max_slippage_bps} bps on an output of {out}"
+        ));
+    }
+    Ok(())
 }
 
 /// SPL-token instruction tags that move a balance: `Transfer` and
@@ -542,6 +654,149 @@ mod tests {
         )
         .expect_err("an unreadable program must be refused");
         assert!(matches!(err, VerifyError::LookupTable { .. }), "{err}");
+    }
+
+    fn quote(over: &[(&str, &str)]) -> SwapQuote {
+        let mut q = SwapQuote {
+            input_mint: "So11111111111111111111111111111111111111112".into(),
+            output_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into(),
+            in_amount: "1000".into(),
+            out_amount: "2000".into(),
+            other_amount_threshold: "1980".into(),
+            swap_mode: "ExactIn".into(),
+            slippage_bps: 100,
+            price_impact_pct: "0.01".into(),
+            extra: serde_json::Value::Null,
+        };
+        for (field, value) in over {
+            match *field {
+                "input_mint" => q.input_mint = (*value).into(),
+                "output_mint" => q.output_mint = (*value).into(),
+                "in_amount" => q.in_amount = (*value).into(),
+                "out_amount" => q.out_amount = (*value).into(),
+                "other_amount_threshold" => q.other_amount_threshold = (*value).into(),
+                "swap_mode" => q.swap_mode = (*value).into(),
+                "slippage_bps" => q.slippage_bps = value.parse().expect("a bps number"),
+                other => panic!("unknown field {other}"),
+            }
+        }
+        q
+    }
+
+    fn mints() -> (Pubkey, Pubkey) {
+        (
+            "So11111111111111111111111111111111111111112"
+                .parse()
+                .expect("the wSOL mint"),
+            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+                .parse()
+                .expect("the USDC mint"),
+        )
+    }
+
+    fn check_quote(q: &SwapQuote, slippage: u16) -> Result<(), VerifyError> {
+        let (input, output) = mints();
+        assert_quote_matches(q, &input, &output, 1000, slippage)
+    }
+
+    #[test]
+    fn a_quote_for_the_requested_swap_is_accepted() {
+        check_quote(&quote(&[]), 100).expect("the requested quote");
+    }
+
+    #[test]
+    fn a_quote_for_other_mints_is_refused() {
+        let err = check_quote(
+            &quote(&[("output_mint", "11111111111111111111111111111111")]),
+            100,
+        )
+        .expect_err("a substituted output mint must be refused");
+        assert!(err.to_string().contains("not"), "{err}");
+    }
+
+    #[test]
+    fn a_quote_for_a_different_amount_is_refused() {
+        let err = check_quote(&quote(&[("in_amount", "999")]), 100)
+            .expect_err("a substituted input amount must be refused");
+        assert!(err.to_string().contains("999"), "{err}");
+    }
+
+    #[test]
+    fn a_quote_whose_minimum_output_is_below_the_slippage_floor_is_refused() {
+        // The field that actually holds execution to a price: a healthy
+        // price_impact_pct alongside a threshold of 1 is the whole attack.
+        let err = check_quote(&quote(&[("other_amount_threshold", "1")]), 100)
+            .expect_err("a floorless quote must be refused");
+        assert!(err.to_string().contains("minimum output"), "{err}");
+        check_quote(&quote(&[("other_amount_threshold", "1980")]), 100)
+            .expect("exactly the floor is allowed");
+        // Both sides of the boundary, or an off-by-one in the comparison keeps
+        // the "exactly the floor" case passing and gives away a basis point.
+        check_quote(&quote(&[("other_amount_threshold", "1979")]), 100)
+            .expect_err("one below the floor must be refused");
+    }
+
+    #[test]
+    fn a_quote_slippier_than_requested_is_refused() {
+        let err = check_quote(&quote(&[("slippage_bps", "300")]), 100)
+            .expect_err("a widened slippage must be refused");
+        assert!(err.to_string().contains("300"), "{err}");
+    }
+
+    #[test]
+    fn an_exact_out_quote_is_refused() {
+        let err = check_quote(&quote(&[("swap_mode", "ExactOut")]), 100)
+            .expect_err("a mode that does not spend the stated input must be refused");
+        assert!(err.to_string().contains("ExactIn"), "{err}");
+    }
+
+    #[test]
+    fn a_slippage_wider_than_the_whole_output_is_refused_rather_than_wrapping() {
+        let err =
+            check_quote(&quote(&[]), 20_000).expect_err("an impossible slippage must be refused");
+        assert!(err.to_string().contains("whole output"), "{err}");
+    }
+
+    #[test]
+    fn a_swap_invoking_only_the_aggregator_is_accepted() {
+        let payer = Pubkey::new_unique();
+        let t = tx(
+            payer,
+            1,
+            &[
+                (KnownProgram::ComputeBudget.id(), vec![2, 0, 0, 0, 0]),
+                (JUPITER_AGGREGATOR_V6, vec![1, 2, 3]),
+                (KnownProgram::SplToken.id(), vec![9]),
+            ],
+        );
+        assert_swap_only(std::slice::from_ref(&t)).expect("a plain swap route");
+    }
+
+    #[test]
+    fn a_swap_carrying_a_token_transfer_is_refused() {
+        let t = tx(
+            Pubkey::new_unique(),
+            1,
+            &[(KnownProgram::SplToken.id(), vec![3, 0, 0, 0, 0, 0, 0, 0, 0])],
+        );
+        let err = assert_swap_only(std::slice::from_ref(&t))
+            .expect_err("an SPL transfer inside a swap must be refused");
+        assert!(
+            matches!(err, VerifyError::UnexpectedInstruction { .. }),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_swap_invoking_an_unrelated_program_is_refused() {
+        let other = Pubkey::new_unique();
+        let t = tx(Pubkey::new_unique(), 1, &[(other, vec![0])]);
+        let err = assert_swap_only(std::slice::from_ref(&t))
+            .expect_err("a program outside a swap must be refused");
+        assert!(
+            matches!(err, VerifyError::UnexpectedProgram { program } if program == other),
+            "{err}"
+        );
     }
 
     #[test]

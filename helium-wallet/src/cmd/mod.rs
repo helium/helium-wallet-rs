@@ -1077,6 +1077,12 @@ mod guard_call_sites {
     }
 
     #[test]
+    fn a_dc_delegation_checks_its_router_subdao_and_amount() {
+        assert_guarded(include_str!("dc/delegate.rs"), "assert_delegates_to");
+        assert_guarded(include_str!("dc/delegate.rs"), "assert_wraps_no_delegation");
+    }
+
+    #[test]
     fn a_swap_checks_its_quote_and_that_the_route_only_swaps() {
         assert_guarded(include_str!("swap.rs"), "verify::assert_quote_matches");
         assert_guarded(include_str!("swap.rs"), "verify::assert_swap_only");

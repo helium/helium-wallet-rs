@@ -185,6 +185,7 @@ pub fn assert_sole_signer(tx: &VersionedTransaction, wallet: &Pubkey) -> Result<
 pub struct NamedInstruction<'a> {
     tx: &'a VersionedTransaction,
     instruction: &'a CompiledInstruction,
+    program: KnownProgram,
     /// The Anchor method name, for naming the action in a refusal.
     pub method: &'static str,
 }
@@ -193,6 +194,16 @@ impl NamedInstruction<'_> {
     /// The account this instruction passes in position `index`.
     pub fn account(&self, index: usize) -> Result<Pubkey, VerifyError> {
         instruction_account(self.tx, self.instruction, index)
+    }
+
+    /// This instruction's arguments, decoded against the program's IDL.
+    ///
+    /// `None` when the body does not decode, which a caller checking an
+    /// argument has to refuse on: an unreadable argument is not an absent one.
+    pub fn args(&self) -> Option<serde_json::Value> {
+        let discriminator: [u8; 8] = self.instruction.data.get(..8)?.try_into().ok()?;
+        self.program
+            .decode_instruction_args(&discriminator, &self.instruction.data[8..])
     }
 }
 
@@ -227,6 +238,7 @@ pub fn find_methods<'a>(
                 found.push(NamedInstruction {
                     tx,
                     instruction,
+                    program,
                     method,
                 });
             }

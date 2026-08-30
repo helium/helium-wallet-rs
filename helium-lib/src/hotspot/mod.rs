@@ -15,15 +15,14 @@ use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, str::FromStr};
 
+use crate::error::EncodeError;
 #[cfg(feature = "txn")]
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
     bubblegum,
     client::SolanaRpcClient,
     dao::Dao,
-    data_credits,
-    error::EncodeError,
-    message,
+    data_credits, message,
     solana_sdk::{
         instruction::{AccountMeta, Instruction},
         signature::NullSigner,
@@ -282,20 +281,15 @@ impl std::hash::Hash for HotspotLocation {
 ///
 /// Shared so a caller asserting a location against a transaction built
 /// elsewhere derives the same cell the update would.
-pub fn cell_for(
-    lat: Option<f64>,
-    lon: Option<f64>,
-) -> Result<Option<h3o::CellIndex>, crate::error::EncodeError> {
+pub fn cell_for(lat: Option<f64>, lon: Option<f64>) -> Result<Option<h3o::CellIndex>, EncodeError> {
     match (lat, lon) {
         (Some(lat), Some(lon)) => Ok(Some(
             h3o::LatLng::new(lat, lon)
-                .map_err(crate::error::EncodeError::from)?
+                .map_err(EncodeError::from)?
                 .to_cell(h3o::Resolution::Twelve),
         )),
         (None, None) => Ok(None),
-        _ => Err(crate::error::EncodeError::other(
-            "Both lat and lon must be specified",
-        )),
+        _ => Err(EncodeError::other("Both lat and lon must be specified")),
     }
 }
 
@@ -657,7 +651,6 @@ impl From<helium_entity_manager::types::RadioInfoV0> for CbrsRadioInfo {
 /// The on-chain ECC verifier used to validate gateway signatures during data-only hotspot issuance.
 pub const ECC_VERIFIER: Pubkey = pubkey!("eccSAJM3tq7nQSpQTm8roxv4FPoipCkMsGizW2KBhqZ");
 
-#[cfg(feature = "txn")]
 /// A pending update to hotspot on-chain info, scoped to a specific sub-DAO.
 ///
 /// `Iot` updates may include gain, elevation, and location.
@@ -683,7 +676,6 @@ pub enum HotspotInfoUpdate {
     },
 }
 
-#[cfg(feature = "txn")]
 impl HotspotInfoUpdate {
     pub fn subdao(&self) -> SubDao {
         match self {

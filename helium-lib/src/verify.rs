@@ -50,9 +50,12 @@ pub enum VerifyError {
     /// The transaction is anchored to a durable nonce, so it never expires.
     #[error("transaction is anchored to a durable nonce and would never expire")]
     NonceAnchored,
-    /// An allowed program is invoked with an instruction that is not.
-    #[error("{program} is invoked with an instruction that is not expected here")]
-    UnexpectedInstruction { program: Pubkey },
+    /// An allowed program is invoked with an instruction that is not. `tag` is
+    /// the instruction's leading discriminator byte, absent when it carries no
+    /// data, and is what names the offending call in a refusal an operator
+    /// reads without the transaction in front of them.
+    #[error("{program} is invoked with instruction {tag:?}, which is not expected here")]
+    UnexpectedInstruction { program: Pubkey, tag: Option<u8> },
     /// A quote does not describe the swap that was asked for.
     #[error("the swap quote {detail}")]
     Quote { detail: String },
@@ -269,7 +272,10 @@ pub fn assert_swap_only(txs: &[VersionedTransaction]) -> Result<(), VerifyError>
             if program == spl_token {
                 let tag = ix.data.first().copied().unwrap_or(u8::MAX);
                 if !SWAP_ALLOWED_SPL_TAGS.contains(&tag) {
-                    return Err(VerifyError::UnexpectedInstruction { program });
+                    return Err(VerifyError::UnexpectedInstruction {
+                        program,
+                        tag: ix.data.first().copied(),
+                    });
                 }
                 continue;
             }
@@ -396,7 +402,12 @@ pub fn assert_spl_transfers(
                 // rent cost, for any owner, which the amount totals do not see.
                 match ix.data.first() {
                     Some(1) => continue,
-                    _ => return Err(VerifyError::UnexpectedInstruction { program }),
+                    tag => {
+                        return Err(VerifyError::UnexpectedInstruction {
+                            program,
+                            tag: tag.copied(),
+                        })
+                    }
                 }
             }
             if program != spl_token {
@@ -404,7 +415,10 @@ pub fn assert_spl_transfers(
             }
             let tag = ix.data.first().copied().unwrap_or(u8::MAX);
             if !SPL_TRANSFER_TAGS.contains(&tag) {
-                return Err(VerifyError::UnexpectedInstruction { program });
+                return Err(VerifyError::UnexpectedInstruction {
+                    program,
+                    tag: ix.data.first().copied(),
+                });
             }
             // Transfer is [source, dest, authority]; TransferChecked inserts the
             // mint, giving [source, mint, dest, authority].
@@ -781,8 +795,10 @@ mod tests {
         );
         let err = assert_swap_only(std::slice::from_ref(&t))
             .expect_err("an SPL transfer inside a swap must be refused");
+        // The tag, not just the program: a refusal an operator reads without
+        // the transaction in front of them has to name what was refused.
         assert!(
-            matches!(err, VerifyError::UnexpectedInstruction { .. }),
+            matches!(err, VerifyError::UnexpectedInstruction { tag: Some(3), .. }),
             "{err}"
         );
     }

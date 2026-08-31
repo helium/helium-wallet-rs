@@ -1,7 +1,8 @@
 use crate::cmd::{squads as cmd_squads, *};
 use helium_lib::{
+    blockchain_api::types::{SquadsConfigAction, SquadsPermission},
     keypair::Pubkey,
-    squads::{self, v4::ConfigActionInput, MemberPermissions},
+    squads,
 };
 
 /// Manage the member roster of a Squads multisig.
@@ -87,13 +88,12 @@ pub enum PermissionFlag {
     Execute,
 }
 
-impl PermissionFlag {
-    /// Set the matching field on `perms` to true.
-    fn apply(self, perms: &mut MemberPermissions) {
-        match self {
-            Self::Initiate => perms.propose = true,
-            Self::Vote => perms.vote = true,
-            Self::Execute => perms.execute = true,
+impl From<PermissionFlag> for SquadsPermission {
+    fn from(flag: PermissionFlag) -> Self {
+        match flag {
+            PermissionFlag::Initiate => SquadsPermission::Initiate,
+            PermissionFlag::Vote => SquadsPermission::Vote,
+            PermissionFlag::Execute => SquadsPermission::Execute,
         }
     }
 }
@@ -102,29 +102,27 @@ impl AddCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let txn_opts = self.commit.transaction_opts(&client);
+        let api = opts.blockchain_api()?;
 
+        // No `--perm` flags means all three; the API applies that default when
+        // `permissions` is omitted.
         let permissions = if self.perm.is_empty() {
-            MemberPermissions::ALL
+            None
         } else {
-            let mut perms = MemberPermissions::default();
-            for flag in &self.perm {
-                flag.apply(&mut perms);
-            }
-            perms
+            Some(self.perm.iter().copied().map(Into::into).collect())
         };
-        let action = ConfigActionInput::AddMember {
-            new_member: self.new_member,
+        let action = SquadsConfigAction::AddMember {
+            new_member: self.new_member.to_string(),
             permissions,
         };
         cmd_squads::submit_config_proposal(
             &client,
+            &api,
             self.target,
             vec![action],
             self.memo.clone(),
             &*signer,
             &self.commit,
-            &txn_opts,
         )
         .await
     }
@@ -156,19 +154,19 @@ impl RemoveCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let txn_opts = self.commit.transaction_opts(&client);
+        let api = opts.blockchain_api()?;
 
-        let action = ConfigActionInput::RemoveMember {
-            old_member: self.old_member,
+        let action = SquadsConfigAction::RemoveMember {
+            old_member: self.old_member.to_string(),
         };
         cmd_squads::submit_config_proposal(
             &client,
+            &api,
             self.target,
             vec![action],
             self.memo.clone(),
             &*signer,
             &self.commit,
-            &txn_opts,
         )
         .await
     }

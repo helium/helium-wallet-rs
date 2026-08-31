@@ -1,27 +1,36 @@
+//! Data-only hotspot issue and onboard.
+//!
+//! The add-gateway token helpers are protobuf and base64 only, so they are
+//! available without the `txn` feature; a consumer that mints tokens but takes
+//! its transactions from the blockchain-api needs them and nothing else here.
+
+use crate::{
+    b64,
+    error::{DecodeError, Error},
+    hotspot,
+};
+use helium_crypto::{PublicKey, Sign};
+use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
+
 use crate::{
     anchor_lang::{InstructionData, ToAccountMetas},
-    asset, b64, bubblegum,
+    asset, bubblegum,
     client::{DasClient, GetAnchorAccount, SolanaRpcClient},
     dao::{Dao, SubDao},
     data_credits,
     entity_key::AsEntityKey,
-    error::{DecodeError, EncodeError, Error},
-    helium_entity_manager, helium_sub_daos, hotspot,
+    error::EncodeError,
+    helium_entity_manager, helium_sub_daos,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
     keypair::Pubkey,
     kta, message,
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
-    solana_sdk::{
-        instruction::Instruction,
-        signature::{NullSigner, Signer},
-    },
+    solana_sdk::{instruction::Instruction, signature::NullSigner},
     spl_account_compression,
     token::Token,
     transaction::{mk_transaction, VersionedTransaction},
     TransactionOpts,
 };
-use helium_crypto::{PublicKey, Sign};
-use helium_proto::{BlockchainTxn, BlockchainTxnAddGatewayV1, Message, Txn};
 use serde::{Deserialize, Serialize};
 
 mod iot {
@@ -164,7 +173,7 @@ mod mobile {
 /// Data-only hotspots are lighter-weight hotspots that transfer data but do not
 /// participate in Proof-of-Coverage. They are cheaper to onboard and require
 /// fewer DC fees than full hotspots.
-pub fn onboard_instruction(
+fn onboard_instruction(
     subdao: SubDao,
     hotspot_key: &helium_crypto::PublicKey,
     config_account: &helium_entity_manager::accounts::DataOnlyConfigV0,
@@ -218,35 +227,6 @@ pub async fn onboard_transaction<
     .await
 }
 
-/// Builds an unsigned onboard transaction using a pre-fetched asset, skipping the asset re-fetch.
-///
-/// Use this when the caller already holds a fresh `Asset` for `hotspot_key` (e.g. just returned
-/// by [`asset::wait_for_entity_key`]) so onboard's DAS round-trip can be replaced with a
-/// proof-only fetch.
-pub async fn onboard_transaction_with_asset<
-    C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
->(
-    client: &C,
-    subdao: SubDao,
-    hotspot_key: &helium_crypto::PublicKey,
-    asset: &asset::Asset,
-    assertion: &HotspotInfoUpdate,
-    owner: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let asset_proof = asset::proof::get(client, &asset.id).await?;
-    build_onboard_transaction(
-        client,
-        subdao,
-        hotspot_key,
-        (asset, &asset_proof),
-        assertion,
-        owner,
-        opts,
-    )
-    .await
-}
-
 async fn build_onboard_transaction<
     C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount,
 >(
@@ -276,57 +256,6 @@ async fn build_onboard_transaction<
     let (msg, block_height) =
         message::mk_budgeted_message(client, 300_000, &[ix], &asset.ownership.owner, opts).await?;
     let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
-    Ok((txn, block_height))
-}
-
-/// Signs and returns a transaction to onboard a data-only hotspot for a sub-DAO.
-pub async fn onboard<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
-    client: &C,
-    subdao: SubDao,
-    hotspot_key: &helium_crypto::PublicKey,
-    assertion: &HotspotInfoUpdate,
-    keypair: &(dyn Signer + Sync),
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let (mut txn, block_height) = onboard_transaction(
-        client,
-        subdao,
-        hotspot_key,
-        assertion,
-        &keypair.pubkey(),
-        opts,
-    )
-    .await?;
-    let message_data = txn.message.serialize();
-    let signature = keypair.try_sign_message(&message_data)?;
-    txn.signatures[0] = signature;
-    Ok((txn, block_height))
-}
-
-/// Signs and returns an onboard transaction using a pre-fetched asset; see
-/// [`onboard_transaction_with_asset`] for the rationale.
-pub async fn onboard_with_asset<C: AsRef<DasClient> + AsRef<SolanaRpcClient> + GetAnchorAccount>(
-    client: &C,
-    subdao: SubDao,
-    hotspot_key: &helium_crypto::PublicKey,
-    asset: &asset::Asset,
-    assertion: &HotspotInfoUpdate,
-    keypair: &(dyn Signer + Sync),
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let (mut txn, block_height) = onboard_transaction_with_asset(
-        client,
-        subdao,
-        hotspot_key,
-        asset,
-        assertion,
-        &keypair.pubkey(),
-        opts,
-    )
-    .await?;
-    let message_data = txn.message.serialize();
-    let signature = keypair.try_sign_message(&message_data)?;
-    txn.signatures[0] = signature;
     Ok((txn, block_height))
 }
 
@@ -459,22 +388,6 @@ pub fn issue_token_to_add_tx(token: &str) -> Result<BlockchainTxnAddGatewayV1, E
         Some(Txn::AddGateway(txn)) => Ok(txn),
         _ => Err(DecodeError::other("unsupported transaction").into()),
     }
-}
-
-/// Signs and returns a transaction to issue a new data-only hotspot entity on-chain.
-pub async fn issue<C: AsRef<SolanaRpcClient> + GetAnchorAccount>(
-    client: &C,
-    verifier: &str,
-    add_tx: &mut BlockchainTxnAddGatewayV1,
-    keypair: &(dyn Signer + Sync),
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let (mut txn, block_height) =
-        issue_transaction(client, verifier, add_tx, keypair.pubkey(), opts).await?;
-    let message_data = txn.message.serialize();
-    let signature = keypair.try_sign_message(&message_data)?;
-    txn.signatures[0] = signature;
-    Ok((txn, block_height))
 }
 
 async fn verify_helium_key(

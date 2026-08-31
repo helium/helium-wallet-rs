@@ -1,8 +1,5 @@
-use crate::cmd::{
-    squads::{self as cmd_squads, SquadsOpts},
-    *,
-};
-use helium_lib::{asset, entity_key};
+use crate::cmd::{squads::SquadsOpts, *};
+use helium_lib::{blockchain_api::types::HotspotBurnRequest, entity_key, keypair::Signer, verify};
 
 #[derive(Clone, Debug, clap::Args)]
 /// Burn a given asset (NFT)
@@ -23,31 +20,40 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
         let signer = opts.load_signer()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
-        let asset = asset::for_entity_key(&client, &self.entity_key.as_entity_key()?).await?;
 
-        if let Some(squads_target) = self.squads.squads {
-            let client_ref = &client;
-            let asset_id = asset.id;
-            return cmd_squads::submit_proposal_with(
-                client_ref,
-                squads_target,
-                self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move {
-                    Ok(vec![
-                        asset::fetch_burn_instruction(client_ref, &asset_id, vault.as_pubkey())
-                            .await?,
-                    ])
-                },
-            )
-            .await;
+        // With `--squads` the API builds the burn from the multisig's vault
+        // (which must own the asset) and wraps it as a proposal; otherwise the
+        // wallet burns its own asset directly.
+        let (multisig, memo) = self.squads.resolve(&client, &signer.pubkey()).await?;
+        let is_proposal = multisig.is_some();
+
+        let api = opts.blockchain_api()?;
+        let response = api
+            .burn_hotspot(&HotspotBurnRequest {
+                wallet_address: signer.pubkey().to_string(),
+                hotspot_pubkey: self.entity_key.to_string(),
+                multisig,
+                memo,
+            })
+            .await?;
+        let unsigned = response.decode_transactions()?;
+        if is_proposal {
+            verify::wrapped::asset_burn(&unsigned)?;
+        } else {
+            verify::assert_asset_burn(&unsigned, &signer.pubkey())?;
         }
-
-        let (tx, _) = asset::burn(&client, &asset.id, &*signer, &transaction_opts).await?;
-
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+        print_json(
+            &self
+                .commit
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
+                .await?
+                .to_json(),
+        )
     }
 }

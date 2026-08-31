@@ -1,16 +1,5 @@
-use crate::{
-    client::{DasClient, GetAnchorAccount, SolanaRpcClient},
-    error::Error,
-    message,
-    programs::hpl_crons,
-    solana_sdk::{instruction::Instruction, pubkey},
-    transaction::{mk_signed_transaction, VersionedTransaction},
-    Pubkey, TransactionOpts,
-};
-use anchor_lang::{InstructionData, ToAccountMetas};
-use solana_sdk::signer::Signer;
-use tuktuk_sdk::tuktuk_program::TaskQueueV0;
-use tuktuk_sdk::{tuktuk, tuktuk_program};
+use crate::{solana_sdk::pubkey, Pubkey};
+use tuktuk_sdk::tuktuk;
 
 /// Well-known task queue address for reward claims.
 pub const TASK_QUEUE_ID: Pubkey = pubkey!("H39gEszvsi6AT4rYBiJTuZHJSF5hMHy6CKGTd7wzhsg7");
@@ -24,6 +13,21 @@ pub fn claim_wallet_key(task_queue_key: &Pubkey, wallet: &Pubkey) -> Pubkey {
 pub fn task_queue_authority_key(task_queue_key: &Pubkey, queue_authority: &Pubkey) -> Pubkey {
     tuktuk::task_queue::task_queue_authority_key(task_queue_key, queue_authority)
 }
+
+// ---- Local transaction construction (`txn` feature) ----
+
+use crate::{
+    client::{DasClient, GetAnchorAccount, SolanaRpcClient},
+    error::Error,
+    message,
+    programs::hpl_crons,
+    solana_sdk::instruction::Instruction,
+    transaction::{mk_signed_transaction, VersionedTransaction},
+    TransactionOpts,
+};
+use anchor_lang::{InstructionData, ToAccountMetas};
+use solana_sdk::signer::Signer;
+use tuktuk_sdk::{tuktuk_program, tuktuk_program::TaskQueueV0};
 
 /// Builds an instruction to queue a wallet reward claim.
 pub fn claim_wallet_instruction(

@@ -89,10 +89,10 @@ Most commands that submit transactions accept these options via `--commit`:
 
 | Option | Description |
 |---|---|
-| `--commit` | Submit the transaction. Without this flag the transaction is simulated (dry run) |
-| `--skip-preflight` | Skip Solana preflight checks |
-| `--min-priority-fee <u64>` | Minimum priority fee in micro-lamports |
-| `--max-priority-fee <u64>` | Maximum priority fee in micro-lamports |
+| `--commit` | Submit the transaction. Without this flag the transaction is simulated and nothing is broadcast (dry run) |
+
+Every run simulates first, so `--commit` adds submission rather than replacing the
+dry run, and behaves the same piped as it does on a terminal.
 
 ## Commands
 
@@ -171,35 +171,39 @@ Displays balances for HNT, MOBILE, IOT, DC, SOL, and USDC.
 
 ### `transfer` -- Send Tokens
 
+Tokens: `hnt`, `mobile`, `iot`, `usdc`, `sol`. HNT supports 8 decimal
+places; MOBILE and IOT support 6.
+
 #### Single Payee
 
 ```
-helium-wallet transfer one <address> <amount> <token>
-helium-wallet transfer one <address> <amount> <token> --commit
+helium-wallet transfer one <address> <amount> [token]
+helium-wallet transfer one <address> <amount> [token] --commit
 ```
 
-Tokens: `hnt`, `mobile`, `iot`, `usdc`, `sol`. HNT supports 8 decimal
-places; MOBILE and IOT support 6.
+`token` defaults to `hnt`.
 
 #### Multiple Payees
 
 ```
-helium-wallet transfer multi <path-to-json>
-helium-wallet transfer multi <path-to-json> --commit
+helium-wallet transfer multi <path-to-json> --token <token>
+helium-wallet transfer multi <path-to-json> --token <token> --commit
 ```
+
+Every payee in a batch is paid in the single token given by `--token`
+(default `hnt`); mixing tokens in one batch is not supported.
 
 JSON format:
 
 ```json
 [
-  { "address": "<address1>", "amount": 1.6, "token": "hnt" },
-  { "address": "<address2>", "amount": "max" },
-  { "address": "<address3>", "amount": 3, "token": "mobile" }
+  { "address": "<address1>", "amount": 1.6 },
+  { "address": "<address2>", "amount": 3 }
 ]
 ```
 
-Fields: `address` (required), `amount` (required, number or `"max"`),
-`token` (optional, defaults to `hnt`), `memo` (optional, 8-byte base64).
+Fields: `address` (required), `amount` (required, number). A per-payee
+`token` key is rejected -- the token is chosen per batch.
 
 ### `swap` -- Swap Tokens via Jupiter
 
@@ -241,7 +245,8 @@ Subcommands: `add`, `list`, `info`, `update`, `transfer`, `burn`, `rewards`, `up
 helium-wallet hotspots list
 helium-wallet hotspots info <address>
 helium-wallet hotspots add <subcommand>
-helium-wallet hotspots update <address> [options] --commit
+helium-wallet hotspots update iot <address> [options] --commit
+helium-wallet hotspots update mobile <address> [options] --commit
 helium-wallet hotspots transfer <address> <new-owner> --commit
 helium-wallet hotspots burn <address> --commit
 helium-wallet hotspots rewards <subcommand>
@@ -330,7 +335,7 @@ runs from the resolved vault when the proposal is later executed. A
 | `transfer one`, `transfer multi` | Token transfer from the vault |
 | `burn` | Subdao token burn from the vault |
 | `dc mint` | HNT → DC mint, sourced from the vault |
-| `dc burn` | DC burn from the vault (non-router branch only) |
+| `dc burn` | DC burn from the vault |
 | `dc delegate` | DC delegation from the vault |
 | `assets transfer`, `assets burn` | Compressed-NFT transfer/burn |
 | `hotspots transfer`, `hotspots burn` | Hotspot transfer/burn |

@@ -4,22 +4,26 @@ use crate::{
 };
 use helium_lib::{
     b64,
-    client::{self, SolanaRpcClient},
-    keypair::{to_pubkey, Keypair, Pubkey, Signer},
-    priority_fee,
-    solana_client::{
-        self, rpc_config::RpcSendTransactionConfig, rpc_request::RpcResponseErrorData,
-        rpc_response::RpcSimulateTransactionResult,
+    blockchain_api::{
+        self,
+        types::{ApiTransactions, StatusResponse, TokenAmount, TransactionData},
     },
-    solana_sdk::{commitment_config::CommitmentConfig, transaction::VersionedTransaction},
-    transaction::{self as lib_transaction, SignatureStatus},
-    TransactionOpts,
+    client::{self, SolanaRpcClient},
+    keypair::{to_pubkey, Keypair, Pubkey, Signature, Signer},
+    priority_fee,
+    programs::KnownProgram,
+    solana_client::{
+        self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
+    },
+    solana_sdk::transaction::VersionedTransaction,
+    verify,
 };
 use serde_json::json;
 use std::{
     env, fs, io,
     ops::Deref,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -191,7 +195,41 @@ impl Opts {
             .expect("client set above or by a concurrent caller")
             .clone())
     }
+
+    /// Build a blockchain-api client for this invocation's cluster.
+    ///
+    /// Uses `HELIUM_BLOCKCHAIN_API_URL` if set; otherwise defaults to the
+    /// mainnet endpoint. Devnet has no built-in default yet, so it requires the
+    /// environment variable to be set explicitly.
+    pub fn blockchain_api(&self) -> Result<blockchain_api::Client> {
+        if let Ok(url) = env::var(blockchain_api::API_URL_ENV) {
+            return Ok(blockchain_api::Client::new(url));
+        }
+        if client::is_devnet(&self.url) {
+            bail!(
+                "no default blockchain-api URL for devnet; set {}",
+                blockchain_api::API_URL_ENV
+            );
+        }
+        // Default to the mainnet API. Warn when the RPC cluster isn't a
+        // recognized mainnet alias, so a custom/other-cluster `--url` doesn't
+        // silently build and submit against mainnet.
+        if !matches!(self.url.as_str(), "m" | "mainnet" | "mainnet-beta") {
+            eprintln!(
+                "warning: {env} is unset; defaulting to the mainnet blockchain-api \
+                 ({DEFAULT_BLOCKCHAIN_API_URL}) while --url is {url:?}. Set {env} if this \
+                 cluster uses a different blockchain-api.",
+                env = blockchain_api::API_URL_ENV,
+                url = self.url,
+            );
+        }
+        Ok(blockchain_api::Client::new(DEFAULT_BLOCKCHAIN_API_URL))
+    }
 }
+
+/// Default mainnet blockchain-api base URL, used when
+/// `HELIUM_BLOCKCHAIN_API_URL` is unset.
+pub const DEFAULT_BLOCKCHAIN_API_URL: &str = "https://my-helium.web.helium.io/api/v1";
 
 /// Resolve a `--url` value (a moniker or a raw URL) into concrete RPC and
 /// certificate-service endpoints, honoring the `*_MAINNET_URL` / `*_DEVNET_URL`
@@ -231,15 +269,6 @@ fn print_blind_sign_hash(hash: &[u8; 32]) {
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct CommitOpts {
-    /// Skip pre-flight
-    #[arg(long)]
-    skip_preflight: bool,
-    /// Minimum priority fee in micro lamports
-    #[arg(long, default_value_t = priority_fee::MIN_PRIORITY_FEE)]
-    min_priority_fee: u64,
-    /// Maximum priority fee in micro lamports
-    #[arg(long, default_value_t = priority_fee::MAX_PRIORITY_FEE)]
-    max_priority_fee: u64,
     /// Commit the transaction
     #[arg(long)]
     commit: bool,
@@ -252,101 +281,364 @@ pub struct CommitOpts {
     confirm_timeout_secs: u64,
 }
 
-impl CommitOpts {
-    pub async fn maybe_commit<C: AsRef<client::SolanaRpcClient>, T: Into<VersionedTransaction>>(
-        &self,
-        tx: T,
-        client: &C,
-    ) -> Result<CommitResponse> {
-        fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
-            let mut captured_logs: Option<Vec<String>> = None;
-            let mut error_message: Option<String> = None;
-            if let solana_client::client_error::ClientErrorKind::RpcError(
-                solana_client::rpc_request::RpcError::RpcResponseError {
-                    data:
-                        RpcResponseErrorData::SendTransactionPreflightFailure(
-                            RpcSimulateTransactionResult { logs, .. },
-                        ),
-                    message,
+/// Map a Solana client error into our `Error`, lifting any preflight
+/// simulation logs and RPC message into the error context so a failed
+/// send/simulate reports *why* (program logs) rather than an opaque code.
+fn context_err(client_err: solana_client::client_error::ClientError) -> Error {
+    let mut captured_logs: Option<Vec<String>> = None;
+    let mut error_message: Option<String> = None;
+    if let solana_client::client_error::ClientErrorKind::RpcError(
+        solana_client::rpc_request::RpcError::RpcResponseError {
+            data:
+                RpcResponseErrorData::SendTransactionPreflightFailure(RpcSimulateTransactionResult {
+                    logs,
                     ..
-                },
-            ) = &client_err.kind
-            {
-                logs.clone_into(&mut captured_logs);
-                error_message = Some(message.clone());
-            }
-            let mut mapped = Error::from(client_err);
-            if let Some(message) = error_message {
-                mapped = mapped.context(message);
-            }
-            if let Some(logs) = captured_logs.as_ref() {
-                if let Ok(serialized_logs) = serde_json::to_string(logs) {
-                    mapped = mapped.context(serialized_logs);
-                }
-            }
-            mapped
-        }
-
-        let versioned_tx = tx.into();
-        if self.commit {
-            let config = RpcSendTransactionConfig {
-                skip_preflight: self.skip_preflight,
-                ..Default::default()
-            };
-            let signature = client
-                .as_ref()
-                .send_transaction_with_config(&versioned_tx, config)
-                .await
-                .map_err(context_err)?;
-
-            // Submission ≠ confirmation. Solana's send_transaction returns
-            // the locally-computed signature regardless of whether the tx
-            // ever lands — by far the most common Ledger failure mode is
-            // the recent_blockhash expiring while the user reads the device
-            // and approves. Poll for confirmation so a non-landing tx
-            // surfaces as an error instead of looking identical to a
-            // successful one. See `transaction::confirm_signatures` in
-            // helium-lib for the underlying primitive.
-            let timeout = Duration::from_secs(self.confirm_timeout_secs);
-            let poll_interval = Duration::from_secs(2);
-            let statuses = lib_transaction::confirm_signatures(
-                client,
-                &[signature],
-                CommitmentConfig::confirmed(),
-                timeout,
-                poll_interval,
-            )
-            .await?;
-
-            match statuses.get(&signature) {
-                Some(SignatureStatus::Confirmed) => Ok(CommitResponse::Signature(signature)),
-                Some(SignatureStatus::Failed(err)) => {
-                    Err(anyhow!("transaction failed on-chain: {err}"))
-                }
-                Some(SignatureStatus::NotFound) | None => Err(anyhow!(
-                    "transaction did not confirm within {}s — likely the blockhash \
-                     expired while signing on the device, or the RPC dropped it before \
-                     reaching leaders. Submitted signature: {signature}",
-                    timeout.as_secs(),
-                )),
-            }
-        } else {
-            client
-                .as_ref()
-                .simulate_transaction(&versioned_tx)
-                .await
-                .map_err(context_err)?
-                .value
-                .try_into()
+                }),
+            message,
+            ..
+        },
+    ) = &client_err.kind
+    {
+        logs.clone_into(&mut captured_logs);
+        error_message = Some(message.clone());
+    }
+    let mut mapped = Error::from(client_err);
+    if let Some(message) = error_message {
+        mapped = mapped.context(message);
+    }
+    if let Some(logs) = captured_logs.as_ref() {
+        if let Ok(serialized_logs) = serde_json::to_string(logs) {
+            mapped = mapped.context(serialized_logs);
         }
     }
+    mapped
+}
 
-    pub fn transaction_opts<C: AsRef<SolanaRpcClient>>(&self, client: &C) -> TransactionOpts {
-        TransactionOpts {
-            min_priority_fee: self.min_priority_fee,
-            max_priority_fee: self.max_priority_fee,
-            ..TransactionOpts::for_client(client)
+impl CommitOpts {
+    /// Sign and commit transactions built by the blockchain-api.
+    ///
+    /// Decodes the unsigned transactions in `response`, shows them for review,
+    /// signs each locally with `signer`, then:
+    /// Every run simulates. Without `--commit` it stops there and broadcasts
+    /// nothing; with `--commit` it signs and submits the batch via the API,
+    /// polling until the batch reaches a terminal status. The flag is the only
+    /// decision point, and it behaves the same piped as it does on a terminal.
+    ///
+    /// Signing happens only once `--commit` is given, so a Ledger is never
+    /// touched for a dry run. `signing` controls how:
+    /// [`ApiSigning::FreshBlockhash`] refreshes the blockhash and signs as sole
+    /// signer; [`ApiSigning::PreserveCosigned`] fills only the wallet's slot,
+    /// keeping the server's message/blockhash/co-signatures intact.
+    ///
+    /// The blockchain-api sets priority fee, compute budget, and lookup tables
+    /// server-side; there are no local priority-fee knobs.
+    pub async fn commit_via_api<C, R>(
+        &self,
+        api: &blockchain_api::Client,
+        rpc: &C,
+        response: &R,
+        signer: &(dyn Signer + Send + Sync),
+        signing: ApiSigning,
+    ) -> Result<CommitResponse>
+    where
+        C: AsRef<SolanaRpcClient>,
+        R: ApiTransactions,
+    {
+        let data = response.transaction_data();
+        let unsigned = data.decode_transactions()?;
+        let max_priority_fee = unsigned
+            .iter()
+            .map(|tx| verify::assert_priority_fee_within(tx, priority_fee::MAX_PRIORITY_FEE))
+            .sum::<std::result::Result<u64, _>>()?;
+        display_action_for_review(
+            data,
+            response.estimated_sol_fee(),
+            &unsigned,
+            max_priority_fee,
+        );
+
+        // Signing is what refuses a transaction this wallet cannot sign, and it
+        // runs only under `--commit`. Asking the same question here means a dry
+        // run reports that refusal instead of reporting success on a
+        // transaction that fails the moment a key is asked for.
+        if matches!(signing, ApiSigning::FreshBlockhash) {
+            let wallet = signer.pubkey();
+            unsigned
+                .iter()
+                .try_for_each(|tx| verify::assert_sole_signer(tx, &wallet))?;
         }
+
+        let solana = rpc.as_ref();
+
+        // Simulate on both paths. Without `--commit` that is the whole point of
+        // the run; with it, a transaction that cannot succeed is caught before a
+        // Ledger is touched.
+        simulate_unsigned(solana, &unsigned).await?;
+
+        if !self.commit {
+            return Ok(CommitResponse::None);
+        }
+
+        let signed = sign_for_submit(solana, unsigned, signer, signing).await?;
+        let submitted = api.submit_signed(data, &signed, true).await?;
+        let timeout = Duration::from_secs(self.confirm_timeout_secs);
+        let status = api
+            .poll_status(
+                &submitted.batch_id,
+                blockchain_api::DEFAULT_POLL_INTERVAL,
+                timeout,
+            )
+            .await?;
+        let response = commit_response_from_status(status)?;
+        confirm_against_rpc(solana, &response).await?;
+        Ok(response)
+    }
+}
+
+/// Confirm the batch really landed, by asking the wallet's own RPC.
+///
+/// Submission and polling both go through the transaction-building service, so
+/// on its own a reported success is that service's claim. Re-checking the
+/// signatures against `--url` turns it from an oracle into a relay.
+async fn confirm_against_rpc(solana: &SolanaRpcClient, response: &CommitResponse) -> Result<()> {
+    let signatures = response.signatures();
+    if signatures.is_empty() {
+        return Ok(());
+    }
+    let statuses = solana
+        .get_signature_statuses(&signatures)
+        .await
+        .map_err(context_err)?
+        .value;
+    for (signature, status) in signatures.iter().zip(statuses) {
+        match status {
+            Some(status) if status.err.is_none() => {}
+            Some(status) => bail!(
+                "the service reported {signature} confirmed, but this RPC reports it failed: {:?}",
+                status.err
+            ),
+            None => bail!(
+                "the service reported {signature} confirmed, but this RPC has no record of it"
+            ),
+        }
+    }
+    Ok(())
+}
+
+/// Sign the server-built transactions for submission. Fetches a fresh blockhash
+/// only here (not on the dry-run path), and only for the [`ApiSigning::FreshBlockhash`]
+/// case; [`ApiSigning::PreserveCosigned`] keeps the server's message intact.
+async fn sign_for_submit(
+    solana: &SolanaRpcClient,
+    unsigned: Vec<VersionedTransaction>,
+    signer: &(dyn Signer + Send + Sync),
+    signing: ApiSigning,
+) -> Result<Vec<VersionedTransaction>> {
+    match signing {
+        ApiSigning::FreshBlockhash => {
+            let (blockhash, _) = solana
+                .get_latest_blockhash_with_commitment(solana.commitment())
+                .await?;
+            unsigned
+                .into_iter()
+                .map(|mut tx| {
+                    tx.message.set_recent_blockhash(blockhash);
+                    VersionedTransaction::try_new(tx.message, &[signer]).map_err(Error::from)
+                })
+                .collect()
+        }
+        ApiSigning::PreserveCosigned => unsigned
+            .into_iter()
+            .map(|tx| {
+                verify::assert_not_nonce_anchored(&tx)?;
+                sign_owner_in_place(tx, signer)
+            })
+            .collect(),
+    }
+}
+
+/// Simulate each unsigned transaction (no signature check, server-replaced
+/// blockhash) to surface errors before signing/submitting. Includes the program
+/// logs in the error so a failing CPI is diagnosable.
+async fn simulate_unsigned(
+    solana: &SolanaRpcClient,
+    unsigned: &[VersionedTransaction],
+) -> Result<()> {
+    use helium_lib::solana_client::rpc_config::RpcSimulateTransactionConfig;
+    let config = RpcSimulateTransactionConfig {
+        sig_verify: false,
+        replace_recent_blockhash: true,
+        ..Default::default()
+    };
+    for tx in unsigned {
+        let result = solana
+            .simulate_transaction_with_config(tx, config.clone())
+            .await
+            .map_err(context_err)?;
+        if let Some(err) = result.value.err {
+            let logs = result.value.logs.unwrap_or_default().join("\n");
+            return Err(if logs.is_empty() {
+                anyhow!("transaction simulation failed: {err}")
+            } else {
+                anyhow!("transaction simulation failed: {err}\n{logs}")
+            });
+        }
+    }
+    Ok(())
+}
+
+/// How [`CommitOpts::commit_via_api`] signs the transactions the blockchain-api
+/// built.
+#[derive(Debug, Clone, Copy)]
+pub enum ApiSigning {
+    /// Refresh the blockhash and sign as the sole signer. The default for the
+    /// server-built, single-signer transactions the API returns.
+    FreshBlockhash,
+    /// Preserve the message, blockhash, and any co-signatures already present,
+    /// filling in only the wallet's slot. Required for the ECC-verifier-co-signed
+    /// data-only issue transaction.
+    PreserveCosigned,
+}
+
+/// Fill in the wallet's signature on a server-built transaction without
+/// altering the message, its blockhash, or any co-signatures already present.
+/// Locates the wallet among the required signers and writes only that slot;
+/// other signers' slots are left untouched.
+fn sign_owner_in_place(
+    mut tx: VersionedTransaction,
+    signer: &(dyn Signer + Send + Sync),
+) -> Result<VersionedTransaction> {
+    let owner = signer.pubkey();
+    let index = tx
+        .message
+        .static_account_keys()
+        .iter()
+        .position(|key| *key == owner)
+        .filter(|index| *index < tx.message.header().num_required_signatures as usize)
+        .ok_or_else(|| anyhow!("wallet is not a required signer of the transaction"))?;
+
+    // A well-formed tx sizes `signatures` to `num_required_signatures`; guard
+    // against a malformed server response so a short vector errors cleanly
+    // instead of panicking on the index.
+    if index >= tx.signatures.len() {
+        bail!(
+            "transaction has {} signature slot(s) but the wallet must sign at index {index}",
+            tx.signatures.len(),
+        );
+    }
+
+    let message_data = tx.message.serialize();
+    let signature = signer
+        .try_sign_message(&message_data)
+        .map_err(|err| anyhow!("failed to sign transaction: {err}"))?;
+    tx.signatures[index] = signature;
+    Ok(tx)
+}
+
+/// Map a terminal blockchain-api batch status into a [`CommitResponse`].
+/// Only a fully `Confirmed` batch is success; anything else surfaces the
+/// per-transaction statuses so the failure is legible.
+fn commit_response_from_status(status: StatusResponse) -> Result<CommitResponse> {
+    use blockchain_api::types::BatchStatus;
+    if status.status != BatchStatus::Confirmed {
+        let details = status
+            .transactions
+            .iter()
+            .map(|tx| format!("{} → {:?}", tx.signature, tx.status))
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!(
+            "blockchain-api batch {} ended in status {:?} [{details}]",
+            status.batch_id,
+            status.status,
+        );
+    }
+    let signatures = status
+        .transactions
+        .iter()
+        .map(|tx| Signature::from_str(&tx.signature))
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|err| anyhow!("blockchain-api returned an unparseable signature: {err}"))?;
+    match signatures.as_slice() {
+        [] => bail!(
+            "blockchain-api confirmed batch {} but returned no signatures",
+            status.batch_id
+        ),
+        [single] => Ok(CommitResponse::Signature(*single)),
+        _ => Ok(CommitResponse::Batch { signatures }),
+    }
+}
+
+/// Build the human-readable review lines for API-built transactions. Combines
+/// the server's declared intent (per-transaction `description` and the
+/// estimated fee) with facts derived from the decoded transaction itself (fee
+/// payer and instruction count) so the signer can confirm they are authorizing
+/// what they intended. Returned separately from printing so it can be tested.
+fn review_lines(
+    data: &TransactionData,
+    fee: Option<&TokenAmount>,
+    unsigned: &[VersionedTransaction],
+    max_priority_fee: u64,
+) -> Vec<String> {
+    // The estimate is the server's own figure. The priority-fee ceiling is
+    // derived from the compute-budget instructions in the transaction, so it
+    // holds even when the estimate does not.
+    let fee_summary = match fee {
+        Some(fee) => format!("est. fee ~{} SOL", fee.ui_amount_string),
+        None => "fee set server-side".to_string(),
+    };
+    let fee_summary = format!("{fee_summary}, priority fee at most {max_priority_fee} lamports");
+    let mut lines = vec![format!(
+        "{} transaction(s) built by the blockchain-api, {fee_summary}",
+        unsigned.len(),
+    )];
+    for (i, (tx, item)) in unsigned.iter().zip(&data.transactions).enumerate() {
+        let description = item
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("description"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("(no description)");
+        let keys = tx.message.static_account_keys();
+        let payer = keys
+            .first()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "<none>".to_string());
+        // The description is the server's own label; the program list is decoded
+        // from the transaction itself, so an unexpected program is visible even
+        // when signing blind (only `transfer` verifies content semantically).
+        let mut programs: Vec<String> = Vec::new();
+        for ix in tx.message.instructions() {
+            let program = match keys.get(ix.program_id_index as usize) {
+                Some(pubkey) => KnownProgram::from_pubkey(pubkey)
+                    .map(|program| program.name().to_string())
+                    .unwrap_or_else(|| pubkey.to_string()),
+                None => "<via lookup table>".to_string(),
+            };
+            if !programs.contains(&program) {
+                programs.push(program);
+            }
+        }
+        lines.push(format!(
+            "[{i}] {description} (fee payer {payer}, {} instruction(s); invokes: {})",
+            tx.message.instructions().len(),
+            programs.join(", "),
+        ));
+    }
+    lines
+}
+
+/// Print the review summary to stderr before transactions are signed. For
+/// Ledger sources the device additionally shows a blind-sign hash (see
+/// [`print_blind_sign_hash`]).
+fn display_action_for_review(
+    data: &TransactionData,
+    fee: Option<&TokenAmount>,
+    unsigned: &[VersionedTransaction],
+    max_priority_fee: u64,
+) {
+    for line in review_lines(data, fee, unsigned, max_priority_fee) {
+        eprintln!("→ {line}");
     }
 }
 
@@ -420,7 +712,30 @@ pub fn print_json<T: ?Sized + serde::Serialize>(value: &T) -> Result {
 #[derive(Debug, serde::Serialize)]
 pub enum CommitResponse {
     Signature(helium_lib::keypair::Signature),
+    /// A multi-transaction blockchain-api batch that fully confirmed.
+    Batch {
+        signatures: Vec<helium_lib::keypair::Signature>,
+    },
     None,
+}
+
+impl CommitResponse {
+    /// Whether transactions were actually submitted on-chain (as opposed to a
+    /// dry run or declined commit). True for both a single signature and a
+    /// confirmed batch.
+    /// The signatures this response reports, for re-checking against an RPC
+    /// other than the one that produced it.
+    pub fn signatures(&self) -> Vec<helium_lib::keypair::Signature> {
+        match self {
+            Self::Signature(signature) => vec![*signature],
+            Self::Batch { signatures } => signatures.clone(),
+            Self::None => Vec::new(),
+        }
+    }
+
+    pub fn committed(&self) -> bool {
+        matches!(self, Self::Signature(_) | Self::Batch { .. })
+    }
 }
 
 impl From<helium_lib::keypair::Signature> for CommitResponse {
@@ -449,6 +764,11 @@ impl ToJson for CommitResponse {
                 "result": "ok",
                 "committed": true,
                 "txid": signature.to_string(),
+            }),
+            Self::Batch { signatures } => json!({
+                "result": "ok",
+                "committed": true,
+                "txids": signatures.iter().map(ToString::to_string).collect::<Vec<_>>(),
             }),
             Self::None => json!({
                 "result": "ok",
@@ -491,7 +811,7 @@ pub trait ToJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helium_lib::keypair::Signature;
+    use helium_lib::keypair::{Pubkey, Signature};
 
     #[test]
     fn commit_response_signature_serializes_with_committed_true() {
@@ -516,5 +836,349 @@ mod tests {
         let value = err.to_json();
         assert_eq!(value["result"], json!("error"));
         assert!(value.get("committed").is_none());
+    }
+
+    #[test]
+    fn commit_response_batch_serializes_txids() {
+        let signatures = vec![Signature::from([1u8; 64]), Signature::from([2u8; 64])];
+        let value = CommitResponse::Batch {
+            signatures: signatures.clone(),
+        }
+        .to_json();
+        assert_eq!(value["result"], json!("ok"));
+        assert_eq!(value["committed"], json!(true));
+        assert_eq!(
+            value["txids"],
+            json!(signatures
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>())
+        );
+    }
+
+    fn status_with(
+        status: helium_lib::blockchain_api::types::BatchStatus,
+        signatures: &[Signature],
+    ) -> StatusResponse {
+        use helium_lib::blockchain_api::types::TransactionStatus;
+        StatusResponse {
+            batch_id: "batch".to_string(),
+            status,
+            submission_type: "single".to_string(),
+            parallel: false,
+            transactions: signatures
+                .iter()
+                .map(|sig| TransactionStatus {
+                    signature: sig.to_string(),
+                    status,
+                })
+                .collect(),
+            jito_bundle_id: None,
+        }
+    }
+
+    #[test]
+    fn commit_from_status_confirmed_single_is_signature() {
+        use helium_lib::blockchain_api::types::BatchStatus;
+        let sig = Signature::from([3u8; 64]);
+        let response = commit_response_from_status(status_with(BatchStatus::Confirmed, &[sig]))
+            .expect("confirmed single maps to a signature");
+        match response {
+            CommitResponse::Signature(got) => assert_eq!(got, sig),
+            other => panic!("expected Signature, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn commit_from_status_confirmed_multi_is_batch() {
+        use helium_lib::blockchain_api::types::BatchStatus;
+        let sigs = [Signature::from([4u8; 64]), Signature::from([5u8; 64])];
+        let response = commit_response_from_status(status_with(BatchStatus::Confirmed, &sigs))
+            .expect("confirmed multi maps to a batch");
+        match response {
+            CommitResponse::Batch { signatures } => assert_eq!(signatures, sigs.to_vec()),
+            other => panic!("expected Batch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn commit_from_status_non_confirmed_errors() {
+        use helium_lib::blockchain_api::types::BatchStatus;
+        let sig = Signature::from([6u8; 64]);
+        assert!(commit_response_from_status(status_with(BatchStatus::Failed, &[sig])).is_err());
+    }
+
+    #[test]
+    fn review_lines_include_intent_fee_and_payer() {
+        use helium_lib::{
+            blockchain_api::types::{
+                ActionResponse, TokenAmount, TransactionData, TransactionItem,
+            },
+            solana_sdk::{
+                hash::Hash,
+                message::{Message, MessageHeader, VersionedMessage},
+            },
+        };
+
+        let payer = Pubkey::new_unique();
+        let tx = VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::Legacy(Message {
+                header: MessageHeader {
+                    num_required_signatures: 0,
+                    num_readonly_signed_accounts: 0,
+                    num_readonly_unsigned_accounts: 0,
+                },
+                account_keys: vec![payer],
+                recent_blockhash: Hash::default(),
+                instructions: vec![],
+            }),
+        };
+        let response = ActionResponse {
+            transaction_data: TransactionData {
+                transactions: vec![TransactionItem {
+                    serialized_transaction: "unused".to_string(),
+                    metadata: Some(
+                        json!({ "type": "token_transfer", "description": "Transfer HNT" }),
+                    ),
+                }],
+                parallel: false,
+                tag: None,
+                action_metadata: None,
+            },
+            estimated_sol_fee: TokenAmount {
+                amount: "895934".to_string(),
+                decimals: 9,
+                ui_amount: Some(0.000895934),
+                ui_amount_string: "0.000895934".to_string(),
+                mint: "So11111111111111111111111111111111111111112".to_string(),
+            },
+        };
+
+        let lines = review_lines(
+            &response.transaction_data,
+            Some(&response.estimated_sol_fee),
+            &[tx],
+            0,
+        );
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("est. fee ~0.000895934 SOL"));
+        assert!(lines[0].contains("priority fee at most 0 lamports"));
+        assert!(lines[1].contains("Transfer HNT"));
+        assert!(lines[1].contains(&payer.to_string()));
+    }
+
+    #[test]
+    fn commit_response_reports_its_signatures() {
+        let sig = Signature::from([3u8; 64]);
+        assert_eq!(CommitResponse::Signature(sig).signatures(), vec![sig]);
+        assert_eq!(
+            CommitResponse::Batch {
+                signatures: vec![sig, sig]
+            }
+            .signatures(),
+            vec![sig, sig]
+        );
+        assert!(CommitResponse::None.signatures().is_empty());
+    }
+}
+
+/// Commands that decode what the service built and hold it to what was asked
+/// for, before `commit_via_api` signs anything.
+///
+/// Each guard has its own tests. Its call site does not: it sits in a `run`
+/// reached only through a live API and RPC, so nothing here exercises it and a
+/// guard that stopped being called would keep a green suite. These pin the call
+/// instead, which is weaker than running it -- it cannot see a guard called
+/// with the wrong arguments -- and is what separates a guard that is wired up
+/// from one that is merely defined.
+#[cfg(test)]
+mod guard_call_sites {
+    /// The command's own code: line comments removed, so a guard named in
+    /// prose does not read as a guard that is called (`:` before `//` keeps a
+    /// URL intact), and everything from the test module onward dropped, so a
+    /// guard exercised only by its tests does not read as one that is wired
+    /// into the command.
+    fn strip_comments(source: &str) -> String {
+        let source = match source.find("#[cfg(test)]") {
+            Some(at) => &source[..at],
+            None => source,
+        };
+        source
+            .lines()
+            .map(|line| match line.find("//") {
+                Some(0) => "",
+                Some(at) if !line[..at].ends_with(':') => &line[..at],
+                _ => line,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Where `code` calls `guard`.
+    ///
+    /// The guard's own `fn` definition sits above its call in every one of
+    /// these files, so a match that is a definition is not a call; counting it
+    /// would let the call be deleted while these still passed.
+    fn call_sites(code: &str, guard: &str) -> Vec<usize> {
+        code.match_indices(&format!("{guard}("))
+            .filter(|(at, _)| !code[..*at].trim_end().ends_with("fn"))
+            .map(|(at, _)| at)
+            .collect()
+    }
+
+    /// Assert `source` calls `guard` before its first `commit_via_api`.
+    fn assert_guarded(source: &str, guard: &str) {
+        assert_guarded_before(source, guard, 1);
+    }
+
+    /// Assert `source` calls `guard` before its `nth` (1-based)
+    /// `commit_via_api`.
+    ///
+    /// A command that commits twice signs two different transactions, and a
+    /// guard for the second necessarily sits after the first commit. Checking
+    /// every guard against the first commit would read that as unguarded.
+    fn assert_guarded_before(source: &str, guard: &str, nth: usize) {
+        let code = strip_comments(source);
+        let commit = code
+            .match_indices(".commit_via_api(")
+            .nth(nth - 1)
+            .unwrap_or_else(|| panic!("the command has no commit number {nth}"))
+            .0;
+        assert!(
+            call_sites(&code, guard).iter().any(|at| *at < commit),
+            "{guard} is not called before transaction {nth} is signed"
+        );
+    }
+
+    #[test]
+    fn a_definition_is_not_counted_as_a_call() {
+        // The filter above is what makes a deleted call visible, and it is
+        // load-bearing only in the case these tests never see: a file whose
+        // guard is defined and never called.
+        let defined_only = "fn assert_thing(a: u8) {}\n";
+        assert!(call_sites(defined_only, "assert_thing").is_empty());
+        assert_eq!(
+            call_sites(
+                "fn assert_thing(a: u8) {}\nassert_thing(1);\n",
+                "assert_thing"
+            )
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn an_asset_transfer_checks_where_the_asset_goes() {
+        assert_guarded(
+            include_str!("assets/transfer.rs"),
+            "verify::assert_asset_transfer",
+        );
+    }
+
+    #[test]
+    fn an_asset_transfer_proposal_checks_it_moves_nothing_itself() {
+        assert_guarded(
+            include_str!("assets/transfer.rs"),
+            "verify::wrapped::asset_transfer",
+        );
+    }
+
+    #[test]
+    fn a_data_credits_mint_checks_who_is_credited() {
+        assert_guarded(include_str!("dc/mint.rs"), "verify::assert_dc_mint");
+    }
+
+    #[test]
+    fn both_rewards_destination_paths_check_the_destination() {
+        // Init and update call the same endpoint with the same standing
+        // redirect to set, so leaving either unchecked leaves the redirect
+        // unchecked.
+        let source = strip_comments(include_str!("assets/rewards.rs"));
+        assert_eq!(
+            call_sites(&source, "verify::assert_rewards_destination").len(),
+            2,
+            "expected the init and update paths to both check"
+        );
+    }
+
+    #[test]
+    fn a_dc_burn_checks_its_amount_and_holder() {
+        assert_guarded(include_str!("dc/burn.rs"), "verify::assert_dc_burn");
+        assert_guarded(include_str!("dc/burn.rs"), "verify::wrapped::dc_burn");
+    }
+
+    #[test]
+    fn a_token_burn_checks_its_amount_and_source() {
+        assert_guarded(include_str!("burn.rs"), "verify::assert_spl_burn");
+        assert_guarded(include_str!("burn.rs"), "assert_wraps_no_burn");
+    }
+
+    #[test]
+    fn an_asset_burn_checks_it_destroys_one_owned_asset() {
+        assert_guarded(include_str!("assets/burn.rs"), "verify::assert_asset_burn");
+        assert_guarded(
+            include_str!("assets/burn.rs"),
+            "verify::wrapped::asset_burn",
+        );
+    }
+
+    #[test]
+    fn a_hotspot_update_checks_its_owner_and_location() {
+        assert_guarded(include_str!("hotspots/update.rs"), "assert_updates_hotspot");
+    }
+
+    #[test]
+    fn adding_a_hotspot_checks_who_it_is_issued_and_onboarded_to() {
+        // Two commits: the issue, then the onboard. Each guard is checked
+        // against the transaction it actually guards.
+        assert_guarded_before(
+            include_str!("hotspots/add.rs"),
+            "verify::assert_hotspot_issue",
+            1,
+        );
+        assert_guarded_before(
+            include_str!("hotspots/add.rs"),
+            "verify::assert_hotspot_onboard",
+            2,
+        );
+    }
+
+    #[test]
+    fn a_dc_delegation_checks_its_router_subdao_and_amount() {
+        assert_guarded(include_str!("dc/delegate.rs"), "verify::assert_dc_delegate");
+        assert_guarded(
+            include_str!("dc/delegate.rs"),
+            "verify::wrapped::dc_delegate",
+        );
+    }
+
+    #[test]
+    fn every_command_checks_the_signer_set_before_the_dry_run_returns() {
+        // Placed after the early return it would only run under `--commit`,
+        // where signing already refuses the same transactions -- so the dry
+        // run would keep reporting success on one it cannot sign.
+        let code = strip_comments(include_str!("mod.rs"));
+        let checked = code
+            .find("verify::assert_sole_signer")
+            .expect("commit_via_api checks the signer set");
+        let returns = code
+            .find("if !self.commit")
+            .expect("commit_via_api returns early without --commit");
+        assert!(
+            checked < returns,
+            "the signer set is checked only after the dry run has already returned"
+        );
+    }
+
+    #[test]
+    fn a_swap_checks_its_quote_and_that_the_route_only_swaps() {
+        assert_guarded(include_str!("swap.rs"), "verify::assert_quote_matches");
+        assert_guarded(include_str!("swap.rs"), "verify::assert_swap_only");
+    }
+
+    #[test]
+    fn a_token_transfer_checks_its_recipients_and_amounts() {
+        assert_guarded(include_str!("transfer.rs"), "assert_transfers");
     }
 }

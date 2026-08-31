@@ -49,11 +49,12 @@ jobs:
       - name: Build | Hygiene
         run: |
           cargo fmt  -- --check
-          cargo clippy --all-features --locked -- -D clippy::all
+          cargo clippy --all-features --locked --all-targets -- -D clippy::all
 
       - name: Build | Test
         run: |
           cargo test --locked
+          cargo test --locked --all-features
 
   build:
     runs-on: ${{ matrix.os }}
@@ -100,7 +101,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build | Compile
-        run: cargo build --all --locked --release
+        run: cargo build --all --locked --release --all-features
 
       - name: Build | Name
         shell: bash

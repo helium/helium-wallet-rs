@@ -1,5 +1,4 @@
 use crate::{
-    anchor_lang::{InstructionData, ToAccountMetas},
     bs58, bubblegum,
     client::{DasClient, DasSearchAssetsParams, SolanaRpcClient},
     dao::Dao,
@@ -7,18 +6,21 @@ use crate::{
     error::{DecodeError, Error},
     helium_entity_manager,
     keypair::{serde_opt_pubkey, serde_pubkey, Pubkey},
-    kta, message,
-    programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
-    solana_sdk::{account::Account, instruction::Instruction},
-    spl_account_compression,
-    transaction::{mk_signed_transaction, mk_transaction, VersionedTransaction},
-    TransactionOpts,
+    kta,
+    programs::TOKEN_METADATA_PROGRAM_ID,
+    solana_sdk::account::Account,
 };
 use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use solana_sdk::{signature::NullSigner, signer::Signer};
 use std::{collections::HashMap, result::Result as StdResult, str::FromStr, time::Duration};
+
+use crate::{
+    message,
+    solana_sdk::{signature::NullSigner, signer::Signer},
+    transaction::{mk_transaction, VersionedTransaction},
+    TransactionOpts,
+};
 
 /// Fetches a compressed NFT asset for a given Helium entity key (e.g., hotspot public key).
 pub async fn for_entity_key<E, C: AsRef<DasClient>>(
@@ -35,11 +37,10 @@ where
 /// Polls for an entity's asset until it becomes visible to the DAS indexer or `timeout` elapses.
 ///
 /// The DAS indexer can trail Solana confirmation by a few seconds after a
-/// `dataonly::issue` transaction commits, so an immediate read via `for_entity_key`
-/// (or anything that goes through it, like `dataonly::onboard_transaction`) bubbles
-/// up a transient `AccountNotFound`. This helper retries only `AccountNotFound` at
-/// `poll_interval` cadence; every other error passes through. Signature mirrors
-/// `transaction::confirm_signatures` so both poll helpers behave consistently.
+/// data-only hotspot is issued, so an immediate read via `for_entity_key`
+/// bubbles up a transient `AccountNotFound`. This helper retries only
+/// `AccountNotFound` at `poll_interval` cadence; every other error passes
+/// through.
 pub async fn wait_for_entity_key<E, C>(
     client: &C,
     entity_key: &E,
@@ -501,186 +502,6 @@ pub async fn for_owner<C: AsRef<DasClient>>(
     Ok(results)
 }
 
-/// Builds a Bubblegum transfer instruction for a compressed NFT asset.
-pub fn transfer_instruction(
-    recipient: &Pubkey,
-    asset: &Asset,
-    asset_proof: &AssetProof,
-) -> Result<Instruction, Error> {
-    use bubblegum::client::{
-        accounts::Transfer as TransferAccounts, args::Transfer as TransferArgs,
-    };
-    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-    let mut accounts = TransferAccounts {
-        leaf_owner: asset.ownership.owner,
-        leaf_delegate,
-        new_leaf_owner: *recipient,
-        tree_authority: merkle_tree_authority(&asset_proof.tree_id),
-        merkle_tree: asset_proof.tree_id,
-        log_wrapper: SPL_NOOP_PROGRAM_ID,
-        compression_program: spl_account_compression::ID,
-        system_program: solana_sdk::system_program::id(),
-    }
-    .to_account_metas(None);
-    accounts.extend(asset_proof.proof()?);
-
-    let data = TransferArgs {
-        creator_hash: asset.compression.creator_hash,
-        root: asset_proof.root.to_bytes(),
-        data_hash: asset.compression.data_hash,
-        index: asset.compression.leaf_id()?,
-        nonce: asset.compression.leaf_id,
-    }
-    .data();
-
-    let ix = Instruction {
-        program_id: bubblegum::ID,
-        accounts,
-        data,
-    };
-    Ok(ix)
-}
-
-/// Fetch the asset + Merkle proof and return the bare bubblegum
-/// transfer instruction (no compute-budget framing). Asserts the
-/// asset's current owner matches `expected_owner` — for Squads-mode
-/// wrappers this prevents shipping a proposal whose `leaf_owner`
-/// can't be satisfied at execute time (the vault PDA is the only
-/// signer the program can produce via `invoke_signed`).
-pub async fn fetch_transfer_instruction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
-    recipient: &Pubkey,
-    expected_owner: &Pubkey,
-) -> Result<Instruction, Error> {
-    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-    check_owner(pubkey, &asset, expected_owner)?;
-    transfer_instruction(recipient, &asset, &asset_proof)
-}
-
-/// Gets an unsigned transaction for an asset transfer.
-///
-/// The asset is transferred from the owner to the given recipient
-/// Note that the owner is currently expected to sign this transaction and pay for
-/// transaction fees.
-pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
-    recipient: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-    let ix = transfer_instruction(recipient, &asset, &asset_proof)?;
-
-    let (msg, block_height) =
-        message::mk_budgeted_message(client, 200_000, &[ix], &asset.ownership.owner, opts).await?;
-    let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
-    Ok((txn, block_height))
-}
-
-/// Signs and returns a transaction to transfer a compressed NFT to a new owner.
-pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
-    recipient: &Pubkey,
-    keypair: &(dyn Signer + Sync),
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let (mut txn, block_height) = transfer_transaction(client, pubkey, recipient, opts).await?;
-    let message_data = txn.message.serialize();
-    let signature = keypair.try_sign_message(&message_data)?;
-    txn.signatures[0] = signature;
-    Ok((txn, block_height))
-}
-
-/// Build the bare Bubblegum burn instruction from a fetched asset and
-/// its Merkle proof. The proof siblings are appended to the account
-/// list — `mpl-bubblegum`'s on-chain `burn` handler forwards
-/// `remaining_accounts` straight into `replace_leaf`, so without them
-/// the CPI fails Merkle proof verification.
-pub fn burn_instruction(asset: &Asset, asset_proof: &AssetProof) -> Result<Instruction, Error> {
-    use bubblegum::client::{accounts::Burn as BurnAccounts, args::Burn as BurnArgs};
-    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
-
-    let mut accounts = BurnAccounts {
-        leaf_owner: asset.ownership.owner,
-        leaf_delegate,
-        merkle_tree: asset_proof.tree_id,
-        tree_authority: merkle_tree_authority(&asset_proof.tree_id),
-        log_wrapper: SPL_NOOP_PROGRAM_ID,
-        compression_program: spl_account_compression::ID,
-        system_program: solana_sdk::system_program::id(),
-    }
-    .to_account_metas(None);
-    accounts.extend(asset_proof.proof()?);
-
-    let data = BurnArgs {
-        creator_hash: asset.compression.creator_hash,
-        root: asset_proof.root.to_bytes(),
-        data_hash: asset.compression.data_hash,
-        index: asset.compression.leaf_id()?,
-        nonce: asset.compression.leaf_id,
-    }
-    .data();
-
-    Ok(Instruction {
-        program_id: bubblegum::ID,
-        accounts,
-        data,
-    })
-}
-
-/// Fetch the asset + Merkle proof and return the bare bubblegum burn
-/// instruction. Asserts the asset's current owner matches
-/// `expected_owner` — same rationale as `fetch_transfer_instruction`.
-pub async fn fetch_burn_instruction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
-    expected_owner: &Pubkey,
-) -> Result<Instruction, Error> {
-    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-    check_owner(pubkey, &asset, expected_owner)?;
-    burn_instruction(&asset, &asset_proof)
-}
-
-/// Reject calls where the on-chain asset owner doesn't match the
-/// caller's expectation. Surfaces a clear error with both addresses
-/// so the user can compare against the Squads UI.
-fn check_owner(asset_id: &Pubkey, asset: &Asset, expected: &Pubkey) -> Result<(), Error> {
-    if asset.ownership.owner != *expected {
-        return Err(Error::WrongAssetOwner {
-            asset: *asset_id,
-            actual: asset.ownership.owner,
-            expected: *expected,
-        });
-    }
-    Ok(())
-}
-
-/// Gets an unsigned burn transaction for an asset.
-pub async fn burn_message<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
-    opts: &TransactionOpts,
-) -> Result<(message::VersionedMessage, u64), Error> {
-    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
-    let ix = burn_instruction(&asset, &asset_proof)?;
-
-    message::mk_budgeted_message(client, 100_000, &[ix], &asset.ownership.owner, opts).await
-}
-
-/// Signs and returns a transaction to permanently burn (destroy) a compressed NFT.
-pub async fn burn<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
-    client: &C,
-    pubkey: &Pubkey,
-    keypair: &(dyn Signer + Sync),
-    opts: &TransactionOpts,
-) -> Result<(VersionedTransaction, u64), Error> {
-    let msg = burn_message(client, pubkey, opts).await?;
-    mk_signed_transaction(msg, &[keypair])
-}
-
-/// A paginated list of compressed NFT assets returned from a DAS search.
 #[derive(Deserialize, Serialize, Clone)]
 pub struct AssetPage {
     pub total: u32,
@@ -877,112 +698,87 @@ pub mod serde_hash {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn synthetic_asset(owner: Pubkey, tree: Pubkey) -> Asset {
-        Asset {
-            id: Pubkey::new_unique(),
-            compression: AssetCompression {
-                data_hash: [1u8; 32],
-                creator_hash: [2u8; 32],
-                leaf_id: 7,
-                tree,
-            },
-            creators: vec![],
-            ownership: AssetOwnership {
-                owner,
-                delegate: None,
-            },
-            content: AssetContent {
-                metadata: AssetMetadata {
-                    attributes: vec![],
-                    name: "test".to_string(),
-                    symbol: "TEST".to_string(),
-                },
-                json_uri: url::Url::parse("https://example.test/x").unwrap(),
-            },
-            grouping: vec![],
-            burnt: false,
-        }
+/// Builds a bubblegum transfer instruction for a compressed NFT, moving it to
+/// `recipient`.
+///
+/// Instruction-level so a caller can bundle the transfer with other
+/// instructions in one transaction, sharing a single merkle proof. Requires the
+/// `txn` feature.
+pub fn transfer_instruction(
+    recipient: &Pubkey,
+    asset: &Asset,
+    asset_proof: &AssetProof,
+) -> Result<crate::solana_sdk::instruction::Instruction, Error> {
+    use crate::{
+        anchor_lang::{InstructionData, ToAccountMetas},
+        programs::SPL_NOOP_PROGRAM_ID,
+        solana_sdk::{self, instruction::Instruction},
+        spl_account_compression,
+    };
+    use bubblegum::client::{
+        accounts::Transfer as TransferAccounts, args::Transfer as TransferArgs,
+    };
+    let leaf_delegate = asset.ownership.delegate.unwrap_or(asset.ownership.owner);
+    let mut accounts = TransferAccounts {
+        leaf_owner: asset.ownership.owner,
+        leaf_delegate,
+        new_leaf_owner: *recipient,
+        tree_authority: merkle_tree_authority(&asset_proof.tree_id),
+        merkle_tree: asset_proof.tree_id,
+        log_wrapper: SPL_NOOP_PROGRAM_ID,
+        compression_program: spl_account_compression::ID,
+        system_program: solana_sdk::system_program::id(),
     }
+    .to_account_metas(None);
+    accounts.extend(asset_proof.proof()?);
 
-    fn synthetic_proof(tree: Pubkey, siblings: &[Pubkey]) -> AssetProof {
-        AssetProof {
-            proof: siblings.iter().map(ToString::to_string).collect(),
-            root: Pubkey::new_unique(),
-            tree_id: tree,
-            canopy_height: None,
-        }
+    let data = TransferArgs {
+        creator_hash: asset.compression.creator_hash,
+        root: asset_proof.root.to_bytes(),
+        data_hash: asset.compression.data_hash,
+        index: asset.compression.leaf_id()?,
+        nonce: asset.compression.leaf_id,
     }
+    .data();
 
-    /// `burn_instruction` must extend the bubblegum `Burn` accounts
-    /// with the asset's Merkle proof siblings — bubblegum's on-chain
-    /// `burn` handler forwards `remaining_accounts` straight into
-    /// `replace_leaf` for proof verification, so missing siblings
-    /// would fail the CPI on-chain. Pin both the count and the
-    /// trailing-account ordering so a regression that drops the
-    /// `accounts.extend(asset_proof.proof()?)` line surfaces here.
-    #[test]
-    fn burn_instruction_appends_proof_siblings() {
-        let owner = Pubkey::new_unique();
-        let tree = Pubkey::new_unique();
-        let siblings = [
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-        ];
-        let asset = synthetic_asset(owner, tree);
-        let proof = synthetic_proof(tree, &siblings);
+    Ok(Instruction {
+        program_id: bubblegum::ID,
+        accounts,
+        data,
+    })
+}
 
-        let ix = burn_instruction(&asset, &proof).expect("burn_instruction");
+/// Gets an unsigned transaction for an asset transfer.
+///
+/// The asset is transferred from the owner to the given recipient
+/// Note that the owner is currently expected to sign this transaction and pay for
+/// transaction fees.
+pub async fn transfer_transaction<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (asset, asset_proof) = get_with_proof(client, pubkey).await?;
+    let ix = transfer_instruction(recipient, &asset, &asset_proof)?;
 
-        // Bubblegum `Burn` has 7 base accounts; the proof siblings
-        // append after them in order.
-        assert_eq!(
-            ix.accounts.len(),
-            7 + siblings.len(),
-            "expected 7 base + {} proof siblings; got {} total",
-            siblings.len(),
-            ix.accounts.len(),
-        );
-        let trailing = &ix.accounts[7..];
-        for (i, sibling) in siblings.iter().enumerate() {
-            assert_eq!(
-                trailing[i].pubkey, *sibling,
-                "trailing account {i} must be sibling {sibling}",
-            );
-            assert!(
-                !trailing[i].is_signer && !trailing[i].is_writable,
-                "proof siblings must be readonly non-signers",
-            );
-        }
-    }
+    let (msg, block_height) =
+        message::mk_budgeted_message(client, 200_000, &[ix], &asset.ownership.owner, opts).await?;
+    let txn = mk_transaction(msg, &[&NullSigner::new(&asset.ownership.owner)])?;
+    Ok((txn, block_height))
+}
 
-    /// Canopy-height truncation: if the tree has a canopy, the proof
-    /// vec carries the full path but only the part above the canopy
-    /// goes on-chain (the canopy is verified inside the program).
-    /// `AssetProof::proof` already truncates; this test pins that
-    /// `burn_instruction` honors it instead of e.g. cloning the raw
-    /// `proof` vec.
-    #[test]
-    fn burn_instruction_respects_canopy_height() {
-        let owner = Pubkey::new_unique();
-        let tree = Pubkey::new_unique();
-        let siblings = [
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-            Pubkey::new_unique(),
-        ];
-        let asset = synthetic_asset(owner, tree);
-        let mut proof = synthetic_proof(tree, &siblings);
-        proof.canopy_height = Some(2);
-
-        let ix = burn_instruction(&asset, &proof).expect("burn_instruction");
-        // 5 siblings - 2 canopy = 3 on-chain proof entries.
-        assert_eq!(ix.accounts.len(), 7 + 3);
-    }
+/// Signs and returns a transaction to transfer a compressed NFT to a new owner.
+pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
+    client: &C,
+    pubkey: &Pubkey,
+    recipient: &Pubkey,
+    keypair: &(dyn Signer + Sync),
+    opts: &TransactionOpts,
+) -> Result<(VersionedTransaction, u64), Error> {
+    let (mut txn, block_height) = transfer_transaction(client, pubkey, recipient, opts).await?;
+    let message_data = txn.message.serialize();
+    let signature = keypair.try_sign_message(&message_data)?;
+    txn.signatures[0] = signature;
+    Ok((txn, block_height))
 }

@@ -1,5 +1,8 @@
 use crate::cmd::*;
-use helium_lib::{entity_key, reward, reward::ClaimableToken};
+use helium_lib::{
+    blockchain_api::types::UpdateRewardsDestinationRequest, entity_key, keypair::Signer, reward,
+    reward::ClaimableToken,
+};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct Cmd {
@@ -96,9 +99,9 @@ impl RecipientGetCmd {
 
 /// Initialize the recipient for an asset
 ///
-/// Creates the on-chain recipient account for an asset. This is required before
-/// rewards can be claimed or a custom destination can be set. The recipient will
-/// default to the asset owner's wallet.
+/// Creates the on-chain recipient account for an asset, with the reward
+/// destination set to your wallet. Required before rewards can be claimed or a
+/// custom destination set.
 #[derive(Debug, Clone, clap::Args)]
 pub struct RecipientInitCmd {
     /// Token for command
@@ -114,17 +117,36 @@ pub struct RecipientInitCmd {
 impl RecipientInitCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
         let signer = opts.load_signer()?;
-        let (tx, _) = reward::recipient::init(
-            &client,
-            self.token,
-            &self.entity_key.as_entity_key()?,
-            &*signer,
-            &transaction_opts,
+        let api = opts.blockchain_api()?;
+        // The update-rewards-destination endpoint creates the recipient account
+        // if it doesn't exist, so initializing is just setting the destination
+        // to the caller's own wallet.
+        let response = api
+            .update_rewards_destination(&UpdateRewardsDestinationRequest {
+                wallet_address: signer.pubkey().to_string(),
+                hotspot_pubkey: self.entity_key.to_string(),
+                destination: signer.pubkey().to_string(),
+                lazy_distributors: vec![self.token.lazy_distributor_key().to_string()],
+            })
+            .await?;
+        // Initializing points rewards at this wallet, so it is the same
+        // standing redirect the update path sets and is held to the same check.
+        let wallet = signer.pubkey();
+        verify::assert_rewards_destination(&response.decode_transactions()?, &wallet, &wallet)?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
+                .await?
+                .to_json(),
         )
-        .await?;
-        print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
     }
 }
 
@@ -149,18 +171,37 @@ pub struct RecipientUpdateCmd {
 impl RecipientUpdateCmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
         let signer = opts.load_signer()?;
-        let (tx, _) = reward::recipient::destination::update(
-            &client,
-            self.token,
-            &self.entity_key.as_entity_key()?,
+        let api = opts.blockchain_api()?;
+        // The server resolves `hotspotPubkey` to an asset id; for a hotspot
+        // entity key this is its base58 helium public key. The token selects
+        // which lazy distributor's recipient destination to update.
+        let response = api
+            .update_rewards_destination(&UpdateRewardsDestinationRequest {
+                wallet_address: signer.pubkey().to_string(),
+                hotspot_pubkey: self.entity_key.to_string(),
+                destination: self.destination.to_string(),
+                lazy_distributors: vec![self.token.lazy_distributor_key().to_string()],
+            })
+            .await?;
+        verify::assert_rewards_destination(
+            &response.decode_transactions()?,
+            &signer.pubkey(),
             &self.destination,
-            &*signer,
-            &transaction_opts,
+        )?;
+        print_json(
+            &self
+                .commit
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
+                .await?
+                .to_json(),
         )
-        .await?;
-        print_json(&self.commit.maybe_commit(tx, &client).await.to_json())
     }
 }
 

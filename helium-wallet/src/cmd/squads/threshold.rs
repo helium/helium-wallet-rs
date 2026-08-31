@@ -1,5 +1,5 @@
 use crate::cmd::{squads as cmd_squads, *};
-use helium_lib::{keypair::Pubkey, squads::v4::ConfigActionInput};
+use helium_lib::{blockchain_api::types::SquadsConfigAction, keypair::Pubkey};
 
 /// Propose a new approval threshold for the multisig (v4 only). Once
 /// the proposal lands and is executed, future proposals require the
@@ -25,19 +25,19 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let txn_opts = self.commit.transaction_opts(&client);
+        let api = opts.blockchain_api()?;
 
-        let action = ConfigActionInput::ChangeThreshold {
+        let action = SquadsConfigAction::ChangeThreshold {
             new_threshold: self.new_threshold,
         };
         cmd_squads::submit_config_proposal(
             &client,
+            &api,
             self.target,
             vec![action],
             self.memo.clone(),
             &*signer,
             &self.commit,
-            &txn_opts,
         )
         .await
     }

@@ -357,6 +357,17 @@ impl CommitOpts {
             max_priority_fee,
         );
 
+        // Signing is what refuses a transaction this wallet cannot sign, and it
+        // runs only under `--commit`. Asking the same question here means a dry
+        // run reports that refusal instead of reporting success on a
+        // transaction that fails the moment a key is asked for.
+        if matches!(signing, ApiSigning::FreshBlockhash) {
+            let wallet = signer.pubkey();
+            unsigned
+                .iter()
+                .try_for_each(|tx| verify::assert_sole_signer(tx, &wallet))?;
+        }
+
         let solana = rpc.as_ref();
 
         // Simulate on both paths. Without `--commit` that is the whole point of
@@ -1139,6 +1150,24 @@ mod guard_call_sites {
         assert_guarded(
             include_str!("dc/delegate.rs"),
             "verify::wrapped::dc_delegate",
+        );
+    }
+
+    #[test]
+    fn every_command_checks_the_signer_set_before_the_dry_run_returns() {
+        // Placed after the early return it would only run under `--commit`,
+        // where signing already refuses the same transactions -- so the dry
+        // run would keep reporting success on one it cannot sign.
+        let code = strip_comments(include_str!("mod.rs"));
+        let checked = code
+            .find("verify::assert_sole_signer")
+            .expect("commit_via_api checks the signer set");
+        let returns = code
+            .find("if !self.commit")
+            .expect("commit_via_api returns early without --commit");
+        assert!(
+            checked < returns,
+            "the signer set is checked only after the dry run has already returned"
         );
     }
 

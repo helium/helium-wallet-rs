@@ -384,7 +384,7 @@ pub mod wrapped {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{super::JUPITER_AGGREGATOR_V6, *};
     use crate::solana_sdk::{
         instruction::{AccountMeta, Instruction},
         message::{Message, VersionedMessage},
@@ -533,6 +533,17 @@ mod tests {
             matches!(err, VerifyError::ActionCount { found: 2, .. }),
             "{err}"
         );
+    }
+
+    #[test]
+    fn the_swap_route_program_is_named_rather_than_shown_as_an_address() {
+        // The review line a caller reads before authorizing a swap renders a
+        // program by `KnownProgram::name`, so an aggregator missing from that
+        // enum appears as raw base58 -- unreadable for the one program that
+        // decides what the swap does.
+        let program = KnownProgram::from_pubkey(&JUPITER_AGGREGATOR_V6)
+            .expect("the swap aggregator is a known program");
+        assert_eq!(program.name(), "jupiter_v6");
     }
 
     #[test]

@@ -15,11 +15,8 @@ pub use action::*;
 use std::collections::HashMap;
 
 use crate::{
-    blockchain_api::types::SwapQuote,
-    keypair::{pubkey, Pubkey},
-    programs::KnownProgram,
-    solana_sdk::instruction::CompiledInstruction,
-    transaction::VersionedTransaction,
+    blockchain_api::types::SwapQuote, keypair::Pubkey, programs::KnownProgram,
+    solana_sdk::instruction::CompiledInstruction, transaction::VersionedTransaction,
 };
 
 /// Compute-unit limit a transaction cannot exceed, set by the runtime.
@@ -323,10 +320,8 @@ pub fn find_methods<'a>(
     Ok(found)
 }
 
-/// Jupiter aggregator v6, the program that executes a swap route. Taken from a
-/// transaction the blockchain-api built for HNT->USDC, which invokes exactly
-/// this and the compute-budget program.
-pub const JUPITER_AGGREGATOR_V6: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+/// Jupiter aggregator v6, the program that executes a swap route.
+pub use crate::programs::JUPITER_V6_ID as JUPITER_AGGREGATOR_V6;
 
 /// SPL-token instruction tags a swap may legitimately carry. Wrapping and
 /// unwrapping SOL is the only reason one appears at the top level, so the tags

@@ -429,6 +429,24 @@ pub enum DeploymentInfo {
 /// The API models this as a union on `device_type`: IoT uses
 /// `gain`/`elevation`; Mobile uses `deployment_info`. Both may set `location`.
 /// Absent fields are omitted and the server keeps the current on-chain value.
+/// Who pays for an info update.
+///
+/// `Maker` relays the onboarding server, where the maker co-signs and covers
+/// the DC, so the wallet is neither the fee payer nor the only signature.
+/// `Owner` builds the update instruction server-side and the hotspot's owner
+/// pays the DC, the resize rent and the transaction fee.
+///
+/// A caller that signs alone needs `Owner`: a maker-paid transaction carries a
+/// second required signature it cannot supply. The field is required here
+/// rather than defaulted, because the wire default is `Maker` and a caller
+/// that omitted it would receive a transaction it cannot use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateInfoFeePayer {
+    Maker,
+    Owner,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfoRequest {
@@ -446,6 +464,7 @@ pub struct UpdateInfoRequest {
     /// IoT only. Antenna azimuth in degrees (0-360).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub azimuth: Option<f64>,
+    pub fee_payer: UpdateInfoFeePayer,
     /// Mobile only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_info: Option<DeploymentInfo>,
@@ -752,6 +771,40 @@ pub struct SquadsProposeConfigChangeRequest {
     pub actions: Vec<SquadsConfigAction>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
+}
+
+#[cfg(test)]
+mod update_info_tests {
+    use super::*;
+
+    /// The wire values are the server's enum, and `maker` is its default: a
+    /// caller that signs alone and sends the wrong one gets a transaction
+    /// carrying a signature it cannot supply.
+    #[test]
+    fn the_fee_payer_serializes_to_the_values_the_server_accepts() {
+        let owner = serde_json::to_value(UpdateInfoFeePayer::Owner).expect("serialize owner");
+        let maker = serde_json::to_value(UpdateInfoFeePayer::Maker).expect("serialize maker");
+        assert_eq!(owner, serde_json::json!("owner"));
+        assert_eq!(maker, serde_json::json!("maker"));
+    }
+
+    #[test]
+    fn the_request_names_the_fee_payer_on_the_wire() {
+        let request = UpdateInfoRequest {
+            device_type: DeviceType::Iot,
+            entity_pub_key: "gw".to_string(),
+            wallet_address: "wallet".to_string(),
+            location: None,
+            gain: None,
+            elevation: None,
+            azimuth: None,
+            fee_payer: UpdateInfoFeePayer::Owner,
+            deployment_info: None,
+        };
+        let json = serde_json::to_value(&request).expect("serialize the request");
+        // camelCase, and present: omitted, the server applies `maker`.
+        assert_eq!(json["feePayer"], serde_json::json!("owner"));
+    }
 }
 
 #[cfg(test)]

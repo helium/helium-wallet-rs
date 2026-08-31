@@ -1,6 +1,8 @@
 use crate::cmd::*;
 use helium_lib::{
-    blockchain_api::types::{DeploymentInfo, DeviceType, LatLng, UpdateInfoRequest},
+    blockchain_api::types::{
+        DeploymentInfo, DeviceType, LatLng, UpdateInfoFeePayer, UpdateInfoRequest,
+    },
     keypair::Signer,
     transaction::VersionedTransaction,
     verify,
@@ -96,6 +98,7 @@ impl IotCmd {
             gain: self.gain,
             elevation: self.elevation,
             azimuth: self.azimuth,
+            fee_payer: UpdateInfoFeePayer::Owner,
             deployment_info: None,
         };
         let response = api.update_info(&request).await?;
@@ -163,6 +166,7 @@ impl MobileCmd {
             // Mobile azimuth is carried in deployment_info (WIFI); the
             // top-level azimuth field is IoT-only.
             azimuth: None,
+            fee_payer: UpdateInfoFeePayer::Owner,
             deployment_info: self.deployment_info(),
         };
         let response = api.update_info(&request).await?;

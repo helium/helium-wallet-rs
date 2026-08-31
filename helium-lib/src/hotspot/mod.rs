@@ -922,3 +922,49 @@ pub async fn transfer<C: AsRef<SolanaRpcClient> + AsRef<DasClient>>(
     let kta = kta::for_entity_key(hotspot_key).await?;
     asset::transfer(client, &kta.asset, recipient, keypair, opts).await
 }
+
+#[cfg(test)]
+mod location_tests {
+    use super::*;
+    use crate::dao::SubDao;
+
+    /// The res-12 cell at 0,0. A decommission resets a hotspot's location to
+    /// this before transferring it away, so the value is what that reset writes
+    /// on chain and a change to how the cell is derived would move it silently.
+    const ORIGIN_CELL: u64 = 632567620722400767;
+
+    #[test]
+    fn resetting_to_the_origin_writes_the_same_cell() {
+        let update = HotspotInfoUpdate::for_subdao(SubDao::Mobile)
+            .set_geo(Some(0.0), Some(0.0))
+            .expect("0,0 is a valid coordinate");
+        assert_eq!(update.location_u64(), Some(ORIGIN_CELL));
+    }
+
+    #[test]
+    fn set_geo_and_cell_for_agree() {
+        // `set_geo` delegates to `cell_for`; a caller checking a built
+        // transaction derives the cell through `cell_for` directly, so the two
+        // have to name the same one.
+        for (lat, lon) in [(0.0, 0.0), (37.7749, -122.4194), (-33.8688, 151.2093)] {
+            let update = HotspotInfoUpdate::for_subdao(SubDao::Mobile)
+                .set_geo(Some(lat), Some(lon))
+                .expect("a valid coordinate");
+            let direct = cell_for(Some(lat), Some(lon))
+                .expect("a valid coordinate")
+                .map(u64::from);
+            assert_eq!(update.location_u64(), direct, "at {lat},{lon}");
+        }
+    }
+
+    #[test]
+    fn an_unset_pair_clears_the_location_and_a_half_pair_is_refused() {
+        let cleared = HotspotInfoUpdate::for_subdao(SubDao::Mobile)
+            .set_geo(None, None)
+            .expect("an unset pair");
+        assert_eq!(cleared.location_u64(), None);
+        assert!(HotspotInfoUpdate::for_subdao(SubDao::Mobile)
+            .set_geo(Some(1.0), None)
+            .is_err());
+    }
+}

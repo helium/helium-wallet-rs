@@ -161,7 +161,7 @@ pub async fn updates<C: AsRef<SolanaRpcClient>>(
                     RpcTransactionConfig {
                         encoding: Some(UiTransactionEncoding::JsonParsed),
                         commitment: Some(CommitmentConfig::finalized()),
-                        max_supported_transaction_version: Some(0),
+                        max_supported_transaction_version: Some(1),
                     },
                 )
                 .map_err(Error::from)

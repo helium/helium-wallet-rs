@@ -200,7 +200,7 @@ impl Client {
         }
         let response = self
             .inner
-            .post(format!("{}{}", &self.base_url, path))
+            .post(format!("{}{}", self.base_url, path))
             .json(body)
             .headers(headers)
             .send()

@@ -63,6 +63,8 @@ pub struct Client {
 }
 
 /// Deserializes on-chain accounts into Anchor program types.
+// `async_trait` marks each method `#[must_use]` on a return type that is already must-use.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait GetAnchorAccount {
     /// Fetch and deserialize a single account.

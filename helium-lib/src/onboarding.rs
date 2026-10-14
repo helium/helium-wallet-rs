@@ -23,7 +23,7 @@ impl Client {
     where
         T: 'static + DeserializeOwned + Send,
     {
-        let url = format!("{}{path}", &self.base_url);
+        let url = format!("{}{path}", self.base_url);
         let resp = self.inner.get(&url).send().await?;
         let onboarding_resp = resp.json::<OnboardingResponse<T>>().await?;
         if !onboarding_resp.success {
@@ -38,7 +38,7 @@ impl Client {
         T: 'static + DeserializeOwned + Send,
         P: Serialize + ?Sized,
     {
-        let url = format!("{}{path}", &self.base_url);
+        let url = format!("{}{path}", self.base_url);
         let resp = self.inner.post(&url).json(&params).send().await?;
         let onboarding_resp = resp.json::<OnboardingResponse<T>>().await?;
         if !onboarding_resp.success {

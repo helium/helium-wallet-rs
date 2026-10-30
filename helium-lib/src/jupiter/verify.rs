@@ -5,15 +5,17 @@
 //! can spend anything the taker holds. Three layers decide whether it may:
 //!
 //! 1. [`check_order`]: the order names the requested mints, amount,
-//!    slippage, taker and an exact-in swap, and its minimum output is no
-//!    lower than that slippage allows.
+//!    slippage, taker and an exact-in swap, quotes a non-zero output, and
+//!    its minimum output is at least the caller's `min_output` and no lower
+//!    than the slippage allows on the quote.
 //! 2. [`check_instructions`]: every top-level instruction is one of the
 //!    forms a Jupiter aggregator route emits (compute budget within caps,
 //!    the taker's own associated token accounts, wrapping and unwrapping the
 //!    taker's SOL, and the Jupiter aggregator's exact-in routes, whose own
-//!    arguments must spend `amount` and enforce at least the order's minimum
-//!    output on chain).
-//! 3. [`check_effects`]: a simulation of the signed transaction shows the
+//!    arguments must spend `amount`, enforce at least the order's minimum
+//!    output on chain, deliver to the taker's output account and take a
+//!    bounded platform fee).
+//! 3. [`check_effects`]: a simulation of the unsigned transaction shows the
 //!    taker spending exactly `amount` of the input mint, receiving at least
 //!    the order's minimum output, losing no other token, paying no more SOL
 //!    than the transaction's own fee, and every taker token account keeping
@@ -21,6 +23,9 @@
 //!    accounts it lists as writable, so comparing every writable account
 //!    before and after covers what the Jupiter program does through
 //!    cross-program invocations, which no static check can see.
+//!
+//! The taker signs only after all three pass, so a refused transaction is
+//! never signed and the RPC node that simulates it never holds a signed copy.
 
 use super::{JupiterError, OrderResponse};
 use crate::{
@@ -35,6 +40,7 @@ use crate::{
         message::VersionedMessage,
         program_pack::Pack,
         pubkey,
+        signature::Signature,
         signer::Signer,
         transaction::{TransactionError, VersionedTransaction},
     },
@@ -51,11 +57,14 @@ use solana_address_lookup_table_interface::{
 use solana_compute_budget_interface as compute_budget;
 use solana_system_interface::program as system_program;
 use solana_transaction_status::UiTransactionEncoding;
-use spl_associated_token_account::get_associated_token_address;
+use spl_associated_token_account::{
+    get_associated_token_address, get_associated_token_address_with_program_id,
+};
 use std::collections::{BTreeSet, HashMap};
 
 /// Jupiter's aggregator program, which every `metis` route invokes.
-pub const JUPITER_AGGREGATOR_V6: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+pub(crate) const JUPITER_AGGREGATOR_V6: Pubkey =
+    pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 /// The Token-2022 program, which associated token accounts may belong to.
 const TOKEN_2022: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 /// The highest compute unit limit a swap transaction may request (the
@@ -88,6 +97,20 @@ const SYSTEM_TRANSFER_TAG: [u8; 4] = [2, 0, 0, 0];
 /// so they cannot be read without decoding every step, and are refused.
 const ROUTE_V2: [u8; 8] = [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14];
 const SHARED_ACCOUNTS_ROUTE_V2: [u8; 8] = [0xd1, 0x98, 0x53, 0x93, 0x7c, 0xfe, 0xd8, 0xe9];
+/// The highest platform fee a route may take, in basis points. The recorded
+/// routes carry 10 and 2; the cap leaves five times the higher of them as
+/// headroom and stops a route from taking a large share of the output. The
+/// simulation's output floor still applies to whatever a route delivers.
+pub const MAX_PLATFORM_FEE_BPS: u16 = 50;
+/// `route_v2`'s `user_destination_token_account`, which receives the output.
+const ROUTE_V2_USER_DESTINATION: usize = 2;
+/// `route_v2`'s optional `destination_token_account`, which would receive
+/// the output in place of the user's account. Absent, Anchor fills the slot
+/// with the program id.
+const ROUTE_V2_DESTINATION: usize = 7;
+/// `shared_accounts_route_v2`'s `destination_token_account`, which receives
+/// the output.
+const SHARED_ACCOUNTS_ROUTE_V2_DESTINATION: usize = 5;
 /// Compute Budget `SetComputeUnitLimit`, `SetComputeUnitPrice` and
 /// `SetLoadedAccountsDataSizeLimit` tags.
 const COMPUTE_UNIT_LIMIT_TAG: u8 = 2;
@@ -100,12 +123,17 @@ const MAX_ACCOUNTS_PER_REQUEST: usize = 100;
 /// check that failed; none carries a secret or a URL.
 #[derive(Debug, thiserror::Error)]
 pub enum SwapRefusal {
+    /// `actual` is response text, bounded by `bounded_text`.
     #[error("swap refused: order {field} is {actual}, requested {expected}")]
     OrderMismatch {
         field: &'static str,
         expected: String,
         actual: String,
     },
+    #[error("swap refused: order quotes no output")]
+    OutAmountZero,
+    #[error("swap refused: order minimum output {threshold} is below the requested minimum {min_output}")]
+    ThresholdBelowMinimum { threshold: u64, min_output: u64 },
     #[error("swap refused: order {field} is missing or malformed")]
     OrderMalformed { field: &'static str },
     #[error("swap refused: order minimum output {threshold} is below {min_out}, the least {slippage_bps} bps of slippage allows on {out_amount}")]
@@ -139,6 +167,18 @@ pub enum SwapRefusal {
         route_minimum: u64,
         min_out: u64,
     },
+    #[error("swap refused: route instruction {index} delivers to {account}, not the taker's output account")]
+    RouteDestination { index: usize, account: Pubkey },
+    #[error(
+        "swap refused: route instruction {index} takes a {fee_bps} bps platform fee, above {cap}"
+    )]
+    PlatformFeeAboveCap {
+        index: usize,
+        fee_bps: u16,
+        cap: u16,
+    },
+    #[error("swap refused: transaction sets the compute unit limit {count} times, not once")]
+    ComputeUnitLimitCount { count: usize },
     #[error("swap refused: compute unit limit {limit} exceeds {cap}")]
     ComputeUnitLimitAboveCap { limit: u32, cap: u32 },
     #[error("swap refused: compute unit price {price} exceeds {cap} micro-lamports")]
@@ -170,6 +210,9 @@ pub(crate) struct SwapRequest {
     pub input_mint: Pubkey,
     pub output_mint: Pubkey,
     pub amount: u64,
+    /// The caller's floor on the output, in the output mint's smallest
+    /// units.
+    pub min_output: u64,
     pub slippage_bps: u16,
     pub taker: Pubkey,
 }
@@ -218,9 +261,9 @@ impl SwapChain for SolanaRpcClient {
         keys: &[Pubkey],
     ) -> Result<Simulation, JupiterError> {
         let config = RpcSimulateTransactionConfig {
-            // The transaction is already signed over a fresh blockhash;
-            // replacing it only spares a node that has not seen that
-            // blockhash yet from failing the simulation.
+            // The transaction is simulated unsigned, so signatures are not
+            // verified; replacing the blockhash only spares a node that has
+            // not seen it yet from failing the simulation.
             sig_verify: false,
             replace_recent_blockhash: true,
             commitment: Some(self.commitment()),
@@ -256,10 +299,10 @@ impl SwapChain for SolanaRpcClient {
     }
 }
 
-/// Check `order` against `request`, decode its transaction, check it, sign
-/// it as the taker over a fresh blockhash, and check a simulation of the
-/// signed transaction. Returns the signed transaction, its last valid block
-/// height and the order.
+/// Check `order` against `request`, decode its transaction, check it, set a
+/// fresh blockhash, check a simulation of the unsigned transaction, and only
+/// then sign it as the taker. Returns the signed transaction, its last valid
+/// block height and the order.
 pub(crate) async fn sign_verified<S: SwapChain>(
     chain: &S,
     request: &SwapRequest,
@@ -268,10 +311,10 @@ pub(crate) async fn sign_verified<S: SwapChain>(
 ) -> Result<(VersionedTransaction, u64, OrderResponse), JupiterError> {
     if order.transaction.is_empty() {
         return Err(JupiterError::SwapError(
-            order
-                .error_message
-                .clone()
-                .unwrap_or_else(|| "no transaction returned".to_string()),
+            order.error_message.as_deref().map_or_else(
+                || "no transaction returned".to_string(),
+                super::bounded_text,
+            ),
         ));
     }
     let min_out = check_order(&order, request)?;
@@ -302,10 +345,16 @@ pub(crate) async fn sign_verified<S: SwapChain>(
     let (blockhash, last_valid_block_height) = chain.latest_blockhash().await?;
     let mut message = txn.message;
     message.set_recent_blockhash(blockhash);
-    let txn = VersionedTransaction::try_new(message, &[keypair]).map_err(JupiterError::signing)?;
+    let unsigned = VersionedTransaction {
+        signatures: vec![
+            Signature::default();
+            usize::from(message.header().num_required_signatures)
+        ],
+        message,
+    };
 
     let pre = chain.accounts(&resolved.writable).await?;
-    let simulation = chain.simulate(&txn, &resolved.writable).await?;
+    let simulation = chain.simulate(&unsigned, &resolved.writable).await?;
     if let Some(err) = simulation.err {
         return Err(SwapRefusal::SimulationFailed(err).into());
     }
@@ -316,11 +365,14 @@ pub(crate) async fn sign_verified<S: SwapChain>(
     };
     check_effects(&expected, &resolved.writable, &pre, &simulation.accounts)?;
 
+    let txn = VersionedTransaction::try_new(unsigned.message, &[keypair])
+        .map_err(JupiterError::signing)?;
     Ok((txn, last_valid_block_height, order))
 }
 
 /// Check the order's terms against the request. Returns the order's minimum
-/// output (`otherAmountThreshold`), which the simulation must meet.
+/// output (`otherAmountThreshold`), which the route and the simulation must
+/// meet; it is at least `request.min_output`, so they meet that too.
 pub(crate) fn check_order(
     order: &OrderResponse,
     request: &SwapRequest,
@@ -332,7 +384,7 @@ pub(crate) fn check_order(
             Err(SwapRefusal::OrderMismatch {
                 field,
                 expected,
-                actual: actual.to_string(),
+                actual: super::bounded_text(actual),
             })
         }
     }
@@ -370,10 +422,19 @@ pub(crate) fn check_order(
     )?;
 
     let out_amount = amount("outAmount", Some(&order.out_amount))?;
+    if out_amount == 0 {
+        return Err(SwapRefusal::OutAmountZero);
+    }
     let threshold = amount(
         "otherAmountThreshold",
         order.other_amount_threshold.as_deref(),
     )?;
+    if threshold < request.min_output {
+        return Err(SwapRefusal::ThresholdBelowMinimum {
+            threshold,
+            min_output: request.min_output,
+        });
+    }
     let min_out = min_out(out_amount, request.slippage_bps);
     if threshold < min_out {
         return Err(SwapRefusal::ThresholdBelowSlippage {
@@ -466,18 +527,17 @@ fn unresolved_table(table: Pubkey) -> SwapRefusal {
 }
 
 /// The compute budget a transaction requests.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ComputeBudget {
-    pub limit: Option<u32>,
+    pub limit: u32,
     pub price: u64,
 }
 
 impl ComputeBudget {
-    /// The most the fee payer can be charged: the base fee for each
-    /// signature plus the priority fee, at the requested limit or, with none
-    /// requested, at the protocol maximum.
+    /// What the fee payer is charged: the base fee for each signature plus
+    /// the priority fee at the requested limit.
     pub fn fee_bound(&self, signatures: u8) -> u64 {
-        let limit = u128::from(self.limit.unwrap_or(MAX_COMPUTE_UNIT_LIMIT));
+        let limit = u128::from(self.limit);
         let priority = (u128::from(self.price) * limit).div_ceil(MICRO_LAMPORTS_PER_LAMPORT);
         LAMPORTS_PER_SIGNATURE * u64::from(signatures) + priority as u64
     }
@@ -487,18 +547,22 @@ impl ComputeBudget {
 /// aggregator route emits. Returns the compute budget the message requests.
 ///
 /// Allowed:
-/// - Compute Budget: `SetComputeUnitLimit` up to [`MAX_COMPUTE_UNIT_LIMIT`],
-///   `SetComputeUnitPrice` up to [`MAX_COMPUTE_UNIT_PRICE`], and
+/// - Compute Budget: exactly one `SetComputeUnitLimit`, up to
+///   [`MAX_COMPUTE_UNIT_LIMIT`], so the fee bound is the fee charged;
+///   `SetComputeUnitPrice` up to [`MAX_COMPUTE_UNIT_PRICE`]; and
 ///   `SetLoadedAccountsDataSizeLimit`, which only restricts the transaction.
 /// - Associated Token Account: `CreateIdempotent`, paid for by the taker,
 ///   for an account the taker owns, under SPL Token or Token-2022.
-/// - System: one `Transfer` of exactly `amount` lamports from the taker to
-///   the taker's wrapped-SOL account, and only when the input is SOL.
+/// - System: `Transfer`s of exactly `amount` lamports each, from the taker
+///   to the taker's wrapped-SOL account, and only when the input is SOL.
 /// - SPL Token: `SyncNative` of the taker's wrapped-SOL account, and
 ///   `CloseAccount` of it back to the taker, by the taker.
 /// - Jupiter aggregator `route_v2` and `shared_accounts_route_v2` spending
-///   exactly `amount`, whose own minimum output is at least `min_out`. What
-///   the route does through other programs is checked by simulation.
+///   exactly `amount`, whose own minimum output is at least `min_out`, whose
+///   platform fee is at most [`MAX_PLATFORM_FEE_BPS`], and that deliver to
+///   the taker's associated token account of the output mint (`route_v2`'s
+///   optional destination left empty). What the route does through other
+///   programs is checked by simulation.
 pub(crate) fn check_instructions(
     message: &VersionedMessage,
     keys: &[Pubkey],
@@ -510,7 +574,12 @@ pub(crate) fn check_instructions(
         return Err(SwapRefusal::FeePayerNotTaker);
     }
     let wrapped_sol = get_associated_token_address(&taker, &native_mint::ID);
-    let mut budget = ComputeBudget::default();
+    let output_accounts = [
+        get_associated_token_address(&taker, &request.output_mint),
+        get_associated_token_address_with_program_id(&taker, &request.output_mint, &TOKEN_2022),
+    ];
+    let mut limits = Vec::new();
+    let mut price = 0;
 
     for (index, ix) in message.instructions().iter().enumerate() {
         let key = |position: u8| {
@@ -538,17 +607,18 @@ pub(crate) fn check_instructions(
                             cap: MAX_COMPUTE_UNIT_LIMIT,
                         });
                     }
-                    budget.limit = Some(limit);
+                    limits.push(limit);
                 }
                 Some((&COMPUTE_UNIT_PRICE_TAG, value)) => {
-                    let price = u64::from_le_bytes(value.try_into().map_err(|_| not_allowed)?);
-                    if price > MAX_COMPUTE_UNIT_PRICE {
+                    let value_price =
+                        u64::from_le_bytes(value.try_into().map_err(|_| not_allowed)?);
+                    if value_price > MAX_COMPUTE_UNIT_PRICE {
                         return Err(SwapRefusal::ComputeUnitPriceAboveCap {
-                            price,
+                            price: value_price,
                             cap: MAX_COMPUTE_UNIT_PRICE,
                         });
                     }
-                    budget.price = price;
+                    price = value_price;
                 }
                 Some((&LOADED_ACCOUNTS_DATA_SIZE_TAG, value)) if value.len() == 4 => {}
                 _ => return Err(not_allowed),
@@ -587,15 +657,37 @@ pub(crate) fn check_instructions(
                 return Err(not_allowed);
             }
         } else if program == JUPITER_AGGREGATOR_V6 {
-            let terms = match data.split_at_checked(ROUTE_V2.len()) {
-                Some((discriminator, args)) if discriminator == ROUTE_V2 => Some(args),
-                Some((discriminator, args)) if discriminator == SHARED_ACCOUNTS_ROUTE_V2 => {
-                    args.get(1..)
+            let (terms, destination) = match data.split_at_checked(ROUTE_V2.len()) {
+                Some((discriminator, args)) if discriminator == ROUTE_V2 => {
+                    let placeholder = account(ROUTE_V2_DESTINATION)?;
+                    if placeholder != JUPITER_AGGREGATOR_V6 {
+                        return Err(SwapRefusal::RouteDestination {
+                            index,
+                            account: placeholder,
+                        });
+                    }
+                    (Some(args), account(ROUTE_V2_USER_DESTINATION)?)
                 }
-                _ => None,
+                Some((discriminator, args)) if discriminator == SHARED_ACCOUNTS_ROUTE_V2 => (
+                    args.get(1..),
+                    account(SHARED_ACCOUNTS_ROUTE_V2_DESTINATION)?,
+                ),
+                _ => return Err(not_allowed),
+            };
+            let terms = terms.and_then(RouteTerms::read).ok_or(not_allowed)?;
+            if !output_accounts.contains(&destination) {
+                return Err(SwapRefusal::RouteDestination {
+                    index,
+                    account: destination,
+                });
             }
-            .and_then(RouteTerms::read)
-            .ok_or(not_allowed)?;
+            if terms.platform_fee_bps > MAX_PLATFORM_FEE_BPS {
+                return Err(SwapRefusal::PlatformFeeAboveCap {
+                    index,
+                    fee_bps: terms.platform_fee_bps,
+                    cap: MAX_PLATFORM_FEE_BPS,
+                });
+            }
             if terms.in_amount != request.amount {
                 return Err(SwapRefusal::RouteInAmount {
                     index,
@@ -615,7 +707,15 @@ pub(crate) fn check_instructions(
             return Err(SwapRefusal::ProgramNotAllowed { index, program });
         }
     }
-    Ok(budget)
+    match limits.as_slice() {
+        [limit] => Ok(ComputeBudget {
+            limit: *limit,
+            price,
+        }),
+        _ => Err(SwapRefusal::ComputeUnitLimitCount {
+            count: limits.len(),
+        }),
+    }
 }
 
 /// The leading arguments of a Jupiter v2 route.
@@ -623,6 +723,7 @@ struct RouteTerms {
     in_amount: u64,
     quoted_out_amount: u64,
     slippage_bps: u16,
+    platform_fee_bps: u16,
 }
 
 impl RouteTerms {
@@ -631,6 +732,7 @@ impl RouteTerms {
             in_amount: u64::from_le_bytes(args.get(0..8)?.try_into().ok()?),
             quoted_out_amount: u64::from_le_bytes(args.get(8..16)?.try_into().ok()?),
             slippage_bps: u16::from_le_bytes(args.get(16..18)?.try_into().ok()?),
+            platform_fee_bps: u16::from_le_bytes(args.get(18..20)?.try_into().ok()?),
         })
     }
 }
@@ -826,13 +928,16 @@ pub(crate) fn check_effects(
 mod tests {
     use super::*;
     use crate::solana_sdk::{
+        address_lookup_table::AddressLookupTableAccount,
         instruction::{AccountMeta, Instruction},
-        message::Message,
+        message::{v0, Message},
         program_option::COption,
         signature::NullSigner,
+        signer::SignerError,
     };
     use serde::Deserialize;
     use solana_address_lookup_table_interface::state::LookupTableMeta;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::{borrow::Cow, collections::BTreeMap, str::FromStr};
 
     const HNT: Pubkey = pubkey!("hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux");
@@ -935,6 +1040,12 @@ mod tests {
             keys: &[Pubkey],
         ) -> Result<Simulation, JupiterError> {
             assert_eq!(*txn.message.recent_blockhash(), BLOCKHASH);
+            assert!(
+                txn.signatures
+                    .iter()
+                    .all(|signature| *signature == Signature::default()),
+                "the simulated transaction carries a signature"
+            );
             let mut accounts: Vec<_> = keys.iter().map(|key| self.post.get(key).cloned()).collect();
             if self.drop_post {
                 accounts.pop();
@@ -969,10 +1080,18 @@ mod tests {
             }
         }
         let order = fixture.order;
+        let threshold: u64 = order
+            .other_amount_threshold
+            .as_deref()
+            .expect("fixture otherAmountThreshold")
+            .parse()
+            .expect("fixture otherAmountThreshold");
         let request = SwapRequest {
             input_mint: key(&order.input_mint),
             output_mint: key(&order.output_mint),
             amount: order.in_amount.parse().expect("fixture inAmount"),
+            // Just below the order's own minimum, which must still pass.
+            min_output: threshold - 1,
             slippage_bps: order.slippage_bps,
             taker: key(order.taker.as_deref().expect("fixture taker")),
         };
@@ -988,10 +1107,58 @@ mod tests {
         }
     }
 
+    /// A signer that counts the messages it signs.
+    struct CountingSigner {
+        inner: NullSigner,
+        signed: AtomicUsize,
+    }
+
+    impl CountingSigner {
+        fn new(pubkey: &Pubkey) -> Self {
+            Self {
+                inner: NullSigner::new(pubkey),
+                signed: AtomicUsize::new(0),
+            }
+        }
+
+        fn signed(&self) -> usize {
+            self.signed.load(Ordering::SeqCst)
+        }
+    }
+
+    impl Signer for CountingSigner {
+        fn try_pubkey(&self) -> Result<Pubkey, SignerError> {
+            self.inner.try_pubkey()
+        }
+
+        fn try_sign_message(&self, message: &[u8]) -> Result<Signature, SignerError> {
+            self.signed.fetch_add(1, Ordering::SeqCst);
+            self.inner.try_sign_message(message)
+        }
+
+        fn is_interactive(&self) -> bool {
+            false
+        }
+    }
+
     impl Case {
         async fn run(&self) -> Result<(VersionedTransaction, u64, OrderResponse), JupiterError> {
             let signer = NullSigner::new(&self.request.taker);
             sign_verified(&self.chain, &self.request, self.order.clone(), &signer).await
+        }
+
+        /// Run with a counting signer and return the result with the number
+        /// of messages signed.
+        async fn run_counting(
+            &self,
+        ) -> (
+            Result<(VersionedTransaction, u64, OrderResponse), JupiterError>,
+            usize,
+        ) {
+            let signer = CountingSigner::new(&self.request.taker);
+            let result =
+                sign_verified(&self.chain, &self.request, self.order.clone(), &signer).await;
+            (result, signer.signed())
         }
 
         async fn refusal(&self) -> SwapRefusal {
@@ -1094,7 +1261,9 @@ mod tests {
     #[tokio::test]
     async fn recorded_hnt_to_usdc_swap_is_signed() {
         let case = case(HNT_USDC);
-        let (txn, last_valid_block_height, order) = case.run().await.expect("signed");
+        let (result, signed) = case.run_counting().await;
+        let (txn, last_valid_block_height, order) = result.expect("signed");
+        assert_eq!(signed, 1);
         assert_eq!(*txn.message.recent_blockhash(), BLOCKHASH);
         assert_eq!(last_valid_block_height, LAST_VALID_BLOCK_HEIGHT);
         assert_eq!(txn.signatures.len(), 1);
@@ -1296,6 +1465,7 @@ mod tests {
             input_mint: native_mint::ID,
             output_mint: USDC,
             amount: 10_000_000,
+            min_output: ORDER_MIN_OUT,
             slippage_bps: 100,
             taker: Pubkey::new_unique(),
         }
@@ -1342,15 +1512,30 @@ mod tests {
         data
     }
 
+    /// `data` with its platform fee set to `fee_bps`.
+    fn with_platform_fee(mut data: Vec<u8>, fee_bps: u16) -> Vec<u8> {
+        data[26..28].copy_from_slice(&fee_bps.to_le_bytes());
+        data
+    }
+
+    /// A `route_v2` instruction in the recorded account layout: authority,
+    /// source, user destination, source and destination mints, their token
+    /// programs, the optional destination (empty), event authority, program.
     fn route(taker: &Pubkey, data: Vec<u8>) -> Instruction {
         Instruction::new_with_bytes(
             JUPITER_AGGREGATOR_V6,
             &data,
             vec![
-                AccountMeta::new_readonly(spl_token::ID, false),
                 AccountMeta::new(*taker, true),
                 AccountMeta::new(get_associated_token_address(taker, &HNT), false),
                 AccountMeta::new(get_associated_token_address(taker, &USDC), false),
+                AccountMeta::new_readonly(HNT, false),
+                AccountMeta::new_readonly(USDC, false),
+                AccountMeta::new_readonly(spl_token::ID, false),
+                AccountMeta::new_readonly(spl_token::ID, false),
+                AccountMeta::new_readonly(JUPITER_AGGREGATOR_V6, false),
+                AccountMeta::new_readonly(Pubkey::new_unique(), false),
+                AccountMeta::new_readonly(JUPITER_AGGREGATOR_V6, false),
             ],
         )
     }
@@ -1413,7 +1598,7 @@ mod tests {
         assert_eq!(
             check(&request, &swap_instructions(&request)).expect("passes"),
             ComputeBudget {
-                limit: Some(274_672),
+                limit: 274_672,
                 price: 199_967,
             }
         );
@@ -1535,15 +1720,11 @@ mod tests {
     #[test]
     fn other_compute_budget_instructions_are_refused() {
         let request = sol_request();
-        check(
-            &request,
-            &[
-                compute_budget::ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(
-                    65_536,
-                ),
-            ],
-        )
-        .expect("a data size limit only restricts the transaction");
+        let mut instructions = swap_instructions(&request);
+        instructions.push(
+            compute_budget::ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(65_536),
+        );
+        check(&request, &instructions).expect("a data size limit only restricts the transaction");
         let mut short_size =
             compute_budget::ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(65_536);
         short_size.data.pop();
@@ -1688,13 +1869,34 @@ mod tests {
     #[test]
     fn shared_accounts_route_reads_past_its_id() {
         let request = sol_request();
+        let taker = request.taker;
         let mut data = SHARED_ACCOUNTS_ROUTE_V2.to_vec();
         data.push(15);
         data.extend_from_slice(&route_data(request.amount, QUOTED_OUT, 100)[8..]);
-        with_route(&request, data.clone()).expect("shared accounts route");
-        data[9..17].copy_from_slice(&(request.amount - 1).to_le_bytes());
+        // The recorded layout: program authority, authority, source, the
+        // program's source and destination, destination, then the rest.
+        let shared = |data: &[u8], destination: Pubkey| {
+            let mut ix = route(&taker, data.to_vec());
+            ix.accounts[SHARED_ACCOUNTS_ROUTE_V2_DESTINATION].pubkey = destination;
+            ix
+        };
+        let usdc = get_associated_token_address(&taker, &USDC);
+        let mut instructions = swap_instructions(&request);
+        instructions[6] = shared(&data, usdc);
+        check(&request, &instructions).expect("shared accounts route");
+        // Its optional-destination slot is not `route_v2`'s.
+        instructions[6].accounts[ROUTE_V2_DESTINATION].pubkey = Pubkey::new_unique();
+        check(&request, &instructions).expect("slot 7 is not a destination here");
+        let other = Pubkey::new_unique();
+        instructions[6] = shared(&data, other);
         assert!(matches!(
-            with_route(&request, data),
+            check(&request, &instructions),
+            Err(SwapRefusal::RouteDestination { account, .. }) if account == other
+        ));
+        data[9..17].copy_from_slice(&(request.amount - 1).to_le_bytes());
+        instructions[6] = shared(&data, usdc);
+        assert!(matches!(
+            check(&request, &instructions),
             Err(SwapRefusal::RouteInAmount { .. })
         ));
     }
@@ -1783,17 +1985,12 @@ mod tests {
     #[test]
     fn fee_bound_covers_signatures_and_the_priority_fee() {
         let budget = ComputeBudget {
-            limit: Some(274_672),
+            limit: 274_672,
             price: 199_967,
         };
         // 199,967 µL × 274,672 CU = 54,925.6 lamports, rounded up.
         assert_eq!(budget.fee_bound(1), 5_000 + 54_926);
         assert_eq!(budget.fee_bound(2), 10_000 + 54_926);
-        let unlimited = ComputeBudget {
-            limit: None,
-            price: 1_000_000,
-        };
-        assert_eq!(unlimited.fee_bound(1), 5_000 + 1_400_000);
     }
 
     // ---- simulation ----
@@ -2077,6 +2274,7 @@ mod tests {
             input_mint: USDC,
             output_mint: native_mint::ID,
             amount: 1_000_000,
+            min_output: 10_000_000,
             slippage_bps: 100,
             taker,
         };
@@ -2132,5 +2330,324 @@ mod tests {
         let mut foreign = token_account_state(USDC, taker, 1);
         foreign.owner = Pubkey::new_unique();
         assert!(token_account(&foreign).is_none());
+    }
+
+    // ---- the caller's minimum output ----
+
+    #[test]
+    fn order_minimum_must_reach_the_callers_minimum() {
+        let Case {
+            order, mut request, ..
+        } = case(HNT_USDC);
+        request.min_output = 350_386;
+        assert_eq!(
+            check_order(&order, &request).expect("at the caller's minimum"),
+            350_386
+        );
+        request.min_output = 350_387;
+        assert!(matches!(
+            check_order(&order, &request),
+            Err(SwapRefusal::ThresholdBelowMinimum {
+                threshold: 350_386,
+                min_output: 350_387
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn zero_quote_is_refused_unsigned() {
+        let mut case = case(HNT_USDC);
+        case.order.out_amount = "0".to_string();
+        case.order.other_amount_threshold = Some("0".to_string());
+        let (result, signed) = case.run_counting().await;
+        assert!(
+            matches!(
+                result,
+                Err(JupiterError::Refused(SwapRefusal::OutAmountZero))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signed, 0);
+    }
+
+    #[tokio::test]
+    async fn quote_whose_minimum_is_zero_is_refused() {
+        // A 100% slippage order: a real quote, a zero minimum.
+        let mut case = case(HNT_USDC);
+        case.order.slippage_bps = 10_000;
+        case.request.slippage_bps = 10_000;
+        case.order.other_amount_threshold = Some("0".to_string());
+        assert!(matches!(
+            case.refusal().await,
+            SwapRefusal::ThresholdBelowMinimum { threshold: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn order_mismatch_text_is_bounded() {
+        let refusal =
+            order_field(|order, _| order.taker = Some(format!("\u{1b}[2J{}", "x".repeat(1_000))));
+        let SwapRefusal::OrderMismatch { actual, .. } = refusal else {
+            panic!("expected OrderMismatch, got {refusal:?}");
+        };
+        assert!(!actual.contains('\u{1b}'));
+        assert!(actual.starts_with("\\u{1b}[2J"));
+        assert!(actual.chars().count() <= super::super::MAX_ERROR_BODY_LEN + 8);
+    }
+
+    // ---- signing ----
+
+    #[tokio::test]
+    async fn refused_transaction_is_never_signed() {
+        let mut case = case(HNT_USDC);
+        let taker = case.request.taker;
+        case.chain.post.get_mut(&taker).expect("taker").lamports -= 1;
+        let (result, signed) = case.run_counting().await;
+        assert!(matches!(
+            result,
+            Err(JupiterError::Refused(SwapRefusal::LamportsOverBound { .. }))
+        ));
+        assert_eq!(signed, 0);
+
+        let mut failed = self::case(SOL_USDC);
+        failed.chain.sim_err = Some(TransactionError::InsufficientFundsForFee);
+        let (result, signed) = failed.run_counting().await;
+        assert!(matches!(
+            result,
+            Err(JupiterError::Refused(SwapRefusal::SimulationFailed(_)))
+        ));
+        assert_eq!(signed, 0);
+    }
+
+    // ---- compute unit limit ----
+
+    #[test]
+    fn exactly_one_compute_unit_limit_is_required() {
+        let request = sol_request();
+        let mut instructions = swap_instructions(&request);
+        instructions.remove(0);
+        assert!(matches!(
+            check(&request, &instructions),
+            Err(SwapRefusal::ComputeUnitLimitCount { count: 0 })
+        ));
+        let mut instructions = swap_instructions(&request);
+        instructions.insert(0, limit(1));
+        assert!(matches!(
+            check(&request, &instructions),
+            Err(SwapRefusal::ComputeUnitLimitCount { count: 2 })
+        ));
+    }
+
+    // ---- route destination and platform fee ----
+
+    #[test]
+    fn route_must_deliver_to_the_takers_output_account() {
+        let request = sol_request();
+        let data = route_data(request.amount, QUOTED_OUT, 100);
+        let mut instructions = swap_instructions(&request);
+        let other = Pubkey::new_unique();
+        instructions[6].accounts[ROUTE_V2_USER_DESTINATION].pubkey = other;
+        assert!(matches!(
+            check(&request, &instructions),
+            Err(SwapRefusal::RouteDestination { index: 6, account }) if account == other
+        ));
+        // The taker's own account of another mint is not the output account.
+        let mut instructions = swap_instructions(&request);
+        let hnt = get_associated_token_address(&request.taker, &HNT);
+        instructions[6].accounts[ROUTE_V2_USER_DESTINATION].pubkey = hnt;
+        assert!(matches!(
+            check(&request, &instructions),
+            Err(SwapRefusal::RouteDestination { account, .. }) if account == hnt
+        ));
+        // The optional destination must be left empty.
+        let mut instructions = swap_instructions(&request);
+        let usdc = get_associated_token_address(&request.taker, &USDC);
+        instructions[6].accounts[ROUTE_V2_DESTINATION].pubkey = usdc;
+        assert!(matches!(
+            check(&request, &instructions),
+            Err(SwapRefusal::RouteDestination { account, .. }) if account == usdc
+        ));
+        // The taker's Token-2022 account of the output mint is accepted.
+        let mut instructions = swap_instructions(&request);
+        instructions[6] = route(&request.taker, data);
+        instructions[6].accounts[ROUTE_V2_USER_DESTINATION].pubkey =
+            get_associated_token_address_with_program_id(&request.taker, &USDC, &TOKEN_2022);
+        check(&request, &instructions).expect("Token-2022 output account");
+    }
+
+    #[tokio::test]
+    async fn recorded_routes_redirected_elsewhere_are_refused() {
+        // route_v2 (SOL fixture): the user destination, then the optional one.
+        for (fixture, discriminator, slot) in [
+            (SOL_USDC, ROUTE_V2, ROUTE_V2_USER_DESTINATION),
+            (SOL_USDC, ROUTE_V2, ROUTE_V2_DESTINATION),
+            (
+                HNT_USDC,
+                SHARED_ACCOUNTS_ROUTE_V2,
+                SHARED_ACCOUNTS_ROUTE_V2_DESTINATION,
+            ),
+        ] {
+            let mut case = case(fixture);
+            let mut message = case.message();
+            let VersionedMessage::V0(v0) = &mut message else {
+                panic!("fixture is v0");
+            };
+            let route = v0
+                .instructions
+                .iter_mut()
+                .find(|ix| ix.data.starts_with(&discriminator))
+                .expect("route instruction");
+            // Point the slot at the route's source account.
+            let source = if discriminator == ROUTE_V2 { 1 } else { 2 };
+            route.accounts[slot] = route.accounts[source];
+            case.set_message(message);
+            let (result, signed) = case.run_counting().await;
+            assert!(
+                matches!(
+                    result,
+                    Err(JupiterError::Refused(SwapRefusal::RouteDestination { .. }))
+                ),
+                "{result:?}"
+            );
+            assert_eq!(signed, 0);
+        }
+    }
+
+    #[test]
+    fn route_platform_fee_is_capped() {
+        let request = sol_request();
+        let data = route_data(request.amount, QUOTED_OUT, 100);
+        with_route(
+            &request,
+            with_platform_fee(data.clone(), MAX_PLATFORM_FEE_BPS),
+        )
+        .expect("at the cap");
+        assert!(matches!(
+            with_route(&request, with_platform_fee(data, MAX_PLATFORM_FEE_BPS + 1)),
+            Err(SwapRefusal::PlatformFeeAboveCap {
+                fee_bps: 51,
+                cap: 50,
+                ..
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn recorded_shared_route_with_its_fee_raised_is_refused() {
+        let mut case = case(HNT_USDC);
+        let mut message = case.message();
+        let VersionedMessage::V0(v0) = &mut message else {
+            panic!("fixture is v0");
+        };
+        let route = v0
+            .instructions
+            .iter_mut()
+            .find(|ix| ix.data.starts_with(&SHARED_ACCOUNTS_ROUTE_V2))
+            .expect("route instruction");
+        // id, in_amount, quoted_out_amount, slippage_bps, then the fee.
+        assert_eq!(route.data[27..29], 10u16.to_le_bytes());
+        route.data[27..29].copy_from_slice(&(MAX_PLATFORM_FEE_BPS + 1).to_le_bytes());
+        case.set_message(message);
+        assert!(matches!(
+            case.refusal().await,
+            SwapRefusal::PlatformFeeAboveCap { fee_bps: 51, .. }
+        ));
+    }
+
+    // ---- accounts reached through lookup tables ----
+
+    /// `instructions` compiled against one lookup table holding `addresses`,
+    /// then checked with the table resolved as `sign_verified` resolves it.
+    fn check_v0(
+        request: &SwapRequest,
+        instructions: &[Instruction],
+        addresses: Vec<Pubkey>,
+    ) -> Result<ComputeBudget, SwapRefusal> {
+        let table = Pubkey::new_unique();
+        let entries = addresses
+            .iter()
+            .enumerate()
+            .map(|(index, address)| (index.to_string(), address.to_string()))
+            .collect();
+        let message = VersionedMessage::V0(
+            v0::Message::try_compile(
+                &request.taker,
+                instructions,
+                &[AddressLookupTableAccount {
+                    key: table,
+                    addresses,
+                }],
+                Hash::default(),
+            )
+            .expect("compile"),
+        );
+        let lookups = message.address_table_lookups().expect("v0");
+        assert_eq!(lookups.len(), 1, "the table is used");
+        let resolved =
+            resolve_accounts(&message, &[Some(lookup_table(&entries))]).expect("resolve");
+        check_instructions(&message, &resolved.keys, request, ORDER_MIN_OUT)
+    }
+
+    #[test]
+    fn guarded_accounts_reached_through_lookup_tables_are_checked() {
+        let request = sol_request();
+        let taker = request.taker;
+        let wsol = wrapped_sol(&taker);
+        let other = Pubkey::new_unique();
+        // The taker's wrapped SOL (loaded writable) and the mints (loaded
+        // readonly) resolve to themselves, so the baseline passes; resolving
+        // loaded readonly before loaded writable would misplace them.
+        let table = vec![wsol, USDC, native_mint::ID, other];
+        check_v0(&request, &swap_instructions(&request), table.clone())
+            .expect("baseline through the table passes");
+
+        // A CloseAccount destination reached as a loaded writable account.
+        let mut instructions = swap_instructions(&request);
+        instructions[7] =
+            spl_token::instruction::close_account(&spl_token::ID, &wsol, &other, &taker, &[])
+                .expect("close");
+        assert_not_allowed(
+            check_v0(&request, &instructions, table.clone()).expect_err("refused"),
+            spl_token::ID,
+        );
+
+        // A System transfer target reached as a loaded writable account.
+        let mut instructions = swap_instructions(&request);
+        instructions[3] = wrap(&request, request.amount, &other);
+        assert_not_allowed(
+            check_v0(&request, &instructions, table.clone()).expect_err("refused"),
+            system_program::ID,
+        );
+
+        // An associated account's wallet reached as a loaded readonly account.
+        let mut instructions = swap_instructions(&request);
+        instructions[5] = create_ata(&taker, &other, &USDC);
+        assert_not_allowed(
+            check_v0(&request, &instructions, table).expect_err("refused"),
+            spl_associated_token_account::ID,
+        );
+    }
+
+    // ---- RPC errors ----
+
+    #[tokio::test]
+    async fn rpc_errors_carry_no_url() {
+        let rpc = SolanaRpcClient::new("http://127.0.0.1:1/?api-key=SECRET-KEY".to_string());
+        let err = SwapChain::latest_blockhash(&rpc)
+            .await
+            .expect_err("nothing listens on port 1");
+        assert!(matches!(err, JupiterError::Solana(_)), "{err:?}");
+        let mut text = format!("{err} {err:?}");
+        let mut source = std::error::Error::source(&err);
+        while let Some(cause) = source {
+            text.push_str(&format!(" {cause} {cause:?}"));
+            source = cause.source();
+        }
+        assert!(
+            text.contains("Connect") || text.contains("connect"),
+            "{text}"
+        );
+        assert!(!text.contains("SECRET-KEY"), "{text}");
+        assert!(!text.contains("api-key"), "{text}");
     }
 }

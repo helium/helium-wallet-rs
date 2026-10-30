@@ -1,11 +1,16 @@
-use crate::{client::SolanaRpcClient, keypair::Pubkey, transaction::VersionedTransaction};
+use crate::{
+    client::SolanaRpcClient,
+    keypair::Pubkey,
+    solana_client::client_error::{ClientError, ClientErrorKind},
+    transaction::VersionedTransaction,
+};
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;
 
 mod verify;
 
 pub use verify::{
-    SwapRefusal, JUPITER_AGGREGATOR_V6, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE,
+    SwapRefusal, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE, MAX_PLATFORM_FEE_BPS,
 };
 
 /// Default Jupiter V2 swap API base URL.
@@ -42,9 +47,10 @@ pub enum JupiterError {
     /// Failed to deserialize the base64-encoded swap transaction.
     #[error("Failed to decode swap transaction: {0}")]
     TransactionDecode(String),
-    /// Solana RPC call failed during swap execution.
-    #[error("Solana RPC error: {0}")]
-    Solana(String),
+    /// Solana RPC call failed during swap execution. The source carries no
+    /// RPC URL (see [`JupiterError::solana`]).
+    #[error("Solana RPC request failed")]
+    Solana(#[source] Box<ClientError>),
     /// Transaction signing failed.
     #[error("Transaction signing failed: {0}")]
     Signing(String),
@@ -76,8 +82,15 @@ impl JupiterError {
         Self::TransactionDecode(msg.to_string())
     }
 
-    pub fn solana(msg: impl std::fmt::Display) -> Self {
-        Self::Solana(msg.to_string())
+    /// Wrap an RPC error with any URL stripped from its HTTP source, since
+    /// an RPC URL can carry an API key.
+    pub fn solana(err: ClientError) -> Self {
+        let ClientError { request, kind } = err;
+        let kind = match kind {
+            ClientErrorKind::Reqwest(err) => ClientErrorKind::Reqwest(err.without_url()),
+            other => other,
+        };
+        Self::Solana(Box::new(ClientError { request, kind }))
     }
 
     pub fn signing(msg: impl std::fmt::Display) -> Self {
@@ -94,13 +107,32 @@ impl JupiterError {
     fn api(status: u16, body: String) -> Self {
         let message = if body.is_empty() {
             format!("empty response (HTTP {status})")
-        } else if body.len() > MAX_ERROR_BODY_LEN {
-            format!("{}…", &body[..MAX_ERROR_BODY_LEN])
         } else {
-            body
+            bounded_text(&body)
         };
         Self::Api { status, message }
     }
+}
+
+/// Response-derived text made safe to put in an error: at most
+/// [`MAX_ERROR_BODY_LEN`] characters, cut on a character boundary, with
+/// control characters escaped so they cannot rewrite a terminal or a log line.
+pub(crate) fn bounded_text(text: &str) -> String {
+    let mut bounded: String = text
+        .chars()
+        .take(MAX_ERROR_BODY_LEN)
+        .flat_map(|c| {
+            if c.is_control() {
+                c.escape_default().collect::<Vec<_>>()
+            } else {
+                vec![c]
+            }
+        })
+        .collect();
+    if text.chars().nth(MAX_ERROR_BODY_LEN).is_some() {
+        bounded.push('…');
+    }
+    bounded
 }
 
 /// Jupiter swap API client (V2).
@@ -192,7 +224,24 @@ impl Client {
         amount: u64,
         taker: &Pubkey,
     ) -> Result<OrderResponse, JupiterError> {
-        if amount == 0 {
+        // The minimum output is checked only by `swap`.
+        let request = self.swap_request(input_mint, output_mint, amount, 1, taker);
+        self.order_for(&request).await
+    }
+
+    /// Fetch the order for `request`, so the request [`Client::swap`] checks
+    /// the order against is the one it was queried with.
+    async fn order_for(
+        &self,
+        request: &verify::SwapRequest,
+    ) -> Result<OrderResponse, JupiterError> {
+        let verify::SwapRequest {
+            input_mint,
+            output_mint,
+            amount,
+            ..
+        } = request;
+        if *amount == 0 {
             return Err(JupiterError::config(
                 "swap amount must be greater than zero",
             ));
@@ -204,8 +253,7 @@ impl Client {
         }
 
         let url = format!("{}/order", self.base_url);
-        let request = self.swap_request(input_mint, output_mint, amount, taker);
-        let req = self.client.get(&url).query(&order_query(&request));
+        let req = self.client.get(&url).query(&order_query(request));
         let resp = self.apply_auth(req).send().await?;
 
         match resp.status().as_u16() {
@@ -213,7 +261,7 @@ impl Client {
                 let order: OrderResponse = resp.json().await?;
                 // Check for inline error from Jupiter
                 if let Some(error_msg) = &order.error_message {
-                    return Err(JupiterError::SwapError(error_msg.clone()));
+                    return Err(JupiterError::SwapError(bounded_text(error_msg)));
                 }
                 if order.route_plan.is_empty() {
                     return Err(JupiterError::NoRoutes {
@@ -238,7 +286,10 @@ impl Client {
     /// Fetches an order, then refuses to sign unless the order and its
     /// transaction do nothing beyond swapping exactly `amount` of
     /// `input_mint` into at least the order's minimum of `output_mint` for
-    /// the keypair (see [`SwapRefusal`] for each check). Returns the signed
+    /// the keypair, and that minimum is at least `min_output` (see
+    /// [`SwapRefusal`] for each check). `min_output` is the caller's own floor
+    /// in the output mint's smallest units, independent of Jupiter's quote,
+    /// and must be greater than zero. Returns the signed
     /// transaction, its last valid block height, and the order response (for
     /// quote data like amounts, rate, price impact).
     ///
@@ -251,12 +302,22 @@ impl Client {
         input_mint: &Pubkey,
         output_mint: &Pubkey,
         amount: u64,
+        min_output: u64,
         keypair: &(dyn Signer + Sync),
     ) -> Result<(VersionedTransaction, u64, OrderResponse), JupiterError> {
-        let request = self.swap_request(input_mint, output_mint, amount, &keypair.pubkey());
-        let order = self
-            .order(input_mint, output_mint, amount, &request.taker)
-            .await?;
+        if min_output == 0 {
+            return Err(JupiterError::config(
+                "minimum swap output must be greater than zero",
+            ));
+        }
+        let request = self.swap_request(
+            input_mint,
+            output_mint,
+            amount,
+            min_output,
+            &keypair.pubkey(),
+        );
+        let order = self.order_for(&request).await?;
         verify::sign_verified(client.as_ref(), &request, order, keypair).await
     }
 }
@@ -268,12 +329,14 @@ impl Client {
         input_mint: &Pubkey,
         output_mint: &Pubkey,
         amount: u64,
+        min_output: u64,
         taker: &Pubkey,
     ) -> verify::SwapRequest {
         verify::SwapRequest {
             input_mint: *input_mint,
             output_mint: *output_mint,
             amount,
+            min_output,
             slippage_bps: self.slippage_bps,
             taker: *taker,
         }
@@ -473,7 +536,7 @@ mod tests {
             Pubkey::new_unique(),
             Pubkey::new_unique(),
         );
-        let request = client.swap_request(&input, &output, 5, &taker);
+        let request = client.swap_request(&input, &output, 5, 3, &taker);
         assert_eq!(request.slippage_bps, 37);
         let query: std::collections::HashMap<_, _> = order_query(&request).into_iter().collect();
         assert_eq!(query["inputMint"], input.to_string());
@@ -498,8 +561,41 @@ mod tests {
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             1,
+            1,
             &signer,
         ));
+    }
+
+    #[tokio::test]
+    async fn swap_refuses_a_zero_minimum_output_before_any_request() {
+        let client = Client::new(None::<String>, "http://127.0.0.1:1", DEFAULT_SLIPPAGE_BPS);
+        let rpc = std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:1".to_string()));
+        let taker = Pubkey::new_unique();
+        let signer = solana_sdk::signature::NullSigner::new(&taker);
+        let result = client
+            .swap(
+                &rpc,
+                &Pubkey::new_unique(),
+                &Pubkey::new_unique(),
+                1,
+                0,
+                &signer,
+            )
+            .await;
+        assert!(
+            matches!(&result, Err(JupiterError::Config(message)) if message.contains("minimum swap output")),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn bounded_text_cuts_on_a_character_boundary_and_escapes_controls() {
+        let long = "é".repeat(MAX_ERROR_BODY_LEN + 1);
+        let bounded = bounded_text(&long);
+        assert_eq!(bounded.chars().count(), MAX_ERROR_BODY_LEN + 1);
+        assert!(bounded.ends_with('…'));
+        assert_eq!(bounded_text("a\x1b[2Jb\n"), "a\\u{1b}[2Jb\\n");
+        assert_eq!(bounded_text("short"), "short");
     }
 
     #[test]

@@ -206,9 +206,9 @@ Fields: `address` (required), `amount` (required, number or `"max"`),
 Swap between tokens using the Jupiter V2 API.
 
 ```
-helium-wallet swap <input_token> <output_token> <amount>
-helium-wallet swap hnt usdc 10 --commit
-helium-wallet swap mobile hnt 1000 --slippage-bps 200 --commit
+helium-wallet swap <input_token> <output_token> <amount> --min-output <amount>
+helium-wallet swap hnt usdc 10 --min-output 30 --commit
+helium-wallet swap mobile hnt 1000 --min-output 0.2 --slippage-bps 200 --commit
 ```
 
 | Argument | Description |
@@ -216,6 +216,7 @@ helium-wallet swap mobile hnt 1000 --slippage-bps 200 --commit
 | `input_token` | Source token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `output_token` | Destination token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `amount` | Human-readable amount (e.g. `1.5` for 1.5 HNT) |
+| `--min-output` | Required. Least output to accept, in the output token. The swap is refused unless the order guarantees at least this much |
 | `--slippage-bps` | Slippage tolerance in basis points. Default: 100 (1%) |
 
 Output includes `in_amount`, `out_amount`, `price_impact_pct`, and the

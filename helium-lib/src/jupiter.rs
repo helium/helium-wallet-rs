@@ -1,12 +1,24 @@
 use crate::{client::SolanaRpcClient, keypair::Pubkey, transaction::VersionedTransaction};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use solana_sdk::signer::Signer;
+
+mod verify;
+
+pub use verify::{
+    SwapRefusal, JUPITER_AGGREGATOR_V6, MAX_COMPUTE_UNIT_LIMIT, MAX_COMPUTE_UNIT_PRICE,
+};
 
 /// Default Jupiter V2 swap API base URL.
 pub const DEFAULT_API_URL: &str = "https://api.jup.ag/swap/v2";
 /// Default slippage tolerance in basis points (100 bps = 1%).
 pub const DEFAULT_SLIPPAGE_BPS: u16 = 100;
+/// Routers excluded from every order, leaving Jupiter's own `metis`
+/// aggregator. `jupiterz` (RFQ) fills need a maker co-signature this client
+/// cannot collect, and `dflow` and `okx` build transactions for their own
+/// programs, which [`Client::swap`] refuses to sign. The API ignores names
+/// it does not know, so a router added later is not excluded here and its
+/// transactions are refused at signing instead.
+const EXCLUDED_ROUTERS: &str = "jupiterz,dflow,okx";
 const MAX_ERROR_BODY_LEN: usize = 200;
 
 /// Errors that can occur during Jupiter swap operations.
@@ -49,6 +61,10 @@ pub enum JupiterError {
     /// Invalid client configuration (e.g., bad slippage value).
     #[error("Jupiter configuration error: {0}")]
     Config(String),
+    /// The order or its transaction does something beyond the requested
+    /// swap, so it was not signed.
+    #[error(transparent)]
+    Refused(#[from] SwapRefusal),
 }
 
 impl JupiterError {
@@ -188,26 +204,8 @@ impl Client {
         }
 
         let url = format!("{}/order", self.base_url);
-        let req = self.client.get(&url).query(&[
-            ("inputMint", input_mint.to_string()),
-            ("outputMint", output_mint.to_string()),
-            ("amount", amount.to_string()),
-            ("slippageBps", self.slippage_bps.to_string()),
-            ("taker", taker.to_string()),
-            // Exclude RFQ (JupiterZ) routes. Those return maker-co-signed,
-            // two-signer transactions that must be submitted through
-            // Jupiter's execute endpoint; this client signs only as the
-            // taker and broadcasts via Solana RPC, so it needs a
-            // single-signer aggregator route. The price difference vs RFQ
-            // on HNT→USDC is within quote noise (≤0.01%), so excluding it
-            // costs effectively nothing.
-            //
-            // NOTE: the keyed `api.jup.ag` endpoint honors
-            // `excludeRouters=jupiterz` but silently ignores `excludeRfq`;
-            // only the keyless `lite-api` host respects `excludeRfq`. Use
-            // the router exclusion so this works on both.
-            ("excludeRouters", "jupiterz".to_string()),
-        ]);
+        let request = self.swap_request(input_mint, output_mint, amount, taker);
+        let req = self.client.get(&url).query(&order_query(&request));
         let resp = self.apply_auth(req).send().await?;
 
         match resp.status().as_u16() {
@@ -237,11 +235,15 @@ impl Client {
 
     /// Get a swap order and build a signed transaction ready to send.
     ///
-    /// Combines `order()` with transaction decoding, blockhash update, and signing.
-    /// Returns the signed transaction, last valid block height, and the order
-    /// response (for quote data like amounts, rate, price impact).
+    /// Fetches an order, then refuses to sign unless the order and its
+    /// transaction do nothing beyond swapping exactly `amount` of
+    /// `input_mint` into at least the order's minimum of `output_mint` for
+    /// the keypair (see [`SwapRefusal`] for each check). Returns the signed
+    /// transaction, its last valid block height, and the order response (for
+    /// quote data like amounts, rate, price impact).
     ///
-    /// Note: the transaction's compute budget is set by Jupiter's simulation —
+    /// Note: the transaction's compute budget is set by Jupiter, within
+    /// [`MAX_COMPUTE_UNIT_LIMIT`] and [`MAX_COMPUTE_UNIT_PRICE`];
     /// `TransactionOpts` is intentionally not accepted here.
     pub async fn swap<C: AsRef<SolanaRpcClient>>(
         &self,
@@ -251,43 +253,46 @@ impl Client {
         amount: u64,
         keypair: &(dyn Signer + Sync),
     ) -> Result<(VersionedTransaction, u64, OrderResponse), JupiterError> {
+        let request = self.swap_request(input_mint, output_mint, amount, &keypair.pubkey());
         let order = self
-            .order(input_mint, output_mint, amount, &keypair.pubkey())
+            .order(input_mint, output_mint, amount, &request.taker)
             .await?;
-
-        if order.transaction.is_empty() {
-            return Err(JupiterError::SwapError(
-                order
-                    .error_message
-                    .unwrap_or_else(|| "no transaction returned".to_string()),
-            ));
-        }
-
-        // Decode base64 → bincode → VersionedTransaction
-        let tx_bytes = BASE64
-            .decode(&order.transaction)
-            .map_err(JupiterError::transaction_decode)?;
-        let mut txn: VersionedTransaction =
-            bincode::deserialize(&tx_bytes).map_err(JupiterError::transaction_decode)?;
-
-        // Belt-and-suspenders: `order()` already excludes the RFQ router,
-        // but reject any transaction that still needs more than the taker's
-        // signature so the failure names the offending signer instead of
-        // surfacing an opaque "not enough signers" from `try_new` below.
-        ensure_taker_only_signer(&txn.message, &keypair.pubkey())?;
-
-        // Update to a fresh blockhash and re-sign
-        let solana_client = client.as_ref();
-        let (blockhash, last_valid_block_height) = solana_client
-            .get_latest_blockhash_with_commitment(solana_client.commitment())
-            .await
-            .map_err(JupiterError::solana)?;
-        txn.message.set_recent_blockhash(blockhash);
-        let txn = VersionedTransaction::try_new(txn.message, &[keypair])
-            .map_err(JupiterError::signing)?;
-
-        Ok((txn, last_valid_block_height, order))
+        verify::sign_verified(client.as_ref(), &request, order, keypair).await
     }
+}
+
+impl Client {
+    /// The swap an order is requested for and then checked against.
+    fn swap_request(
+        &self,
+        input_mint: &Pubkey,
+        output_mint: &Pubkey,
+        amount: u64,
+        taker: &Pubkey,
+    ) -> verify::SwapRequest {
+        verify::SwapRequest {
+            input_mint: *input_mint,
+            output_mint: *output_mint,
+            amount,
+            slippage_bps: self.slippage_bps,
+            taker: *taker,
+        }
+    }
+}
+
+/// The `/order` query for `request`.
+fn order_query(request: &verify::SwapRequest) -> [(&'static str, String); 6] {
+    [
+        ("inputMint", request.input_mint.to_string()),
+        ("outputMint", request.output_mint.to_string()),
+        ("amount", request.amount.to_string()),
+        ("slippageBps", request.slippage_bps.to_string()),
+        ("taker", request.taker.to_string()),
+        // The keyed `api.jup.ag` endpoint honors `excludeRouters` but
+        // silently ignores `excludeRfq`, so RFQ is excluded by router name
+        // too.
+        ("excludeRouters", EXCLUDED_ROUTERS.to_string()),
+    ]
 }
 
 /// Reject a Jupiter-built transaction that needs signatures beyond the
@@ -335,6 +340,15 @@ pub struct OrderResponse {
     pub price_impact_pct: String,
     /// Slippage tolerance used for this order.
     pub slippage_bps: u16,
+    /// The least output the swap may deliver, in smallest token units.
+    #[serde(default)]
+    pub other_amount_threshold: Option<String>,
+    /// `ExactIn` or `ExactOut`.
+    #[serde(default)]
+    pub swap_mode: Option<String>,
+    /// The wallet the transaction was built for.
+    #[serde(default)]
+    pub taker: Option<String>,
     #[serde(default)]
     pub(crate) route_plan: Vec<RoutePlan>,
     #[serde(default)]
@@ -449,6 +463,43 @@ mod tests {
             }
             other => panic!("expected MultipleSigners, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn order_query_carries_the_request_and_excludes_foreign_routers() {
+        let client = Client::new(None::<String>, DEFAULT_API_URL, 37);
+        let (input, output, taker) = (
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        );
+        let request = client.swap_request(&input, &output, 5, &taker);
+        assert_eq!(request.slippage_bps, 37);
+        let query: std::collections::HashMap<_, _> = order_query(&request).into_iter().collect();
+        assert_eq!(query["inputMint"], input.to_string());
+        assert_eq!(query["outputMint"], output.to_string());
+        assert_eq!(query["amount"], "5");
+        assert_eq!(query["slippageBps"], "37");
+        assert_eq!(query["taker"], taker.to_string());
+        let mut excluded: Vec<_> = query["excludeRouters"].split(',').collect();
+        excluded.sort_unstable();
+        assert_eq!(excluded, ["dflow", "jupiterz", "okx"]);
+    }
+
+    #[test]
+    fn swap_future_is_send() {
+        fn send<T: Send>(_: T) {}
+        let client = Client::new(None::<String>, DEFAULT_API_URL, DEFAULT_SLIPPAGE_BPS);
+        let rpc = std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:1".to_string()));
+        let signer = solana_sdk::signature::NullSigner::new(&Pubkey::new_unique());
+        // Building the future reaches no network; it is dropped unpolled.
+        send(client.swap(
+            &rpc,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            1,
+            &signer,
+        ));
     }
 
     #[test]

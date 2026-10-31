@@ -23,16 +23,11 @@ pub enum TokenError {
 
 lazy_static::lazy_static! {
     static ref HNT_MINT: Pubkey = Pubkey::from_str("hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux").unwrap();
-    static ref HNT_PRICE_KEY: Pubkey = Pubkey::from_str("4DdmDswskDxXGpwHrXUfn2CNUm9rt21ac79GHNTN3J33").unwrap();
     static ref HNT_PRICE_FEED: price::FeedId = price::feed_from_hex("649fdd7ec08e8e2a20f425729854e90293dcbe2376abc47197a14da6ff339756").unwrap();
 
     static ref MOBILE_MINT: Pubkey = Pubkey::from_str("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6").unwrap();
-    static ref MOBILE_PRICE_KEY: Pubkey = Pubkey::from_str("DQ4C1tzvu28cwo1roN1Wm6TW35sfJEjLh517k3ZeWevx").unwrap();
-    static ref MOBILE_PRICE_FEED: price::FeedId = price::feed_from_hex("ff4c53361e36a9b837433c87d290c229e1f01aec5ef98d9f3f70953a20a629ce").unwrap();
 
     static ref IOT_MINT: Pubkey = Pubkey::from_str("iotEVVZLEywoTn1QdwNPddxPWszn3zFhEot3MfL9fns").unwrap();
-    static ref IOT_PRICE_KEY: Pubkey = Pubkey::from_str("8UYEn5Weq7toHwgcmctvcAxaNJo3SJxXEayM57rpoXr9").unwrap();
-    static ref IOT_PRICE_FEED: price::FeedId = price::feed_from_hex("6b701e292e0836d18a5904a08fe94534f9ab5c3d4ff37dc02c74dd0f4901944d").unwrap();
 
     static ref DC_MINT: Pubkey = Pubkey::from_str("dcuc8Amr83Wz27ZkQ2K9NS6r8zRpf1J6cvArEBDZDmm").unwrap();
     static ref SOL_MINT: Pubkey = solana_sdk::system_program::ID;
@@ -351,25 +346,49 @@ pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
 /// Pyth oracle price lookups for Helium tokens.
 pub mod price {
     use super::*;
-    use crate::programs::helium_entity_manager::accounts::PriceUpdateV2;
+    use crate::{
+        dao::Dao,
+        keypair::pubkey,
+        programs::{
+            data_credits::accounts::DataCreditsV0,
+            helium_entity_manager::{
+                accounts::PriceUpdateV2,
+                types::{PriceFeedMessage, VerificationLevel},
+            },
+        },
+    };
+    use futures::TryFutureExt;
     use rust_decimal::prelude::*;
+    use std::future::Future;
 
     /// Raw 32-byte Pyth price feed identifier.
     pub type FeedId = [u8; 32];
     /// Number of Data Credits per USD.
     pub const DC_PER_USD: i64 = 100_000;
 
+    /// The Pyth receiver that owns every price account Helium's programs
+    /// accept. The data-credits program's `load_hnt_price_oracle` refuses an
+    /// HNT price account owned by any other program, the legacy receiver
+    /// (`rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`) included.
+    const PYTH_RECEIVER_ID: Pubkey = pubkey!("rec2HHDDnjLfj4kE7VyEtFA1HPGQLK33259532cRyHp");
+
     /// Errors from fetching or validating a token price.
     #[derive(Debug, thiserror::Error)]
     pub enum PriceError {
         #[error("invalid or unsupported token: {0}")]
         InvalidToken(super::Token),
+        #[error("{0} has no maintained price feed")]
+        NoFeed(super::Token),
+        #[error("price account owned by {0}, not the Pyth receiver")]
+        InvalidOwner(Pubkey),
+        #[error("price update is only partially verified")]
+        PartialVerification,
         #[error("invalid price feed")]
         InvalidFeed,
         #[error("price too old")]
         TooOld,
-        #[error("price below 0")]
-        Negative,
+        #[error("price not positive")]
+        NotPositive,
         #[error("invalid price timestamp: {0}")]
         InvalidTimestamp(i64),
         #[error("unsupported positive price exponent")]
@@ -391,42 +410,113 @@ pub mod price {
     }
 
     /// Fetch the current price for a token, rejecting prices older than `max_age`.
+    ///
+    /// Only HNT has a price: it is read from the account the data-credits
+    /// program prices DC mints from (see [`hnt_message`]), and the value
+    /// returned is the optimistic end of the EMA's confidence interval,
+    /// `ema_price + 2 * ema_conf`. MOBILE and IOT have no maintained price
+    /// feed and fail with [`PriceError::NoFeed`].
     pub async fn get_with_max_age<C: AsRef<SolanaRpcClient>>(
         client: &C,
         token: Token,
         max_age: Duration,
     ) -> Result<Price, Error> {
-        let price_key = token.price_key().ok_or(PriceError::InvalidToken(token))?;
-        let price_feed = token.price_feed().ok_or(PriceError::InvalidToken(token))?;
-        let account = client.as_ref().get_account(price_key).await?;
-        let PriceUpdateV2 { price_message, .. } =
-            PriceUpdateV2::try_deserialize(&mut account.data.as_slice())?;
+        match token {
+            Token::Hnt => {}
+            Token::Mobile | Token::Iot => return Err(PriceError::NoFeed(token).into()),
+            other => return Err(PriceError::InvalidToken(other).into()),
+        }
+        let message = hnt_message(client, max_age).await?;
+        Ok(optimistic_price(&message, token)?)
+    }
 
-        if (price_message
+    /// Fetch the current price for a token with a default 10-minute max age.
+    pub async fn get<C: AsRef<SolanaRpcClient>>(client: &C, token: Token) -> Result<Price, Error> {
+        get_with_max_age(client, token, Duration::minutes(10)).await
+    }
+
+    /// Fetch the HNT price message the data-credits program prices DC mints
+    /// from, checked as that program checks it.
+    ///
+    /// The account is the one `DataCreditsV0.hnt_price_oracle` names. It must
+    /// be owned by the Pyth receiver, be fully verified, carry the HNT feed,
+    /// have been published no more than `max_age` ago (the program allows 10
+    /// minutes), and have a positive EMA price with a non-positive exponent.
+    /// The program mints at the conservative end, `ema_price - 2 * ema_conf`.
+    pub async fn hnt_message<C: AsRef<SolanaRpcClient>>(
+        client: &C,
+        max_age: Duration,
+    ) -> Result<PriceFeedMessage, Error> {
+        let client = client.as_ref();
+        load_hnt_message(
+            |key| async move { client.get_account(&key).map_err(Error::from).await },
+            Utc::now().timestamp(),
+            max_age,
+        )
+        .await
+    }
+
+    async fn load_hnt_message<F, Fut>(
+        fetch: F,
+        now: i64,
+        max_age: Duration,
+    ) -> Result<PriceFeedMessage, Error>
+    where
+        F: Fn(Pubkey) -> Fut,
+        Fut: Future<Output = Result<Account, Error>>,
+    {
+        let dc = fetch(Dao::dc_key()).await?;
+        let DataCreditsV0 {
+            hnt_price_oracle, ..
+        } = DataCreditsV0::try_deserialize(&mut dc.data.as_slice())?;
+        let oracle = fetch(hnt_price_oracle).await?;
+        checked_hnt_message(&oracle, now, max_age)
+    }
+
+    fn checked_hnt_message(
+        account: &Account,
+        now: i64,
+        max_age: Duration,
+    ) -> Result<PriceFeedMessage, Error> {
+        if account.owner != PYTH_RECEIVER_ID {
+            return Err(PriceError::InvalidOwner(account.owner).into());
+        }
+        let PriceUpdateV2 {
+            verification_level,
+            price_message,
+            ..
+        } = PriceUpdateV2::try_deserialize(&mut account.data.as_slice())?;
+        if !matches!(verification_level, VerificationLevel::Full) {
+            return Err(PriceError::PartialVerification.into());
+        }
+        if price_message.feed_id != *HNT_PRICE_FEED {
+            return Err(PriceError::InvalidFeed.into());
+        }
+        if price_message
             .publish_time
-            .saturating_add(max_age.num_seconds()))
-            < Utc::now().timestamp()
+            .saturating_add(max_age.num_seconds())
+            < now
         {
             return Err(PriceError::TooOld.into());
         }
-        if price_message.ema_price < 0 {
-            return Err(PriceError::Negative.into());
+        if price_message.ema_price <= 0 {
+            return Err(PriceError::NotPositive.into());
         }
         if price_message.exponent > 0 {
             return Err(PriceError::PositiveExponent.into());
         }
-        if price_message.feed_id != *price_feed {
-            return Err(PriceError::InvalidFeed.into());
-        }
-        let scale = price_message.exponent.unsigned_abs();
-        // Remove the confidence interval from the price to get the most optimistic price:
-        let mut price = Decimal::new(price_message.ema_price, scale)
-            + Decimal::new(price_message.ema_conf as i64, scale) * Decimal::new(2, 0);
+        Ok(price_message)
+    }
+
+    fn optimistic_price(message: &PriceFeedMessage, token: Token) -> Result<Price, PriceError> {
+        let scale = message.exponent.unsigned_abs();
+        // Add the confidence interval to the price to get the most optimistic price:
+        let mut price = Decimal::new(message.ema_price, scale)
+            + Decimal::new(message.ema_conf as i64, scale) * Decimal::new(2, 0);
         // ensure we use only up to 6 decimals, this rounds using `MidpointAwayFromZero`
         price.rescale(6);
-        let timestamp = DateTime::from_timestamp(price_message.publish_time, 0)
-            .ok_or(PriceError::InvalidTimestamp(price_message.publish_time))?;
-
+        let timestamp = DateTime::from_timestamp(message.publish_time, 0)
+            .ok_or(PriceError::InvalidTimestamp(message.publish_time))?;
         Ok(Price {
             timestamp,
             price,
@@ -434,9 +524,215 @@ pub mod price {
         })
     }
 
-    /// Fetch the current price for a token with a default 10-minute max age.
-    pub async fn get<C: AsRef<SolanaRpcClient>>(client: &C, token: Token) -> Result<Price, Error> {
-        get_with_max_age(client, token, Duration::minutes(10)).await
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::anchor_lang::AccountSerialize;
+        use std::sync::Mutex;
+
+        const NOW: i64 = 1_800_000_000;
+        const LEGACY_RECEIVER_ID: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
+
+        fn message() -> PriceFeedMessage {
+            PriceFeedMessage {
+                feed_id: *HNT_PRICE_FEED,
+                price: 150_000_000,
+                conf: 100_000,
+                exponent: -8,
+                publish_time: NOW - 3,
+                prev_publish_time: NOW - 4,
+                ema_price: 150_000_000,
+                ema_conf: 200_000,
+            }
+        }
+
+        fn price_account(
+            owner: Pubkey,
+            verification_level: VerificationLevel,
+            price_message: PriceFeedMessage,
+        ) -> Account {
+            let update = PriceUpdateV2 {
+                write_authority: Pubkey::new_unique(),
+                verification_level,
+                price_message,
+                posted_slot: 1,
+            };
+            let mut data = Vec::new();
+            update
+                .try_serialize(&mut data)
+                .expect("serialize price update");
+            Account {
+                lamports: 1,
+                data,
+                owner,
+                executable: false,
+                rent_epoch: 0,
+            }
+        }
+
+        fn valid(price_message: PriceFeedMessage) -> Account {
+            price_account(PYTH_RECEIVER_ID, VerificationLevel::Full, price_message)
+        }
+
+        fn check(account: &Account) -> Result<PriceFeedMessage, Error> {
+            checked_hnt_message(account, NOW, Duration::minutes(10))
+        }
+
+        #[test]
+        fn accepts_a_fresh_fully_verified_hnt_update() {
+            let checked = check(&valid(message())).expect("valid update");
+            assert_eq!(checked.ema_price, 150_000_000);
+            assert_eq!(checked.ema_conf, 200_000);
+        }
+
+        #[test]
+        fn refuses_the_legacy_receiver() {
+            let account = price_account(LEGACY_RECEIVER_ID, VerificationLevel::Full, message());
+            assert!(matches!(
+                check(&account),
+                Err(Error::Price(PriceError::InvalidOwner(owner))) if owner == LEGACY_RECEIVER_ID
+            ));
+        }
+
+        #[test]
+        fn refuses_a_partially_verified_update() {
+            let account = price_account(
+                PYTH_RECEIVER_ID,
+                VerificationLevel::Partial { num_signatures: 5 },
+                message(),
+            );
+            assert!(matches!(
+                check(&account),
+                Err(Error::Price(PriceError::PartialVerification))
+            ));
+        }
+
+        #[test]
+        fn refuses_another_feed() {
+            let account = valid(PriceFeedMessage {
+                feed_id: [7; 32],
+                ..message()
+            });
+            assert!(matches!(
+                check(&account),
+                Err(Error::Price(PriceError::InvalidFeed))
+            ));
+        }
+
+        #[test]
+        fn accepts_an_update_exactly_max_age_old_and_refuses_one_older() {
+            let at_limit = valid(PriceFeedMessage {
+                publish_time: NOW - 600,
+                ..message()
+            });
+            check(&at_limit).expect("update at the age limit");
+            let stale = valid(PriceFeedMessage {
+                publish_time: NOW - 601,
+                ..message()
+            });
+            assert!(matches!(
+                check(&stale),
+                Err(Error::Price(PriceError::TooOld))
+            ));
+        }
+
+        #[test]
+        fn refuses_a_non_positive_ema_price() {
+            for ema_price in [0, -1] {
+                let account = valid(PriceFeedMessage {
+                    ema_price,
+                    ..message()
+                });
+                assert!(matches!(
+                    check(&account),
+                    Err(Error::Price(PriceError::NotPositive))
+                ));
+            }
+        }
+
+        #[test]
+        fn refuses_a_positive_exponent() {
+            let account = valid(PriceFeedMessage {
+                exponent: 1,
+                ..message()
+            });
+            assert!(matches!(
+                check(&account),
+                Err(Error::Price(PriceError::PositiveExponent))
+            ));
+        }
+
+        #[test]
+        fn optimistic_price_adds_twice_the_ema_confidence() {
+            let price = optimistic_price(&message(), Token::Hnt).expect("price");
+            // 1.5 + 2 * 0.002
+            assert_eq!(price.price, Decimal::new(1_504_000, 6));
+        }
+
+        #[tokio::test]
+        async fn mobile_and_iot_have_no_price_feed() {
+            // Nothing listens here: a token that reached the network would
+            // fail with a transport error instead of the refusal asserted.
+            let client =
+                std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:9".to_string()));
+            for token in [Token::Mobile, Token::Iot] {
+                assert!(matches!(
+                    get(&client, token).await,
+                    Err(Error::Price(PriceError::NoFeed(refused))) if refused == token
+                ));
+            }
+        }
+
+        #[tokio::test]
+        async fn hnt_resolves_through_the_data_credits_pin() {
+            let pinned = Pubkey::new_unique();
+            let dc = DataCreditsV0 {
+                dc_mint: *Token::Dc.mint(),
+                hnt_mint: *Token::Hnt.mint(),
+                authority: Pubkey::new_unique(),
+                hnt_price_oracle: pinned,
+                data_credits_bump: 255,
+                account_payer: Pubkey::new_unique(),
+                account_payer_bump: 255,
+            };
+            let mut dc_data = Vec::new();
+            dc.try_serialize(&mut dc_data)
+                .expect("serialize data credits");
+            let accounts: HashMap<Pubkey, Account> = [
+                (
+                    Dao::dc_key(),
+                    Account {
+                        lamports: 1,
+                        data: dc_data,
+                        owner: crate::data_credits::ID,
+                        executable: false,
+                        rent_epoch: 0,
+                    },
+                ),
+                (pinned, valid(message())),
+            ]
+            .into_iter()
+            .collect();
+            let requested = Mutex::new(Vec::new());
+            let fetch = |key: Pubkey| {
+                requested.lock().expect("lock requested").push(key);
+                let account = accounts
+                    .get(&key)
+                    .cloned()
+                    .ok_or_else(|| DecodeError::other("no such account").into());
+                async move { account }
+            };
+
+            let checked = load_hnt_message(fetch, NOW, Duration::minutes(10))
+                .await
+                .expect("resolve through the pin");
+
+            assert_eq!(checked.ema_price, 150_000_000);
+            assert_eq!(
+                *requested.lock().expect("lock requested"),
+                vec![Dao::dc_key(), pinned]
+            );
+        }
     }
 }
 
@@ -798,24 +1094,6 @@ impl Token {
             Self::Dc => &DC_MINT,
             Self::Sol => &SOL_MINT,
             Self::Usdc => &USDC_MINT,
-        }
-    }
-
-    pub fn price_key(&self) -> Option<&Pubkey> {
-        match self {
-            Self::Hnt => Some(&HNT_PRICE_KEY),
-            Self::Iot => Some(&IOT_PRICE_KEY),
-            Self::Mobile => Some(&MOBILE_PRICE_KEY),
-            _ => None,
-        }
-    }
-
-    pub fn price_feed(&self) -> Option<&price::FeedId> {
-        match self {
-            Self::Hnt => Some(&HNT_PRICE_FEED),
-            Self::Iot => Some(&IOT_PRICE_FEED),
-            Self::Mobile => Some(&MOBILE_PRICE_FEED),
-            _ => None,
         }
     }
 

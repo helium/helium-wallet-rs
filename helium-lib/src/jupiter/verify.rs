@@ -1149,12 +1149,10 @@ mod tests {
     // Orders recorded from the v2 `/order` endpoint (router `metis`) for
     // two public wallets, with the lookup-table entries their transactions
     // reference and the taker's accounts before and after a mainnet
-    // simulation of each transaction. `inner_instructions` is the inner
-    // instruction list of a later re-simulation of the same transactions
-    // (2026-10-30, `innerInstructions: true`). By then the HNT route's own
-    // minimum output no longer held at market prices, so that re-simulation
-    // stopped with custom error 6023 inside the route and its list ends
-    // there; the instructions it does hold are the route's own.
+    // simulation of each transaction (`innerInstructions: true`). The HNT
+    // fixture's accounts and inner instructions are from one successful
+    // simulation; the SOL fixture's inner instruction list is from a later
+    // simulation of the same transaction than its accounts.
     const HNT_USDC: &str = include_str!("../../fixtures/jupiter/hnt_usdc.json");
     const SOL_USDC: &str = include_str!("../../fixtures/jupiter/sol_usdc.json");
 
@@ -1503,7 +1501,7 @@ mod tests {
         // The simulations charged exactly the fee each message declares,
         // so the recorded swaps sit on the lamport bound.
         let hnt = case(HNT_USDC);
-        assert_eq!(hnt.fee_bound(), 5_000 + 13_154);
+        assert_eq!(hnt.fee_bound(), 5_000 + 1_119);
         let sol = case(SOL_USDC);
         assert_eq!(sol.fee_bound(), 5_000 + 54_926);
     }
@@ -1580,20 +1578,20 @@ mod tests {
 
     #[test]
     fn order_threshold_must_honour_the_slippage() {
-        // 353926 at 100 bps rounds down to 350386.
+        // 360711 at 100 bps rounds down to 357103.
         let Case {
             mut order, request, ..
         } = case(HNT_USDC);
-        assert_eq!(order.other_amount_threshold.as_deref(), Some("350386"));
+        assert_eq!(order.other_amount_threshold.as_deref(), Some("357103"));
         assert_eq!(
             check_order(&order, &request).expect("at the floor"),
-            350_386
+            357_103
         );
-        order.other_amount_threshold = Some("350385".to_string());
+        order.other_amount_threshold = Some("357102".to_string());
         assert!(matches!(
             check_order(&order, &request),
             Err(SwapRefusal::ThresholdBelowSlippage {
-                min_out: 350_386,
+                min_out: 357_103,
                 ..
             })
         ));
@@ -2241,7 +2239,7 @@ mod tests {
     async fn output_below_the_threshold_is_refused() {
         let mut case = case(HNT_USDC);
         let usdc = case.token_account_of(&USDC);
-        let threshold = 350_386;
+        let threshold = 357_103;
         let floor = case.token_amount(&case.chain.pre, &usdc) + threshold;
         case.edit_post_token(&usdc, |token| token.amount = floor);
         case.run().await.expect("exactly the threshold passes");
@@ -2249,8 +2247,8 @@ mod tests {
         assert!(matches!(
             case.refusal().await,
             SwapRefusal::OutputBelowThreshold {
-                threshold: 350_386,
-                received: 350_385
+                threshold: 357_103,
+                received: 357_102
             }
         ));
     }
@@ -2561,17 +2559,17 @@ mod tests {
         let Case {
             order, mut request, ..
         } = case(HNT_USDC);
-        request.min_output = 350_386;
+        request.min_output = 357_103;
         assert_eq!(
             check_order(&order, &request).expect("at the caller's minimum"),
-            350_386
+            357_103
         );
-        request.min_output = 350_387;
+        request.min_output = 357_104;
         assert!(matches!(
             check_order(&order, &request),
             Err(SwapRefusal::ThresholdBelowMinimum {
-                threshold: 350_386,
-                min_output: 350_387
+                threshold: 357_103,
+                min_output: 357_104
             })
         ));
     }
@@ -3181,12 +3179,20 @@ mod tests {
         let case = case(HNT_USDC);
         let taker = case.request.taker;
         for token_program in [spl_token::ID, TOKEN_2022] {
-            check_inner(
-                &case,
-                route_group(json!([associated_create(&taker, &token_program, 2)])),
-            )
-            .expect("a create handed a token program");
+            for kind in ["create", "createIdempotent"] {
+                let mut create = associated_create(&taker, &token_program, 2);
+                create["parsed"]["type"] = kind.into();
+                check_inner(&case, route_group(json!([create])))
+                    .expect("a create handed a token program");
+            }
         }
+        let mut recover = associated_create(&taker, &spl_token::ID, 2);
+        recover["parsed"]["type"] = "recoverNested".into();
+        assert!(matches!(
+            check_inner(&case, route_group(json!([recover]))),
+            Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                if program == spl_associated_token_account::ID
+        ));
         assert!(matches!(
             check_inner(
                 &case,

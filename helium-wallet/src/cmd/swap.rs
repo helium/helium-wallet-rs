@@ -10,6 +10,10 @@ pub struct Cmd {
     output_token: Token,
     /// Amount to swap (human-readable, e.g. 1.5 for 1.5 HNT)
     amount: f64,
+    /// Least output to accept (human-readable, in the output token). The
+    /// swap is refused unless the order guarantees at least this much.
+    #[arg(long)]
+    min_output: f64,
     /// Slippage tolerance in basis points (100 = 1%)
     #[arg(long, default_value_t = jupiter::DEFAULT_SLIPPAGE_BPS)]
     slippage_bps: u16,
@@ -23,6 +27,9 @@ impl Cmd {
         if self.amount <= 0.0 || !self.amount.is_finite() {
             bail!("swap amount must be a positive finite number");
         }
+        if self.min_output <= 0.0 || !self.min_output.is_finite() {
+            bail!("minimum output must be a positive finite number");
+        }
 
         let signer = opts.load_signer()?;
         let client = opts.client()?;
@@ -33,9 +40,18 @@ impl Cmd {
         let output_mint = self.output_token.mint();
         let raw_amount =
             helium_lib::token::TokenAmount::from_f64(self.input_token, self.amount)?.amount;
+        let raw_min_output =
+            helium_lib::token::TokenAmount::from_f64(self.output_token, self.min_output)?.amount;
 
         let (tx, _, order) = jupiter_client
-            .swap(&client, input_mint, output_mint, raw_amount, &*signer)
+            .swap(
+                &client,
+                input_mint,
+                output_mint,
+                raw_amount,
+                raw_min_output,
+                &*signer,
+            )
             .await?;
 
         let response = self.commit.maybe_commit(tx, &client).await?;

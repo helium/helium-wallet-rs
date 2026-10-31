@@ -343,7 +343,7 @@ pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
         .try_collect()
 }
 
-/// Pyth oracle price lookups for Helium tokens.
+/// The HNT price from the oracle the data-credits program pins.
 pub mod price {
     use super::*;
     use crate::{
@@ -366,9 +366,9 @@ pub mod price {
     /// Number of Data Credits per USD.
     pub const DC_PER_USD: i64 = 100_000;
 
-    /// The Pyth receiver that owns every price account Helium's programs
-    /// accept. The data-credits program's `load_hnt_price_oracle` refuses an
-    /// HNT price account owned by any other program, the legacy receiver
+    /// The Pyth receiver that must own the HNT price account the
+    /// data-credits program pins. Its `load_hnt_price_oracle` refuses any
+    /// other owner, the legacy receiver
     /// (`rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`) included.
     const PYTH_RECEIVER_ID: Pubkey = pubkey!("rec2HHDDnjLfj4kE7VyEtFA1HPGQLK33259532cRyHp");
 
@@ -427,7 +427,7 @@ pub mod price {
             other => return Err(PriceError::InvalidToken(other).into()),
         }
         let message = hnt_message(client, max_age).await?;
-        Ok(optimistic_price(&message, token)?)
+        Ok(optimistic_price(&message)?)
     }
 
     /// Fetch the current price for a token with a default 10-minute max age.
@@ -436,13 +436,17 @@ pub mod price {
     }
 
     /// Fetch the HNT price message the data-credits program prices DC mints
-    /// from, checked as that program checks it.
+    /// from.
     ///
-    /// The account is the one `DataCreditsV0.hnt_price_oracle` names. It must
-    /// be owned by the Pyth receiver, be fully verified, carry the HNT feed,
-    /// have been published no more than `max_age` ago (the program allows 10
-    /// minutes), and have a positive EMA price with a non-positive exponent.
+    /// The account is the one `DataCreditsV0.hnt_price_oracle` names. This
+    /// applies the data-credits program's owner, verification, feed, age and
+    /// positive-EMA checks, plus a non-positive-exponent check. Age is
+    /// measured against the local clock and the caller's `max_age` (the
+    /// program allows 10 minutes).
+    ///
     /// The program mints at the conservative end, `ema_price - 2 * ema_conf`.
+    /// That value can be zero or negative after these checks, so a caller
+    /// that uses it must refuse a non-positive result.
     pub async fn hnt_message<C: AsRef<SolanaRpcClient>>(
         client: &C,
         max_age: Duration,
@@ -508,7 +512,7 @@ pub mod price {
         Ok(price_message)
     }
 
-    fn optimistic_price(message: &PriceFeedMessage, token: Token) -> Result<Price, PriceError> {
+    fn optimistic_price(message: &PriceFeedMessage) -> Result<Price, PriceError> {
         let scale = message.exponent.unsigned_abs();
         // Add the confidence interval to the price to get the most optimistic price:
         let mut price = Decimal::new(message.ema_price, scale)
@@ -520,7 +524,7 @@ pub mod price {
         Ok(Price {
             timestamp,
             price,
-            token,
+            token: Token::Hnt,
         })
     }
 
@@ -664,15 +668,42 @@ pub mod price {
 
         #[test]
         fn optimistic_price_adds_twice_the_ema_confidence() {
-            let price = optimistic_price(&message(), Token::Hnt).expect("price");
+            let price = optimistic_price(&message()).expect("price");
             // 1.5 + 2 * 0.002
             assert_eq!(price.price, Decimal::new(1_504_000, 6));
+            assert_eq!(price.price.scale(), 6);
+            assert_eq!(price.token, Token::Hnt);
+            assert_eq!(
+                price.timestamp,
+                DateTime::from_timestamp(NOW - 3, 0).expect("timestamp")
+            );
+        }
+
+        #[test]
+        fn accepts_a_zero_exponent() {
+            let checked = check(&valid(PriceFeedMessage {
+                exponent: 0,
+                ..message()
+            }))
+            .expect("zero exponent");
+            assert_eq!(checked.exponent, 0);
+        }
+
+        #[tokio::test]
+        async fn tokens_outside_hnt_mobile_and_iot_are_invalid_without_a_fetch() {
+            let client =
+                std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:9".to_string()));
+            assert!(matches!(
+                get_with_max_age(&client, Token::Dc, Duration::minutes(10)).await,
+                Err(Error::Price(PriceError::InvalidToken(Token::Dc)))
+            ));
         }
 
         #[tokio::test]
         async fn mobile_and_iot_have_no_price_feed() {
-            // Nothing listens here: a token that reached the network would
-            // fail with a transport error instead of the refusal asserted.
+            // The discard port is not expected to answer: a token that reached
+            // the network would fail with a transport error instead of the
+            // refusal asserted.
             let client =
                 std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:9".to_string()));
             for token in [Token::Mobile, Token::Iot] {
@@ -834,8 +865,9 @@ impl Token {
         )
     }
 
-    pub fn pricekey_value_parser(s: &str) -> StdResult<Self, TokenError> {
-        Self::from_allowed(s, &[Self::Iot, Self::Mobile, Self::Hnt])
+    /// Parses the only token with a price, HNT.
+    pub fn hnt_value_parser(s: &str) -> StdResult<Self, TokenError> {
+        Self::from_allowed(s, &[Self::Hnt])
     }
 
     /// Derive the associated token account address for a wallet. Returns the wallet itself for SOL.
@@ -1112,6 +1144,17 @@ impl Token {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hnt_value_parser_accepts_hnt_alone() {
+        assert_eq!(Token::hnt_value_parser("hnt").expect("hnt"), Token::Hnt);
+        for other in ["mobile", "iot"] {
+            assert!(matches!(
+                Token::hnt_value_parser(other),
+                Err(TokenError::InvalidToken(refused)) if refused == other
+            ));
+        }
+    }
 
     #[test]
     fn test_token_amount_serde_roundtrip_zero_decimals() {

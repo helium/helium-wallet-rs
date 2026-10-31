@@ -377,9 +377,9 @@ pub mod price {
     #[derive(Debug, thiserror::Error)]
     pub enum PriceError {
         #[error("invalid or unsupported token: {0}")]
-        InvalidToken(super::Token),
+        InvalidToken(Token),
         #[error("{0} has no maintained price feed")]
-        NoFeed(super::Token),
+        NoFeed(Token),
         #[error("price account owned by {0}, not the Pyth receiver")]
         InvalidOwner(Pubkey),
         #[error("price update is only partially verified")]
@@ -401,7 +401,7 @@ pub mod price {
     pub struct Price {
         pub timestamp: DateTime<Utc>,
         pub price: Decimal,
-        pub token: super::Token,
+        pub token: Token,
     }
 
     pub fn feed_from_hex(str: &str) -> Result<FeedId, PriceError> {

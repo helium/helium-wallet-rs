@@ -7,7 +7,7 @@ fn main() {
 
     let wallet = Wallet::builder()
         .password(password)
-        .output(&filename)
+        .output(filename)
         .force(true)
         .create()
         .expect("it should have created a wallet");

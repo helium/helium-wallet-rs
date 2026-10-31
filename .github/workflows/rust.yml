@@ -49,7 +49,7 @@ jobs:
       - name: Build | Hygiene
         run: |
           cargo fmt  -- --check
-          cargo clippy --all-features --locked -- -D clippy::all
+          cargo clippy --all-targets --all-features --locked -- -D clippy::all
 
       - name: Build | Test
         run: |

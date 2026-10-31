@@ -8,7 +8,7 @@ use crate::{
     error::{DecodeError, EncodeError, Error},
     helium_entity_manager, helium_sub_daos, hotspot,
     hotspot::{HotspotInfoUpdate, ECC_VERIFIER},
-    keypair::Pubkey,
+    keypair::{pubkey, Pubkey},
     kta, message,
     programs::{SPL_NOOP_PROGRAM_ID, TOKEN_METADATA_PROGRAM_ID},
     solana_sdk::{
@@ -93,6 +93,11 @@ mod iot {
 mod mobile {
     use super::*;
 
+    /// The `dnt_price` account `onboard_data_only_mobile_hotspot_v0` requires.
+    /// The program pins this address and reads nothing from it; it is not a
+    /// live MOBILE price.
+    const DNT_PRICE: Pubkey = pubkey!("DQ4C1tzvu28cwo1roN1Wm6TW35sfJEjLh517k3ZeWevx");
+
     pub fn onboard_instruction(
         hotspot_key: &helium_crypto::PublicKey,
         config_account: &helium_entity_manager::accounts::DataOnlyConfigV0,
@@ -124,7 +129,7 @@ mod mobile {
                 dc_mint: *Token::Dc.mint(),
                 dc: Dao::dc_key(),
                 dnt_mint: *Token::Mobile.mint(),
-                dnt_price: *Token::Mobile.price_key().unwrap(), // safe to unwrap
+                dnt_price: DNT_PRICE,
                 dnt_burner: Token::Mobile.associated_token_address(owner),
                 compression_program: spl_account_compression::ID,
                 data_credits_program: data_credits::ID,

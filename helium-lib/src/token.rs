@@ -343,7 +343,8 @@ pub async fn balance_for_addresses<C: AsRef<SolanaRpcClient>>(
         .try_collect()
 }
 
-/// The HNT price from the oracle the data-credits program pins.
+/// Token prices. HNT is the only token with a maintained feed, read from the
+/// oracle the data-credits program pins.
 pub mod price {
     use super::*;
     use crate::{
@@ -440,7 +441,7 @@ pub mod price {
     ///
     /// The account is the one `DataCreditsV0.hnt_price_oracle` names. This
     /// applies the data-credits program's owner, verification, feed, age and
-    /// positive-EMA checks, plus a non-positive-exponent check. Age is
+    /// positive-EMA checks, and also refuses a positive exponent. Age is
     /// measured against the local clock and the caller's `max_age` (the
     /// program allows 10 minutes).
     ///
@@ -532,7 +533,7 @@ pub mod price {
     mod tests {
         use super::*;
         use crate::anchor_lang::AccountSerialize;
-        use std::sync::Mutex;
+        use std::sync::{Arc, Mutex};
 
         const NOW: i64 = 1_800_000_000;
         const LEGACY_RECEIVER_ID: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
@@ -689,23 +690,27 @@ pub mod price {
             assert_eq!(checked.exponent, 0);
         }
 
+        /// A client on the discard port, which is not expected to answer: a
+        /// token that reached the network fails with a transport error, not
+        /// the refusal a test asserts.
+        fn unreachable_client() -> Arc<SolanaRpcClient> {
+            Arc::new(SolanaRpcClient::new("http://127.0.0.1:9".to_string()))
+        }
+
         #[tokio::test]
         async fn tokens_outside_hnt_mobile_and_iot_are_invalid_without_a_fetch() {
-            let client =
-                std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:9".to_string()));
-            assert!(matches!(
-                get_with_max_age(&client, Token::Dc, Duration::minutes(10)).await,
-                Err(Error::Price(PriceError::InvalidToken(Token::Dc)))
-            ));
+            let client = unreachable_client();
+            for token in [Token::Dc, Token::Sol, Token::Usdc] {
+                assert!(matches!(
+                    get_with_max_age(&client, token, Duration::minutes(10)).await,
+                    Err(Error::Price(PriceError::InvalidToken(refused))) if refused == token
+                ));
+            }
         }
 
         #[tokio::test]
         async fn mobile_and_iot_have_no_price_feed() {
-            // The discard port is not expected to answer: a token that reached
-            // the network would fail with a transport error instead of the
-            // refusal asserted.
-            let client =
-                std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:9".to_string()));
+            let client = unreachable_client();
             for token in [Token::Mobile, Token::Iot] {
                 assert!(matches!(
                     get(&client, token).await,

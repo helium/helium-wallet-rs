@@ -351,10 +351,10 @@ helium-wallet sign verify file <path> --signature <sig>
 helium-wallet sign verify msg <message> --signature <sig>
 ```
 
-### `price` -- Token Prices
+### `price` -- HNT Price
 
 ```
-helium-wallet price
+helium-wallet price hnt
 ```
 
 ### `export` -- Export Wallet

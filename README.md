@@ -211,6 +211,8 @@ Swap between tokens on a Jupiter route quoted and built by the blockchain-api.
 The wallet checks the quote and the transaction, and simulates it on its own
 RPC node, before signing. Without `--commit` it stops after those checks, so
 the signer, a Ledger included, is never asked to sign.
+A Ledger must still be connected on a dry run so the wallet can read its
+address, which it does without an on-device prompt.
 
 ```
 helium-wallet swap <input_token> <output_token> <amount> --min-output <amount>

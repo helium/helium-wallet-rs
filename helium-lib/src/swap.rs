@@ -3,9 +3,10 @@
 //!
 //! [`prepare`] runs the checks and returns a [`PreparedSwap`] holding the
 //! unsigned transaction they passed. Only this crate constructs one, and
-//! [`PreparedSwap::sign`] is the only way this crate signs a swap, so every
-//! swap it signs went through the checks. Preparing touches no signer, so a
-//! caller can show the checked transaction and stop without signing.
+//! [`PreparedSwap::sign`] signs only a message [`prepare`] checked. A caller
+//! who signs the output of `Client::swap_instructions` by other means gets
+//! none of the checks. Preparing touches no signer, so a caller can show the
+//! checked transaction and stop without signing.
 
 use crate::{
     blockchain_api::{
@@ -64,19 +65,12 @@ impl PreparedSwap {
         &self.transaction
     }
 
-    /// The last block height at which the transaction can land.
-    pub fn last_valid_block_height(&self) -> u64 {
-        self.last_valid_block_height
-    }
-
-    /// The wallet the swap was built and checked for, its only signer.
-    pub fn taker(&self) -> &Pubkey {
-        &self.taker
-    }
-
     /// Sign the checked transaction's message as the taker, and nothing else.
     /// A keypair whose wallet is not the taker is refused before it is asked
     /// to sign.
+    ///
+    /// Expiry is not checked: a prepared swap held past its last valid block
+    /// height still signs, and the signed transaction cannot land.
     pub fn sign(self, keypair: &(dyn Signer + Sync)) -> Result<SignedSwap, SwapRouteError> {
         let signer = keypair.try_pubkey().map_err(SwapRouteError::Signing)?;
         if signer != self.taker {
@@ -507,7 +501,6 @@ mod tests {
         let prepared = prepare_with(&api, &case.chain, &request(&case), case.request.taker)
             .await
             .expect("prepared");
-        assert_eq!(*prepared.taker(), case.request.taker);
         assert_eq!(
             prepared.transaction().signatures,
             vec![Signature::default()]

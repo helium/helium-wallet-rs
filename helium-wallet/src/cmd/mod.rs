@@ -386,15 +386,19 @@ impl CommitOpts {
     }
 
     /// Commit a swap the library has checked (a
-    /// [`helium_lib::swap::PreparedSwap`] from [`helium_lib::swap::prepare`]),
-    /// whose `unsigned` transaction arrived in `data`.
+    /// [`helium_lib::swap::PreparedSwap`] from [`helium_lib::swap::prepare`]).
+    /// `unsigned` is the checked transaction, which the checks decoded from
+    /// `data` and gave a fresh blockhash, so it is not the transaction `data`
+    /// carries.
     ///
     /// The unsigned transaction is shown for review either way. Without
     /// `--commit` nothing is signed or broadcast, so a Ledger is never touched
-    /// for a dry run. With it, `sign` runs once, and its transaction is
-    /// submitted via the API and confirmed as [`Self::commit_via_api`] does.
-    /// `sign` is [`helium_lib::swap::PreparedSwap::sign`], the library's
-    /// signing of the checked message, which this path never re-signs.
+    /// for a dry run. With it, `sign` runs once and its transaction is refused
+    /// unless its message equals `unsigned`'s; `data`, the envelope that was
+    /// displayed, is then submitted with it via the API and confirmed as
+    /// [`Self::commit_via_api`] does. That message check is what this function
+    /// enforces about the signed transaction. That `sign` is
+    /// [`helium_lib::swap::PreparedSwap::sign`] is a contract on the caller.
     pub async fn commit_swap_via_api<C: AsRef<SolanaRpcClient>>(
         &self,
         api: &blockchain_api::Client,
@@ -410,7 +414,10 @@ impl CommitOpts {
             return Ok(CommitResponse::None);
         }
         let signed = sign()?;
-        self.submit(api, rpc.as_ref(), &signed.data, &[signed.transaction])
+        if signed.transaction.message != unsigned.message {
+            bail!("the signed transaction is not the one reviewed");
+        }
+        self.submit(api, rpc.as_ref(), data, &[signed.transaction])
             .await
     }
 
@@ -1158,8 +1165,103 @@ mod tests {
         assert!(matches!(response, CommitResponse::None));
     }
 
+    fn signed_swap(
+        data: &TransactionData,
+        message: helium_lib::solana_sdk::message::VersionedMessage,
+    ) -> SignedSwap {
+        SignedSwap {
+            quote: helium_lib::blockchain_api::types::SwapQuote {
+                input_mint: String::new(),
+                in_amount: String::new(),
+                output_mint: String::new(),
+                out_amount: String::new(),
+                other_amount_threshold: String::new(),
+                swap_mode: String::new(),
+                slippage_bps: 0,
+                price_impact_pct: String::new(),
+                extra: serde_json::Value::Null,
+            },
+            data: data.clone(),
+            transaction: VersionedTransaction {
+                signatures: vec![Signature::from([1u8; 64])],
+                message,
+            },
+            last_valid_block_height: 0,
+        }
+    }
+
     #[tokio::test]
-    async fn a_committed_swap_signs_once() {
+    async fn a_signed_swap_that_is_not_the_reviewed_one_is_refused_before_submission() {
+        use helium_lib::solana_sdk::message::{Message, VersionedMessage};
+        let (opts, api, rpc, data, unsigned) = swap_commit_fixture(true);
+        let other = VersionedMessage::Legacy(Message::new(&[], Some(&Pubkey::new_unique())));
+        assert_ne!(other, unsigned.message);
+        let err = opts
+            .commit_swap_via_api(&api, &rpc, &data, &unsigned, || {
+                Ok(signed_swap(&data, other))
+            })
+            .await
+            .expect_err("a different message");
+        // Submission would fail on the unreachable API with another error.
+        assert_eq!(
+            err.to_string(),
+            "the signed transaction is not the one reviewed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_signed_swap_matching_the_reviewed_one_gets_past_the_check() {
+        // Submitting needs the network, which nothing serves here, so the
+        // run stops at submission with an error other than the refusal.
+        let (opts, api, rpc, data, unsigned) = swap_commit_fixture(true);
+        let err = opts
+            .commit_swap_via_api(&api, &rpc, &data, &unsigned, || {
+                Ok(signed_swap(&data, unsigned.message.clone()))
+            })
+            .await
+            .expect_err("nothing listens, so submission fails");
+        assert_ne!(
+            err.to_string(),
+            "the signed transaction is not the one reviewed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_swap_over_the_priority_fee_cap_is_refused_before_signing() {
+        use helium_lib::solana_sdk::{
+            compute_budget::ComputeBudgetInstruction,
+            message::{Message, VersionedMessage},
+        };
+        let (opts, api, rpc, data, _) = swap_commit_fixture(true);
+        // About a whole SOL in priority fee, far past the cap.
+        let instructions = [
+            ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+            ComputeBudgetInstruction::set_compute_unit_price(714_285_714),
+        ];
+        let unsigned = VersionedTransaction {
+            signatures: vec![Signature::default()],
+            message: VersionedMessage::Legacy(Message::new(
+                &instructions,
+                Some(&Pubkey::new_unique()),
+            )),
+        };
+        let err = opts
+            .commit_swap_via_api(&api, &rpc, &data, &unsigned, || {
+                panic!("an over-cap fee reached the signer")
+            })
+            .await
+            .expect_err("the fee is over the cap");
+        assert!(
+            matches!(
+                err.downcast_ref::<verify::VerifyError>(),
+                Some(verify::VerifyError::PriorityFee { .. })
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_committed_swap_calls_the_signer_and_returns_its_refusal() {
         let (opts, api, rpc, data, unsigned) = swap_commit_fixture(true);
         let taker = Pubkey::new_unique();
         let signer = Pubkey::new_unique();
@@ -1407,8 +1509,20 @@ mod guard_call_sites {
         assert_eq!(
             code.matches(".sign(").count(),
             1,
-            "the swap is signed more than once"
+            "the swap is signed other than once"
         );
+        for call in [
+            "try_new(",
+            "mk_transaction",
+            "mk_signed_transaction",
+            "try_sign",
+            "sign_message",
+        ] {
+            assert!(
+                !code.contains(call),
+                "the swap reaches a signing call other than PreparedSwap::sign: {call}"
+            );
+        }
         assert!(
             code.contains("|| prepared.sign("),
             "the swap is signed outside commit_swap_via_api's closure"

@@ -426,9 +426,45 @@ impl CommitOpts {
             )
             .await?;
         let response = commit_response_from_status(status)?;
+        ensure_reported_signatures(signed, &response)?;
         confirm_against_rpc(solana, &response).await?;
         Ok(response)
     }
+}
+
+/// Refuse a reported batch unless its signatures are exactly the submitted
+/// transactions' own, each transaction's first signature being its id.
+///
+/// The status comes from the service the transactions were submitted to, so
+/// a signature it reports is checked against the RPC only once it is known to
+/// be one of the transactions this wallet signed.
+fn ensure_reported_signatures(
+    signed: &[VersionedTransaction],
+    response: &CommitResponse,
+) -> Result<()> {
+    let mut submitted = signed
+        .iter()
+        .map(|tx| tx.signatures.first().copied())
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| anyhow!("a submitted transaction carries no signature"))?;
+    let mut reported = response.signatures();
+    submitted.sort();
+    reported.sort();
+    if submitted != reported {
+        let list = |signatures: &[Signature]| {
+            signatures
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        bail!(
+            "the service reported signatures {} for transactions signed as {}",
+            list(&reported),
+            list(&submitted)
+        );
+    }
+    Ok(())
 }
 
 /// Confirm the batch really landed, by asking the wallet's own RPC.
@@ -1017,6 +1053,48 @@ mod tests {
         );
         assert!(CommitResponse::None.signatures().is_empty());
     }
+
+    fn signed_with(signature: Signature) -> VersionedTransaction {
+        VersionedTransaction {
+            signatures: vec![signature],
+            message: helium_lib::solana_sdk::message::VersionedMessage::Legacy(Default::default()),
+        }
+    }
+
+    #[test]
+    fn reported_signatures_must_be_the_submitted_ones() {
+        let (a, b) = (Signature::from([1u8; 64]), Signature::from([2u8; 64]));
+        let signed = [signed_with(a), signed_with(b)];
+        ensure_reported_signatures(
+            &signed,
+            &CommitResponse::Batch {
+                signatures: vec![b, a],
+            },
+        )
+        .expect("the same signatures in another order");
+        let other = Signature::from([9u8; 64]);
+        for reported in [
+            CommitResponse::Batch {
+                signatures: vec![a, other],
+            },
+            CommitResponse::Signature(a),
+            CommitResponse::Batch {
+                signatures: vec![a, b, b],
+            },
+        ] {
+            assert!(
+                ensure_reported_signatures(&signed, &reported).is_err(),
+                "{reported:?}"
+            );
+        }
+        ensure_reported_signatures(&signed[..1], &CommitResponse::Signature(a))
+            .expect("one transaction, its own signature");
+        let unsigned = [VersionedTransaction {
+            signatures: vec![],
+            ..signed_with(a)
+        }];
+        assert!(ensure_reported_signatures(&unsigned, &CommitResponse::None).is_err());
+    }
 }
 
 /// Commands that decode what the service built and hold it to what was asked
@@ -1135,6 +1213,18 @@ mod guard_call_sites {
             call_sites(&source, "verify::assert_rewards_destination").len(),
             2,
             "expected the init and update paths to both check"
+        );
+    }
+
+    #[test]
+    fn a_submission_checks_the_reported_signatures_before_the_rpc() {
+        let code = strip_comments(include_str!("mod.rs"));
+        let checked = call_sites(&code, "ensure_reported_signatures");
+        let confirmed = call_sites(&code, "confirm_against_rpc");
+        assert_eq!(confirmed.len(), 1, "one confirmation, in submit");
+        assert!(
+            checked.iter().any(|at| *at < confirmed[0]),
+            "the reported signatures are not checked before they are confirmed"
         );
     }
 

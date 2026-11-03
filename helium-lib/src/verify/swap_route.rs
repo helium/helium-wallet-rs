@@ -2,8 +2,9 @@
 //! beyond the swap the caller asked for, before the taker signs it.
 //! [`crate::swap::sign`] is the entry point that runs them.
 //!
-//! The taker is the fee payer and the only signer, so a transaction it signs
-//! can spend anything the taker holds. Four checks decide whether it may:
+//! [`check_signer`] refuses a transaction unless the taker is its fee payer
+//! and only signer, so a transaction the taker signs can spend anything the
+//! taker holds. Four checks then decide whether it may:
 //!
 //! 1. [`check_quote`]: the quote names the requested mints, amount,
 //!    slippage and an exact-in swap, quotes a non-zero output, and its
@@ -12,10 +13,11 @@
 //! 2. [`check_instructions`]: every top-level instruction is one of the
 //!    forms a Jupiter aggregator route emits (compute budget within caps,
 //!    the taker's own associated token accounts, wrapping and unwrapping the
-//!    taker's SOL, and the Jupiter aggregator's exact-in routes, whose own
-//!    arguments must spend `amount`, enforce at least the caller's
-//!    `min_output` on chain, deliver to the taker's output account and take
-//!    a bounded platform fee).
+//!    taker's SOL, and exactly one Jupiter aggregator exact-in route, whose
+//!    own arguments must spend `amount`, enforce at least the caller's
+//!    `min_output` on chain after the route's platform fee, deliver to the
+//!    taker's output account, take a bounded platform fee and no positive
+//!    slippage).
 //! 3. [`check_effects`]: a simulation of the unsigned transaction shows the
 //!    taker spending exactly `amount` of the input mint, receiving at least
 //!    the quote's minimum output, losing no other token, paying no more SOL
@@ -40,13 +42,17 @@
 
 use super::{JUPITER_AGGREGATOR_V6, MAX_COMPUTE_UNIT_LIMIT};
 use crate::{
-    blockchain_api::{types::SwapQuote, BlockchainApiError},
+    blockchain_api::{bounded_text, types::SwapQuote, BlockchainApiError},
     client::SolanaRpcClient,
     error::DecodeError,
     keypair::Pubkey,
+    priority_fee::MAX_PRIORITY_FEE,
     solana_client::{
         client_error::{ClientError, ClientErrorKind},
-        rpc_config::{RpcSimulateTransactionAccountsConfig, RpcSimulateTransactionConfig},
+        rpc_config::{
+            RpcAccountInfoConfig, RpcSimulateTransactionAccountsConfig,
+            RpcSimulateTransactionConfig,
+        },
     },
     solana_sdk::{
         account::Account,
@@ -85,9 +91,11 @@ use std::{
 /// The Token-2022 program, which associated token accounts may belong to.
 const TOKEN_2022: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 /// The highest compute unit price a swap transaction may set, in
-/// micro-lamports. At the maximum limit this caps the priority fee at
-/// 2,800,000 lamports (0.0028 SOL).
-pub const MAX_COMPUTE_UNIT_PRICE: u64 = 2_000_000;
+/// micro-lamports: the crate's priority fee ceiling,
+/// [`MAX_PRIORITY_FEE`], which governs every transaction the wallet prices or
+/// accepts. At the maximum limit this caps the priority fee at 3,500,000
+/// lamports (0.0035 SOL).
+pub(crate) const MAX_COMPUTE_UNIT_PRICE: u64 = MAX_PRIORITY_FEE;
 /// The base fee per signature, in lamports.
 const LAMPORTS_PER_SIGNATURE: u64 = 5_000;
 const MICRO_LAMPORTS_PER_LAMPORT: u128 = 1_000_000;
@@ -104,19 +112,20 @@ const TOKEN_CLOSE_ACCOUNT: &[u8] = &[9];
 const SYSTEM_TRANSFER_TAG: [u8; 4] = [2, 0, 0, 0];
 /// Jupiter aggregator `route_v2` and `shared_accounts_route_v2`, the
 /// exact-in routes built when the quote asks for `instructionVersion` V2.
-/// Both carry `in_amount: u64`, `quoted_out_amount: u64` and
-/// `slippage_bps: u16` at a fixed offset after the discriminator
-/// (`shared_accounts_route_v2` first has an `id: u8`), and the program
-/// refuses to deliver less than the quote less that slippage. The older forms
-/// put those arguments after a variable-length route plan, so they cannot be
-/// read without decoding every step, and are refused.
+/// The program's published Anchor IDL gives both the arguments
+/// `in_amount: u64`, `quoted_out_amount: u64`, `slippage_bps: u16`,
+/// `platform_fee_bps: u16` and `positive_slippage_bps: u16` at a fixed offset
+/// after the discriminator (`shared_accounts_route_v2` first has an
+/// `id: u8`), then the route plan. The older forms put those arguments after
+/// a variable-length route plan, so they cannot be read without decoding
+/// every step, and are refused.
 const ROUTE_V2: [u8; 8] = [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14];
 const SHARED_ACCOUNTS_ROUTE_V2: [u8; 8] = [0xd1, 0x98, 0x53, 0x93, 0x7c, 0xfe, 0xd8, 0xe9];
 /// The highest platform fee a route may take, in basis points. The recorded
 /// routes carry 10 and 2; the cap leaves five times the higher of them as
 /// headroom and stops a route from taking a large share of the output. The
 /// simulation's output floor still applies to whatever a route delivers.
-pub const MAX_PLATFORM_FEE_BPS: u16 = 50;
+pub(crate) const MAX_PLATFORM_FEE_BPS: u16 = 50;
 /// `route_v2`'s `user_destination_token_account`, which receives the output.
 const ROUTE_V2_USER_DESTINATION: usize = 2;
 /// `route_v2`'s optional `destination_token_account`, which would receive
@@ -133,7 +142,7 @@ const COMPUTE_UNIT_PRICE_TAG: u8 = 3;
 const LOADED_ACCOUNTS_DATA_SIZE_TAG: u8 = 4;
 /// `getMultipleAccounts` answers at most this many keys per call.
 const MAX_ACCOUNTS_PER_REQUEST: usize = 100;
-/// The most characters of response-derived text an error carries.
+/// The most characters of quote text a refusal carries.
 const MAX_ERROR_BODY_LEN: usize = 200;
 
 /// Why a swap was not signed: the request cannot describe a swap, a request
@@ -150,21 +159,13 @@ pub enum SwapRouteError {
     /// The returned transaction does not decode.
     #[error("failed to decode the swap transaction")]
     TransactionDecode(#[source] DecodeError),
-    /// A Solana RPC call failed. The source carries no RPC URL (see
-    /// [`SwapRouteError::solana`]).
+    /// A Solana RPC call failed. The source carries no RPC URL, since an
+    /// RPC URL can carry an API key.
     #[error("Solana RPC request failed")]
     Solana(#[source] Box<ClientError>),
     /// The keypair could not name its wallet or sign.
     #[error("transaction signing failed")]
     Signing(#[source] SignerError),
-    /// The transaction requires signers beyond the taker. The canonical case
-    /// is an RFQ / JupiterZ fill, where the maker co-signs; the taker alone
-    /// cannot complete such a transaction.
-    #[error("swap transaction requires {num_signers} signers, extra: {extra_signers} (RFQ/maker co-sign is not self-signable)")]
-    MultipleSigners {
-        num_signers: u8,
-        extra_signers: String,
-    },
     /// The quote or its transaction does something beyond the requested
     /// swap, so it was not signed.
     #[error(transparent)]
@@ -185,7 +186,7 @@ pub enum InvalidSwapRequest {
 impl SwapRouteError {
     /// Wrap an RPC error with any URL stripped from its HTTP source, since
     /// an RPC URL can carry an API key.
-    pub fn solana(err: ClientError) -> Self {
+    pub(crate) fn solana(err: ClientError) -> Self {
         let ClientError { request, kind } = err;
         let kind = match kind {
             ClientErrorKind::Reqwest(err) => ClientErrorKind::Reqwest(err.without_url()),
@@ -196,59 +197,37 @@ impl SwapRouteError {
 
     /// Wrap a blockchain-api error with any URL stripped from its HTTP
     /// source, as [`SwapRouteError::solana`] does for RPC errors.
-    pub fn api(err: BlockchainApiError) -> Self {
+    pub(crate) fn api(err: BlockchainApiError) -> Self {
         Self::Api(match err {
             BlockchainApiError::Request(err) => BlockchainApiError::Request(err.without_url()),
             other => other,
         })
     }
-
-    pub fn multiple_signers(num_signers: u8, extra_signers: impl Into<String>) -> Self {
-        Self::MultipleSigners {
-            num_signers,
-            extra_signers: extra_signers.into(),
-        }
-    }
 }
 
-/// Response-derived text made safe to put in an error: at most
-/// [`MAX_ERROR_BODY_LEN`] characters, cut on a character boundary, with
-/// control characters escaped so they cannot rewrite a terminal or a log line.
-fn bounded_text(text: &str) -> String {
-    let mut bounded: String = text
-        .chars()
-        .take(MAX_ERROR_BODY_LEN)
-        .flat_map(|c| {
-            if c.is_control() {
-                c.escape_default().collect::<Vec<_>>()
-            } else {
-                vec![c]
-            }
-        })
-        .collect();
-    if text.chars().nth(MAX_ERROR_BODY_LEN).is_some() {
-        bounded.push('…');
-    }
-    bounded
-}
-
-/// Reject a transaction that needs signatures beyond the taker's, which the
-/// taker alone can never complete (e.g. an RFQ/JupiterZ maker co-sign).
-fn ensure_taker_only_signer(
-    message: &VersionedMessage,
-    taker: &Pubkey,
-) -> Result<(), SwapRouteError> {
+/// Refuse a transaction unless the taker is its only signer, which also makes
+/// the taker its fee payer, since the fee payer is the first signer. A
+/// transaction needing any other signature (a market maker's co-signature,
+/// say) is one the taker alone cannot complete, and one whose fee payer is
+/// another wallet was built for that wallet.
+pub(crate) fn check_signer(message: &VersionedMessage, taker: &Pubkey) -> Result<(), SwapRefusal> {
     let num_signers = message.header().num_required_signatures;
-    if num_signers > 1 {
+    if num_signers != 1 {
         let extra_signers = message
             .static_account_keys()
             .iter()
-            .take(num_signers as usize)
+            .take(usize::from(num_signers))
             .filter(|key| *key != taker)
-            .map(|key| key.to_string())
+            .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ");
-        return Err(SwapRouteError::multiple_signers(num_signers, extra_signers));
+        return Err(SwapRefusal::SignerCount {
+            num_signers,
+            extra_signers,
+        });
+    }
+    if message.static_account_keys().first() != Some(taker) {
+        return Err(SwapRefusal::FeePayerNotTaker);
     }
     Ok(())
 }
@@ -279,6 +258,12 @@ pub enum SwapRefusal {
     },
     #[error("swap refused: {found} transactions were returned, not one")]
     TransactionCount { found: usize },
+    /// `extra_signers` lists the required signers other than the taker.
+    #[error("swap refused: the transaction requires {num_signers} signatures, not the taker's alone (others: {extra_signers})")]
+    SignerCount {
+        num_signers: u8,
+        extra_signers: String,
+    },
     #[error("swap refused: the transaction's fee payer is not the taker")]
     FeePayerNotTaker,
     #[error("swap refused: lookup table {table} could not be resolved")]
@@ -297,12 +282,21 @@ pub enum SwapRefusal {
         in_amount: u64,
         expected: u64,
     },
-    #[error("swap refused: route instruction {index} accepts {route_minimum}, below the requested minimum {min_output}")]
+    /// `route_minimum` is the least the route guarantees the taker, after
+    /// its platform fee.
+    #[error("swap refused: route instruction {index} guarantees {route_minimum} after its platform fee, below the requested minimum {min_output}")]
     RouteMinimumBelowRequest {
         index: usize,
         route_minimum: u64,
         min_output: u64,
     },
+    #[error("swap refused: route instruction {index} takes {positive_slippage_bps} bps of positive slippage")]
+    RoutePositiveSlippage {
+        index: usize,
+        positive_slippage_bps: u16,
+    },
+    #[error("swap refused: the transaction holds {count} route instructions, not one")]
+    RouteCount { count: usize },
     #[error("swap refused: route instruction {index} delivers to {account}, not the taker's output account")]
     RouteDestination { index: usize, account: Pubkey },
     #[error(
@@ -394,15 +388,28 @@ pub(crate) struct Simulation {
     pub inner_instructions: Option<Vec<UiInnerInstructions>>,
 }
 
+/// Accounts read from the chain, and the slot the node answered from (the
+/// latest, when the read took more than one request).
+pub(crate) struct AccountsRead {
+    pub slot: u64,
+    pub accounts: Vec<Option<Account>>,
+}
+
 /// The chain reads a swap needs, behind a trait so the checks run against
-/// recorded state in tests.
+/// recorded state in tests. Each read that takes a `min_context_slot` is
+/// answered from that slot or a later one.
 pub(crate) trait SwapChain {
     async fn latest_blockhash(&self) -> Result<(Hash, u64), SwapRouteError>;
-    async fn accounts(&self, keys: &[Pubkey]) -> Result<Vec<Option<Account>>, SwapRouteError>;
+    async fn accounts(
+        &self,
+        keys: &[Pubkey],
+        min_context_slot: u64,
+    ) -> Result<AccountsRead, SwapRouteError>;
     async fn simulate(
         &self,
         txn: &VersionedTransaction,
         keys: &[Pubkey],
+        min_context_slot: u64,
     ) -> Result<Simulation, SwapRouteError>;
 }
 
@@ -413,22 +420,37 @@ impl SwapChain for SolanaRpcClient {
             .map_err(SwapRouteError::solana)
     }
 
-    async fn accounts(&self, keys: &[Pubkey]) -> Result<Vec<Option<Account>>, SwapRouteError> {
-        let mut accounts = Vec::with_capacity(keys.len());
+    async fn accounts(
+        &self,
+        keys: &[Pubkey],
+        min_context_slot: u64,
+    ) -> Result<AccountsRead, SwapRouteError> {
+        let mut read = AccountsRead {
+            slot: min_context_slot,
+            accounts: Vec::with_capacity(keys.len()),
+        };
         for chunk in keys.chunks(MAX_ACCOUNTS_PER_REQUEST) {
+            let config = RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                data_slice: None,
+                commitment: Some(self.commitment()),
+                min_context_slot: Some(read.slot),
+            };
             let response = self
-                .get_multiple_accounts_with_commitment(chunk, self.commitment())
+                .get_multiple_accounts_with_config(chunk, config)
                 .await
                 .map_err(SwapRouteError::solana)?;
-            accounts.extend(response.value);
+            read.slot = read.slot.max(response.context.slot);
+            read.accounts.extend(response.value);
         }
-        Ok(accounts)
+        Ok(read)
     }
 
     async fn simulate(
         &self,
         txn: &VersionedTransaction,
         keys: &[Pubkey],
+        min_context_slot: u64,
     ) -> Result<Simulation, SwapRouteError> {
         let config = RpcSimulateTransactionConfig {
             // The transaction is simulated unsigned, so signatures are not
@@ -442,7 +464,7 @@ impl SwapChain for SolanaRpcClient {
                 encoding: Some(UiAccountEncoding::Base64),
                 addresses: keys.iter().map(ToString::to_string).collect(),
             }),
-            min_context_slot: None,
+            min_context_slot: Some(min_context_slot),
             inner_instructions: true,
         };
         let result = self
@@ -474,6 +496,12 @@ impl SwapChain for SolanaRpcClient {
 /// from [`check_quote`]), set a fresh blockhash, check a simulation of the
 /// unsigned transaction, and only then sign it as the taker. Returns the
 /// signed transaction and its last valid block height.
+///
+/// Each chain read is answered from the slot of the read before it or a
+/// later one, so the simulation never runs against state older than the
+/// before-state it is compared with. It may run against newer state: a
+/// change to a taker account that lands between the two reads is counted as
+/// the swap's.
 pub(crate) async fn sign_verified<S: SwapChain>(
     chain: &S,
     request: &SwapTerms,
@@ -481,7 +509,7 @@ pub(crate) async fn sign_verified<S: SwapChain>(
     txn: VersionedTransaction,
     keypair: &(dyn Signer + Sync),
 ) -> Result<(VersionedTransaction, u64), SwapRouteError> {
-    ensure_taker_only_signer(&txn.message, &request.taker)?;
+    check_signer(&txn.message, &request.taker)?;
 
     let table_keys: Vec<Pubkey> = txn
         .message
@@ -491,11 +519,14 @@ pub(crate) async fn sign_verified<S: SwapChain>(
         .map(|lookup| lookup.account_key)
         .collect();
     let tables = if table_keys.is_empty() {
-        Vec::new()
+        AccountsRead {
+            slot: 0,
+            accounts: Vec::new(),
+        }
     } else {
-        chain.accounts(&table_keys).await?
+        chain.accounts(&table_keys, 0).await?
     };
-    let resolved = resolve_accounts(&txn.message, &tables)?;
+    let resolved = resolve_accounts(&txn.message, &tables.accounts)?;
     let budget = check_instructions(&txn.message, &resolved.keys, request)?;
     let fee_bound = budget.fee_bound(txn.message.header().num_required_signatures);
 
@@ -510,8 +541,11 @@ pub(crate) async fn sign_verified<S: SwapChain>(
         message,
     };
 
-    let pre = chain.accounts(&resolved.writable).await?;
-    let simulation = chain.simulate(&unsigned, &resolved.writable).await?;
+    let AccountsRead {
+        slot,
+        accounts: pre,
+    } = chain.accounts(&resolved.writable, tables.slot).await?;
+    let simulation = chain.simulate(&unsigned, &resolved.writable, slot).await?;
     if let Some(err) = simulation.err {
         return Err(SwapRefusal::SimulationFailed(err).into());
     }
@@ -549,7 +583,7 @@ pub(crate) fn check_quote(quote: &SwapQuote, request: &SwapTerms) -> Result<u64,
             Err(SwapRefusal::QuoteMismatch {
                 field,
                 expected,
-                actual: bounded_text(actual),
+                actual: bounded_text(actual, MAX_ERROR_BODY_LEN),
             })
         }
     }
@@ -600,11 +634,12 @@ pub(crate) fn check_quote(quote: &SwapQuote, request: &SwapTerms) -> Result<u64,
     Ok(threshold)
 }
 
-/// The least output `slippage_bps` allows on a quote of `out_amount`,
-/// rounded down, which is the lower of the two roundings.
-fn min_out(out_amount: u64, slippage_bps: u16) -> u64 {
-    let kept = 10_000u128.saturating_sub(u128::from(slippage_bps));
-    (u128::from(out_amount) * kept / 10_000) as u64
+/// What is left of `amount` once `bps` basis points are taken off it,
+/// rounded down, which is the lower of the two roundings: the least output a
+/// slippage allows on a quote, or what a fee leaves of an output.
+fn min_out(amount: u64, bps: u16) -> u64 {
+    let kept = 10_000u128.saturating_sub(u128::from(bps));
+    (u128::from(amount) * kept / 10_000) as u64
 }
 
 /// A message's account keys with its lookup tables resolved, in the order
@@ -710,22 +745,21 @@ impl ComputeBudget {
 ///   to the taker's wrapped-SOL account, and only when the input is SOL.
 /// - SPL Token: `SyncNative` of the taker's wrapped-SOL account, and
 ///   `CloseAccount` of it back to the taker, by the taker.
-/// - Jupiter aggregator `route_v2` and `shared_accounts_route_v2` spending
-///   exactly `amount`, whose own minimum output is at least
-///   `request.min_output`, whose platform fee is at most
-///   [`MAX_PLATFORM_FEE_BPS`], and that deliver to
-///   the taker's associated token account of the output mint (`route_v2`'s
-///   optional destination left empty). What the route does through other
-///   programs is checked by simulation.
+/// - Exactly one Jupiter aggregator `route_v2` or `shared_accounts_route_v2`,
+///   spending exactly `amount`, whose own minimum output less its platform
+///   fee is at least `request.min_output`, whose platform fee is at most
+///   [`MAX_PLATFORM_FEE_BPS`], that takes no positive slippage, and that
+///   delivers to the taker's associated token account of the output mint
+///   (`route_v2`'s optional destination left empty). What the route does
+///   through other programs is checked by simulation.
+///
+/// The taker is the fee payer by [`check_signer`], which runs first.
 pub(crate) fn check_instructions(
     message: &VersionedMessage,
     keys: &[Pubkey],
     request: &SwapTerms,
 ) -> Result<ComputeBudget, SwapRefusal> {
     let taker = request.taker;
-    if message.static_account_keys().first() != Some(&taker) {
-        return Err(SwapRefusal::FeePayerNotTaker);
-    }
     let wrapped_sol = get_associated_token_address(&taker, &native_mint::ID);
     let output_accounts = [
         get_associated_token_address(&taker, &request.output_mint),
@@ -733,6 +767,7 @@ pub(crate) fn check_instructions(
     ];
     let mut limits = Vec::new();
     let mut price = 0;
+    let mut routes = 0;
 
     for (index, ix) in message.instructions().iter().enumerate() {
         let key = |position: u8| {
@@ -828,6 +863,7 @@ pub(crate) fn check_instructions(
                 _ => return Err(not_allowed),
             };
             let terms = terms.and_then(RouteTerms::read).ok_or(not_allowed)?;
+            routes += 1;
             if !output_accounts.contains(&destination) {
                 return Err(SwapRefusal::RouteDestination {
                     index,
@@ -839,6 +875,12 @@ pub(crate) fn check_instructions(
                     index,
                     fee_bps: terms.platform_fee_bps,
                     cap: MAX_PLATFORM_FEE_BPS,
+                });
+            }
+            if terms.positive_slippage_bps != 0 {
+                return Err(SwapRefusal::RoutePositiveSlippage {
+                    index,
+                    positive_slippage_bps: terms.positive_slippage_bps,
                 });
             }
             if terms.in_amount != request.amount {
@@ -853,7 +895,17 @@ pub(crate) fn check_instructions(
             // rounds. The quote's own threshold can sit one unit above it, as
             // the quote rounds up, so the route is held to the caller's
             // minimum and the simulation to the quote's.
-            let route_minimum = min_out(terms.quoted_out_amount, terms.slippage_bps);
+            //
+            // The IDL does not say whether the program compares that minimum
+            // with the output before or after the platform fee is taken from
+            // it, so the minimum is assumed to bind the output before the
+            // fee, and the fee is taken off it too, rounded down. A route
+            // whose minimum meets the caller's only before the fee is
+            // refused.
+            let route_minimum = min_out(
+                min_out(terms.quoted_out_amount, terms.slippage_bps),
+                terms.platform_fee_bps,
+            );
             if route_minimum < request.min_output {
                 return Err(SwapRefusal::RouteMinimumBelowRequest {
                     index,
@@ -864,6 +916,9 @@ pub(crate) fn check_instructions(
         } else {
             return Err(SwapRefusal::ProgramNotAllowed { index, program });
         }
+    }
+    if routes != 1 {
+        return Err(SwapRefusal::RouteCount { count: routes });
     }
     match limits.as_slice() {
         [limit] => Ok(ComputeBudget {
@@ -876,12 +931,13 @@ pub(crate) fn check_instructions(
     }
 }
 
-/// The leading arguments of a Jupiter v2 route.
+/// The leading arguments of a Jupiter v2 route, in the IDL's order.
 struct RouteTerms {
     in_amount: u64,
     quoted_out_amount: u64,
     slippage_bps: u16,
     platform_fee_bps: u16,
+    positive_slippage_bps: u16,
 }
 
 impl RouteTerms {
@@ -891,6 +947,7 @@ impl RouteTerms {
             quoted_out_amount: u64::from_le_bytes(args.get(8..16)?.try_into().ok()?),
             slippage_bps: u16::from_le_bytes(args.get(16..18)?.try_into().ok()?),
             platform_fee_bps: u16::from_le_bytes(args.get(18..20)?.try_into().ok()?),
+            positive_slippage_bps: u16::from_le_bytes(args.get(20..22)?.try_into().ok()?),
         })
     }
 }
@@ -1257,6 +1314,12 @@ fn inner_form(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::solana_client::{
+        client_error,
+        rpc_client::RpcClientConfig,
+        rpc_request::{RpcError, RpcRequest},
+        rpc_sender::{RpcSender, RpcTransportStats},
+    };
     use crate::solana_sdk::{
         address_lookup_table::AddressLookupTableAccount,
         instruction::{AccountMeta, Instruction},
@@ -1269,7 +1332,10 @@ pub(crate) mod tests {
     use serde::Deserialize;
     use serde_json::{json, Value};
     use solana_address_lookup_table_interface::state::LookupTableMeta;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc, Mutex,
+    };
     use std::{borrow::Cow, collections::BTreeMap, str::FromStr};
 
     const HNT: Pubkey = pubkey!("hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux");
@@ -1355,13 +1421,27 @@ pub(crate) mod tests {
     }
 
     /// Recorded chain state: `pre` answers account reads (lookup tables
-    /// included), `post` answers the simulation.
+    /// included), `post` answers the simulation. Each account read answers
+    /// from a slot one past the last, starting after [`FIRST_SLOT`], and
+    /// every read records the `min_context_slot` it was given.
     pub(crate) struct FakeChain {
         pub pre: HashMap<Pubkey, Account>,
         pub post: HashMap<Pubkey, Account>,
         pub sim_err: Option<TransactionError>,
         pub drop_post: bool,
         pub inner: Option<Vec<UiInnerInstructions>>,
+        pub slot: AtomicU64,
+        pub reads: Mutex<Vec<Read>>,
+    }
+
+    pub(crate) const FIRST_SLOT: u64 = 1_000;
+
+    /// A chain read: the slot it answered from (none for a simulation) and
+    /// the `min_context_slot` it was given.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) struct Read {
+        pub answered: Option<u64>,
+        pub min_context_slot: u64,
     }
 
     pub(crate) const BLOCKHASH: Hash = Hash::new_from_array([7; 32]);
@@ -1372,15 +1452,32 @@ pub(crate) mod tests {
             Ok((BLOCKHASH, LAST_VALID_BLOCK_HEIGHT))
         }
 
-        async fn accounts(&self, keys: &[Pubkey]) -> Result<Vec<Option<Account>>, SwapRouteError> {
-            Ok(keys.iter().map(|key| self.pre.get(key).cloned()).collect())
+        async fn accounts(
+            &self,
+            keys: &[Pubkey],
+            min_context_slot: u64,
+        ) -> Result<AccountsRead, SwapRouteError> {
+            let slot = self.slot.fetch_add(1, Ordering::SeqCst) + 1;
+            self.reads.lock().expect("lock").push(Read {
+                answered: Some(slot),
+                min_context_slot,
+            });
+            Ok(AccountsRead {
+                slot,
+                accounts: keys.iter().map(|key| self.pre.get(key).cloned()).collect(),
+            })
         }
 
         async fn simulate(
             &self,
             txn: &VersionedTransaction,
             keys: &[Pubkey],
+            min_context_slot: u64,
         ) -> Result<Simulation, SwapRouteError> {
+            self.reads.lock().expect("lock").push(Read {
+                answered: None,
+                min_context_slot,
+            });
             assert_eq!(*txn.message.recent_blockhash(), BLOCKHASH);
             assert!(
                 txn.signatures
@@ -1444,8 +1541,9 @@ pub(crate) mod tests {
             input_mint: key(&quote.input_mint),
             output_mint: key(&quote.output_mint),
             amount: quote.in_amount.parse().expect("fixture inAmount"),
-            // Just below the quote's own minimum, which must still pass.
-            min_output: threshold - 1,
+            // The most the recorded route still guarantees once its platform
+            // fee is taken off the quote's minimum, which must pass.
+            min_output: min_out(threshold, recorded_route(&transaction).platform_fee_bps),
             slippage_bps: quote.slippage_bps.try_into().expect("fixture slippageBps"),
             taker,
         };
@@ -1459,8 +1557,27 @@ pub(crate) mod tests {
                 sim_err: None,
                 drop_post: false,
                 inner: Some(fixture.inner_instructions),
+                slot: AtomicU64::new(FIRST_SLOT),
+                reads: Mutex::default(),
             },
         }
+    }
+
+    /// The terms of the one route instruction in a recorded transaction.
+    fn recorded_route(transaction: &VersionedTransaction) -> RouteTerms {
+        let data = transaction
+            .message
+            .instructions()
+            .iter()
+            .map(|ix| ix.data.as_slice())
+            .find(|data| data.starts_with(&ROUTE_V2) || data.starts_with(&SHARED_ACCOUNTS_ROUTE_V2))
+            .expect("fixture route instruction");
+        let args = if data.starts_with(&ROUTE_V2) {
+            &data[ROUTE_V2.len()..]
+        } else {
+            &data[SHARED_ACCOUNTS_ROUTE_V2.len() + 1..]
+        };
+        RouteTerms::read(args).expect("fixture route terms")
     }
 
     /// A signer that counts the messages it signs.
@@ -2310,15 +2427,74 @@ pub(crate) mod tests {
 
     #[test]
     fn fee_payer_must_be_the_taker() {
-        let request = sol_request();
-        let instructions = swap_instructions(&request);
-        let message =
-            VersionedMessage::Legacy(Message::new(&instructions, Some(&Pubkey::new_unique())));
-        let keys = message.static_account_keys().to_vec();
+        let taker = Pubkey::new_unique();
+        check_signer(&legacy_message(1, vec![taker]), &taker).expect("the taker pays");
+        // One signer, which is not the taker.
+        let message = legacy_message(1, vec![Pubkey::new_unique(), taker]);
         assert!(matches!(
-            check_instructions(&message, &keys, &request),
+            check_signer(&message, &taker),
             Err(SwapRefusal::FeePayerNotTaker)
         ));
+    }
+
+    #[test]
+    fn exactly_one_route_is_required() {
+        let request = sol_request();
+        let mut instructions = swap_instructions(&request);
+        check(&request, &instructions).expect("one route");
+        let route = instructions[6].clone();
+        instructions.insert(6, route);
+        assert!(matches!(
+            check(&request, &instructions),
+            Err(SwapRefusal::RouteCount { count: 2 })
+        ));
+        instructions.drain(6..8);
+        assert!(matches!(
+            check(&request, &instructions),
+            Err(SwapRefusal::RouteCount { count: 0 })
+        ));
+    }
+
+    #[test]
+    fn route_positive_slippage_is_refused() {
+        let request = sol_request();
+        let data = route_data(request.amount, QUOTED_OUT, 100);
+        with_route(&request, data.clone()).expect("no positive slippage");
+        let mut taking = data;
+        taking[28..30].copy_from_slice(&1u16.to_le_bytes());
+        assert!(matches!(
+            with_route(&request, taking),
+            Err(SwapRefusal::RoutePositiveSlippage {
+                positive_slippage_bps: 1,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn route_minimum_must_reach_the_callers_minimum_after_its_platform_fee() {
+        // 1,000,000 less 100 bps of slippage is 990,000, and 10 bps of fee
+        // leaves 989,010 of that.
+        let request = SwapTerms {
+            min_output: 989_010,
+            ..sol_request()
+        };
+        let data = with_platform_fee(route_data(request.amount, QUOTED_OUT, 100), 10);
+        with_route(&request, data.clone()).expect("at the minimum after the fee");
+        let request = SwapTerms {
+            min_output: 989_011,
+            ..request
+        };
+        assert!(matches!(
+            with_route(&request, data.clone()),
+            Err(SwapRefusal::RouteMinimumBelowRequest {
+                route_minimum: 989_010,
+                min_output: 989_011,
+                ..
+            })
+        ));
+        // The same route without its fee meets that minimum.
+        with_route(&request, with_platform_fee(data, 0)).expect("no fee");
     }
 
     #[test]
@@ -2581,10 +2757,43 @@ pub(crate) mod tests {
         };
         v0.header.num_required_signatures = 2;
         case.set_message(message);
-        assert!(matches!(
-            case.run().await,
-            Err(SwapRouteError::MultipleSigners { num_signers: 2, .. })
-        ));
+        let (result, signed) = case.run_counting().await;
+        assert!(
+            matches!(
+                result,
+                Err(SwapRouteError::Refused(SwapRefusal::SignerCount {
+                    num_signers: 2,
+                    ..
+                }))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signed, 0);
+    }
+
+    #[tokio::test]
+    async fn each_read_is_no_older_than_the_one_before() {
+        let case = case(HNT_USDC);
+        case.run().await.expect("signed");
+        let reads = case.chain.reads.lock().expect("lock").clone();
+        // The lookup tables, the before-state, then the simulation.
+        assert_eq!(
+            reads,
+            vec![
+                Read {
+                    answered: Some(FIRST_SLOT + 1),
+                    min_context_slot: 0,
+                },
+                Read {
+                    answered: Some(FIRST_SLOT + 2),
+                    min_context_slot: FIRST_SLOT + 1,
+                },
+                Read {
+                    answered: None,
+                    min_context_slot: FIRST_SLOT + 2,
+                },
+            ]
+        );
     }
 
     #[tokio::test]
@@ -2878,7 +3087,10 @@ pub(crate) mod tests {
 
     #[test]
     fn route_platform_fee_is_capped() {
-        let request = sol_request();
+        let request = SwapTerms {
+            min_output: min_out(MIN_OUTPUT, MAX_PLATFORM_FEE_BPS),
+            ..sol_request()
+        };
         let data = route_data(request.amount, QUOTED_OUT, 100);
         with_route(
             &request,
@@ -3495,7 +3707,7 @@ pub(crate) mod tests {
     fn taker_only_signer_ok() {
         let taker = Pubkey::new_unique();
         let msg = legacy_message(1, vec![taker]);
-        assert!(ensure_taker_only_signer(&msg, &taker).is_ok());
+        check_signer(&msg, &taker).expect("the taker alone signs");
     }
 
     #[test]
@@ -3504,25 +3716,95 @@ pub(crate) mod tests {
         let maker = Pubkey::new_unique();
         // RFQ shape: maker is the fee payer (slot 0), taker signs slot 1.
         let msg = legacy_message(2, vec![maker, taker]);
-        match ensure_taker_only_signer(&msg, &taker) {
-            Err(SwapRouteError::MultipleSigners {
+        match check_signer(&msg, &taker) {
+            Err(SwapRefusal::SignerCount {
                 num_signers,
                 extra_signers,
             }) => {
                 assert_eq!(num_signers, 2);
                 assert_eq!(extra_signers, maker.to_string());
             }
-            other => panic!("expected MultipleSigners, got {other:?}"),
+            other => panic!("expected SignerCount, got {other:?}"),
         }
     }
 
+    /// An RPC transport that records each request and answers account reads
+    /// from the slots in `slots`, in turn.
+    struct RecordingSender {
+        slots: Mutex<Vec<u64>>,
+        requests: Arc<Mutex<Vec<(String, Value)>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl RpcSender for RecordingSender {
+        async fn send(&self, request: RpcRequest, params: Value) -> client_error::Result<Value> {
+            let method = request.to_string();
+            self.requests
+                .lock()
+                .expect("lock")
+                .push((method.clone(), params.clone()));
+            match method.as_str() {
+                "getMultipleAccounts" => {
+                    let keys = params[0].as_array().map(Vec::len).unwrap_or_default();
+                    let slot = self.slots.lock().expect("lock").remove(0);
+                    Ok(json!({ "context": { "slot": slot }, "value": vec![Value::Null; keys] }))
+                }
+                _ => Err(RpcError::ForUser("not answered".to_string()).into()),
+            }
+        }
+
+        fn get_transport_stats(&self) -> RpcTransportStats {
+            Default::default()
+        }
+
+        fn url(&self) -> String {
+            "recording".to_string()
+        }
+    }
+
+    #[tokio::test]
+    async fn rpc_reads_ask_for_their_min_context_slot() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let rpc = SolanaRpcClient::new_sender(
+            RecordingSender {
+                // The second chunk's node answers from an older slot than
+                // the first's.
+                slots: Mutex::new(vec![12, 9]),
+                requests: requests.clone(),
+            },
+            RpcClientConfig::default(),
+        );
+        let keys: Vec<Pubkey> = (0..=MAX_ACCOUNTS_PER_REQUEST)
+            .map(|_| Pubkey::new_unique())
+            .collect();
+        let read = SwapChain::accounts(&rpc, &keys, 7).await.expect("read");
+        assert_eq!(read.slot, 12);
+        assert_eq!(read.accounts.len(), keys.len());
+        let case = case(HNT_USDC);
+        // The answer is refused; only the request is of interest.
+        let _ = SwapChain::simulate(&rpc, &case.transaction, &keys[..1], read.slot).await;
+        let requests = requests.lock().expect("lock");
+        let min_slots: Vec<_> = requests
+            .iter()
+            .map(|(method, params)| (method.as_str(), params[1]["minContextSlot"].as_u64()))
+            .collect();
+        assert_eq!(
+            min_slots,
+            vec![
+                ("getMultipleAccounts", Some(7)),
+                ("getMultipleAccounts", Some(12)),
+                ("simulateTransaction", Some(12)),
+            ]
+        );
+    }
+
     #[test]
-    fn bounded_text_cuts_on_a_character_boundary_and_escapes_controls() {
-        let long = "é".repeat(MAX_ERROR_BODY_LEN + 1);
-        let bounded = bounded_text(&long);
-        assert_eq!(bounded.chars().count(), MAX_ERROR_BODY_LEN + 1);
-        assert!(bounded.ends_with('…'));
-        assert_eq!(bounded_text("a\x1b[2Jb\n"), "a\\u{1b}[2Jb\\n");
-        assert_eq!(bounded_text("short"), "short");
+    fn a_message_requiring_no_signature_is_refused() {
+        let taker = Pubkey::new_unique();
+        let msg = legacy_message(0, vec![taker]);
+        assert!(matches!(
+            check_signer(&msg, &taker),
+            Err(SwapRefusal::SignerCount { num_signers: 0, .. })
+        ));
     }
 }

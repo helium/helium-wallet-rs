@@ -88,16 +88,32 @@ impl BlockchainApiError {
     fn api(status: u16, body: String) -> Self {
         let message = if body.is_empty() {
             format!("empty response (HTTP {status})")
-        } else if body.chars().count() > MAX_ERROR_BODY_LEN {
-            // Truncate by characters, not bytes, so a multi-byte char straddling
-            // the cap can't panic the whole process on an error path.
-            let truncated: String = body.chars().take(MAX_ERROR_BODY_LEN).collect();
-            format!("{truncated}…")
         } else {
-            body
+            bounded_text(&body, MAX_ERROR_BODY_LEN)
         };
         Self::Api { status, message }
     }
+}
+
+/// Response text made safe to put in an error: at most `max_chars`
+/// characters, cut on a character boundary and marked with `…` when cut, with
+/// control characters escaped so they cannot rewrite a terminal or a log line.
+pub(crate) fn bounded_text(text: &str, max_chars: usize) -> String {
+    let mut bounded: String = text
+        .chars()
+        .take(max_chars)
+        .flat_map(|c| {
+            if c.is_control() {
+                c.escape_default().collect::<Vec<_>>()
+            } else {
+                vec![c]
+            }
+        })
+        .collect();
+    if text.chars().nth(max_chars).is_some() {
+        bounded.push('…');
+    }
+    bounded
 }
 
 /// Client for the Helium blockchain-api REST surface.
@@ -580,5 +596,25 @@ mod tests {
             }
             other => panic!("expected Api, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn api_error_escapes_control_characters() {
+        let err = BlockchainApiError::api(502, "bad\x1b[2J\r\ngateway".to_string());
+        match err {
+            BlockchainApiError::Api { message, .. } => {
+                assert_eq!(message, "bad\\u{1b}[2J\\r\\ngateway");
+            }
+            other => panic!("expected Api, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bounded_text_cuts_on_a_character_boundary_and_escapes_controls() {
+        let long = "é".repeat(11);
+        let bounded = bounded_text(&long, 10);
+        assert_eq!(bounded, format!("{}…", "é".repeat(10)));
+        assert_eq!(bounded_text(&"é".repeat(10), 10), "é".repeat(10));
+        assert_eq!(bounded_text("a\x1b[2Jb\n", 10), "a\\u{1b}[2Jb\\n");
     }
 }

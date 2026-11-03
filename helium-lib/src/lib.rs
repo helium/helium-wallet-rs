@@ -46,6 +46,9 @@ pub mod reward;
 pub mod schedule;
 /// Squads multisig integration (v3 + v4): proposal building, voting, decoding.
 pub mod squads;
+/// Token swaps quoted and built by the blockchain-api, signed only once
+/// their checks pass.
+pub mod swap;
 /// Token operations: transfers, burns, balances, and prices.
 pub mod token;
 /// Transaction signing and confirmation.

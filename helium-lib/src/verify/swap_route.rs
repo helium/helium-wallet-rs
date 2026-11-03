@@ -1,23 +1,24 @@
-//! Checks that a Jupiter order and the transaction it carries do nothing
+//! Checks that a swap quote and the transaction built for it do nothing
 //! beyond the swap the caller asked for, before the taker signs it.
+//! [`crate::swap::sign`] is the entry point that runs them.
 //!
 //! The taker is the fee payer and the only signer, so a transaction it signs
 //! can spend anything the taker holds. Four checks decide whether it may:
 //!
-//! 1. [`check_order`]: the order names the requested mints, amount,
-//!    slippage, taker and an exact-in swap, quotes a non-zero output, and
-//!    its minimum output is at least the caller's `min_output` and no lower
-//!    than the slippage allows on the quote.
+//! 1. [`check_quote`]: the quote names the requested mints, amount,
+//!    slippage and an exact-in swap, quotes a non-zero output, and its
+//!    minimum output is at least the caller's `min_output` and no lower than
+//!    the slippage allows on the quote.
 //! 2. [`check_instructions`]: every top-level instruction is one of the
 //!    forms a Jupiter aggregator route emits (compute budget within caps,
 //!    the taker's own associated token accounts, wrapping and unwrapping the
 //!    taker's SOL, and the Jupiter aggregator's exact-in routes, whose own
-//!    arguments must spend `amount`, enforce at least the order's minimum
-//!    output on chain, deliver to the taker's output account and take a
-//!    bounded platform fee).
+//!    arguments must spend `amount`, enforce at least the caller's
+//!    `min_output` on chain, deliver to the taker's output account and take
+//!    a bounded platform fee).
 //! 3. [`check_effects`]: a simulation of the unsigned transaction shows the
 //!    taker spending exactly `amount` of the input mint, receiving at least
-//!    the order's minimum output, losing no other token, paying no more SOL
+//!    the quote's minimum output, losing no other token, paying no more SOL
 //!    than the transaction's own fee, and every taker token account keeping
 //!    its owner, delegate and close authority. A transaction can only modify
 //!    accounts it lists as writable, so comparing every writable account
@@ -25,18 +26,23 @@
 //!    cross-program invocations, which no static check can see.
 //! 4. [`check_inner_instructions`]: every instruction the simulation ran
 //!    beneath the top level that names the taker is a plain SPL Token
-//!    transfer or close of a taker token account by the taker, a
-//!    `SyncNative`, an Associated Token Account create, or a System
-//!    transfer or account creation. A route that hands the taker to any
-//!    other program (an AMM's own swap instruction, say) is refused, because
-//!    the taker's signature then extends into code no check here reads.
+//!    transfer of a taker token account by the taker, a close of one that
+//!    pays the taker, a `SyncNative`, an Associated Token Account create, or
+//!    a System transfer or account creation. A route that hands the taker to
+//!    any other program (an AMM's own swap instruction, say) is refused,
+//!    because the taker's signature then extends into code no check here
+//!    reads.
 //!
-//! The taker signs only after all four pass, so a refused transaction is
-//! never signed and the RPC node that simulates it never holds a signed copy.
+//! The simulation runs on the caller's own RPC node, not on the service that
+//! built the transaction. The taker signs only after all four pass, so a
+//! refused transaction is never signed and the RPC node that simulates it
+//! never holds a signed copy.
 
-use super::JUPITER_AGGREGATOR_V6;
+use super::{JUPITER_AGGREGATOR_V6, MAX_COMPUTE_UNIT_LIMIT};
 use crate::{
+    blockchain_api::{types::SwapQuote, BlockchainApiError},
     client::SolanaRpcClient,
+    error::DecodeError,
     keypair::Pubkey,
     solana_client::{
         client_error::{ClientError, ClientErrorKind},
@@ -49,17 +55,16 @@ use crate::{
         program_pack::Pack,
         pubkey,
         signature::Signature,
-        signer::Signer,
+        signer::{Signer, SignerError},
         transaction::{TransactionError, VersionedTransaction},
     },
+    swap::SwapRequest,
 };
 use anchor_client::solana_account_decoder::UiAccountEncoding;
 use anchor_spl::token::spl_token::{
     self, native_mint,
     state::{Account as TokenAccount, Multisig},
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solana_address_lookup_table_interface::{
     program as address_lookup_table, state::AddressLookupTable,
@@ -79,9 +84,6 @@ use std::{
 
 /// The Token-2022 program, which associated token accounts may belong to.
 const TOKEN_2022: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
-/// The highest compute unit limit a swap transaction may request (the
-/// protocol maximum per transaction).
-pub const MAX_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
 /// The highest compute unit price a swap transaction may set, in
 /// micro-lamports. At the maximum limit this caps the priority fee at
 /// 2,800,000 lamports (0.0028 SOL).
@@ -101,12 +103,13 @@ const TOKEN_CLOSE_ACCOUNT: &[u8] = &[9];
 /// System program `Transfer`, the bincode tag before its `u64` lamports.
 const SYSTEM_TRANSFER_TAG: [u8; 4] = [2, 0, 0, 0];
 /// Jupiter aggregator `route_v2` and `shared_accounts_route_v2`, the
-/// exact-in routes the v2 order endpoint builds. Both carry `in_amount: u64`,
-/// `quoted_out_amount: u64` and `slippage_bps: u16` at a fixed offset after
-/// the discriminator (`shared_accounts_route_v2` first has an `id: u8`), and
-/// the program refuses to deliver less than the quote less that slippage.
-/// The older forms put those arguments after a variable-length route plan,
-/// so they cannot be read without decoding every step, and are refused.
+/// exact-in routes built when the quote asks for `instructionVersion` V2.
+/// Both carry `in_amount: u64`, `quoted_out_amount: u64` and
+/// `slippage_bps: u16` at a fixed offset after the discriminator
+/// (`shared_accounts_route_v2` first has an `id: u8`), and the program
+/// refuses to deliver less than the quote less that slippage. The older forms
+/// put those arguments after a variable-length route plan, so they cannot be
+/// read without decoding every step, and are refused.
 const ROUTE_V2: [u8; 8] = [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14];
 const SHARED_ACCOUNTS_ROUTE_V2: [u8; 8] = [0xd1, 0x98, 0x53, 0x93, 0x7c, 0xfe, 0xd8, 0xe9];
 /// The highest platform fee a route may take, in basis points. The recorded
@@ -133,56 +136,53 @@ const MAX_ACCOUNTS_PER_REQUEST: usize = 100;
 /// The most characters of response-derived text an error carries.
 const MAX_ERROR_BODY_LEN: usize = 200;
 
-/// Why a swap route was not signed: the request or order is unusable, a
-/// chain read failed, or a check refused it.
+/// Why a swap was not signed: the request cannot describe a swap, a request
+/// to the building service or a chain read failed, the transaction is
+/// unusable, or a check refused it.
 #[derive(Debug, thiserror::Error)]
 pub enum SwapRouteError {
-    /// The order reported an error, or carries no transaction.
-    #[error("Jupiter swap error: {0}")]
-    SwapError(String),
-    /// The order found no route for the token pair.
-    #[error("Jupiter order has no routes for {input_mint} → {output_mint}")]
-    NoRoutes {
-        input_mint: String,
-        output_mint: String,
-    },
-    /// The order's base64-encoded transaction does not decode.
-    #[error("Failed to decode swap transaction: {0}")]
-    TransactionDecode(String),
+    /// The request cannot describe a swap.
+    #[error(transparent)]
+    InvalidRequest(#[from] InvalidSwapRequest),
+    /// A request to the service that quotes and builds the swap failed.
+    #[error("swap request to the blockchain-api failed")]
+    Api(#[source] BlockchainApiError),
+    /// The returned transaction does not decode.
+    #[error("failed to decode the swap transaction")]
+    TransactionDecode(#[source] DecodeError),
     /// A Solana RPC call failed. The source carries no RPC URL (see
     /// [`SwapRouteError::solana`]).
     #[error("Solana RPC request failed")]
     Solana(#[source] Box<ClientError>),
-    /// Transaction signing failed.
-    #[error("Transaction signing failed: {0}")]
-    Signing(String),
+    /// The keypair could not name its wallet or sign.
+    #[error("transaction signing failed")]
+    Signing(#[source] SignerError),
     /// The transaction requires signers beyond the taker. The canonical case
-    /// is an RFQ / JupiterZ fill, where the maker co-signs through Jupiter's
-    /// execute endpoint; the taker alone cannot complete such an order.
+    /// is an RFQ / JupiterZ fill, where the maker co-signs; the taker alone
+    /// cannot complete such a transaction.
     #[error("swap transaction requires {num_signers} signers, extra: {extra_signers} (RFQ/maker co-sign is not self-signable)")]
     MultipleSigners {
         num_signers: u8,
         extra_signers: String,
     },
-    /// The request cannot describe a swap (a zero amount or minimum output,
-    /// or the same mint on both sides).
-    #[error("swap request error: {0}")]
-    Config(String),
-    /// The order or its transaction does something beyond the requested
+    /// The quote or its transaction does something beyond the requested
     /// swap, so it was not signed.
     #[error(transparent)]
     Refused(#[from] SwapRefusal),
 }
 
+/// A request that cannot describe a swap, refused before any request is made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum InvalidSwapRequest {
+    #[error("swap amount must be greater than zero")]
+    ZeroAmount,
+    #[error("minimum swap output must be greater than zero")]
+    ZeroMinOutput,
+    #[error("input and output tokens must be different")]
+    SameMint,
+}
+
 impl SwapRouteError {
-    pub fn config(msg: impl Into<String>) -> Self {
-        Self::Config(msg.into())
-    }
-
-    pub fn transaction_decode(msg: impl std::fmt::Display) -> Self {
-        Self::TransactionDecode(msg.to_string())
-    }
-
     /// Wrap an RPC error with any URL stripped from its HTTP source, since
     /// an RPC URL can carry an API key.
     pub fn solana(err: ClientError) -> Self {
@@ -194,8 +194,13 @@ impl SwapRouteError {
         Self::Solana(Box::new(ClientError { request, kind }))
     }
 
-    pub fn signing(msg: impl std::fmt::Display) -> Self {
-        Self::Signing(msg.to_string())
+    /// Wrap a blockchain-api error with any URL stripped from its HTTP
+    /// source, as [`SwapRouteError::solana`] does for RPC errors.
+    pub fn api(err: BlockchainApiError) -> Self {
+        Self::Api(match err {
+            BlockchainApiError::Request(err) => BlockchainApiError::Request(err.without_url()),
+            other => other,
+        })
     }
 
     pub fn multiple_signers(num_signers: u8, extra_signers: impl Into<String>) -> Self {
@@ -248,91 +253,32 @@ fn ensure_taker_only_signer(
     Ok(())
 }
 
-/// A Jupiter v2 `/order` response: the quote and the assembled route
-/// transaction it is checked against. The transaction is empty when the order
-/// failed (see `error_message`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrderResponse {
-    /// Input token mint address.
-    pub input_mint: String,
-    /// Output token mint address.
-    pub output_mint: String,
-    /// Input amount in smallest token units.
-    pub in_amount: String,
-    /// Quoted output amount in smallest token units.
-    pub out_amount: String,
-    /// Estimated price impact as a percentage string.
-    pub price_impact_pct: String,
-    /// Slippage tolerance used for this order.
-    pub slippage_bps: u16,
-    /// The least output the swap may deliver, in smallest token units.
-    #[serde(default)]
-    pub other_amount_threshold: Option<String>,
-    /// `ExactIn` or `ExactOut`.
-    #[serde(default)]
-    pub swap_mode: Option<String>,
-    /// The wallet the transaction was built for.
-    #[serde(default)]
-    pub taker: Option<String>,
-    #[serde(default)]
-    pub(crate) route_plan: Vec<RoutePlan>,
-    #[serde(default)]
-    pub transaction: String,
-    #[serde(default)]
-    pub error: Option<String>,
-    #[serde(default)]
-    pub error_code: Option<i32>,
-    #[serde(default)]
-    pub error_message: Option<String>,
-    /// All other fields captured for forward compatibility.
-    #[serde(flatten)]
-    pub extra: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct RoutePlan {
-    #[serde(default)]
-    pub swap_info: SwapInfo,
-    #[serde(default)]
-    pub percent: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SwapInfo {
-    pub label: Option<String>,
-    pub input_mint: Option<String>,
-    pub output_mint: Option<String>,
-    pub in_amount: Option<String>,
-    pub out_amount: Option<String>,
-}
-
-/// Why a swap order or its transaction was refused. Each variant names the
+/// Why a swap quote or its transaction was refused. Each variant names the
 /// check that failed; none carries a secret or a URL.
 #[derive(Debug, thiserror::Error)]
 pub enum SwapRefusal {
     /// `actual` is response text, bounded by `bounded_text`.
-    #[error("swap refused: order {field} is {actual}, requested {expected}")]
-    OrderMismatch {
+    #[error("swap refused: quote {field} is {actual}, requested {expected}")]
+    QuoteMismatch {
         field: &'static str,
         expected: String,
         actual: String,
     },
-    #[error("swap refused: order quotes no output")]
+    #[error("swap refused: the quote has no output")]
     OutAmountZero,
-    #[error("swap refused: order minimum output {threshold} is below the requested minimum {min_output}")]
+    #[error("swap refused: quote minimum output {threshold} is below the requested minimum {min_output}")]
     ThresholdBelowMinimum { threshold: u64, min_output: u64 },
-    #[error("swap refused: order {field} is missing or malformed")]
-    OrderMalformed { field: &'static str },
-    #[error("swap refused: order minimum output {threshold} is below {min_out}, the least {slippage_bps} bps of slippage allows on {out_amount}")]
+    #[error("swap refused: quote {field} is missing or malformed")]
+    QuoteMalformed { field: &'static str },
+    #[error("swap refused: quote minimum output {threshold} is below {min_out}, the least {slippage_bps} bps of slippage allows on {out_amount}")]
     ThresholdBelowSlippage {
         threshold: u64,
         min_out: u64,
         out_amount: u64,
         slippage_bps: u16,
     },
+    #[error("swap refused: {found} transactions were returned, not one")]
+    TransactionCount { found: usize },
     #[error("swap refused: the transaction's fee payer is not the taker")]
     FeePayerNotTaker,
     #[error("swap refused: lookup table {table} could not be resolved")]
@@ -351,11 +297,11 @@ pub enum SwapRefusal {
         in_amount: u64,
         expected: u64,
     },
-    #[error("swap refused: route instruction {index} accepts {route_minimum}, below the order minimum {min_out}")]
-    RouteMinimumBelowOrder {
+    #[error("swap refused: route instruction {index} accepts {route_minimum}, below the requested minimum {min_output}")]
+    RouteMinimumBelowRequest {
         index: usize,
         route_minimum: u64,
-        min_out: u64,
+        min_output: u64,
     },
     #[error("swap refused: route instruction {index} delivers to {account}, not the taker's output account")]
     RouteDestination { index: usize, account: Pubkey },
@@ -399,10 +345,10 @@ pub enum SwapRefusal {
     InnerInstructionUnreadable,
 }
 
-/// The swap the caller asked for: what the order and the transaction are
-/// checked against.
+/// The swap the caller asked for and the wallet that takes it: what the
+/// quote and the transaction are checked against.
 #[derive(Debug, Clone, Copy)]
-pub struct SwapRequest {
+pub(crate) struct SwapTerms {
     pub input_mint: Pubkey,
     pub output_mint: Pubkey,
     pub amount: u64,
@@ -411,6 +357,31 @@ pub struct SwapRequest {
     pub min_output: u64,
     pub slippage_bps: u16,
     pub taker: Pubkey,
+}
+
+impl SwapTerms {
+    /// Terms for `taker` swapping `amount` of `input_mint` into at least
+    /// `min_output` of `output_mint`, refused when the amount or the
+    /// minimum is zero or the mints are the same.
+    pub fn new(request: &SwapRequest, taker: Pubkey) -> Result<Self, InvalidSwapRequest> {
+        if request.amount == 0 {
+            return Err(InvalidSwapRequest::ZeroAmount);
+        }
+        if request.min_output == 0 {
+            return Err(InvalidSwapRequest::ZeroMinOutput);
+        }
+        if request.input_mint == request.output_mint {
+            return Err(InvalidSwapRequest::SameMint);
+        }
+        Ok(Self {
+            input_mint: request.input_mint,
+            output_mint: request.output_mint,
+            amount: request.amount,
+            min_output: request.min_output,
+            slippage_bps: request.slippage_bps,
+            taker,
+        })
+    }
 }
 
 /// A simulation's outcome: its error, if any, the post-state of the
@@ -499,75 +470,17 @@ impl SwapChain for SolanaRpcClient {
     }
 }
 
-/// Sign `order`'s transaction as the taker only if the order and its
-/// transaction do nothing beyond swapping exactly `request.amount` of
-/// `request.input_mint` into at least the order's minimum of
-/// `request.output_mint` for the taker, and that minimum is at least
-/// `request.min_output` (see [`SwapRefusal`] for each check).
-/// `request.min_output` is the caller's own floor in the output mint's
-/// smallest units, independent of the quote, and must be greater than zero.
-/// Returns the signed transaction, its last valid block height, and the order.
-///
-/// The transaction's compute budget is the order's, within
-/// [`MAX_COMPUTE_UNIT_LIMIT`] and [`MAX_COMPUTE_UNIT_PRICE`].
-pub async fn sign<C: AsRef<SolanaRpcClient>>(
-    client: &C,
-    request: &SwapRequest,
-    order: OrderResponse,
-    keypair: &(dyn Signer + Sync),
-) -> Result<(VersionedTransaction, u64, OrderResponse), SwapRouteError> {
-    if request.min_output == 0 {
-        return Err(SwapRouteError::config(
-            "minimum swap output must be greater than zero",
-        ));
-    }
-    if request.amount == 0 {
-        return Err(SwapRouteError::config(
-            "swap amount must be greater than zero",
-        ));
-    }
-    if request.input_mint == request.output_mint {
-        return Err(SwapRouteError::config(
-            "input and output tokens must be different",
-        ));
-    }
-    if let Some(error_msg) = &order.error_message {
-        return Err(SwapRouteError::SwapError(bounded_text(error_msg)));
-    }
-    if order.route_plan.is_empty() {
-        return Err(SwapRouteError::NoRoutes {
-            input_mint: request.input_mint.to_string(),
-            output_mint: request.output_mint.to_string(),
-        });
-    }
-    sign_verified(client.as_ref(), request, order, keypair).await
-}
-
-/// Check `order` against `request`, decode its transaction, check it, set a
-/// fresh blockhash, check a simulation of the unsigned transaction, and only
-/// then sign it as the taker. Returns the signed transaction, its last valid
-/// block height and the order.
+/// Check `txn` against `request` and `min_out` (the quote's minimum output,
+/// from [`check_quote`]), set a fresh blockhash, check a simulation of the
+/// unsigned transaction, and only then sign it as the taker. Returns the
+/// signed transaction and its last valid block height.
 pub(crate) async fn sign_verified<S: SwapChain>(
     chain: &S,
-    request: &SwapRequest,
-    order: OrderResponse,
+    request: &SwapTerms,
+    min_out: u64,
+    txn: VersionedTransaction,
     keypair: &(dyn Signer + Sync),
-) -> Result<(VersionedTransaction, u64, OrderResponse), SwapRouteError> {
-    if order.transaction.is_empty() {
-        return Err(SwapRouteError::SwapError(
-            order
-                .error_message
-                .as_deref()
-                .map_or_else(|| "no transaction returned".to_string(), bounded_text),
-        ));
-    }
-    let min_out = check_order(&order, request)?;
-
-    let tx_bytes = BASE64
-        .decode(&order.transaction)
-        .map_err(SwapRouteError::transaction_decode)?;
-    let txn: VersionedTransaction =
-        bincode::deserialize(&tx_bytes).map_err(SwapRouteError::transaction_decode)?;
+) -> Result<(VersionedTransaction, u64), SwapRouteError> {
     ensure_taker_only_signer(&txn.message, &request.taker)?;
 
     let table_keys: Vec<Pubkey> = txn
@@ -583,7 +496,7 @@ pub(crate) async fn sign_verified<S: SwapChain>(
         chain.accounts(&table_keys).await?
     };
     let resolved = resolve_accounts(&txn.message, &tables)?;
-    let budget = check_instructions(&txn.message, &resolved.keys, request, min_out)?;
+    let budget = check_instructions(&txn.message, &resolved.keys, request)?;
     let fee_bound = budget.fee_bound(txn.message.header().num_required_signatures);
 
     let (blockhash, last_valid_block_height) = chain.latest_blockhash().await?;
@@ -621,69 +534,54 @@ pub(crate) async fn sign_verified<S: SwapChain>(
     )?;
 
     let txn = VersionedTransaction::try_new(unsigned.message, &[keypair])
-        .map_err(SwapRouteError::signing)?;
-    Ok((txn, last_valid_block_height, order))
+        .map_err(SwapRouteError::Signing)?;
+    Ok((txn, last_valid_block_height))
 }
 
-/// Check the order's terms against the request. Returns the order's minimum
+/// Check the quote's terms against the request. Returns the quote's minimum
 /// output (`otherAmountThreshold`), which the route and the simulation must
 /// meet; it is at least `request.min_output`, so they meet that too.
-pub(crate) fn check_order(
-    order: &OrderResponse,
-    request: &SwapRequest,
-) -> Result<u64, SwapRefusal> {
+pub(crate) fn check_quote(quote: &SwapQuote, request: &SwapTerms) -> Result<u64, SwapRefusal> {
     fn same(field: &'static str, expected: String, actual: &str) -> Result<(), SwapRefusal> {
         if actual == expected {
             Ok(())
         } else {
-            Err(SwapRefusal::OrderMismatch {
+            Err(SwapRefusal::QuoteMismatch {
                 field,
                 expected,
                 actual: bounded_text(actual),
             })
         }
     }
-    fn amount(field: &'static str, value: Option<&str>) -> Result<u64, SwapRefusal> {
+    fn amount(field: &'static str, value: &str) -> Result<u64, SwapRefusal> {
         value
-            .and_then(|value| value.parse().ok())
-            .ok_or(SwapRefusal::OrderMalformed { field })
+            .parse()
+            .map_err(|_| SwapRefusal::QuoteMalformed { field })
     }
 
     same(
         "inputMint",
         request.input_mint.to_string(),
-        &order.input_mint,
+        &quote.input_mint,
     )?;
     same(
         "outputMint",
         request.output_mint.to_string(),
-        &order.output_mint,
+        &quote.output_mint,
     )?;
-    same("inAmount", request.amount.to_string(), &order.in_amount)?;
+    same("inAmount", request.amount.to_string(), &quote.in_amount)?;
     same(
         "slippageBps",
         request.slippage_bps.to_string(),
-        &order.slippage_bps.to_string(),
+        &quote.slippage_bps.to_string(),
     )?;
-    same(
-        "swapMode",
-        "ExactIn".to_string(),
-        order.swap_mode.as_deref().unwrap_or_default(),
-    )?;
-    same(
-        "taker",
-        request.taker.to_string(),
-        order.taker.as_deref().unwrap_or_default(),
-    )?;
+    same("swapMode", "ExactIn".to_string(), &quote.swap_mode)?;
 
-    let out_amount = amount("outAmount", Some(&order.out_amount))?;
+    let out_amount = amount("outAmount", &quote.out_amount)?;
     if out_amount == 0 {
         return Err(SwapRefusal::OutAmountZero);
     }
-    let threshold = amount(
-        "otherAmountThreshold",
-        order.other_amount_threshold.as_deref(),
-    )?;
+    let threshold = amount("otherAmountThreshold", &quote.other_amount_threshold)?;
     if threshold < request.min_output {
         return Err(SwapRefusal::ThresholdBelowMinimum {
             threshold,
@@ -703,7 +601,7 @@ pub(crate) fn check_order(
 }
 
 /// The least output `slippage_bps` allows on a quote of `out_amount`,
-/// rounded down as Jupiter rounds it.
+/// rounded down, which is the lower of the two roundings.
 fn min_out(out_amount: u64, slippage_bps: u16) -> u64 {
     let kept = 10_000u128.saturating_sub(u128::from(slippage_bps));
     (u128::from(out_amount) * kept / 10_000) as u64
@@ -813,16 +711,16 @@ impl ComputeBudget {
 /// - SPL Token: `SyncNative` of the taker's wrapped-SOL account, and
 ///   `CloseAccount` of it back to the taker, by the taker.
 /// - Jupiter aggregator `route_v2` and `shared_accounts_route_v2` spending
-///   exactly `amount`, whose own minimum output is at least `min_out`, whose
-///   platform fee is at most [`MAX_PLATFORM_FEE_BPS`], and that deliver to
+///   exactly `amount`, whose own minimum output is at least
+///   `request.min_output`, whose platform fee is at most
+///   [`MAX_PLATFORM_FEE_BPS`], and that deliver to
 ///   the taker's associated token account of the output mint (`route_v2`'s
 ///   optional destination left empty). What the route does through other
 ///   programs is checked by simulation.
 pub(crate) fn check_instructions(
     message: &VersionedMessage,
     keys: &[Pubkey],
-    request: &SwapRequest,
-    min_out: u64,
+    request: &SwapTerms,
 ) -> Result<ComputeBudget, SwapRefusal> {
     let taker = request.taker;
     if message.static_account_keys().first() != Some(&taker) {
@@ -950,12 +848,17 @@ pub(crate) fn check_instructions(
                     expected: request.amount,
                 });
             }
-            let route_minimum = self::min_out(terms.quoted_out_amount, terms.slippage_bps);
-            if route_minimum < min_out {
-                return Err(SwapRefusal::RouteMinimumBelowOrder {
+            // The route's quoted output less its slippage, rounded down: the
+            // least the program can enforce from these terms whichever way it
+            // rounds. The quote's own threshold can sit one unit above it, as
+            // the quote rounds up, so the route is held to the caller's
+            // minimum and the simulation to the quote's.
+            let route_minimum = min_out(terms.quoted_out_amount, terms.slippage_bps);
+            if route_minimum < request.min_output {
+                return Err(SwapRefusal::RouteMinimumBelowRequest {
                     index,
                     route_minimum,
-                    min_out,
+                    min_output: request.min_output,
                 });
             }
         } else {
@@ -995,7 +898,7 @@ impl RouteTerms {
 /// What the simulation must show.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExpectedEffects {
-    pub request: SwapRequest,
+    pub request: SwapTerms,
     /// The least output the taker must receive.
     pub min_out: u64,
     /// The most SOL the transaction's fees can cost the taker.
@@ -1188,8 +1091,9 @@ pub(crate) fn check_effects(
 /// its accounts or anywhere in the node's parsed form of it. Allowed when
 /// it does:
 /// - SPL Token or Token-2022 `transfer` and `transferChecked` with the taker
-///   as the single authority, and `closeAccount` with the taker as owner,
-///   each of an account the taker owns before the swap, or that is absent
+///   as the single authority, and `closeAccount` with the taker as owner
+///   paying its lamports to the taker, each of an account the taker owns
+///   before the swap, or that is absent
 ///   before it and the taker's after (an account the route creates).
 /// - Associated Token Account `create` and `createIdempotent` whose
 ///   `tokenProgram` is SPL Token or Token-2022, together with the
@@ -1334,7 +1238,11 @@ fn inner_form(
             Some("transfer" | "transferChecked") => {
                 info("authority") == Some(taker) && owned_account("source")
             }
-            Some("closeAccount") => info("owner") == Some(taker) && owned_account("account"),
+            Some("closeAccount") => {
+                info("owner") == Some(taker)
+                    && info("destination") == Some(taker)
+                    && owned_account("account")
+            }
             _ => false,
         })
     } else if *program == system_program::ID {
@@ -1347,7 +1255,7 @@ fn inner_form(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::solana_sdk::{
         address_lookup_table::AddressLookupTableAccount,
@@ -1357,6 +1265,7 @@ mod tests {
         signature::NullSigner,
         signer::SignerError,
     };
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use serde::Deserialize;
     use serde_json::{json, Value};
     use solana_address_lookup_table_interface::state::LookupTableMeta;
@@ -1369,19 +1278,22 @@ mod tests {
     /// The SPL Memo program, a program no swap invokes.
     const MEMO: Pubkey = pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
-    // Orders recorded from the v2 `/order` endpoint (router `metis`) for
-    // two public wallets, with the lookup-table entries their transactions
-    // reference and the taker's accounts before and after a mainnet
-    // simulation of each transaction (`innerInstructions: true`). The HNT
-    // fixture's accounts and inner instructions are from one successful
-    // simulation; the SOL fixture's inner instruction list is from a later
-    // simulation of the same transaction than its accounts.
-    const HNT_USDC: &str = include_str!("../../fixtures/jupiter/hnt_usdc.json");
-    const SOL_USDC: &str = include_str!("../../fixtures/jupiter/sol_usdc.json");
+    // Swaps recorded from Jupiter's v2 `/order` endpoint (router `metis`)
+    // for two public wallets, with the lookup-table entries their
+    // transactions reference and the taker's accounts before and after a
+    // mainnet simulation of each transaction (`innerInstructions: true`). An
+    // order carries every field of the blockchain-api's quote, and its
+    // transaction is of the `route_v2` family that service builds for a V2
+    // quote, so a fixture is read as a quote and the transaction built for
+    // it. The HNT fixture's accounts and inner instructions are from one
+    // successful simulation; the SOL fixture's inner instruction list is from
+    // a later simulation of the same transaction than its accounts.
+    pub(crate) const HNT_USDC: &str = include_str!("../../fixtures/jupiter/hnt_usdc.json");
+    pub(crate) const SOL_USDC: &str = include_str!("../../fixtures/jupiter/sol_usdc.json");
 
     #[derive(Deserialize)]
     struct Fixture {
-        order: OrderResponse,
+        order: SwapQuote,
         lookup_tables: HashMap<String, BTreeMap<String, String>>,
         accounts: Vec<FixtureAccount>,
         inner_instructions: Vec<UiInnerInstructions>,
@@ -1444,16 +1356,16 @@ mod tests {
 
     /// Recorded chain state: `pre` answers account reads (lookup tables
     /// included), `post` answers the simulation.
-    struct FakeChain {
-        pre: HashMap<Pubkey, Account>,
-        post: HashMap<Pubkey, Account>,
-        sim_err: Option<TransactionError>,
-        drop_post: bool,
-        inner: Option<Vec<UiInnerInstructions>>,
+    pub(crate) struct FakeChain {
+        pub pre: HashMap<Pubkey, Account>,
+        pub post: HashMap<Pubkey, Account>,
+        pub sim_err: Option<TransactionError>,
+        pub drop_post: bool,
+        pub inner: Option<Vec<UiInnerInstructions>>,
     }
 
-    const BLOCKHASH: Hash = Hash::new_from_array([7; 32]);
-    const LAST_VALID_BLOCK_HEIGHT: u64 = 42;
+    pub(crate) const BLOCKHASH: Hash = Hash::new_from_array([7; 32]);
+    pub(crate) const LAST_VALID_BLOCK_HEIGHT: u64 = 42;
 
     impl SwapChain for FakeChain {
         async fn latest_blockhash(&self) -> Result<(Hash, u64), SwapRouteError> {
@@ -1488,13 +1400,14 @@ mod tests {
         }
     }
 
-    struct Case {
-        order: OrderResponse,
-        request: SwapRequest,
-        chain: FakeChain,
+    pub(crate) struct Case {
+        pub quote: SwapQuote,
+        pub transaction: VersionedTransaction,
+        pub request: SwapTerms,
+        pub chain: FakeChain,
     }
 
-    fn case(fixture: &str) -> Case {
+    pub(crate) fn case(fixture: &str) -> Case {
         let fixture: Fixture = serde_json::from_str(fixture).expect("parse fixture");
         let mut pre = HashMap::new();
         let mut post = HashMap::new();
@@ -1510,24 +1423,35 @@ mod tests {
                 post.insert(address, state.account());
             }
         }
-        let order = fixture.order;
-        let threshold: u64 = order
+        let mut quote = fixture.order;
+        let mut order_field = |field: &str| match &mut quote.extra {
+            Value::Object(fields) => match fields.remove(field) {
+                Some(Value::String(value)) => value,
+                other => panic!("fixture {field} is {other:?}"),
+            },
+            other => panic!("fixture order is {other:?}"),
+        };
+        let transaction = order_field("transaction");
+        let taker = key(&order_field("taker"));
+        let transaction =
+            bincode::deserialize(&BASE64.decode(transaction).expect("decode fixture"))
+                .expect("deserialize fixture");
+        let threshold: u64 = quote
             .other_amount_threshold
-            .as_deref()
-            .expect("fixture otherAmountThreshold")
             .parse()
             .expect("fixture otherAmountThreshold");
-        let request = SwapRequest {
-            input_mint: key(&order.input_mint),
-            output_mint: key(&order.output_mint),
-            amount: order.in_amount.parse().expect("fixture inAmount"),
-            // Just below the order's own minimum, which must still pass.
+        let request = SwapTerms {
+            input_mint: key(&quote.input_mint),
+            output_mint: key(&quote.output_mint),
+            amount: quote.in_amount.parse().expect("fixture inAmount"),
+            // Just below the quote's own minimum, which must still pass.
             min_output: threshold - 1,
-            slippage_bps: order.slippage_bps,
-            taker: key(order.taker.as_deref().expect("fixture taker")),
+            slippage_bps: quote.slippage_bps.try_into().expect("fixture slippageBps"),
+            taker,
         };
         Case {
-            order,
+            quote,
+            transaction,
             request,
             chain: FakeChain {
                 pre,
@@ -1540,20 +1464,20 @@ mod tests {
     }
 
     /// A signer that counts the messages it signs.
-    struct CountingSigner {
+    pub(crate) struct CountingSigner {
         inner: NullSigner,
         signed: AtomicUsize,
     }
 
     impl CountingSigner {
-        fn new(pubkey: &Pubkey) -> Self {
+        pub fn new(pubkey: &Pubkey) -> Self {
             Self {
                 inner: NullSigner::new(pubkey),
                 signed: AtomicUsize::new(0),
             }
         }
 
-        fn signed(&self) -> usize {
+        pub fn signed(&self) -> usize {
             self.signed.load(Ordering::SeqCst)
         }
     }
@@ -1574,22 +1498,33 @@ mod tests {
     }
 
     impl Case {
-        async fn run(&self) -> Result<(VersionedTransaction, u64, OrderResponse), SwapRouteError> {
+        async fn run(&self) -> Result<(VersionedTransaction, u64), SwapRouteError> {
             let signer = NullSigner::new(&self.request.taker);
-            sign_verified(&self.chain, &self.request, self.order.clone(), &signer).await
+            self.run_with(&signer).await
+        }
+
+        async fn run_with(
+            &self,
+            signer: &(dyn Signer + Sync),
+        ) -> Result<(VersionedTransaction, u64), SwapRouteError> {
+            let min_out = check_quote(&self.quote, &self.request)?;
+            sign_verified(
+                &self.chain,
+                &self.request,
+                min_out,
+                self.transaction.clone(),
+                signer,
+            )
+            .await
         }
 
         /// Run with a counting signer and return the result with the number
         /// of messages signed.
         async fn run_counting(
             &self,
-        ) -> (
-            Result<(VersionedTransaction, u64, OrderResponse), SwapRouteError>,
-            usize,
-        ) {
+        ) -> (Result<(VersionedTransaction, u64), SwapRouteError>, usize) {
             let signer = CountingSigner::new(&self.request.taker);
-            let result =
-                sign_verified(&self.chain, &self.request, self.order.clone(), &signer).await;
+            let result = self.run_with(&signer).await;
             (result, signer.signed())
         }
 
@@ -1600,21 +1535,15 @@ mod tests {
             }
         }
 
-        fn message(&self) -> VersionedMessage {
-            let bytes = BASE64
-                .decode(&self.order.transaction)
-                .expect("decode fixture");
-            bincode::deserialize::<VersionedTransaction>(&bytes)
-                .expect("deserialize fixture")
-                .message
+        pub fn message(&self) -> VersionedMessage {
+            self.transaction.message.clone()
         }
 
-        fn set_message(&mut self, message: VersionedMessage) {
-            let txn = VersionedTransaction {
+        pub fn set_message(&mut self, message: VersionedMessage) {
+            self.transaction = VersionedTransaction {
                 signatures: vec![Default::default()],
                 message,
             };
-            self.order.transaction = BASE64.encode(bincode::serialize(&txn).expect("serialize"));
         }
 
         fn resolved(&self) -> ResolvedAccounts {
@@ -1656,8 +1585,8 @@ mod tests {
 
         fn fee_bound(&self) -> u64 {
             let message = self.message();
-            let min_out = check_order(&self.order, &self.request).expect("fixture order passes");
-            check_instructions(&message, &self.resolved().keys, &self.request, min_out)
+            check_quote(&self.quote, &self.request).expect("fixture quote passes");
+            check_instructions(&message, &self.resolved().keys, &self.request)
                 .expect("fixture instructions pass")
                 .fee_bound(message.header().num_required_signatures)
         }
@@ -1694,12 +1623,11 @@ mod tests {
     async fn recorded_hnt_to_usdc_swap_is_signed() {
         let case = case(HNT_USDC);
         let (result, signed) = case.run_counting().await;
-        let (txn, last_valid_block_height, order) = result.expect("signed");
+        let (txn, last_valid_block_height) = result.expect("signed");
         assert_eq!(signed, 1);
         assert_eq!(*txn.message.recent_blockhash(), BLOCKHASH);
         assert_eq!(last_valid_block_height, LAST_VALID_BLOCK_HEIGHT);
         assert_eq!(txn.signatures.len(), 1);
-        assert_eq!(order.in_amount, "100000000");
     }
 
     #[tokio::test]
@@ -1729,105 +1657,99 @@ mod tests {
         assert_eq!(sol.fee_bound(), 5_000 + 54_926);
     }
 
-    // ---- order ----
+    // ---- quote ----
 
     #[tokio::test]
-    async fn order_for_another_amount_is_refused() {
+    async fn quote_for_another_amount_is_refused() {
         let mut case = case(HNT_USDC);
         case.request.amount += 1;
         assert!(matches!(
             case.refusal().await,
-            SwapRefusal::OrderMismatch {
+            SwapRefusal::QuoteMismatch {
                 field: "inAmount",
                 ..
             }
         ));
     }
 
-    fn order_field(edit: impl FnOnce(&mut OrderResponse, &mut SwapRequest)) -> SwapRefusal {
+    pub(crate) fn quote_field(edit: impl FnOnce(&mut SwapQuote, &mut SwapTerms)) -> SwapRefusal {
         let Case {
-            mut order,
+            mut quote,
             mut request,
             ..
         } = case(HNT_USDC);
-        assert!(check_order(&order, &request).is_ok());
-        edit(&mut order, &mut request);
-        check_order(&order, &request).expect_err("refused")
+        assert!(check_quote(&quote, &request).is_ok());
+        edit(&mut quote, &mut request);
+        check_quote(&quote, &request).expect_err("refused")
     }
 
     #[test]
-    fn order_terms_must_match_the_request() {
+    fn quote_terms_must_match_the_request() {
         let mismatch = |refusal: SwapRefusal| match refusal {
-            SwapRefusal::OrderMismatch { field, .. } => field,
-            other => panic!("expected OrderMismatch, got {other:?}"),
+            SwapRefusal::QuoteMismatch { field, .. } => field,
+            other => panic!("expected QuoteMismatch, got {other:?}"),
         };
         assert_eq!(
-            mismatch(order_field(|order, _| order.input_mint = MOBILE.to_string())),
+            mismatch(quote_field(|quote, _| quote.input_mint = MOBILE.to_string())),
             "inputMint"
         );
         assert_eq!(
-            mismatch(order_field(
-                |order, _| order.output_mint = MOBILE.to_string()
+            mismatch(quote_field(
+                |quote, _| quote.output_mint = MOBILE.to_string()
             )),
             "outputMint"
         );
         assert_eq!(
-            mismatch(order_field(
-                |order, _| order.in_amount = "99999999".to_string()
+            mismatch(quote_field(
+                |quote, _| quote.in_amount = "99999999".to_string()
             )),
             "inAmount"
         );
         assert_eq!(
-            mismatch(order_field(|_, request| request.slippage_bps = 50)),
+            mismatch(quote_field(|_, request| request.slippage_bps = 50)),
             "slippageBps"
         );
         assert_eq!(
-            mismatch(order_field(
-                |order, _| order.swap_mode = Some("ExactOut".to_string())
+            mismatch(quote_field(|quote, _| quote.slippage_bps = 50)),
+            "slippageBps"
+        );
+        assert_eq!(
+            mismatch(quote_field(
+                |quote, _| quote.swap_mode = "ExactOut".to_string()
             )),
             "swapMode"
-        );
-        assert_eq!(
-            mismatch(order_field(|order, _| order.taker = None)),
-            "taker"
-        );
-        assert_eq!(
-            mismatch(order_field(
-                |_, request| request.taker = Pubkey::new_unique()
-            )),
-            "taker"
         );
     }
 
     #[test]
-    fn order_threshold_must_honour_the_slippage() {
+    fn quote_threshold_must_honour_the_slippage() {
         // 360711 at 100 bps rounds down to 357103.
         let Case {
-            mut order, request, ..
+            mut quote, request, ..
         } = case(HNT_USDC);
-        assert_eq!(order.other_amount_threshold.as_deref(), Some("357103"));
+        assert_eq!(quote.other_amount_threshold, "357103");
         assert_eq!(
-            check_order(&order, &request).expect("at the floor"),
+            check_quote(&quote, &request).expect("at the floor"),
             357_103
         );
-        order.other_amount_threshold = Some("357102".to_string());
+        quote.other_amount_threshold = "357102".to_string();
         assert!(matches!(
-            check_order(&order, &request),
+            check_quote(&quote, &request),
             Err(SwapRefusal::ThresholdBelowSlippage {
                 min_out: 357_103,
                 ..
             })
         ));
-        order.other_amount_threshold = None;
+        quote.other_amount_threshold = "-1".to_string();
         assert!(matches!(
-            check_order(&order, &request),
-            Err(SwapRefusal::OrderMalformed {
+            check_quote(&quote, &request),
+            Err(SwapRefusal::QuoteMalformed {
                 field: "otherAmountThreshold"
             })
         ));
         assert!(matches!(
-            order_field(|order, _| order.out_amount = "lots".to_string()),
-            SwapRefusal::OrderMalformed { field: "outAmount" }
+            quote_field(|quote, _| quote.out_amount = "lots".to_string()),
+            SwapRefusal::QuoteMalformed { field: "outAmount" }
         ));
     }
 
@@ -1903,19 +1825,19 @@ mod tests {
         ));
     }
 
-    fn sol_request() -> SwapRequest {
-        SwapRequest {
+    fn sol_request() -> SwapTerms {
+        SwapTerms {
             input_mint: native_mint::ID,
             output_mint: USDC,
             amount: 10_000_000,
-            min_output: ORDER_MIN_OUT,
+            min_output: MIN_OUTPUT,
             slippage_bps: 100,
             taker: Pubkey::new_unique(),
         }
     }
 
-    fn hnt_request() -> SwapRequest {
-        SwapRequest {
+    fn hnt_request() -> SwapTerms {
+        SwapTerms {
             input_mint: HNT,
             ..sol_request()
         }
@@ -1938,10 +1860,10 @@ mod tests {
         )
     }
 
-    /// The quote the synthetic routes carry, and the order minimum 100 bps
-    /// of slippage leaves of it.
+    /// The quote the synthetic routes carry, and the minimum 100 bps of
+    /// slippage leaves of it, which the synthetic requests ask for.
     const QUOTED_OUT: u64 = 1_000_000;
-    const ORDER_MIN_OUT: u64 = 990_000;
+    const MIN_OUTPUT: u64 = 990_000;
 
     /// `route_v2` data: discriminator, `in_amount`, `quoted_out_amount`,
     /// `slippage_bps`, `platform_fee_bps`, `positive_slippage_bps`, and an
@@ -1987,13 +1909,13 @@ mod tests {
         get_associated_token_address(taker, &native_mint::ID)
     }
 
-    fn wrap(request: &SwapRequest, lamports: u64, to: &Pubkey) -> Instruction {
+    fn wrap(request: &SwapTerms, lamports: u64, to: &Pubkey) -> Instruction {
         solana_system_interface::instruction::transfer(&request.taker, to, lamports)
     }
 
     /// The top-level shape of the recorded SOL-input swap: budget, wrap the
     /// input, create the output account, route, unwrap.
-    fn swap_instructions(request: &SwapRequest) -> Vec<Instruction> {
+    fn swap_instructions(request: &SwapTerms) -> Vec<Instruction> {
         let taker = &request.taker;
         let wsol = wrapped_sol(taker);
         vec![
@@ -2010,16 +1932,16 @@ mod tests {
     }
 
     fn check(
-        request: &SwapRequest,
+        request: &SwapTerms,
         instructions: &[Instruction],
     ) -> Result<ComputeBudget, SwapRefusal> {
         let message = VersionedMessage::Legacy(Message::new(instructions, Some(&request.taker)));
         let keys = message.static_account_keys().to_vec();
-        check_instructions(&message, &keys, request, ORDER_MIN_OUT)
+        check_instructions(&message, &keys, request)
     }
 
     /// The baseline passes, then `extra` appended to it is refused.
-    fn refused_with(request: &SwapRequest, extra: Instruction) -> SwapRefusal {
+    fn refused_with(request: &SwapTerms, extra: Instruction) -> SwapRefusal {
         let mut instructions = swap_instructions(request);
         check(request, &instructions).expect("baseline passes");
         instructions.push(extra);
@@ -2271,7 +2193,7 @@ mod tests {
     }
 
     /// The baseline with its route replaced by one carrying `data`.
-    fn with_route(request: &SwapRequest, data: Vec<u8>) -> Result<ComputeBudget, SwapRefusal> {
+    fn with_route(request: &SwapTerms, data: Vec<u8>) -> Result<ComputeBudget, SwapRefusal> {
         let mut instructions = swap_instructions(request);
         check(request, &instructions).expect("baseline passes");
         instructions[6] = route(&request.taker, data);
@@ -2288,21 +2210,21 @@ mod tests {
     }
 
     #[test]
-    fn route_minimum_must_reach_the_order_minimum() {
+    fn route_minimum_must_reach_the_callers_minimum() {
         let request = sol_request();
-        // 1,000,000 less 100 bps is exactly the order minimum.
+        // 1,000,000 less 100 bps is exactly the caller's minimum.
         with_route(&request, route_data(request.amount, QUOTED_OUT, 100)).expect("at the minimum");
         assert!(matches!(
             with_route(&request, route_data(request.amount, QUOTED_OUT, 101)),
-            Err(SwapRefusal::RouteMinimumBelowOrder {
+            Err(SwapRefusal::RouteMinimumBelowRequest {
                 route_minimum: 989_900,
-                min_out: ORDER_MIN_OUT,
+                min_output: MIN_OUTPUT,
                 ..
             })
         ));
         assert!(matches!(
             with_route(&request, route_data(request.amount, QUOTED_OUT - 1, 100)),
-            Err(SwapRefusal::RouteMinimumBelowOrder {
+            Err(SwapRefusal::RouteMinimumBelowRequest {
                 route_minimum: 989_999,
                 ..
             })
@@ -2379,7 +2301,7 @@ mod tests {
         case.set_message(message);
         assert!(matches!(
             case.refusal().await,
-            SwapRefusal::RouteMinimumBelowOrder {
+            SwapRefusal::RouteMinimumBelowRequest {
                 route_minimum: 0,
                 ..
             }
@@ -2394,7 +2316,7 @@ mod tests {
             VersionedMessage::Legacy(Message::new(&instructions, Some(&Pubkey::new_unique())));
         let keys = message.static_account_keys().to_vec();
         assert!(matches!(
-            check_instructions(&message, &keys, &request, ORDER_MIN_OUT),
+            check_instructions(&message, &keys, &request),
             Err(SwapRefusal::FeePayerNotTaker)
         ));
     }
@@ -2408,19 +2330,13 @@ mod tests {
             &VersionedMessage::Legacy(message.clone()),
             &message.account_keys,
             &request,
-            ORDER_MIN_OUT,
         )
         .expect("the route's accounts are not inspected");
         // A wrap transfer whose destination is past the keys.
         message.instructions[3].accounts[1] = 200;
         let keys = message.account_keys.clone();
         assert!(matches!(
-            check_instructions(
-                &VersionedMessage::Legacy(message),
-                &keys,
-                &request,
-                ORDER_MIN_OUT
-            ),
+            check_instructions(&VersionedMessage::Legacy(message), &keys, &request,),
             Err(SwapRefusal::AccountIndexOutOfRange { index: 3 })
         ));
     }
@@ -2713,7 +2629,7 @@ mod tests {
     fn sol_output_must_reach_the_threshold_net_of_fees() {
         let taker = Pubkey::new_unique();
         let usdc = Pubkey::new_unique();
-        let request = SwapRequest {
+        let request = SwapTerms {
             input_mint: USDC,
             output_mint: native_mint::ID,
             amount: 1_000_000,
@@ -2778,18 +2694,18 @@ mod tests {
     // ---- the caller's minimum output ----
 
     #[test]
-    fn order_minimum_must_reach_the_callers_minimum() {
+    fn quote_minimum_must_reach_the_callers_minimum() {
         let Case {
-            order, mut request, ..
+            quote, mut request, ..
         } = case(HNT_USDC);
         request.min_output = 357_103;
         assert_eq!(
-            check_order(&order, &request).expect("at the caller's minimum"),
+            check_quote(&quote, &request).expect("at the caller's minimum"),
             357_103
         );
         request.min_output = 357_104;
         assert!(matches!(
-            check_order(&order, &request),
+            check_quote(&quote, &request),
             Err(SwapRefusal::ThresholdBelowMinimum {
                 threshold: 357_103,
                 min_output: 357_104
@@ -2800,8 +2716,8 @@ mod tests {
     #[tokio::test]
     async fn zero_quote_is_refused_unsigned() {
         let mut case = case(HNT_USDC);
-        case.order.out_amount = "0".to_string();
-        case.order.other_amount_threshold = Some("0".to_string());
+        case.quote.out_amount = "0".to_string();
+        case.quote.other_amount_threshold = "0".to_string();
         let (result, signed) = case.run_counting().await;
         assert!(
             matches!(
@@ -2815,11 +2731,11 @@ mod tests {
 
     #[tokio::test]
     async fn quote_whose_minimum_is_zero_is_refused() {
-        // A 100% slippage order: a real quote, a zero minimum.
+        // A 100% slippage quote: a real output, a zero minimum.
         let mut case = case(HNT_USDC);
-        case.order.slippage_bps = 10_000;
+        case.quote.slippage_bps = 10_000;
         case.request.slippage_bps = 10_000;
-        case.order.other_amount_threshold = Some("0".to_string());
+        case.quote.other_amount_threshold = "0".to_string();
         assert!(matches!(
             case.refusal().await,
             SwapRefusal::ThresholdBelowMinimum { threshold: 0, .. }
@@ -2827,11 +2743,11 @@ mod tests {
     }
 
     #[test]
-    fn order_mismatch_text_is_bounded() {
+    fn quote_mismatch_text_is_bounded() {
         let refusal =
-            order_field(|order, _| order.taker = Some(format!("\u{1b}[2J{}", "x".repeat(1_000))));
-        let SwapRefusal::OrderMismatch { actual, .. } = refusal else {
-            panic!("expected OrderMismatch, got {refusal:?}");
+            quote_field(|quote, _| quote.swap_mode = format!("\u{1b}[2J{}", "x".repeat(1_000)));
+        let SwapRefusal::QuoteMismatch { actual, .. } = refusal else {
+            panic!("expected QuoteMismatch, got {refusal:?}");
         };
         assert!(!actual.contains('\u{1b}'));
         assert!(actual.starts_with("\\u{1b}[2J"));
@@ -3006,7 +2922,7 @@ mod tests {
     /// `instructions` compiled against one lookup table holding `addresses`,
     /// then checked with the table resolved as `sign_verified` resolves it.
     fn check_v0(
-        request: &SwapRequest,
+        request: &SwapTerms,
         instructions: &[Instruction],
         addresses: Vec<Pubkey>,
     ) -> Result<ComputeBudget, SwapRefusal> {
@@ -3032,7 +2948,7 @@ mod tests {
         assert_eq!(lookups.len(), 1, "the table is used");
         let resolved =
             resolve_accounts(&message, &[Some(lookup_table(&entries))]).expect("resolve");
-        check_instructions(&message, &resolved.keys, request, ORDER_MIN_OUT)
+        check_instructions(&message, &resolved.keys, request)
     }
 
     #[test]
@@ -3280,6 +3196,10 @@ mod tests {
         // Naming the taker only as the destination, with another owner
         // signing, is not the taker's close.
         assert!(refused(close(&held, &Pubkey::new_unique())));
+        // The taker's close paying its lamports to another account.
+        let mut elsewhere = close(&held, &taker);
+        elsewhere["parsed"]["info"]["destination"] = Pubkey::new_unique().to_string().into();
+        assert!(refused(elsewhere));
     }
 
     #[test]
@@ -3596,83 +3516,6 @@ mod tests {
         }
     }
 
-    fn unreachable_rpc() -> std::sync::Arc<SolanaRpcClient> {
-        std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:1".to_string()))
-    }
-
-    #[test]
-    fn sign_future_is_send() {
-        fn send<T: Send>(_: T) {}
-        let Case { order, request, .. } = case(HNT_USDC);
-        let rpc = unreachable_rpc();
-        let signer = NullSigner::new(&request.taker);
-        // Building the future reaches no network; it is dropped unpolled.
-        send(sign(&rpc, &request, order, &signer));
-    }
-
-    #[tokio::test]
-    async fn sign_refuses_an_unusable_request_before_any_request() {
-        let rpc = unreachable_rpc();
-        let Case { order, request, .. } = case(HNT_USDC);
-        let signer = NullSigner::new(&request.taker);
-        for (edit, expected) in [
-            (
-                SwapRequest {
-                    min_output: 0,
-                    ..request
-                },
-                "minimum swap output",
-            ),
-            (
-                SwapRequest {
-                    amount: 0,
-                    ..request
-                },
-                "swap amount",
-            ),
-            (
-                SwapRequest {
-                    output_mint: request.input_mint,
-                    ..request
-                },
-                "must be different",
-            ),
-        ] {
-            let result = sign(&rpc, &edit, order.clone(), &signer).await;
-            assert!(
-                matches!(&result, Err(SwapRouteError::Config(message)) if message.contains(expected)),
-                "{result:?}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn sign_refuses_an_order_reporting_an_error_or_no_route() {
-        let rpc = unreachable_rpc();
-        let Case { order, request, .. } = case(HNT_USDC);
-        let signer = NullSigner::new(&request.taker);
-
-        let errored = OrderResponse {
-            error_message: Some("Insufficient funds".into()),
-            ..order.clone()
-        };
-        let result = sign(&rpc, &request, errored, &signer).await;
-        assert!(
-            matches!(&result, Err(SwapRouteError::SwapError(message)) if message == "Insufficient funds"),
-            "{result:?}"
-        );
-
-        let unrouted = OrderResponse {
-            route_plan: vec![],
-            ..order
-        };
-        let result = sign(&rpc, &request, unrouted, &signer).await;
-        assert!(
-            matches!(&result, Err(SwapRouteError::NoRoutes { .. })),
-            "{result:?}"
-        );
-    }
-
     #[test]
     fn bounded_text_cuts_on_a_character_boundary_and_escapes_controls() {
         let long = "é".repeat(MAX_ERROR_BODY_LEN + 1);
@@ -3681,61 +3524,5 @@ mod tests {
         assert!(bounded.ends_with('…'));
         assert_eq!(bounded_text("a\x1b[2Jb\n"), "a\\u{1b}[2Jb\\n");
         assert_eq!(bounded_text("short"), "short");
-    }
-
-    #[test]
-    fn order_response_deserializes() {
-        let json = json!({
-            "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
-            "inAmount": "100000000",
-            "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            "outAmount": "450000",
-            "otherAmountThreshold": "445500",
-            "swapMode": "ExactIn",
-            "slippageBps": 100,
-            "priceImpactPct": "0.01",
-            "transaction": "base64encodedtx",
-            "routePlan": [{
-                "swapInfo": {
-                    "ammKey": "abc123",
-                    "label": "Orca",
-                    "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
-                    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-                    "inAmount": "100000000",
-                    "outAmount": "450000"
-                },
-                "percent": 100
-            }]
-        });
-
-        let order: OrderResponse = serde_json::from_value(json).expect("parse order");
-        assert_eq!(order.in_amount, "100000000");
-        assert_eq!(order.out_amount, "450000");
-        assert_eq!(order.slippage_bps, 100);
-        assert_eq!(order.transaction, "base64encodedtx");
-        assert_eq!(order.route_plan.len(), 1);
-        assert!((order.route_plan[0].percent - 100.0).abs() < f64::EPSILON);
-        assert!(order.error_message.is_none());
-    }
-
-    #[test]
-    fn order_response_with_error_deserializes() {
-        let json = json!({
-            "inputMint": "abc",
-            "outputMint": "def",
-            "inAmount": "100",
-            "outAmount": "0",
-            "priceImpactPct": "0",
-            "slippageBps": 100,
-            "transaction": "",
-            "routePlan": [],
-            "error": "Insufficient funds",
-            "errorCode": 1,
-            "errorMessage": "Insufficient funds"
-        });
-
-        let order: OrderResponse = serde_json::from_value(json).expect("parse order");
-        assert_eq!(order.error_message.as_deref(), Some("Insufficient funds"));
-        assert!(order.transaction.is_empty());
     }
 }

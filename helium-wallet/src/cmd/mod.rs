@@ -380,7 +380,43 @@ impl CommitOpts {
         }
 
         let signed = sign_for_submit(solana, unsigned, signer, signing).await?;
-        let submitted = api.submit_signed(data, &signed, true).await?;
+        self.submit(api, solana, data, &signed).await
+    }
+
+    /// Commit transactions the library has already verified and signed (a
+    /// swap from [`helium_lib::swap::sign`]), which this path never re-signs.
+    ///
+    /// The transactions are shown for review either way. Without `--commit`
+    /// nothing is broadcast; with it they are submitted via the API and
+    /// confirmed as [`Self::commit_via_api`] does.
+    pub async fn commit_signed_via_api<C: AsRef<SolanaRpcClient>>(
+        &self,
+        api: &blockchain_api::Client,
+        rpc: &C,
+        data: &TransactionData,
+        signed: &[VersionedTransaction],
+    ) -> Result<CommitResponse> {
+        let max_priority_fee = signed
+            .iter()
+            .map(|tx| verify::assert_priority_fee_within(tx, priority_fee::MAX_PRIORITY_FEE))
+            .sum::<std::result::Result<u64, _>>()?;
+        display_action_for_review(data, None, signed, max_priority_fee);
+        if !self.commit {
+            return Ok(CommitResponse::None);
+        }
+        self.submit(api, rpc.as_ref(), data, signed).await
+    }
+
+    /// Submit signed transactions via the API, poll until the batch reaches
+    /// a terminal status, and confirm the result against the wallet's RPC.
+    async fn submit(
+        &self,
+        api: &blockchain_api::Client,
+        solana: &SolanaRpcClient,
+        data: &TransactionData,
+        signed: &[VersionedTransaction],
+    ) -> Result<CommitResponse> {
+        let submitted = api.submit_signed(data, signed, true).await?;
         let timeout = Duration::from_secs(self.confirm_timeout_secs);
         let status = api
             .poll_status(
@@ -1172,9 +1208,22 @@ mod guard_call_sites {
     }
 
     #[test]
-    fn a_swap_checks_its_quote_and_that_the_route_only_swaps() {
-        assert_guarded(include_str!("swap.rs"), "verify::assert_quote_matches");
-        assert_guarded(include_str!("swap.rs"), "verify::assert_swap_only");
+    fn a_swap_is_signed_only_by_the_library_swap() {
+        // `commit_via_api` signs whatever it is handed, so a swap reaching it
+        // would be signed past the library's checks.
+        let code = strip_comments(include_str!("swap.rs"));
+        assert!(
+            !call_sites(&code, "swap::sign").is_empty(),
+            "the swap is not signed by helium_lib::swap::sign"
+        );
+        assert!(
+            !code.contains(".commit_via_api("),
+            "the swap is re-signed by commit_via_api"
+        );
+        assert!(
+            code.contains(".commit_signed_via_api("),
+            "the swap is not committed as signed"
+        );
     }
 
     #[test]

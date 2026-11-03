@@ -207,12 +207,14 @@ Fields: `address` (required), `amount` (required, number). A per-payee
 
 ### `swap` -- Swap Tokens via Jupiter
 
-Swap between tokens using the Jupiter V2 API.
+Swap between tokens on a Jupiter route quoted and built by the blockchain-api.
+The wallet checks the quote and the transaction, and simulates it on its own
+RPC node, before signing.
 
 ```
-helium-wallet swap <input_token> <output_token> <amount>
-helium-wallet swap hnt usdc 10 --commit
-helium-wallet swap mobile hnt 1000 --slippage-bps 200 --commit
+helium-wallet swap <input_token> <output_token> <amount> --min-output <amount>
+helium-wallet swap hnt usdc 10 --min-output 30 --commit
+helium-wallet swap mobile hnt 1000 --min-output 0.2 --slippage-bps 200 --commit
 ```
 
 | Argument | Description |
@@ -220,13 +222,11 @@ helium-wallet swap mobile hnt 1000 --slippage-bps 200 --commit
 | `input_token` | Source token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `output_token` | Destination token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `amount` | Human-readable amount (e.g. `1.5` for 1.5 HNT) |
+| `--min-output` | Required. Least output to accept, in the output token. The swap is refused unless the quote and the transaction guarantee at least this much |
 | `--slippage-bps` | Slippage tolerance in basis points. Default: 100 (1%) |
 
 Output includes `in_amount`, `out_amount`, `price_impact_pct`, and the
 transaction signature (when `--commit` is used).
-
-Jupiter environment variables (see [Environment Variables](#environment-variables)):
-`JUP_API_KEY`, `JUP_API_URL`, `JUP_SLIPPAGE_BPS`.
 
 ### `burn` -- Burn Tokens
 
@@ -426,11 +426,3 @@ eval "$(helium-wallet completion zsh)"
 | `HELIUM_WALLET_PASSWORD` | Wallet decryption password. Useful for scripting; use with care |
 | `HELIUM_WALLET_SEED_WORDS` | Space-separated seed words for restoring a wallet |
 | `HELIUM_WALLET_SECRET` | Solana-style byte array keypair secret |
-
-### Jupiter (Swap)
-
-| Variable | Default | Description |
-|---|---|---|
-| `JUP_API_KEY` | _(none)_ | Jupiter API key. Optional -- omit for keyless access at 0.5 RPS |
-| `JUP_API_URL` | `https://api.jup.ag/swap/v2` | Jupiter API base URL |
-| `JUP_SLIPPAGE_BPS` | `100` (1%) | Default slippage tolerance in basis points |

@@ -1,9 +1,7 @@
 use crate::cmd::*;
 use helium_lib::{
-    blockchain_api::types::SwapInstructionsRequest,
-    keypair::Signer,
+    swap::{self, SwapRequest},
     token::{Token, TokenAmount},
-    verify,
 };
 
 /// Default slippage tolerance in basis points (100 = 1%).
@@ -18,6 +16,11 @@ pub struct Cmd {
     output_token: Token,
     /// Amount to swap (human-readable, e.g. 1.5 for 1.5 HNT)
     amount: f64,
+    /// Least output to accept (human-readable, in the output token). The
+    /// swap is refused unless the quote and the transaction guarantee at
+    /// least this much.
+    #[arg(long)]
+    min_output: f64,
     /// Slippage tolerance in basis points (100 = 1%)
     #[arg(long, default_value_t = DEFAULT_SLIPPAGE_BPS)]
     slippage_bps: u16,
@@ -31,51 +34,29 @@ impl Cmd {
         if self.amount <= 0.0 || !self.amount.is_finite() {
             bail!("swap amount must be a positive finite number");
         }
+        if self.min_output <= 0.0 || !self.min_output.is_finite() {
+            bail!("minimum output must be a positive finite number");
+        }
 
         let signer = opts.load_signer()?;
         let client = opts.client()?;
         let api = opts.blockchain_api()?;
 
-        let input_mint = self.input_token.mint();
-        let output_mint = self.output_token.mint();
-        let raw_amount = TokenAmount::from_f64(self.input_token, self.amount)?.amount;
-
-        // Quote first: it drives the cost display and is passed back verbatim
-        // to build the swap transaction.
-        let quote = api
-            .swap_quote(input_mint, output_mint, raw_amount, self.slippage_bps)
-            .await?;
-        // The quote is handed back verbatim to build the route, and its
-        // threshold becomes the on-chain minimum output, so it is checked
-        // before it is spent rather than after.
-        verify::assert_quote_matches(
-            &quote,
-            input_mint,
-            output_mint,
-            raw_amount,
-            self.slippage_bps,
-        )?;
-        let response = api
-            .swap_instructions(&SwapInstructionsRequest {
-                quote_response: quote.clone(),
-                user_public_key: signer.pubkey().to_string(),
-                destination_token_account: None,
-            })
-            .await?;
-
-        verify::assert_swap_only(&response.decode_transactions()?)?;
+        let request = SwapRequest {
+            input_mint: *self.input_token.mint(),
+            output_mint: *self.output_token.mint(),
+            amount: TokenAmount::from_f64(self.input_token, self.amount)?.amount,
+            min_output: TokenAmount::from_f64(self.output_token, self.min_output)?.amount,
+            slippage_bps: self.slippage_bps,
+        };
+        let signed = swap::sign(&api, &client, &request, &*signer).await?;
 
         let committed = self
             .commit
-            .commit_via_api(
-                &api,
-                &client,
-                &response,
-                &*signer,
-                ApiSigning::FreshBlockhash,
-            )
+            .commit_signed_via_api(&api, &client, &signed.data, &[signed.transaction])
             .await?;
 
+        let quote = signed.quote;
         let mut json = committed.to_json();
         if let serde_json::Value::Object(ref mut map) = json {
             map.insert("in_amount".to_string(), quote.in_amount.into());

@@ -1,8 +1,5 @@
-use crate::cmd::{
-    squads::{self as cmd_squads, SquadsOpts},
-    *,
-};
-use helium_lib::{dao::SubDao, dc};
+use crate::cmd::{squads::SquadsOpts, *};
+use helium_lib::{blockchain_api::types::DcDelegateRequest, dao::SubDao, keypair::Signer, verify};
 
 #[derive(Debug, Clone, clap::Args)]
 /// Delegate DC from this wallet to a given router
@@ -30,37 +27,41 @@ impl Cmd {
         let signer = opts.load_signer()?;
 
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
 
-        if let Some(squads_target) = self.squads.squads {
-            return cmd_squads::submit_proposal_with(
-                &client,
-                squads_target,
-                self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move {
-                    Ok(vec![dc::delegate_instruction(
-                        self.subdao,
-                        &self.payer,
-                        self.dc,
-                        vault.as_pubkey(),
-                    )])
-                },
-            )
-            .await;
+        // In propose mode the memo rides on the Squads proposal; a direct
+        // delegate sends no in-tx memo (matching prior behavior).
+        let (multisig, memo) = self.squads.resolve(&client, &signer.pubkey()).await?;
+        let is_proposal = multisig.is_some();
+
+        let api = opts.blockchain_api()?;
+        let response = api
+            .dc_delegate(&DcDelegateRequest {
+                owner: signer.pubkey().to_string(),
+                router_key: self.payer.clone(),
+                amount: self.dc.to_string(),
+                mint: self.subdao.token().mint().to_string(),
+                memo,
+                multisig,
+            })
+            .await?;
+        let unsigned = response.decode_transactions()?;
+        if is_proposal {
+            verify::wrapped::dc_delegate(&unsigned)?;
+        } else {
+            verify::assert_dc_delegate(&unsigned, &self.subdao.key(), &self.payer, self.dc)?;
         }
-
-        let (tx, _) = dc::delegate(
-            &client,
-            self.subdao,
-            &self.payer,
-            self.dc,
-            &*signer,
-            &transaction_opts,
+        print_json(
+            &self
+                .commit
+                .commit_via_api(
+                    &api,
+                    &client,
+                    &response,
+                    &*signer,
+                    ApiSigning::FreshBlockhash,
+                )
+                .await?
+                .to_json(),
         )
-        .await?;
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
     }
 }

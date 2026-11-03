@@ -4,6 +4,10 @@ use anchor_lang::prelude::*;
 pub const TOKEN_METADATA_PROGRAM_ID: Pubkey =
     pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
+/// Jupiter aggregator v6. A swap route executes through it, so it is the
+/// program a caller authorizing a swap is actually trusting.
+pub const JUPITER_V6_ID: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+
 pub const SPL_NOOP_PROGRAM_ID: Pubkey = pubkey!("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV");
 
 /// Treasury management program ID, hardcoded because `declare_program!` can't
@@ -71,6 +75,8 @@ pub enum KnownProgram {
     BpfLoaderUpgradeable,
     TokenMetadata,
     SplNoop,
+    /// Jupiter aggregator v6, the program a swap route executes through.
+    JupiterV6,
 }
 
 impl KnownProgram {
@@ -104,6 +110,7 @@ impl KnownProgram {
         Self::BpfLoaderUpgradeable,
         Self::TokenMetadata,
         Self::SplNoop,
+        Self::JupiterV6,
     ];
 
     /// Solana program ID for this program.
@@ -136,6 +143,7 @@ impl KnownProgram {
             Self::BpfLoaderUpgradeable => solana_sdk::bpf_loader_upgradeable::ID,
             Self::TokenMetadata => TOKEN_METADATA_PROGRAM_ID,
             Self::SplNoop => SPL_NOOP_PROGRAM_ID,
+            Self::JupiterV6 => JUPITER_V6_ID,
         }
     }
 
@@ -169,6 +177,7 @@ impl KnownProgram {
             Self::BpfLoaderUpgradeable => "bpf_loader_upgradeable",
             Self::TokenMetadata => "token_metadata",
             Self::SplNoop => "spl_noop",
+            Self::JupiterV6 => "jupiter_v6",
         }
     }
 

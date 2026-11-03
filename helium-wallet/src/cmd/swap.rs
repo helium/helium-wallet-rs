@@ -1,8 +1,14 @@
 use crate::cmd::*;
-use helium_lib::{jupiter, token::Token};
+use helium_lib::{
+    swap::{self, SwapRequest},
+    token::{Token, TokenAmount},
+};
+
+/// Default slippage tolerance in basis points (100 = 1%).
+const DEFAULT_SLIPPAGE_BPS: u16 = 100;
 
 #[derive(Debug, Clone, clap::Args)]
-/// Swap tokens via Jupiter
+/// Swap tokens via the blockchain-api (Jupiter-backed)
 pub struct Cmd {
     /// Input token (hnt, mobile, iot, usdc, sol)
     input_token: Token,
@@ -11,11 +17,12 @@ pub struct Cmd {
     /// Amount to swap (human-readable, e.g. 1.5 for 1.5 HNT)
     amount: f64,
     /// Least output to accept (human-readable, in the output token). The
-    /// swap is refused unless the order guarantees at least this much.
+    /// swap is refused unless the quote and the transaction guarantee at
+    /// least this much.
     #[arg(long)]
     min_output: f64,
     /// Slippage tolerance in basis points (100 = 1%)
-    #[arg(long, default_value_t = jupiter::DEFAULT_SLIPPAGE_BPS)]
+    #[arg(long, default_value_t = DEFAULT_SLIPPAGE_BPS)]
     slippage_bps: u16,
     /// Commit the swap
     #[command(flatten)]
@@ -33,38 +40,37 @@ impl Cmd {
 
         let signer = opts.load_signer()?;
         let client = opts.client()?;
+        let api = opts.blockchain_api()?;
 
-        let jupiter_client = jupiter::Client::from_env()?;
+        let request = SwapRequest {
+            input_mint: *self.input_token.mint(),
+            output_mint: *self.output_token.mint(),
+            amount: TokenAmount::from_f64(self.input_token, self.amount)?.amount,
+            min_output: TokenAmount::from_f64(self.output_token, self.min_output)?.amount,
+            slippage_bps: self.slippage_bps,
+        };
+        let prepared = swap::prepare(&api, &client, &request, signer.try_pubkey()?).await?;
+        let quote = prepared.quote().clone();
+        let data = prepared.data().clone();
+        let unsigned = prepared.transaction().clone();
 
-        let input_mint = self.input_token.mint();
-        let output_mint = self.output_token.mint();
-        let raw_amount =
-            helium_lib::token::TokenAmount::from_f64(self.input_token, self.amount)?.amount;
-        let raw_min_output =
-            helium_lib::token::TokenAmount::from_f64(self.output_token, self.min_output)?.amount;
-
-        let (tx, _, order) = jupiter_client
-            .swap(
-                &client,
-                input_mint,
-                output_mint,
-                raw_amount,
-                raw_min_output,
-                &*signer,
-            )
+        // The signer is reached only through the closure, which runs only
+        // under `--commit`.
+        let committed = self
+            .commit
+            .commit_swap_via_api(&api, &client, &data, &unsigned, || prepared.sign(&*signer))
             .await?;
 
-        let response = self.commit.maybe_commit(tx, &client).await?;
-        let mut json = response.to_json();
+        let mut json = committed.to_json();
         if let serde_json::Value::Object(ref mut map) = json {
-            map.insert("in_amount".to_string(), order.in_amount.into());
-            map.insert("out_amount".to_string(), order.out_amount.into());
-            map.insert("input_mint".to_string(), order.input_mint.into());
-            map.insert("output_mint".to_string(), order.output_mint.into());
-            map.insert("slippage_bps".to_string(), order.slippage_bps.into());
+            map.insert("in_amount".to_string(), quote.in_amount.into());
+            map.insert("out_amount".to_string(), quote.out_amount.into());
+            map.insert("input_mint".to_string(), quote.input_mint.into());
+            map.insert("output_mint".to_string(), quote.output_mint.into());
+            map.insert("slippage_bps".to_string(), quote.slippage_bps.into());
             map.insert(
                 "price_impact_pct".to_string(),
-                order.price_impact_pct.into(),
+                quote.price_impact_pct.into(),
             );
         }
         print_json(&json)

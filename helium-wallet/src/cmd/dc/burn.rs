@@ -1,23 +1,13 @@
-use crate::cmd::{
-    squads::{self as cmd_squads, SquadsOpts},
-    *,
-};
-use helium_lib::{dao, dc};
+use crate::cmd::{squads::SquadsOpts, *};
+use helium_lib::{blockchain_api::types::DcBurnRequest, keypair::Signer, verify};
 
 #[derive(Debug, Clone, clap::Args)]
-/// Burn Data Credits (DC) from this wallet or delegated for the given router into oblivion.
+/// Burn Data Credits (DC) from this wallet into oblivion.
 pub struct Cmd {
     /// Amount of DC to burn
     dc: u64,
-    /// Subdao to use for delegated burn
-    subdao: Option<dao::SubDao>,
-    /// Router key to burn on behalf of
-    ///
-    /// Note that the wallet keypair must be the burn authority for the router key
-    /// for the burn to succeed
-    router: Option<String>,
-    /// Only supported for the non-delegated (no router) burn path; the
-    /// DC is sourced from the resolved vault's DC ATA.
+    /// Burn from the resolved vault's DC ATA as a Squads v4 proposal instead of
+    /// from this wallet.
     #[command(flatten)]
     squads: SquadsOpts,
     /// Commit the burn
@@ -29,39 +19,39 @@ impl Cmd {
     pub async fn run(&self, opts: Opts) -> Result {
         let signer = opts.load_signer()?;
         let client = opts.client()?;
-        let transaction_opts = self.commit.transaction_opts(&client);
 
-        if let Some(squads_target) = self.squads.squads {
-            if self.router.is_some() || self.subdao.is_some() {
-                bail!("--squads only supports the non-delegated burn path");
-            }
-            return cmd_squads::submit_proposal_with(
-                &client,
-                squads_target,
-                self.squads.memo.clone(),
-                &*signer,
-                &self.commit,
-                &transaction_opts,
-                |vault| async move { Ok(vec![dc::burn_instruction(self.dc, vault.as_pubkey())]) },
-            )
-            .await;
+        // With `--squads` the API burns from the resolved vault as a proposal;
+        // otherwise it burns directly from this wallet.
+        let (multisig, memo) = self.squads.resolve(&client, &signer.pubkey()).await?;
+        let is_proposal = multisig.is_some();
+
+        let api = opts.blockchain_api()?;
+        let response = api
+            .dc_burn(&DcBurnRequest {
+                owner: signer.pubkey().to_string(),
+                amount: self.dc.to_string(),
+                multisig,
+                memo,
+            })
+            .await?;
+        let unsigned = response.decode_transactions()?;
+        if is_proposal {
+            verify::wrapped::dc_burn(&unsigned)?;
+        } else {
+            verify::assert_dc_burn(&unsigned, &signer.pubkey(), self.dc)?;
         }
-
-        let (tx, _) = match (&self.router, self.subdao) {
-            (Some(router_key), Some(subdao)) => {
-                dc::burn_delegated(
+        print_json(
+            &self
+                .commit
+                .commit_via_api(
+                    &api,
                     &client,
-                    subdao,
+                    &response,
                     &*signer,
-                    self.dc,
-                    router_key,
-                    &transaction_opts,
+                    ApiSigning::FreshBlockhash,
                 )
                 .await?
-            }
-            (None, None) => dc::burn(&client, self.dc, &*signer, &transaction_opts).await?,
-            _ => bail!("both router and subdao must be specified"),
-        };
-        print_json(&self.commit.maybe_commit(tx, &client).await?.to_json())
+                .to_json(),
+        )
     }
 }

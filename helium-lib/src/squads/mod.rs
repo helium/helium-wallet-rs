@@ -739,7 +739,7 @@ async fn resolve_vault_to_multisig<C: AsRef<SolanaRpcClient>>(
     let txn_config = solana_client::rpc_config::RpcTransactionConfig {
         encoding: Some(UiTransactionEncoding::Json),
         commitment: Some(CommitmentConfig::confirmed()),
-        max_supported_transaction_version: Some(0),
+        max_supported_transaction_version: Some(1),
     };
 
     let mut tried: HashSet<Pubkey> = HashSet::new();

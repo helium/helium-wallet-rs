@@ -10,6 +10,7 @@
 //! transactions still has to inspect them.
 
 mod action;
+pub mod swap_route;
 pub use action::*;
 
 use std::collections::HashMap;

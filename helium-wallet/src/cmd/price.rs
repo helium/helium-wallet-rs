@@ -2,10 +2,10 @@ use crate::cmd::*;
 use helium_lib::token;
 
 #[derive(Clone, Debug, clap::Args)]
-/// Get the current price from the pyth price feed for the given token
+/// Get the HNT price from the oracle the data-credits program pins
 pub struct Cmd {
-    /// Token to look up
-    #[arg(value_parser = token::Token::pricekey_value_parser)]
+    /// Token to look up (HNT only)
+    #[arg(value_parser = token::Token::hnt_value_parser)]
     token: token::Token,
 }
 

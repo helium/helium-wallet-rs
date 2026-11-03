@@ -1,8 +1,11 @@
 //! Token swaps quoted and built by the blockchain-api, signed only once the
 //! quote and its transaction pass [`crate::verify::swap_route`]'s checks.
 //!
-//! [`sign`] is the only public way to get a signed swap from this crate: the
-//! signing step it ends in is crate-private.
+//! [`prepare`] runs the checks and returns a [`PreparedSwap`] holding the
+//! unsigned transaction they passed. Only this crate constructs one, and
+//! [`PreparedSwap::sign`] is the only way this crate signs a swap, so every
+//! swap it signs went through the checks. Preparing touches no signer, so a
+//! caller can show the checked transaction and stop without signing.
 
 use crate::{
     blockchain_api::{
@@ -14,7 +17,7 @@ use crate::{
     solana_sdk::signer::Signer,
     transaction::VersionedTransaction,
     verify::swap_route::{
-        check_quote, sign_verified, SwapChain, SwapRefusal, SwapRouteError, SwapTerms,
+        check_quote, verify_unsigned, SwapChain, SwapRefusal, SwapRouteError, SwapTerms,
     },
 };
 use serde_json::Value;
@@ -33,6 +36,66 @@ pub struct SwapRequest {
     pub slippage_bps: u16,
 }
 
+/// A swap transaction that passed every check, not yet signed. Built only by
+/// [`prepare`].
+#[derive(Debug)]
+pub struct PreparedSwap {
+    quote: SwapQuote,
+    data: TransactionData,
+    transaction: VersionedTransaction,
+    last_valid_block_height: u64,
+    taker: Pubkey,
+}
+
+impl PreparedSwap {
+    /// The quote the transaction was built from.
+    pub fn quote(&self) -> &SwapQuote {
+        &self.quote
+    }
+
+    /// The envelope the transaction came in.
+    pub fn data(&self) -> &TransactionData {
+        &self.data
+    }
+
+    /// The unsigned transaction the checks passed, with the fresh blockhash
+    /// they simulated it under and an empty signature slot for the taker.
+    pub fn transaction(&self) -> &VersionedTransaction {
+        &self.transaction
+    }
+
+    /// The last block height at which the transaction can land.
+    pub fn last_valid_block_height(&self) -> u64 {
+        self.last_valid_block_height
+    }
+
+    /// The wallet the swap was built and checked for, its only signer.
+    pub fn taker(&self) -> &Pubkey {
+        &self.taker
+    }
+
+    /// Sign the checked transaction's message as the taker, and nothing else.
+    /// A keypair whose wallet is not the taker is refused before it is asked
+    /// to sign.
+    pub fn sign(self, keypair: &(dyn Signer + Sync)) -> Result<SignedSwap, SwapRouteError> {
+        let signer = keypair.try_pubkey().map_err(SwapRouteError::Signing)?;
+        if signer != self.taker {
+            return Err(SwapRouteError::SignerNotTaker {
+                signer,
+                taker: self.taker,
+            });
+        }
+        let transaction = VersionedTransaction::try_new(self.transaction.message, &[keypair])
+            .map_err(SwapRouteError::Signing)?;
+        Ok(SignedSwap {
+            quote: self.quote,
+            data: self.data,
+            transaction,
+            last_valid_block_height: self.last_valid_block_height,
+        })
+    }
+}
+
 /// A swap transaction that passed every check and is signed by the taker.
 #[derive(Debug)]
 pub struct SignedSwap {
@@ -47,22 +110,23 @@ pub struct SignedSwap {
     pub last_valid_block_height: u64,
 }
 
-/// Quote `request` through `api`, have it build the swap for `keypair`'s
-/// wallet, and sign the result only if the quote names exactly the request
-/// and its transaction does nothing beyond swapping `request.amount` into at
-/// least `request.min_output` for that wallet (see
+/// Quote `request` through `api`, have it build the swap for `taker`, and
+/// return the unsigned transaction only if the quote names exactly the
+/// request and its transaction does nothing beyond swapping `request.amount`
+/// into at least `request.min_output` for that wallet (see
 /// [`crate::verify::swap_route`]). The simulation that check relies on runs
-/// on `client`'s RPC node.
+/// on `client`'s RPC node. Nothing is signed; [`PreparedSwap::sign`] does
+/// that.
 ///
 /// A request with a zero amount or minimum output, or the same mint on both
 /// sides, is refused before any request is made.
-pub async fn sign<C: AsRef<SolanaRpcClient>>(
+pub async fn prepare<C: AsRef<SolanaRpcClient>>(
     api: &Client,
     client: &C,
     request: &SwapRequest,
-    keypair: &(dyn Signer + Sync),
-) -> Result<SignedSwap, SwapRouteError> {
-    sign_with(api, client.as_ref(), request, keypair).await
+    taker: Pubkey,
+) -> Result<PreparedSwap, SwapRouteError> {
+    prepare_with(api, client.as_ref(), request, taker).await
 }
 
 /// The blockchain-api calls a swap makes, behind a trait so the checks run
@@ -94,13 +158,12 @@ impl SwapApi for Client {
     }
 }
 
-pub(crate) async fn sign_with<A: SwapApi, S: SwapChain>(
+pub(crate) async fn prepare_with<A: SwapApi, S: SwapChain>(
     api: &A,
     chain: &S,
     request: &SwapRequest,
-    keypair: &(dyn Signer + Sync),
-) -> Result<SignedSwap, SwapRouteError> {
-    let taker = keypair.try_pubkey().map_err(SwapRouteError::Signing)?;
+    taker: Pubkey,
+) -> Result<PreparedSwap, SwapRouteError> {
     let terms = SwapTerms::new(request, taker)?;
 
     let mut quote = api.quote(request).await.map_err(SwapRouteError::api)?;
@@ -129,12 +192,13 @@ pub(crate) async fn sign_with<A: SwapApi, S: SwapChain>(
         .map_err(SwapRouteError::TransactionDecode)?
         .remove(0);
     let (transaction, last_valid_block_height) =
-        sign_verified(chain, &terms, min_out, txn, keypair).await?;
-    Ok(SignedSwap {
+        verify_unsigned(chain, &terms, min_out, txn).await?;
+    Ok(PreparedSwap {
         quote,
         data,
         transaction,
         last_valid_block_height,
+        taker,
     })
 }
 
@@ -167,7 +231,7 @@ mod tests {
     use super::*;
     use crate::{
         blockchain_api::types::TransactionItem,
-        solana_sdk::signature::NullSigner,
+        solana_sdk::signature::Signature,
         verify::swap_route::{
             tests::{case, Case, CountingSigner, HNT_USDC, LAST_VALID_BLOCK_HEIGHT},
             InvalidSwapRequest,
@@ -255,7 +319,9 @@ mod tests {
         request: &SwapRequest,
     ) -> (Result<SignedSwap, SwapRouteError>, usize) {
         let signer = CountingSigner::new(&case.request.taker);
-        let result = sign_with(api, &case.chain, request, &signer).await;
+        let result = prepare_with(api, &case.chain, request, case.request.taker)
+            .await
+            .and_then(|prepared| prepared.sign(&signer));
         (result, signer.signed())
     }
 
@@ -423,9 +489,55 @@ mod tests {
         // is any other wallet is refused for this keypair.
         let case = case(HNT_USDC);
         let api = FakeApi::new(&case);
-        let other = NullSigner::new(&Pubkey::new_unique());
-        let result = sign_with(&api, &case.chain, &request(&case), &other).await;
-        assert!(matches!(refusal(result), SwapRefusal::FeePayerNotTaker));
+        let other = Pubkey::new_unique();
+        let result = prepare_with(&api, &case.chain, &request(&case), other).await;
+        assert!(
+            matches!(
+                result,
+                Err(SwapRouteError::Refused(SwapRefusal::FeePayerNotTaker))
+            ),
+            "{result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_prepared_swap_is_unsigned_and_signing_signs_its_message_once() {
+        let case = case(HNT_USDC);
+        let api = FakeApi::new(&case);
+        let prepared = prepare_with(&api, &case.chain, &request(&case), case.request.taker)
+            .await
+            .expect("prepared");
+        assert_eq!(*prepared.taker(), case.request.taker);
+        assert_eq!(
+            prepared.transaction().signatures,
+            vec![Signature::default()]
+        );
+        let message = prepared.transaction().message.clone();
+        let signer = CountingSigner::new(&case.request.taker);
+        let swap = prepared.sign(&signer).expect("signed");
+        assert_eq!(signer.signed(), 1);
+        assert_eq!(swap.transaction.message, message);
+    }
+
+    #[tokio::test]
+    async fn a_prepared_swap_refuses_a_keypair_that_is_not_the_taker() {
+        let case = case(HNT_USDC);
+        let api = FakeApi::new(&case);
+        let prepared = prepare_with(&api, &case.chain, &request(&case), case.request.taker)
+            .await
+            .expect("prepared");
+        let other = Pubkey::new_unique();
+        let signer = CountingSigner::new(&other);
+        let result = prepared.sign(&signer);
+        assert!(
+            matches!(
+                &result,
+                Err(SwapRouteError::SignerNotTaker { signer, taker })
+                    if *signer == other && *taker == case.request.taker
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signer.signed(), 0);
     }
 
     #[tokio::test]
@@ -451,14 +563,13 @@ mod tests {
     }
 
     #[test]
-    fn sign_future_is_send() {
+    fn prepare_future_is_send() {
         fn send<T: Send>(_: T) {}
         let case = case(HNT_USDC);
         let api = Client::new("http://127.0.0.1:1");
         let rpc = std::sync::Arc::new(SolanaRpcClient::new("http://127.0.0.1:1".to_string()));
-        let signer = NullSigner::new(&case.request.taker);
         // Building the future reaches no network; it is dropped unpolled.
-        send(sign(&api, &rpc, &request(&case), &signer));
+        send(prepare(&api, &rpc, &request(&case), case.request.taker));
     }
 
     #[test]

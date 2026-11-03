@@ -16,13 +16,15 @@ use helium_lib::{
         self, rpc_request::RpcResponseErrorData, rpc_response::RpcSimulateTransactionResult,
     },
     solana_sdk::transaction::VersionedTransaction,
-    verify,
+    swap::SignedSwap,
+    verify::{self, swap_route::SwapRouteError},
 };
 use serde_json::json;
 use std::{
     env, fs, io,
     ops::Deref,
     path::{Path, PathBuf},
+    slice,
     str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -383,28 +385,33 @@ impl CommitOpts {
         self.submit(api, solana, data, &signed).await
     }
 
-    /// Commit transactions the library has already verified and signed (a
-    /// swap from [`helium_lib::swap::sign`]), which this path never re-signs.
+    /// Commit a swap the library has checked (a
+    /// [`helium_lib::swap::PreparedSwap`] from [`helium_lib::swap::prepare`]),
+    /// whose `unsigned` transaction arrived in `data`.
     ///
-    /// The transactions are shown for review either way. Without `--commit`
-    /// nothing is broadcast; with it they are submitted via the API and
-    /// confirmed as [`Self::commit_via_api`] does.
-    pub async fn commit_signed_via_api<C: AsRef<SolanaRpcClient>>(
+    /// The unsigned transaction is shown for review either way. Without
+    /// `--commit` nothing is signed or broadcast, so a Ledger is never touched
+    /// for a dry run. With it, `sign` runs once, and its transaction is
+    /// submitted via the API and confirmed as [`Self::commit_via_api`] does.
+    /// `sign` is [`helium_lib::swap::PreparedSwap::sign`], the library's
+    /// signing of the checked message, which this path never re-signs.
+    pub async fn commit_swap_via_api<C: AsRef<SolanaRpcClient>>(
         &self,
         api: &blockchain_api::Client,
         rpc: &C,
         data: &TransactionData,
-        signed: &[VersionedTransaction],
+        unsigned: &VersionedTransaction,
+        sign: impl FnOnce() -> std::result::Result<SignedSwap, SwapRouteError>,
     ) -> Result<CommitResponse> {
-        let max_priority_fee = signed
-            .iter()
-            .map(|tx| verify::assert_priority_fee_within(tx, priority_fee::MAX_PRIORITY_FEE))
-            .sum::<std::result::Result<u64, _>>()?;
-        display_action_for_review(data, None, signed, max_priority_fee);
+        let max_priority_fee =
+            verify::assert_priority_fee_within(unsigned, priority_fee::MAX_PRIORITY_FEE)?;
+        display_action_for_review(data, None, slice::from_ref(unsigned), max_priority_fee);
         if !self.commit {
             return Ok(CommitResponse::None);
         }
-        self.submit(api, rpc.as_ref(), data, signed).await
+        let signed = sign()?;
+        self.submit(api, rpc.as_ref(), &signed.data, &[signed.transaction])
+            .await
     }
 
     /// Submit signed transactions via the API, poll until the batch reaches
@@ -1103,6 +1110,78 @@ mod tests {
             "a submitted transaction carries no signature"
         );
     }
+
+    /// Commit options, a client pair nothing listens behind, and an unsigned
+    /// transaction with no priority fee, for driving `commit_swap_via_api`
+    /// up to the point it would submit.
+    fn swap_commit_fixture(
+        commit: bool,
+    ) -> (
+        CommitOpts,
+        blockchain_api::Client,
+        Arc<SolanaRpcClient>,
+        TransactionData,
+        VersionedTransaction,
+    ) {
+        use helium_lib::solana_sdk::message::{Message, VersionedMessage};
+        let payer = Pubkey::new_unique();
+        let message = VersionedMessage::Legacy(Message::new(&[], Some(&payer)));
+        (
+            CommitOpts {
+                commit,
+                confirm_timeout_secs: 1,
+            },
+            blockchain_api::Client::new("http://127.0.0.1:1"),
+            Arc::new(SolanaRpcClient::new("http://127.0.0.1:1".to_string())),
+            TransactionData {
+                transactions: Vec::new(),
+                parallel: false,
+                tag: None,
+                action_metadata: None,
+            },
+            VersionedTransaction {
+                signatures: vec![Signature::default()],
+                message,
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn a_swap_dry_run_returns_before_signing() {
+        let (opts, api, rpc, data, unsigned) = swap_commit_fixture(false);
+        let response = opts
+            .commit_swap_via_api(&api, &rpc, &data, &unsigned, || {
+                panic!("a dry run reached the signer")
+            })
+            .await
+            .expect("dry run");
+        assert!(matches!(response, CommitResponse::None));
+    }
+
+    #[tokio::test]
+    async fn a_committed_swap_signs_once() {
+        let (opts, api, rpc, data, unsigned) = swap_commit_fixture(true);
+        let taker = Pubkey::new_unique();
+        let signer = Pubkey::new_unique();
+        let calls = std::cell::Cell::new(0);
+        // The closure refuses as `PreparedSwap::sign` refuses a wrong key, so
+        // the run stops before anything is submitted.
+        let err = opts
+            .commit_swap_via_api(&api, &rpc, &data, &unsigned, || {
+                calls.set(calls.get() + 1);
+                Err(SwapRouteError::SignerNotTaker { signer, taker })
+            })
+            .await
+            .expect_err("the signing refusal is returned");
+        assert_eq!(calls.get(), 1);
+        assert!(
+            matches!(
+                err.downcast_ref::<SwapRouteError>(),
+                Some(SwapRouteError::SignerNotTaker { .. })
+            ),
+            "{err:?}"
+        );
+    }
 }
 
 /// Commands that decode what the service built and hold it to what was asked
@@ -1308,19 +1387,31 @@ mod guard_call_sites {
     #[test]
     fn a_swap_is_signed_only_by_the_library_swap() {
         // `commit_via_api` signs whatever it is handed, so a swap reaching it
-        // would be signed past the library's checks.
+        // would be signed past the library's checks. The one signing call is
+        // the closure `commit_swap_via_api` runs only under `--commit`;
+        // `a_swap_dry_run_returns_before_signing` pins that it does not run
+        // otherwise.
         let code = strip_comments(include_str!("swap.rs"));
         assert!(
-            !call_sites(&code, "swap::sign").is_empty(),
-            "the swap is not signed by helium_lib::swap::sign"
+            !call_sites(&code, "swap::prepare").is_empty(),
+            "the swap is not checked by helium_lib::swap::prepare"
         );
         assert!(
             !code.contains(".commit_via_api("),
             "the swap is re-signed by commit_via_api"
         );
         assert!(
-            code.contains(".commit_signed_via_api("),
-            "the swap is not committed as signed"
+            code.contains(".commit_swap_via_api("),
+            "the swap is not committed through commit_swap_via_api"
+        );
+        assert_eq!(
+            code.matches(".sign(").count(),
+            1,
+            "the swap is signed more than once"
+        );
+        assert!(
+            code.contains("|| prepared.sign("),
+            "the swap is signed outside commit_swap_via_api's closure"
         );
     }
 

@@ -1,6 +1,7 @@
 //! Checks that a swap quote and the transaction built for it do nothing
 //! beyond the swap the caller asked for, before the taker signs it.
-//! [`crate::swap::sign`] is the entry point that runs them.
+//! [`crate::swap::prepare`] is the entry point that runs them, and
+//! [`crate::swap::PreparedSwap::sign`] signs what they passed.
 //!
 //! [`check_signer`] refuses a transaction unless the taker is its fee payer
 //! and only signer, so a transaction the taker signs can spend anything the
@@ -61,7 +62,7 @@ use crate::{
         program_pack::Pack,
         pubkey,
         signature::Signature,
-        signer::{Signer, SignerError},
+        signer::SignerError,
         transaction::{TransactionError, VersionedTransaction},
     },
     swap::SwapRequest,
@@ -166,6 +167,10 @@ pub enum SwapRouteError {
     /// The keypair could not name its wallet or sign.
     #[error("transaction signing failed")]
     Signing(#[source] SignerError),
+    /// The keypair offered to sign a prepared swap is not the wallet the
+    /// swap was built and checked for, so it was not asked to sign.
+    #[error("swap refused: signer {signer} is not {taker}, the wallet the swap was checked for")]
+    SignerNotTaker { signer: Pubkey, taker: Pubkey },
     /// The quote or its transaction does something beyond the requested
     /// swap, so it was not signed.
     #[error(transparent)]
@@ -493,9 +498,9 @@ impl SwapChain for SolanaRpcClient {
 }
 
 /// Check `txn` against `request` and `min_out` (the quote's minimum output,
-/// from [`check_quote`]), set a fresh blockhash, check a simulation of the
-/// unsigned transaction, and only then sign it as the taker. Returns the
-/// signed transaction and its last valid block height.
+/// from [`check_quote`]), set a fresh blockhash, and check a simulation of
+/// the unsigned transaction. Returns that unsigned transaction, the one the
+/// checks passed, and its last valid block height. Nothing here signs.
 ///
 /// Each chain read asks the node for the slot of the read before it or a
 /// later one (`minContextSlot`), so on a node that honours it the simulation
@@ -503,12 +508,11 @@ impl SwapChain for SolanaRpcClient {
 /// The answering slot is not checked. It may run against newer state: a
 /// change to a taker account that lands between the two reads is counted as
 /// the swap's.
-pub(crate) async fn sign_verified<S: SwapChain>(
+pub(crate) async fn verify_unsigned<S: SwapChain>(
     chain: &S,
     request: &SwapTerms,
     min_out: u64,
     txn: VersionedTransaction,
-    keypair: &(dyn Signer + Sync),
 ) -> Result<(VersionedTransaction, u64), SwapRouteError> {
     check_signer(&txn.message, &request.taker)?;
 
@@ -568,9 +572,7 @@ pub(crate) async fn sign_verified<S: SwapChain>(
         &request.taker,
     )?;
 
-    let txn = VersionedTransaction::try_new(unsigned.message, &[keypair])
-        .map_err(SwapRouteError::Signing)?;
-    Ok((txn, last_valid_block_height))
+    Ok((unsigned, last_valid_block_height))
 }
 
 /// Check the quote's terms against the request. Returns the quote's minimum
@@ -1327,7 +1329,7 @@ pub(crate) mod tests {
         message::{v0, Message},
         program_option::COption,
         signature::NullSigner,
-        signer::SignerError,
+        signer::Signer,
     };
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use serde::Deserialize;
@@ -1626,14 +1628,16 @@ pub(crate) mod tests {
             signer: &(dyn Signer + Sync),
         ) -> Result<(VersionedTransaction, u64), SwapRouteError> {
             let min_out = check_quote(&self.quote, &self.request)?;
-            sign_verified(
+            let (unsigned, last_valid_block_height) = verify_unsigned(
                 &self.chain,
                 &self.request,
                 min_out,
                 self.transaction.clone(),
-                signer,
             )
-            .await
+            .await?;
+            let txn = VersionedTransaction::try_new(unsigned.message, &[signer])
+                .map_err(SwapRouteError::Signing)?;
+            Ok((txn, last_valid_block_height))
         }
 
         /// Run with a counting signer and return the result with the number
@@ -3133,7 +3137,7 @@ pub(crate) mod tests {
     // ---- accounts reached through lookup tables ----
 
     /// `instructions` compiled against one lookup table holding `addresses`,
-    /// then checked with the table resolved as `sign_verified` resolves it.
+    /// then checked with the table resolved as `verify_unsigned` resolves it.
     fn check_v0(
         request: &SwapTerms,
         instructions: &[Instruction],

@@ -49,14 +49,18 @@ impl Cmd {
             min_output: TokenAmount::from_f64(self.output_token, self.min_output)?.amount,
             slippage_bps: self.slippage_bps,
         };
-        let signed = swap::sign(&api, &client, &request, &*signer).await?;
+        let prepared = swap::prepare(&api, &client, &request, signer.try_pubkey()?).await?;
+        let quote = prepared.quote().clone();
+        let data = prepared.data().clone();
+        let unsigned = prepared.transaction().clone();
 
+        // The signer is reached only through the closure, which runs only
+        // under `--commit`.
         let committed = self
             .commit
-            .commit_signed_via_api(&api, &client, &signed.data, &[signed.transaction])
+            .commit_swap_via_api(&api, &client, &data, &unsigned, || prepared.sign(&*signer))
             .await?;
 
-        let quote = signed.quote;
         let mut json = committed.to_json();
         if let serde_json::Value::Object(ref mut map) = json {
             map.insert("in_amount".to_string(), quote.in_amount.into());

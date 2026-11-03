@@ -95,15 +95,18 @@ impl BlockchainApiError {
     }
 }
 
-/// Response text made safe to put in an error: at most `max_chars`
-/// characters, cut on a character boundary and marked with `…` when cut, with
-/// control characters escaped so they cannot rewrite a terminal or a log line.
+/// Response text made safe to put in an error: the first `max_chars`
+/// characters of `text`, cut on a character boundary and marked with `…` when
+/// cut. Control characters and the invisible formatting characters that
+/// reorder or hide text (bidi embeddings, overrides and isolates, zero-width
+/// characters, the byte-order mark) are written as `\u{…}` escapes, so the
+/// result can be longer than `max_chars`.
 pub(crate) fn bounded_text(text: &str, max_chars: usize) -> String {
     let mut bounded: String = text
         .chars()
         .take(max_chars)
         .flat_map(|c| {
-            if c.is_control() {
+            if c.is_control() || is_hidden_format(c) {
                 c.escape_default().collect::<Vec<_>>()
             } else {
                 vec![c]
@@ -114,6 +117,15 @@ pub(crate) fn bounded_text(text: &str, max_chars: usize) -> String {
         bounded.push('…');
     }
     bounded
+}
+
+/// Formatting characters that change how surrounding text is displayed
+/// without showing themselves.
+fn is_hidden_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'
+    )
 }
 
 /// Client for the Helium blockchain-api REST surface.
@@ -616,5 +628,9 @@ mod tests {
         assert_eq!(bounded, format!("{}…", "é".repeat(10)));
         assert_eq!(bounded_text(&"é".repeat(10), 10), "é".repeat(10));
         assert_eq!(bounded_text("a\x1b[2Jb\n", 10), "a\\u{1b}[2Jb\\n");
+        assert_eq!(
+            bounded_text("a\u{202E}b\u{200B}c\u{2066}d\u{FEFF}", 10),
+            "a\\u{202e}b\\u{200b}c\\u{2066}d\\u{feff}"
+        );
     }
 }

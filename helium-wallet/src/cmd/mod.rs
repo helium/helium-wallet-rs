@@ -1082,9 +1082,12 @@ mod tests {
                 signatures: vec![a, b, b],
             },
         ] {
+            let err = ensure_reported_signatures(&signed, &reported)
+                .expect_err("reported signatures that differ from the signed ones");
             assert!(
-                ensure_reported_signatures(&signed, &reported).is_err(),
-                "{reported:?}"
+                err.to_string()
+                    .starts_with("the service reported signatures"),
+                "{reported:?}: {err}"
             );
         }
         ensure_reported_signatures(&signed[..1], &CommitResponse::Signature(a))
@@ -1093,7 +1096,12 @@ mod tests {
             signatures: vec![],
             ..signed_with(a)
         }];
-        assert!(ensure_reported_signatures(&unsigned, &CommitResponse::None).is_err());
+        let err = ensure_reported_signatures(&unsigned, &CommitResponse::None)
+            .expect_err("a transaction with no signature");
+        assert_eq!(
+            err.to_string(),
+            "a submitted transaction carries no signature"
+        );
     }
 }
 

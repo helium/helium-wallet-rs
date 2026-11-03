@@ -497,9 +497,10 @@ impl SwapChain for SolanaRpcClient {
 /// unsigned transaction, and only then sign it as the taker. Returns the
 /// signed transaction and its last valid block height.
 ///
-/// Each chain read is answered from the slot of the read before it or a
-/// later one, so the simulation never runs against state older than the
-/// before-state it is compared with. It may run against newer state: a
+/// Each chain read asks the node for the slot of the read before it or a
+/// later one (`minContextSlot`), so on a node that honours it the simulation
+/// runs against state no older than the before-state it is compared with.
+/// The answering slot is not checked. It may run against newer state: a
 /// change to a taker account that lands between the two reads is counted as
 /// the swap's.
 pub(crate) async fn sign_verified<S: SwapChain>(

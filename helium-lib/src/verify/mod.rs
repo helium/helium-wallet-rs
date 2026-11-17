@@ -654,28 +654,58 @@ mod tests {
     }
 
     #[test]
+    fn a_repeated_limit_is_read_as_the_highest_in_either_order() {
+        let cb = KnownProgram::ComputeBudget.id();
+        let limit = |value: u32| {
+            let mut data = vec![2u8];
+            data.extend_from_slice(&value.to_le_bytes());
+            (cb, data)
+        };
+        let mut price = vec![3u8];
+        price.extend_from_slice(&1_000_000u64.to_le_bytes());
+        for limits in [
+            [limit(2_000_000), limit(1_000_000)],
+            [limit(1_000_000), limit(2_000_000)],
+        ] {
+            let mut ixs = vec![(cb, price.clone())];
+            ixs.extend(limits);
+            // 2,000,000 CU at 1 lamport per CU.
+            assert_eq!(
+                max_prioritization_fee(&tx(Pubkey::new_unique(), 1, &ixs)),
+                2_000_000
+            );
+        }
+    }
+
+    #[test]
     fn compute_budget_settings_count_limits_and_ignore_short_data() {
         let cb = KnownProgram::ComputeBudget.id();
         let keys = [Pubkey::new_unique(), cb];
         let ix = |data: &[u8]| CompiledInstruction::new_from_raw_parts(1, data.to_vec(), vec![]);
-        let settings = compute_budget_settings(
-            &keys,
-            &[
-                ix(&[2, 1, 0, 0, 0]),
-                ix(&[2, 9, 0, 0, 0]),
-                ix(&[2, 1, 0, 0]),
-                ix(&[3, 5, 0, 0, 0, 0, 0, 0, 0]),
-                ix(&[3, 5, 0, 0, 0, 0, 0, 0]),
-            ],
-        );
-        assert_eq!(
-            settings,
-            ComputeBudgetSettings {
-                limit: Some(9),
-                limit_count: 2,
-                price: 5
-            }
-        );
+        // The highest limit is read whichever order the limits come in.
+        for limits in [
+            [[2u8, 1, 0, 0, 0], [2, 9, 0, 0, 0]],
+            [[2, 9, 0, 0, 0], [2, 1, 0, 0, 0]],
+        ] {
+            let settings = compute_budget_settings(
+                &keys,
+                &[
+                    ix(&limits[0]),
+                    ix(&limits[1]),
+                    ix(&[2, 1, 0, 0]),
+                    ix(&[3, 5, 0, 0, 0, 0, 0, 0, 0]),
+                    ix(&[3, 5, 0, 0, 0, 0, 0, 0]),
+                ],
+            );
+            assert_eq!(
+                settings,
+                ComputeBudgetSettings {
+                    limit: Some(9),
+                    limit_count: 2,
+                    price: 5
+                }
+            );
+        }
         // An instruction of another program is not a Compute Budget one.
         let other = CompiledInstruction::new_from_raw_parts(0, vec![2, 1, 0, 0, 0], vec![]);
         assert_eq!(

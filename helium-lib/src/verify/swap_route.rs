@@ -2682,8 +2682,13 @@ pub(crate) mod tests {
     /// Arguments from `in_amount` on: `in_amount`, `quoted_out_amount`,
     /// `slippage_bps`, `platform_fee_bps`, `positive_slippage_bps`, and an
     /// empty route plan.
-    fn route_args(quoted_out: u64, slippage_bps: u16, platform_fee_bps: u16) -> Vec<u8> {
-        let mut args = 1_000_000u64.to_le_bytes().to_vec();
+    fn route_args(
+        in_amount: u64,
+        quoted_out: u64,
+        slippage_bps: u16,
+        platform_fee_bps: u16,
+    ) -> Vec<u8> {
+        let mut args = in_amount.to_le_bytes().to_vec();
         args.extend_from_slice(&quoted_out.to_le_bytes());
         args.extend_from_slice(&slippage_bps.to_le_bytes());
         args.extend_from_slice(&platform_fee_bps.to_le_bytes());
@@ -2730,7 +2735,7 @@ pub(crate) mod tests {
     fn a_route_minimum_below_the_request_is_refused_in_each_form() {
         // 1,000,000 quoted less 100 bps slippage is 990,000, less a 10 bps
         // platform fee is 989,010.
-        let args = route_args(1_000_000, 100, 10);
+        let args = route_args(5_000_000, 1_000_000, 100, 10);
         for data in [route_v2_data(&args), shared_route_data(&args)] {
             route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 989_010)
                 .expect("a minimum at the floor passes");
@@ -2748,11 +2753,11 @@ pub(crate) mod tests {
     #[test]
     fn the_route_minimum_is_the_quote_less_slippage_then_the_platform_fee() {
         // No platform fee: 990,000.
-        let data = route_v2_data(&route_args(1_000_000, 100, 0));
+        let data = route_v2_data(&route_args(5_000_000, 1_000_000, 100, 0));
         route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 990_000).expect("floor");
         assert!(route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 990_001).is_err());
         // Full slippage leaves nothing.
-        let data = shared_route_data(&route_args(1_000_000, 10_000, 0));
+        let data = shared_route_data(&route_args(5_000_000, 1_000_000, 10_000, 0));
         assert!(matches!(
             route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 1),
             Err(SwapRefusal::RouteMinimumBelowRequest {
@@ -2764,7 +2769,7 @@ pub(crate) mod tests {
 
     #[test]
     fn an_unrecognised_jupiter_form_or_another_program_is_not_read() {
-        let args = route_args(1_000, 10_000, 0);
+        let args = route_args(5_000, 1_000, 10_000, 0);
         // Terms that would be refused, behind a discriminator that is not a
         // v2 route.
         let unknown = [[0u8; 8].as_slice(), &args].concat();

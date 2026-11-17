@@ -42,7 +42,9 @@ pub struct SwapRequest {
 /// The build request carries the same set because a builder that routes
 /// again at build time does not inherit the quote's exclusions. Kipseli's
 /// instruction lists the taker even in a `shared_accounts_route_v2` route,
-/// so `check_inner_instructions` refuses the routes through it.
+/// so leaving it out keeps the taker away from one more program. The checks
+/// in [`crate::verify::swap_route`] do not depend on the exclusion: they
+/// trust whichever AMMs the route names.
 ///
 /// Jupiter matches each label against its own name for a DEX and ignores a
 /// label it does not know, so a renamed label silently excludes nothing.
@@ -127,6 +129,13 @@ pub struct SignedSwap {
 /// [`crate::verify::swap_route`]). The simulation that check relies on runs
 /// on `client`'s RPC node. Nothing is signed; [`PreparedSwap::sign`] does
 /// that.
+///
+/// A shared-accounts route gives the AMMs Jupiter's accounts instead of the
+/// taker, so fewer programs receive the taker when the builder honours the
+/// request. A builder may return a non-shared `route_v2` regardless (Jupiter
+/// builds single-hop routes that way); its AMMs receive the taker, and the
+/// transaction is accepted when it passes the same checks. The AMMs on the
+/// route are trusted to do on chain what the simulation showed.
 ///
 /// A request with a zero amount or minimum output, or the same mint on both
 /// sides, is refused before any request is made.

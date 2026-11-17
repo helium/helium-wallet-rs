@@ -27,18 +27,24 @@
 //!    accounts it lists as writable, so comparing every writable account
 //!    before and after covers what the Jupiter program does through
 //!    cross-program invocations, which no static check can see.
-//! 4. [`check_inner_instructions`]: every instruction the simulation ran
-//!    beneath the top level that names the taker is a plain SPL Token
-//!    transfer of a taker token account by the taker, a close of one that
-//!    pays the taker, a `SyncNative`, an Associated Token Account create, or
-//!    a System transfer or account creation. A route that hands the taker to
-//!    any other program (an AMM's own swap instruction, say) is refused,
-//!    because the taker's signature then extends into code no check here
-//!    reads. [`crate::swap::prepare`] asks for shared-accounts routes, which
-//!    give the AMMs Jupiter's accounts instead of the taker; a non-shared
-//!    route whose AMMs receive the taker is refused here, as is an AMM that
-//!    lists the taker itself, which [`crate::swap::prepare`] asks the quote
-//!    and the build to leave out ([`crate::swap::EXCLUDED_DEXES`]).
+//! 4. [`check_inner_instructions`]: every instruction of SPL Token,
+//!    Token-2022, the Associated Token Account program or System that the
+//!    simulation ran beneath the top level and that names the taker is a
+//!    plain transfer of a taker token account by the taker, a close of one
+//!    that pays the taker, an Associated Token Account create, or a System
+//!    transfer or account creation. These are the calls through which the
+//!    taker's signature moves or hands over what the taker holds, whichever
+//!    program makes them.
+//!
+//! The AMMs on the route are trusted. A non-shared `route_v2` hands the taker
+//! to each AMM's own swap instruction, and an AMM may list the taker in its
+//! own instruction even in a shared-accounts route; any program may receive
+//! the taker, and is trusted to do on chain what the simulation showed. What
+//! the taker's signature does beneath those programs is bounded by point 4,
+//! and what the transaction does to the taker's accounts by point 3.
+//! [`crate::swap::prepare`] asks for shared-accounts routes and leaves
+//! [`crate::swap::EXCLUDED_DEXES`] out of the quote and the build, so fewer
+//! programs receive the taker where the builder honours both.
 //!
 //! The simulation runs on the caller's own RPC node, not on the service that
 //! built the transaction. The taker signs only after all four pass, so a
@@ -340,8 +346,6 @@ pub enum SwapRefusal {
     TokenOwnerChanged { account: Pubkey },
     #[error("swap refused: taker token account {account} gained or changed a delegate or close authority")]
     TokenAuthorityChanged { account: Pubkey },
-    #[error("swap refused: route passes the wallet to {program}, a program outside the allowlist")]
-    InnerProgramNotAllowed { program: Pubkey },
     #[error("swap refused: route passes the wallet to {program} in a form a swap does not use")]
     InnerInstructionNotAllowed { program: Pubkey },
     #[error("swap refused: simulation returned an inner instruction that cannot be classified")]
@@ -1146,8 +1150,9 @@ pub(crate) fn check_effects(
     Ok(())
 }
 
-/// Refuse a simulation in which an instruction beneath the top level names
-/// `taker` in any form outside a fixed allowlist. `pre` and `post` are the
+/// Refuse a simulation in which an instruction of SPL Token, Token-2022,
+/// System or the Associated Token Account program beneath the top level
+/// names `taker` in a form a swap does not use. `pre` and `post` are the
 /// states of `resolved.writable` before and after the simulation, `inner`
 /// the simulation's inner instructions.
 ///
@@ -1168,14 +1173,20 @@ pub(crate) fn check_effects(
 ///   whole group the same way. An instruction with no stack height is never
 ///   covered.
 /// - System `transfer` and `createAccount`.
+/// - Any instruction of any other program, such as an AMM's own swap
+///   instruction in a non-shared route. The AMMs on the route are trusted
+///   with the taker; the token, Associated Token Account and System
+///   instructions they run with the taker's signature are each checked here
+///   in turn.
 ///
 /// A compiled (undecoded) inner instruction, or one whose program id does not
 /// parse, is refused whether or not it names the taker, since it cannot be
-/// classified.
+/// classified. A partially decoded instruction (a program the node has no
+/// parser for) carries its accounts and program id, and is classified.
 ///
-/// This bounds which programs receive the taker and in which forms. It must
-/// run together with [`check_effects`], which bounds what the allowed forms
-/// move.
+/// This bounds the forms in which the taker's signature reaches the token
+/// and System programs. It must run together with [`check_effects`], which
+/// bounds what the transaction moves.
 pub(crate) fn check_inner_instructions(
     message: &VersionedMessage,
     resolved: &ResolvedAccounts,
@@ -1237,10 +1248,8 @@ pub(crate) fn check_inner_instructions(
             if !names_taker {
                 continue;
             }
-            match inner_form(&program, parsed, &taker_text, &owned) {
-                Some(true) => {}
-                Some(false) => return Err(SwapRefusal::InnerInstructionNotAllowed { program }),
-                None => return Err(SwapRefusal::InnerProgramNotAllowed { program }),
+            if !inner_form(&program, parsed, &taker_text, &owned) {
+                return Err(SwapRefusal::InnerInstructionNotAllowed { program });
             }
         }
     }
@@ -1275,16 +1284,12 @@ fn ata_create(program: &Pubkey, parsed: &Value) -> bool {
         && token_program.is_some_and(|key| key == spl_token::ID || key == TOKEN_2022)
 }
 
-/// How [`check_inner_instructions`] treats a node-parsed instruction of
-/// `program` that names `taker`: `None` when the program is not on its
-/// allowlist, otherwise whether this form of it is allowed. `owned` holds the
-/// token accounts the taker may spend from.
-fn inner_form(
-    program: &Pubkey,
-    parsed: &Value,
-    taker: &str,
-    owned: &HashSet<Pubkey>,
-) -> Option<bool> {
+/// Whether [`check_inner_instructions`] allows a node-parsed instruction of
+/// `program` that names `taker`. An instruction of SPL Token, Token-2022,
+/// System or Associated Token Account is allowed only in the forms a swap
+/// uses; an instruction of any other program (an AMM on the route) is
+/// allowed. `owned` holds the token accounts the taker may spend from.
+fn inner_form(program: &Pubkey, parsed: &Value, taker: &str, owned: &HashSet<Pubkey>) -> bool {
     let info = |field: &str| {
         parsed
             .get("info")
@@ -1298,7 +1303,7 @@ fn inner_form(
     };
     let kind = inner_kind(parsed);
     if *program == spl_token::ID || *program == TOKEN_2022 {
-        Some(match kind {
+        match kind {
             Some("transfer" | "transferChecked") => {
                 info("authority") == Some(taker) && owned_account("source")
             }
@@ -1308,13 +1313,13 @@ fn inner_form(
                     && owned_account("account")
             }
             _ => false,
-        })
+        }
     } else if *program == system_program::ID {
-        Some(matches!(kind, Some("transfer" | "createAccount")))
+        matches!(kind, Some("transfer" | "createAccount"))
     } else if *program == spl_associated_token_account::ID {
-        Some(ata_create(program, parsed))
+        ata_create(program, parsed)
     } else {
-        None
+        true
     }
 }
 
@@ -1757,20 +1762,15 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn recorded_sol_to_usdc_route_passing_the_wallet_to_amms_is_refused() {
+    async fn recorded_sol_to_usdc_route_passing_the_wallet_to_amms_is_signed() {
         // This `route_v2` hands the taker to Tessera, Raydium CLMM, Manifest
-        // and AlphaQ swap instructions; the first of them is refused.
+        // and AlphaQ swap instructions, each of which runs taker-signed token
+        // transfers beneath it.
         let case = case(SOL_USDC);
         let (result, signed) = case.run_counting().await;
-        assert!(
-            matches!(
-                &result,
-                Err(SwapRouteError::Refused(SwapRefusal::InnerProgramNotAllowed { program }))
-                    if *program == pubkey!("TessVdML9pBGgG9yGks7o4HewRaXVAMuoVj4x83GLQH")
-            ),
-            "{result:?}"
-        );
-        assert_eq!(signed, 0);
+        let (txn, _) = result.expect("signed");
+        assert_eq!(signed, 1);
+        assert_eq!(txn.signatures.len(), 1);
     }
 
     #[test]
@@ -2843,6 +2843,29 @@ pub(crate) mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn recorded_route_passing_the_wallet_to_amms_still_refuses_another_token_loss() {
+        let mut case = case(SOL_USDC);
+        let address = untouched_writable(&case);
+        let taker = case.request.taker;
+        case.chain
+            .pre
+            .insert(address, token_account_state(MOBILE, taker, 10));
+        case.chain
+            .post
+            .insert(address, token_account_state(MOBILE, taker, 9));
+        let (result, signed) = case.run_counting().await;
+        assert!(
+            matches!(
+                &result,
+                Err(SwapRouteError::Refused(SwapRefusal::OtherTokenDecreased { mint }))
+                    if *mint == pubkey!("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6")
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signed, 0);
+    }
+
     #[test]
     fn sol_output_must_reach_the_threshold_net_of_fees() {
         let taker = Pubkey::new_unique();
@@ -3305,27 +3328,103 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_program_outside_the_allowlist_given_the_wallet_is_refused() {
+    fn a_program_outside_the_token_and_system_set_may_be_given_the_wallet() {
         let case = case(HNT_USDC);
         let taker = case.request.taker;
         let other = Pubkey::new_unique();
         check_inner(&case, route_group(json!([amm_swap(&[other], 2)])))
             .expect("an AMM not given the wallet passes");
-        assert!(matches!(
-            check_inner(&case, route_group(json!([amm_swap(&[other, taker], 2)]))),
-            Err(SwapRefusal::InnerProgramNotAllowed { program }) if program == key(WHIRLPOOL)
-        ));
-        // A parsed instruction of a program outside the allowlist naming
-        // the wallet is refused too.
+        check_inner(&case, route_group(json!([amm_swap(&[other, taker], 2)])))
+            .expect("an AMM given the wallet passes");
+        // A parsed instruction of another program naming the wallet passes
+        // too.
         let memo = json!({
             "parsed": taker.to_string(),
             "program": "spl-memo",
             "programId": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
             "stackHeight": 2,
         });
+        check_inner(&case, route_group(json!([memo]))).expect("a memo naming the wallet");
+    }
+
+    #[test]
+    fn an_amm_given_the_wallet_may_have_it_sign_a_transfer_from_its_input() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let input = case.token_account_of(&HNT);
+        check_inner(
+            &case,
+            route_group(json!([
+                amm_swap(&[Pubkey::new_unique(), taker, input], 2),
+                token_transfer(&taker, &input, 3),
+            ])),
+        )
+        .expect("the AMM's transfer from the taker's input account");
+    }
+
+    #[test]
+    fn an_amm_given_the_wallet_may_not_have_it_sign_from_an_account_it_does_not_own() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let input = case.token_account_of(&HNT);
+        let elsewhere = Pubkey::new_unique();
         assert!(matches!(
-            check_inner(&case, route_group(json!([memo]))),
-            Err(SwapRefusal::InnerProgramNotAllowed { .. })
+            check_inner(
+                &case,
+                route_group(json!([
+                    amm_swap(&[taker, input, elsewhere], 2),
+                    token_transfer(&taker, &input, 3),
+                    token_transfer(&taker, &elsewhere, 3),
+                ])),
+            ),
+            Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                if program == pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        ));
+    }
+
+    #[tokio::test]
+    async fn recorded_route_with_a_transfer_from_an_unowned_account_beneath_an_amm_is_refused() {
+        let mut case = case(SOL_USDC);
+        let taker = case.request.taker;
+        let mut inner = serde_json::to_value(case.chain.inner.take().expect("fixture inner"))
+            .expect("serialize inner instructions");
+        // Group 5 is the route; its first instruction is Tessera's swap,
+        // handed the taker. A transfer the taker signs beneath it, out of an
+        // account the taker did not hold before the swap, is refused.
+        let route = inner[1]["instructions"]
+            .as_array_mut()
+            .expect("route group instructions");
+        assert_eq!(
+            route[0]["programId"],
+            "TessVdML9pBGgG9yGks7o4HewRaXVAMuoVj4x83GLQH"
+        );
+        route.insert(1, token_transfer(&taker, &Pubkey::new_unique(), 3));
+        case.chain.inner = Some(serde_json::from_value(inner).expect("inner instructions"));
+        let (result, signed) = case.run_counting().await;
+        assert!(
+            matches!(
+                &result,
+                Err(SwapRouteError::Refused(SwapRefusal::InnerInstructionNotAllowed { program }))
+                    if *program == pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signed, 0);
+    }
+
+    #[test]
+    fn an_undecoded_instruction_beneath_an_amm_given_the_wallet_is_refused() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let compiled = json!({
+            "programIdIndex": 0,
+            "accounts": [1],
+            "data": "3Rg2bKuTGTyGGVTrjBjM",
+            "stackHeight": 3,
+        });
+        assert!(matches!(
+            check_inner(&case, route_group(json!([amm_swap(&[taker], 2), compiled]))),
+            Err(SwapRefusal::InnerInstructionUnreadable)
         ));
     }
 
@@ -3497,10 +3596,10 @@ pub(crate) mod tests {
                 route_group(json!([
                     create.clone(),
                     amm_swap(&[], 2),
-                    amm_swap(&[taker], 3)
+                    initialize(&taker, 3)
                 ]))
             ),
-            Err(SwapRefusal::InnerProgramNotAllowed { .. })
+            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
         ));
         // The same instruction after the create returns is the route's own.
         assert!(matches!(

@@ -134,12 +134,16 @@ pub struct SignedSwap {
 /// taker, so fewer programs receive the taker when the builder honours the
 /// request. A builder may return a non-shared `route_v2` regardless (Jupiter
 /// builds single-hop routes that way), or any other route form; each is
-/// accepted when it passes the same checks. Those checks bound what the
-/// simulated transaction does to the taker's own account, its token
-/// accounts and its SOL, and refuse any Bubblegum instruction naming the
-/// taker. They do not inspect the route's shape or arguments, and do not
-/// compare state other programs keep for the taker, so a program the route
-/// hands the taker's signature is trusted with that state (see
+/// accepted when it passes the same checks. Those checks bound what one
+/// simulation of the transaction does to the taker's own account, its token
+/// accounts and its SOL, refuse any Bubblegum or lazy distributor
+/// instruction naming the taker, and require a Jupiter v2 route's own
+/// minimum output to reach the request's. They guard against a builder that
+/// is buggy or misconfigured, not a hostile one: a program that behaves
+/// differently when the transaction lands than it did in the simulation is
+/// not caught. They do not inspect the route's shape, and do not compare
+/// state other programs keep for the taker, so a program the route hands the
+/// taker's signature is trusted with that state (see
 /// [`crate::verify::swap_route`]).
 ///
 /// A request with a zero amount or minimum output, or the same mint on both

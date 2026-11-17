@@ -1607,7 +1607,7 @@ pub(crate) mod tests {
         assert_eq!(
             fee_bound_of(
                 &taker,
-                &[limit(100_000), limit(300_000), price(2_000), price(1_000)]
+                &[limit(300_000), limit(100_000), price(2_000), price(1_000)]
             )
             .ok(),
             Some(5_600)

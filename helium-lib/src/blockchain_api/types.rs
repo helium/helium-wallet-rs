@@ -499,6 +499,16 @@ pub struct SwapInstructionsRequest {
     pub user_public_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination_token_account: Option<String>,
+    /// `Some(true)` asks for the route through Jupiter's shared program
+    /// accounts, which give the AMMs Jupiter's accounts instead of the taker.
+    /// `None` leaves the choice to Jupiter, which builds some routes,
+    /// single-hop and multi-hop, as non-shared `route_v2`. `Some(false)`
+    /// forces non-shared routes. A non-shared route's AMMs receive the taker,
+    /// which `check_inner_instructions` refuses. An AMM that lists the taker
+    /// itself is refused too; [`crate::swap::prepare`] asks the quote to
+    /// leave such AMMs out (see [`crate::swap::EXCLUDED_DEXES`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_shared_accounts: Option<bool>,
 }
 
 /// `POST /tokens/burn` — burn SPL tokens from the wallet's account.
@@ -941,6 +951,32 @@ mod tests {
         assert_eq!(v["dcAmount"], "100");
         assert!(v.get("hntAmount").is_none());
         assert!(v.get("recipient").is_none());
+    }
+
+    #[test]
+    fn swap_instructions_request_sends_use_shared_accounts_only_when_set() {
+        let quote: SwapQuote = serde_json::from_value(serde_json::json!({
+            "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
+            "inAmount": "100000000",
+            "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "outAmount": "450000",
+            "otherAmountThreshold": "445500",
+            "swapMode": "ExactIn",
+            "slippageBps": 100,
+            "priceImpactPct": "0.01"
+        }))
+        .expect("deserialize swap quote");
+        let mut req = SwapInstructionsRequest {
+            quote_response: quote,
+            user_public_key: "wallet".to_string(),
+            destination_token_account: None,
+            use_shared_accounts: Some(true),
+        };
+        let v = serde_json::to_value(&req).expect("serialize request");
+        assert_eq!(v["useSharedAccounts"], true);
+        req.use_shared_accounts = None;
+        let v = serde_json::to_value(&req).expect("serialize request");
+        assert!(v.get("useSharedAccounts").is_none(), "{v}");
     }
 
     #[test]

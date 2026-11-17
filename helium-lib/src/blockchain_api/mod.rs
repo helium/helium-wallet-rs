@@ -481,23 +481,19 @@ impl Client {
 
     /// `GET /swap/quote` — a Jupiter-backed quote for `amount` of `input_mint`
     /// into `output_mint`. Pass the result back to [`Self::swap_instructions`].
+    ///
+    /// `exclude_dexes` is a comma-separated list of Jupiter DEX labels the
+    /// route must not use, sent as `excludeDexes` when set.
     pub async fn swap_quote(
         &self,
         input_mint: &Pubkey,
         output_mint: &Pubkey,
         amount: u64,
         slippage_bps: u16,
+        exclude_dexes: Option<&str>,
     ) -> Result<SwapQuote, BlockchainApiError> {
-        self.get_query(
-            "/swap/quote",
-            &[
-                ("inputMint", input_mint.to_string()),
-                ("outputMint", output_mint.to_string()),
-                ("amount", amount.to_string()),
-                ("slippageBps", slippage_bps.to_string()),
-            ],
-        )
-        .await
+        let query = swap_quote_query(input_mint, output_mint, amount, slippage_bps, exclude_dexes);
+        self.get_query("/swap/quote", &query).await
     }
 
     /// `POST /swap/instructions` — build the swap transaction for a quote.
@@ -575,9 +571,51 @@ async fn parse<R: DeserializeOwned>(resp: reqwest::Response) -> Result<R, Blockc
     }
 }
 
+/// The query pairs of `GET /swap/quote`; `excludeDexes` is present only when
+/// `exclude_dexes` is.
+fn swap_quote_query(
+    input_mint: &Pubkey,
+    output_mint: &Pubkey,
+    amount: u64,
+    slippage_bps: u16,
+    exclude_dexes: Option<&str>,
+) -> Vec<(&'static str, String)> {
+    let mut query = vec![
+        ("inputMint", input_mint.to_string()),
+        ("outputMint", output_mint.to_string()),
+        ("amount", amount.to_string()),
+        ("slippageBps", slippage_bps.to_string()),
+    ];
+    if let Some(dexes) = exclude_dexes {
+        query.push(("excludeDexes", dexes.to_string()));
+    }
+    query
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn swap_quote_sends_exclude_dexes_only_when_set() {
+        let mint = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let url = |dexes| {
+            let query = swap_quote_query(&mint, &other, 5, 50, dexes);
+            reqwest::Url::parse_with_params("https://example.com/swap/quote", &query)
+                .expect("build quote url")
+        };
+        let with = url(Some("A,B"));
+        assert!(
+            with.query_pairs()
+                .any(|(key, value)| key == "excludeDexes" && value == "A,B"),
+            "{with}"
+        );
+        assert_eq!(with.query_pairs().count(), 5);
+        let without = url(None);
+        assert!(without.query_pairs().all(|(key, _)| key != "excludeDexes"));
+        assert_eq!(without.query_pairs().count(), 4);
+    }
 
     #[test]
     fn new_trims_trailing_slash() {

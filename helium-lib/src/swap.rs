@@ -37,6 +37,18 @@ pub struct SwapRequest {
     pub slippage_bps: u16,
 }
 
+/// The Jupiter DEX labels [`prepare`] asks the quote to leave out,
+/// comma-separated as the quote's `excludeDexes` takes them. Kipseli's
+/// instruction lists the taker even in a `shared_accounts_route_v2` route,
+/// so `check_inner_instructions` refuses the routes through it.
+///
+/// Jupiter matches each label against its own name for a DEX and ignores a
+/// label it does not know, so a renamed label silently excludes nothing.
+/// `Kipseli` is Jupiter's name for program
+/// `3TK9D8aoBFYjYZtKCjciPrVrRStsnvo7KmpcJqDavpaU`, as its
+/// program-id-to-label map gives it.
+pub const EXCLUDED_DEXES: &str = "Kipseli";
+
 /// A swap transaction that passed every check, not yet signed. Built only by
 /// [`prepare`].
 #[derive(Debug)]
@@ -104,10 +116,11 @@ pub struct SignedSwap {
     pub last_valid_block_height: u64,
 }
 
-/// Quote `request` through `api`, have it build the swap for `taker`, and
-/// return the unsigned transaction only if the quote names exactly the
-/// request and its transaction does nothing beyond swapping `request.amount`
-/// into at least `request.min_output` for that wallet (see
+/// Quote `request` through `api`, asking for [`EXCLUDED_DEXES`] to be left
+/// out of the route, ask it to build the swap for `taker` as a route through
+/// Jupiter's shared accounts, and return the unsigned transaction only if the quote names
+/// exactly the request and its transaction does nothing beyond swapping
+/// `request.amount` into at least `request.min_output` for that wallet (see
 /// [`crate::verify::swap_route`]). The simulation that check relies on runs
 /// on `client`'s RPC node. Nothing is signed; [`PreparedSwap::sign`] does
 /// that.
@@ -126,7 +139,11 @@ pub async fn prepare<C: AsRef<SolanaRpcClient>>(
 /// The blockchain-api calls a swap makes, behind a trait so the checks run
 /// against recorded responses in tests.
 pub(crate) trait SwapApi {
-    async fn quote(&self, request: &SwapRequest) -> Result<SwapQuote, BlockchainApiError>;
+    async fn quote(
+        &self,
+        request: &SwapRequest,
+        exclude_dexes: Option<&str>,
+    ) -> Result<SwapQuote, BlockchainApiError>;
     async fn instructions(
         &self,
         request: &SwapInstructionsRequest,
@@ -134,12 +151,17 @@ pub(crate) trait SwapApi {
 }
 
 impl SwapApi for Client {
-    async fn quote(&self, request: &SwapRequest) -> Result<SwapQuote, BlockchainApiError> {
+    async fn quote(
+        &self,
+        request: &SwapRequest,
+        exclude_dexes: Option<&str>,
+    ) -> Result<SwapQuote, BlockchainApiError> {
         self.swap_quote(
             &request.input_mint,
             &request.output_mint,
             request.amount,
             request.slippage_bps,
+            exclude_dexes,
         )
         .await
     }
@@ -160,7 +182,10 @@ pub(crate) async fn prepare_with<A: SwapApi, S: SwapChain>(
 ) -> Result<PreparedSwap, SwapRouteError> {
     let terms = SwapTerms::new(request, taker)?;
 
-    let mut quote = api.quote(request).await.map_err(SwapRouteError::api)?;
+    let mut quote = api
+        .quote(request, Some(EXCLUDED_DEXES))
+        .await
+        .map_err(SwapRouteError::api)?;
     let min_out = check_quote(&quote, &terms)?;
     request_v2_route(&mut quote);
     let data = api
@@ -168,6 +193,7 @@ pub(crate) async fn prepare_with<A: SwapApi, S: SwapChain>(
             quote_response: quote.clone(),
             user_public_key: taker.to_string(),
             destination_token_account: None,
+            use_shared_accounts: Some(true),
         })
         .await
         .map_err(SwapRouteError::api)?;
@@ -240,7 +266,7 @@ mod tests {
     struct FakeApi {
         quote: Result<SwapQuote, u16>,
         transactions: Vec<String>,
-        quotes_asked: Mutex<Vec<SwapRequest>>,
+        quotes_asked: Mutex<Vec<(SwapRequest, Option<String>)>>,
         built: Mutex<Vec<SwapInstructionsRequest>>,
     }
 
@@ -265,8 +291,15 @@ mod tests {
     }
 
     impl SwapApi for FakeApi {
-        async fn quote(&self, request: &SwapRequest) -> Result<SwapQuote, BlockchainApiError> {
-            self.quotes_asked.lock().expect("lock").push(*request);
+        async fn quote(
+            &self,
+            request: &SwapRequest,
+            exclude_dexes: Option<&str>,
+        ) -> Result<SwapQuote, BlockchainApiError> {
+            self.quotes_asked
+                .lock()
+                .expect("lock")
+                .push((*request, exclude_dexes.map(str::to_string)));
             self.quote
                 .clone()
                 .map_err(|status| BlockchainApiError::Api {
@@ -340,11 +373,13 @@ mod tests {
 
         let asked = api.quotes_asked.lock().expect("lock");
         assert_eq!(asked.len(), 1);
-        assert_eq!(asked[0].amount, request.amount);
+        assert_eq!(asked[0].0.amount, request.amount);
+        assert_eq!(asked[0].1.as_deref(), Some("Kipseli"));
         let built = api.built.lock().expect("lock");
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].user_public_key, case.request.taker.to_string());
         assert_eq!(built[0].quote_response.extra["instructionVersion"], "V2");
+        assert_eq!(built[0].use_shared_accounts, Some(true));
         // The terms the checks read are sent as they were checked.
         assert_eq!(built[0].quote_response.in_amount, case.quote.in_amount);
         assert_eq!(
@@ -534,10 +569,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_client_sends_the_excluded_dexes_with_the_quote_request() {
+        use futures::future::{select, Either};
+        use futures_timer::Delay;
+        use std::{
+            io::{BufRead, BufReader, Write},
+            time::{Duration, Instant},
+        };
+
+        const DEADLINE: Duration = Duration::from_secs(10);
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking listener");
+        let addr = listener.local_addr().expect("local addr");
+        // Reads the request line, then answers 500 so the client's parse
+        // fails without needing a quote body. Gives up at the deadline, so
+        // the blocking task never outlives the test.
+        let server = tokio::task::spawn_blocking(move || {
+            let deadline = Instant::now() + DEADLINE;
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "no request before the deadline");
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(e) => panic!("accept: {e}"),
+                }
+            };
+            stream.set_nonblocking(false).expect("blocking stream");
+            stream
+                .set_read_timeout(Some(DEADLINE))
+                .expect("read timeout");
+            let mut request_line = String::new();
+            BufReader::new(&stream)
+                .read_line(&mut request_line)
+                .expect("read request line");
+            stream
+                .write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                .expect("write response");
+            request_line
+        });
+        // The client is `Client::new()`, which honours the proxy environment
+        // variables; the deadline bounds the exchange if one sends the
+        // request elsewhere.
+        let api = Client::new(format!("http://{addr}"));
+        let case = case(HNT_USDC);
+        let exchange = async {
+            let result = SwapApi::quote(&api, &request(&case), Some(EXCLUDED_DEXES)).await;
+            let request_line = server.await.expect("server task");
+            (result, request_line)
+        };
+        let (result, request_line) = match select(Box::pin(exchange), Delay::new(DEADLINE)).await {
+            Either::Left((done, _)) => done,
+            Either::Right(_) => panic!("the exchange did not finish before the deadline"),
+        };
+        assert!(result.is_err(), "the stub answers 500");
+        assert!(
+            request_line.starts_with("GET /swap/quote?")
+                && request_line.contains("&excludeDexes=Kipseli"),
+            "{request_line}"
+        );
+    }
+
+    #[tokio::test]
     async fn api_errors_carry_no_url() {
         let api = Client::new("http://127.0.0.1:1/SECRET-PATH");
         let case = case(HNT_USDC);
-        let err = SwapApi::quote(&api, &request(&case))
+        let err = SwapApi::quote(&api, &request(&case), None)
             .await
             .map_err(SwapRouteError::api)
             .expect_err("nothing listens on port 1");

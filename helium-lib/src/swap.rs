@@ -572,74 +572,16 @@ mod tests {
         assert_eq!(signer.signed(), 0);
     }
 
-    #[tokio::test]
-    async fn the_client_sends_the_excluded_dexes_with_the_quote_request() {
-        use futures::future::{select, Either};
-        use futures_timer::Delay;
-        use std::{
-            io::{BufRead, BufReader, Write},
-            time::{Duration, Instant},
-        };
-
-        const DEADLINE: Duration = Duration::from_secs(10);
-
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
-        listener
-            .set_nonblocking(true)
-            .expect("nonblocking listener");
-        let addr = listener.local_addr().expect("local addr");
-        // Reads the request line, then answers 500 so the client's parse
-        // fails without needing a quote body. Gives up at the deadline, so
-        // the blocking task never outlives the test.
-        let server = tokio::task::spawn_blocking(move || {
-            let deadline = Instant::now() + DEADLINE;
-            let mut stream = loop {
-                match listener.accept() {
-                    Ok((stream, _)) => break stream,
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        assert!(Instant::now() < deadline, "no request before the deadline");
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(e) => panic!("accept: {e}"),
-                }
-            };
-            stream.set_nonblocking(false).expect("blocking stream");
-            stream
-                .set_read_timeout(Some(DEADLINE))
-                .expect("read timeout");
-            let mut request_line = String::new();
-            BufReader::new(&stream)
-                .read_line(&mut request_line)
-                .expect("read request line");
-            stream
-                .write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
-                .expect("write response");
-            request_line
-        });
-        // The client is `Client::new()`, which honours the proxy environment
-        // variables; the deadline bounds the exchange if one sends the
-        // request elsewhere.
-        let api = Client::new(format!("http://{addr}"));
-        let case = case(HNT_USDC);
-        let exchange = async {
-            let result = SwapApi::quote(&api, &request(&case), Some(EXCLUDED_DEXES)).await;
-            let request_line = server.await.expect("server task");
-            (result, request_line)
-        };
-        let (result, request_line) = match select(Box::pin(exchange), Delay::new(DEADLINE)).await {
-            Either::Left((done, _)) => done,
-            Either::Right(_) => panic!("the exchange did not finish before the deadline"),
-        };
-        assert!(result.is_err(), "the stub answers 500");
-        assert!(
-            request_line.starts_with("GET /swap/quote?")
-                && request_line.contains("&excludeDexes=Kipseli"),
-            "{request_line}"
-        );
-    }
-
-    #[tokio::test]
-    async fn the_client_sends_the_excluded_dexes_in_the_build_request_body() {
+    /// Serves one request on loopback, answers 500 so the client's parse
+    /// fails without needing a response body, and returns the call's result
+    /// with the request line and body the client sent. The client is
+    /// `Client::new()`, which honours the proxy environment variables; the
+    /// deadline bounds the exchange if one sends the request elsewhere, and
+    /// the blocking task gives up at it, so it never outlives the test.
+    async fn exchange_with_stub<T, Fut>(call: impl FnOnce(Client) -> Fut) -> (T, String, Vec<u8>)
+    where
+        Fut: std::future::Future<Output = T>,
+    {
         use futures::future::{select, Either};
         use futures_timer::Delay;
         use std::{
@@ -654,9 +596,6 @@ mod tests {
             .set_nonblocking(true)
             .expect("nonblocking listener");
         let addr = listener.local_addr().expect("local addr");
-        // Reads the request line, headers and body, then answers 500 so the
-        // client's parse fails without needing a transaction body. Gives up
-        // at the deadline, so the blocking task never outlives the test.
         let server = tokio::task::spawn_blocking(move || {
             let deadline = Instant::now() + DEADLINE;
             let stream = loop {
@@ -699,7 +638,35 @@ mod tests {
                 .expect("write response");
             (request_line, body)
         });
-        let api = Client::new(format!("http://{addr}"));
+        let exchange = async move {
+            let result = call(Client::new(format!("http://{addr}"))).await;
+            let (request_line, body) = server.await.expect("server task");
+            (result, request_line, body)
+        };
+        match select(Box::pin(exchange), Delay::new(DEADLINE)).await {
+            Either::Left((done, _)) => done,
+            Either::Right(_) => panic!("the exchange did not finish before the deadline"),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_client_sends_the_excluded_dexes_with_the_quote_request() {
+        let case = case(HNT_USDC);
+        let request = request(&case);
+        let (result, request_line, _) = exchange_with_stub(|api| async move {
+            SwapApi::quote(&api, &request, Some(EXCLUDED_DEXES)).await
+        })
+        .await;
+        assert!(result.is_err(), "the stub answers 500");
+        assert!(
+            request_line.starts_with("GET /swap/quote?")
+                && request_line.contains("&excludeDexes=Kipseli"),
+            "{request_line}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_client_sends_the_excluded_dexes_in_the_build_request_body() {
         let case = case(HNT_USDC);
         let built = SwapInstructionsRequest {
             quote_response: case.quote.clone(),
@@ -708,16 +675,9 @@ mod tests {
             use_shared_accounts: Some(true),
             exclude_dexes: Some(EXCLUDED_DEXES.to_string()),
         };
-        let exchange = async {
-            let result = SwapApi::instructions(&api, &built).await;
-            let sent = server.await.expect("server task");
-            (result, sent)
-        };
-        let (result, (request_line, body)) =
-            match select(Box::pin(exchange), Delay::new(DEADLINE)).await {
-                Either::Left((done, _)) => done,
-                Either::Right(_) => panic!("the exchange did not finish before the deadline"),
-            };
+        let (result, request_line, body) =
+            exchange_with_stub(|api| async move { SwapApi::instructions(&api, &built).await })
+                .await;
         assert!(result.is_err(), "the stub answers 500");
         assert!(
             request_line.starts_with("POST /swap/instructions "),

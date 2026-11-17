@@ -54,6 +54,11 @@ pub const API_URL_ENV: &str = "HELIUM_BLOCKCHAIN_API_URL";
 /// Default interval between batch-status polls.
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_ERROR_BODY_LEN: usize = 300;
+/// The Jupiter `instructionVersion` every swap quote asks for. The swap
+/// checks in [`crate::verify::swap_route`] accept only the `route_v2` and
+/// `shared_accounts_route_v2` instruction forms, which Jupiter builds only
+/// for a V2 quote; without it the builder returns the older forms.
+pub(crate) const SWAP_INSTRUCTION_VERSION: &str = "V2";
 
 /// Errors from the blockchain-api client.
 #[derive(Debug, thiserror::Error)]
@@ -480,7 +485,9 @@ impl Client {
     }
 
     /// `GET /swap/quote` — a Jupiter-backed quote for `amount` of `input_mint`
-    /// into `output_mint`. Pass the result back to [`Self::swap_instructions`].
+    /// into `output_mint`, with `instructionVersion` V2 so the instructions
+    /// built from it are the forms the swap checks accept. Pass the result
+    /// back to [`Self::swap_instructions`].
     pub async fn swap_quote(
         &self,
         input_mint: &Pubkey,
@@ -490,18 +497,14 @@ impl Client {
     ) -> Result<SwapQuote, BlockchainApiError> {
         self.get_query(
             "/swap/quote",
-            &[
-                ("inputMint", input_mint.to_string()),
-                ("outputMint", output_mint.to_string()),
-                ("amount", amount.to_string()),
-                ("slippageBps", slippage_bps.to_string()),
-            ],
+            &swap_quote_query(input_mint, output_mint, amount, slippage_bps),
         )
         .await
     }
 
     /// `POST /swap/instructions` — build the swap transaction for a quote.
-    /// Returns the bare [`TransactionData`] (no fee estimate), like the
+    /// The request asks for shared-accounts routes (see
+    /// [`SwapInstructionsRequest::use_shared_accounts`]). Returns the bare [`TransactionData`] (no fee estimate), like the
     /// data-credit endpoints.
     pub async fn swap_instructions(
         &self,
@@ -563,6 +566,22 @@ impl Client {
     }
 }
 
+/// The query pairs of `GET /swap/quote`.
+fn swap_quote_query(
+    input_mint: &Pubkey,
+    output_mint: &Pubkey,
+    amount: u64,
+    slippage_bps: u16,
+) -> [(&'static str, String); 5] {
+    [
+        ("inputMint", input_mint.to_string()),
+        ("outputMint", output_mint.to_string()),
+        ("amount", amount.to_string()),
+        ("slippageBps", slippage_bps.to_string()),
+        ("instructionVersion", SWAP_INSTRUCTION_VERSION.to_string()),
+    ]
+}
+
 async fn parse<R: DeserializeOwned>(resp: reqwest::Response) -> Result<R, BlockchainApiError> {
     let status = resp.status();
     if status.is_success() {
@@ -578,6 +597,31 @@ async fn parse<R: DeserializeOwned>(resp: reqwest::Response) -> Result<R, Blockc
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn swap_quote_asks_for_instruction_version_v2() {
+        let input = Pubkey::new_unique();
+        let output = Pubkey::new_unique();
+        let query = swap_quote_query(&input, &output, 1_000, 50);
+        let encoded = reqwest::Url::parse_with_params("https://example.com/swap/quote", &query)
+            .expect("build quote url");
+        let pairs: Vec<(String, String)> = encoded
+            .query_pairs()
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect();
+        for (key, value) in [
+            ("inputMint", input.to_string()),
+            ("outputMint", output.to_string()),
+            ("amount", "1000".to_string()),
+            ("slippageBps", "50".to_string()),
+            ("instructionVersion", "V2".to_string()),
+        ] {
+            assert!(
+                pairs.contains(&(key.to_string(), value)),
+                "quote query lacks {key}: {pairs:?}"
+            );
+        }
+    }
 
     #[test]
     fn new_trims_trailing_slash() {

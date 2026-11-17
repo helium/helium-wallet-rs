@@ -34,7 +34,9 @@
 //!    a System transfer or account creation. A route that hands the taker to
 //!    any other program (an AMM's own swap instruction, say) is refused,
 //!    because the taker's signature then extends into code no check here
-//!    reads.
+//!    reads. [`crate::swap::prepare`] asks for shared-accounts routes, whose
+//!    only taker-naming inner instruction is an SPL Token transfer; a route
+//!    through an AMM that takes the taker directly is refused.
 //!
 //! The simulation runs on the caller's own RPC node, not on the service that
 //! built the transaction. The taker signs only after all four pass, so a
@@ -112,7 +114,9 @@ const TOKEN_CLOSE_ACCOUNT: &[u8] = &[9];
 /// System program `Transfer`, the bincode tag before its `u64` lamports.
 const SYSTEM_TRANSFER_TAG: [u8; 4] = [2, 0, 0, 0];
 /// Jupiter aggregator `route_v2` and `shared_accounts_route_v2`, the
-/// exact-in routes built when the quote asks for `instructionVersion` V2.
+/// exact-in routes built when the quote asks for `instructionVersion` V2
+/// (and, for the second, when the instructions request asks for shared
+/// accounts).
 /// The program's published Anchor IDL gives both the arguments
 /// `in_amount: u64`, `quoted_out_amount: u64`, `slippage_bps: u16`,
 /// `platform_fee_bps: u16` and `positive_slippage_bps: u16` at a fixed offset

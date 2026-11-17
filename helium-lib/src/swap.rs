@@ -11,7 +11,7 @@
 use crate::{
     blockchain_api::{
         types::{SwapInstructionsRequest, SwapQuote, TransactionData},
-        BlockchainApiError, Client,
+        BlockchainApiError, Client, SWAP_INSTRUCTION_VERSION,
     },
     client::SolanaRpcClient,
     keypair::Pubkey,
@@ -104,8 +104,8 @@ pub struct SignedSwap {
     pub last_valid_block_height: u64,
 }
 
-/// Quote `request` through `api`, have it build the swap for `taker`, and
-/// return the unsigned transaction only if the quote names exactly the
+/// Quote `request` through `api` as an `instructionVersion` V2 quote, have it
+/// build the swap for `taker` through shared accounts, and return the unsigned transaction only if the quote names exactly the
 /// request and its transaction does nothing beyond swapping `request.amount`
 /// into at least `request.min_output` for that wallet (see
 /// [`crate::verify::swap_route`]). The simulation that check relies on runs
@@ -168,6 +168,7 @@ pub(crate) async fn prepare_with<A: SwapApi, S: SwapChain>(
             quote_response: quote.clone(),
             user_public_key: taker.to_string(),
             destination_token_account: None,
+            use_shared_accounts: true,
         })
         .await
         .map_err(SwapRouteError::api)?;
@@ -206,7 +207,10 @@ fn request_v2_route(quote: &mut SwapQuote) {
     let Value::Object(fields) = &mut quote.extra else {
         return;
     };
-    fields.insert("instructionVersion".to_string(), "V2".into());
+    fields.insert(
+        "instructionVersion".to_string(),
+        SWAP_INSTRUCTION_VERSION.into(),
+    );
     let Some(Value::Array(steps)) = fields.get_mut("routePlan") else {
         return;
     };
@@ -345,6 +349,7 @@ mod tests {
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].user_public_key, case.request.taker.to_string());
         assert_eq!(built[0].quote_response.extra["instructionVersion"], "V2");
+        assert!(built[0].use_shared_accounts);
         // The terms the checks read are sent as they were checked.
         assert_eq!(built[0].quote_response.in_amount, case.quote.in_amount);
         assert_eq!(

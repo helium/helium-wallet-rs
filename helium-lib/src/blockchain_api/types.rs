@@ -499,6 +499,10 @@ pub struct SwapInstructionsRequest {
     pub user_public_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination_token_account: Option<String>,
+    /// Build the route through Jupiter's shared token accounts, so the only
+    /// inner instruction naming the taker is an SPL Token transfer. The swap
+    /// checks accept no other route shape, so every swap sets it.
+    pub use_shared_accounts: bool,
 }
 
 /// `POST /tokens/burn` — burn SPL tokens from the wallet's account.
@@ -941,6 +945,29 @@ mod tests {
         assert_eq!(v["dcAmount"], "100");
         assert!(v.get("hntAmount").is_none());
         assert!(v.get("recipient").is_none());
+    }
+
+    #[test]
+    fn swap_instructions_request_asks_for_shared_accounts() {
+        let quote: SwapQuote = serde_json::from_value(serde_json::json!({
+            "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
+            "inAmount": "100000000",
+            "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "outAmount": "450000",
+            "otherAmountThreshold": "445500",
+            "swapMode": "ExactIn",
+            "slippageBps": 100,
+            "priceImpactPct": "0.01"
+        }))
+        .expect("deserialize swap quote");
+        let req = SwapInstructionsRequest {
+            quote_response: quote,
+            user_public_key: "wallet".to_string(),
+            destination_token_account: None,
+            use_shared_accounts: true,
+        };
+        let json = serde_json::to_string(&req).expect("serialize request");
+        assert!(json.contains("\"useSharedAccounts\":true"), "{json}");
     }
 
     #[test]

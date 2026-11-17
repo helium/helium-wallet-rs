@@ -499,9 +499,10 @@ pub struct SwapInstructionsRequest {
     pub user_public_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination_token_account: Option<String>,
-    /// Build the route through Jupiter's shared token accounts, so the only
-    /// inner instruction naming the taker is an SPL Token transfer. The swap
-    /// checks accept no other route shape, so every swap sets it.
+    /// Build the route through Jupiter's shared program accounts, so the
+    /// taker appears only in SPL Token transfers. Without it Jupiter builds
+    /// some single-hop routes as non-shared `route_v2`, whose AMM receives the
+    /// taker and which `check_inner_instructions` refuses.
     pub use_shared_accounts: bool,
 }
 

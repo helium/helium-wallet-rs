@@ -11,7 +11,7 @@
 use crate::{
     blockchain_api::{
         types::{SwapInstructionsRequest, SwapQuote, TransactionData},
-        BlockchainApiError, Client, SWAP_INSTRUCTION_VERSION,
+        BlockchainApiError, Client,
     },
     client::SolanaRpcClient,
     keypair::Pubkey,
@@ -104,13 +104,13 @@ pub struct SignedSwap {
     pub last_valid_block_height: u64,
 }
 
-/// Quote `request` through `api` as an `instructionVersion` V2 quote, have it
-/// build the swap for `taker` through shared accounts, and return the unsigned transaction only if the quote names exactly the
-/// request and its transaction does nothing beyond swapping `request.amount`
-/// into at least `request.min_output` for that wallet (see
-/// [`crate::verify::swap_route`]). The simulation that check relies on runs
-/// on `client`'s RPC node. Nothing is signed; [`PreparedSwap::sign`] does
-/// that.
+/// Quote `request` through `api`, have it build the swap for `taker` through
+/// Jupiter's shared accounts, and return the unsigned transaction only if the
+/// quote names exactly the request and its transaction does nothing beyond
+/// swapping `request.amount` into at least `request.min_output` for that
+/// wallet (see [`crate::verify::swap_route`]). The simulation that check
+/// relies on runs on `client`'s RPC node. Nothing is signed;
+/// [`PreparedSwap::sign`] does that.
 ///
 /// A request with a zero amount or minimum output, or the same mint on both
 /// sides, is refused before any request is made.
@@ -207,10 +207,7 @@ fn request_v2_route(quote: &mut SwapQuote) {
     let Value::Object(fields) = &mut quote.extra else {
         return;
     };
-    fields.insert(
-        "instructionVersion".to_string(),
-        SWAP_INSTRUCTION_VERSION.into(),
-    );
+    fields.insert("instructionVersion".to_string(), "V2".into());
     let Some(Value::Array(steps)) = fields.get_mut("routePlan") else {
         return;
     };

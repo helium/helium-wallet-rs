@@ -225,7 +225,7 @@ helium-wallet swap mobile hnt 1000 --min-output 0.2 --slippage-bps 200 --commit
 | `input_token` | Source token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `output_token` | Destination token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `amount` | Human-readable amount (e.g. `1.5` for 1.5 HNT) |
-| `--min-output` | Required. Least output to accept, in the output token. The swap is refused unless the quote and the transaction guarantee at least this much |
+| `--min-output` | Required. Least output to accept, in the output token. The swap is refused unless the quote's minimum and the simulated output reach at least this much |
 | `--slippage-bps` | Slippage tolerance in basis points. Default: 100 (1%) |
 
 Output includes `in_amount`, `out_amount`, `price_impact_pct`, and the

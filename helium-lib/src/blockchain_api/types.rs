@@ -504,10 +504,8 @@ pub struct SwapInstructionsRequest {
     /// `None` leaves the choice to Jupiter, and `Some(false)` asks for a
     /// non-shared `route_v2`, whose AMMs receive the taker. Jupiter builds
     /// single-hop routes as non-shared `route_v2` whatever this asks. The
-    /// swap checks accept either form: the AMMs on the route are trusted,
-    /// and the token and System instructions run with the taker's signature
-    /// and the simulated effects are checked (see
-    /// [`crate::verify::swap_route`]).
+    /// swap checks accept either form: they judge the simulated outcome, not
+    /// the route's shape (see [`crate::verify::swap_route`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_shared_accounts: Option<bool>,
     /// The comma-separated Jupiter DEX labels the builder leaves out of the

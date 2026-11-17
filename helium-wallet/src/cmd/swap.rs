@@ -17,8 +17,8 @@ pub struct Cmd {
     /// Amount to swap (human-readable, e.g. 1.5 for 1.5 HNT)
     amount: f64,
     /// Least output to accept (human-readable, in the output token). The
-    /// swap is refused unless the quote and the transaction guarantee at
-    /// least this much.
+    /// swap is refused unless the quote's minimum and the simulated output
+    /// reach at least this much.
     #[arg(long)]
     min_output: f64,
     /// Slippage tolerance in basis points (100 = 1%)

@@ -225,7 +225,7 @@ helium-wallet swap mobile hnt 1000 --min-output 0.2 --slippage-bps 200 --commit
 | `input_token` | Source token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `output_token` | Destination token: `hnt`, `mobile`, `iot`, `usdc`, `sol` |
 | `amount` | Human-readable amount (e.g. `1.5` for 1.5 HNT) |
-| `--min-output` | Required. Least output to accept, in the output token. The swap is refused unless the quote and the transaction guarantee at least this much |
+| `--min-output` | Required. Least output to accept, in the output token. The swap is refused unless the quote's minimum, the simulated output and the route's own minimum reach at least this much; for a top-level Jupiter v2 route (shared-accounts or not) the landed swap is held to the route's own minimum, which the checks require to be at least this much; other route forms, and Jupiter reached through another program, are not read |
 | `--slippage-bps` | Slippage tolerance in basis points. Default: 100 (1%) |
 
 Output includes `in_amount`, `out_amount`, `price_impact_pct`, and the

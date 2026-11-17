@@ -1,57 +1,78 @@
-//! Checks that a swap quote and the transaction built for it do nothing
-//! beyond the swap the caller asked for, before the taker signs it.
+//! Checks that a swap quote and the transaction built for it have the
+//! outcome the caller asked for, before the taker signs it.
 //! [`crate::swap::prepare`] is the entry point that runs them, and
 //! [`crate::swap::PreparedSwap::sign`] signs what they passed.
 //!
-//! [`check_signer`] refuses a transaction unless the taker is its fee payer
-//! and only signer, so a transaction the taker signs can spend anything the
-//! taker holds. Four checks then decide whether it may:
+//! The checks guard against a builder that is buggy or misconfigured, not a
+//! hostile one. They judge one simulation of the transaction, so a program
+//! that behaves differently when the transaction lands (one upgraded after
+//! the simulation, or one that branches on the slot or on an account's
+//! contents) is not caught: the taker's signature goes to every program the
+//! transaction invokes directly, and whatever such a program does in the
+//! landed transaction is not checked.
 //!
-//! 1. [`check_quote`]: the quote names the requested mints, amount,
+//! The checks judge what the simulated transaction does to the taker, not
+//! how the route is built: any program, instruction form or call depth the
+//! builder chooses passes when the simulated outcome is the requested swap.
+//! They are:
+//!
+//! 1. [`check_signer`]: the taker is the transaction's fee payer and only
+//!    signer.
+//! 2. [`check_quote`]: the quote names the requested mints, amount,
 //!    slippage and an exact-in swap, quotes a non-zero output, and its
 //!    minimum output is at least the caller's `min_output` and no lower than
 //!    the slippage allows on the quote.
-//! 2. [`check_instructions`]: every top-level instruction is one of the
-//!    forms a Jupiter aggregator route emits (compute budget within caps,
-//!    the taker's own associated token accounts, wrapping and unwrapping the
-//!    taker's SOL, and exactly one Jupiter aggregator exact-in route, whose
-//!    own arguments must spend `amount`, enforce at least the caller's
-//!    `min_output` on chain after the route's platform fee, deliver to the
-//!    taker's output account, take a bounded platform fee and no positive
-//!    slippage).
-//! 3. [`check_effects`]: a simulation of the unsigned transaction shows the
+//! 3. [`fee_bound`]: the transaction sets exactly one compute unit limit,
+//!    and the compute unit price is at most [`MAX_COMPUTE_UNIT_PRICE`],
+//!    which bounds the SOL the transaction's fee can take. Precompile
+//!    signatures are not counted; the runtime charges for them, so a
+//!    transaction carrying one can spend more than the bound and be
+//!    refused, never accepted past it.
+//! 4. [`check_route_minimum`]: a top-level Jupiter `route_v2` or
+//!    `shared_accounts_route_v2` instruction carries a minimum output, its
+//!    quote less its slippage and platform fee, of at least the caller's
+//!    `min_output`. This is what binds the landed swap, since the program
+//!    enforces the route's own minimum, which the builder sets. Every other
+//!    instruction form, and Jupiter reached through another program, is not
+//!    read.
+//! 5. [`check_effects`]: a simulation of the unsigned transaction shows the
 //!    taker spending exactly `amount` of the input mint, receiving at least
-//!    the quote's minimum output, losing no other token, paying no more SOL
-//!    than the transaction's own fee, and every taker token account keeping
-//!    its owner, delegate and close authority. A transaction can only modify
-//!    accounts it lists as writable, so comparing every writable account
-//!    before and after covers what the Jupiter program does through
-//!    cross-program invocations, which no static check can see.
-//! 4. [`check_inner_instructions`]: every instruction the simulation ran
-//!    beneath the top level that names the taker is a plain SPL Token
-//!    transfer of a taker token account by the taker, a close of one that
-//!    pays the taker, a `SyncNative`, an Associated Token Account create, or
-//!    a System transfer or account creation. A route that hands the taker to
-//!    any other program (an AMM's own swap instruction, say) is refused,
-//!    because the taker's signature then extends into code no check here
-//!    reads. [`crate::swap::prepare`] asks for shared-accounts routes, which
-//!    give the AMMs Jupiter's accounts instead of the taker; a non-shared
-//!    route whose AMMs receive the taker is refused here, as is an AMM that
-//!    lists the taker itself, which [`crate::swap::prepare`] asks the quote
-//!    and the build to leave out ([`crate::swap::EXCLUDED_DEXES`]).
+//!    the quote's minimum output into its own token accounts, losing no
+//!    other token, and losing no more SOL (its own lamports plus those of its
+//!    token accounts) than the fee bound, plus `amount` when the input is
+//!    SOL. The taker's own account keeps its owner and data, every taker
+//!    token account keeps its owner, delegate, delegated amount, close
+//!    authority and state, and a token account the taker gains has neither
+//!    a delegate nor a close authority.
+//! 6. [`check_hotspot_programs`]: no instruction of the Bubblegum or
+//!    lazy distributor program, at the top level or beneath it at any
+//!    depth, names the taker among its accounts. Bubblegum holds the
+//!    wallet's compressed NFTs, which hold its hotspots, and the lazy
+//!    distributor sets where their rewards go; a swap has no reason to call
+//!    either.
+//!
+//! Not checked: which programs the transaction invokes, the forms of their
+//! instructions, route arguments other than the minimum above, and state
+//! that programs other than Bubblegum and the lazy distributor keep for the
+//! taker (stake and vote authorities, nonce account authorities, program
+//! upgrade authorities, Token Metadata and MPL Core asset authorities,
+//! other rewards recipients, staked positions, multisig membership). A
+//! program the transaction hands the taker's signature can change that state
+//! without any effect the checks compare.
 //!
 //! The simulation runs on the caller's own RPC node, not on the service that
-//! built the transaction. The taker signs only after all four pass, so a
-//! refused transaction is never signed and the RPC node that simulates it
+//! built the transaction. The taker signs only after every check passes, so
+//! a refused transaction is never signed and the RPC node that simulates it
 //! never holds a signed copy.
 
-use super::{JUPITER_AGGREGATOR_V6, MAX_COMPUTE_UNIT_LIMIT};
+use super::{compute_budget_settings, JUPITER_AGGREGATOR_V6, MAX_COMPUTE_UNIT_LIMIT};
 use crate::{
     blockchain_api::{bounded_text, types::SwapQuote, BlockchainApiError},
     client::SolanaRpcClient,
     error::DecodeError,
     keypair::Pubkey,
     priority_fee::MAX_PRIORITY_FEE,
+    programs,
     solana_client::{
         client_error::{ClientError, ClientErrorKind},
         rpc_config::{
@@ -80,20 +101,12 @@ use serde_json::Value;
 use solana_address_lookup_table_interface::{
     program as address_lookup_table, state::AddressLookupTable,
 };
-use solana_compute_budget_interface as compute_budget;
-use solana_system_interface::program as system_program;
 use solana_transaction_status::{
     UiInnerInstructions, UiInstruction, UiParsedInstruction, UiTransactionEncoding,
 };
-use spl_associated_token_account::{
-    get_associated_token_address, get_associated_token_address_with_program_id,
-};
-use std::{
-    collections::{BTreeSet, HashMap, HashSet},
-    str::FromStr,
-};
+use std::collections::{BTreeSet, HashMap};
 
-/// The Token-2022 program, which associated token accounts may belong to.
+/// The Token-2022 program, which the taker's token accounts may belong to.
 const TOKEN_2022: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 /// The highest compute unit price a swap transaction may set, in
 /// micro-lamports: the crate's priority fee ceiling,
@@ -107,44 +120,14 @@ const MICRO_LAMPORTS_PER_LAMPORT: u128 = 1_000_000;
 /// `AccountType::Account`, the byte Token-2022 writes after the base layout
 /// of a token account that carries extensions.
 const TOKEN_2022_ACCOUNT_TYPE: u8 = 2;
-/// Associated Token Account program `CreateIdempotent`.
-const ATA_CREATE_IDEMPOTENT: &[u8] = &[1];
-/// SPL Token `SyncNative`.
-const TOKEN_SYNC_NATIVE: &[u8] = &[17];
-/// SPL Token `CloseAccount`.
-const TOKEN_CLOSE_ACCOUNT: &[u8] = &[9];
-/// System program `Transfer`, the bincode tag before its `u64` lamports.
-const SYSTEM_TRANSFER_TAG: [u8; 4] = [2, 0, 0, 0];
 /// Jupiter aggregator `route_v2` and `shared_accounts_route_v2`, the
 /// exact-in routes built when the quote asks for `instructionVersion` V2.
-/// The program's published Anchor IDL gives both the arguments
-/// `in_amount: u64`, `quoted_out_amount: u64`, `slippage_bps: u16`,
-/// `platform_fee_bps: u16` and `positive_slippage_bps: u16` at a fixed offset
-/// after the discriminator (`shared_accounts_route_v2` first has an
-/// `id: u8`), then the route plan. The older forms put those arguments after
-/// a variable-length route plan, so they cannot be read without decoding
-/// every step, and are refused.
+/// The program's published Anchor IDL gives both the arguments `in_amount:
+/// u64`, `quoted_out_amount: u64`, `slippage_bps: u16` and `platform_fee_bps:
+/// u16` at a fixed offset after the discriminator (`shared_accounts_route_v2`
+/// first has an `id: u8`).
 const ROUTE_V2: [u8; 8] = [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14];
 const SHARED_ACCOUNTS_ROUTE_V2: [u8; 8] = [0xd1, 0x98, 0x53, 0x93, 0x7c, 0xfe, 0xd8, 0xe9];
-/// The highest platform fee a route may take, in basis points. The recorded
-/// routes carry 10 and 2; the cap leaves five times the higher of them as
-/// headroom and stops a route from taking a large share of the output. The
-/// simulation's output floor still applies to whatever a route delivers.
-pub(crate) const MAX_PLATFORM_FEE_BPS: u16 = 50;
-/// `route_v2`'s `user_destination_token_account`, which receives the output.
-const ROUTE_V2_USER_DESTINATION: usize = 2;
-/// `route_v2`'s optional `destination_token_account`, which would receive
-/// the output in place of the user's account. Absent, Anchor fills the slot
-/// with the program id.
-const ROUTE_V2_DESTINATION: usize = 7;
-/// `shared_accounts_route_v2`'s `destination_token_account`, which receives
-/// the output.
-const SHARED_ACCOUNTS_ROUTE_V2_DESTINATION: usize = 5;
-/// Compute Budget `SetComputeUnitLimit`, `SetComputeUnitPrice` and
-/// `SetLoadedAccountsDataSizeLimit` tags.
-const COMPUTE_UNIT_LIMIT_TAG: u8 = 2;
-const COMPUTE_UNIT_PRICE_TAG: u8 = 3;
-const LOADED_ACCOUNTS_DATA_SIZE_TAG: u8 = 4;
 /// `getMultipleAccounts` answers at most this many keys per call.
 const MAX_ACCOUNTS_PER_REQUEST: usize = 100;
 /// The most characters of quote text a refusal carries.
@@ -281,16 +264,10 @@ pub enum SwapRefusal {
         "swap refused: instruction {index} references an account the transaction does not hold"
     )]
     AccountIndexOutOfRange { index: usize },
-    #[error("swap refused: instruction {index} invokes {program}, which a swap does not need")]
-    ProgramNotAllowed { index: usize, program: Pubkey },
-    #[error("swap refused: instruction {index} to {program} is not a form a swap uses")]
-    InstructionNotAllowed { index: usize, program: Pubkey },
-    #[error("swap refused: route instruction {index} spends {in_amount}, requested {expected}")]
-    RouteInAmount {
-        index: usize,
-        in_amount: u64,
-        expected: u64,
-    },
+    #[error("swap refused: the transaction sets the compute unit limit {count} times, not once")]
+    ComputeUnitLimitCount { count: usize },
+    #[error("swap refused: compute unit price {price} exceeds {cap} micro-lamports")]
+    ComputeUnitPriceAboveCap { price: u64, cap: u64 },
     /// `route_minimum` is the least the route guarantees the taker, after
     /// its platform fee.
     #[error("swap refused: route instruction {index} guarantees {route_minimum} after its platform fee, below the requested minimum {min_output}")]
@@ -299,29 +276,6 @@ pub enum SwapRefusal {
         route_minimum: u64,
         min_output: u64,
     },
-    #[error("swap refused: route instruction {index} takes {positive_slippage_bps} bps of positive slippage")]
-    RoutePositiveSlippage {
-        index: usize,
-        positive_slippage_bps: u16,
-    },
-    #[error("swap refused: the transaction holds {count} route instructions, not one")]
-    RouteCount { count: usize },
-    #[error("swap refused: route instruction {index} delivers to {account}, not the taker's output account")]
-    RouteDestination { index: usize, account: Pubkey },
-    #[error(
-        "swap refused: route instruction {index} takes a {fee_bps} bps platform fee, above {cap}"
-    )]
-    PlatformFeeAboveCap {
-        index: usize,
-        fee_bps: u16,
-        cap: u16,
-    },
-    #[error("swap refused: transaction sets the compute unit limit {count} times, not once")]
-    ComputeUnitLimitCount { count: usize },
-    #[error("swap refused: compute unit limit {limit} exceeds {cap}")]
-    ComputeUnitLimitAboveCap { limit: u32, cap: u32 },
-    #[error("swap refused: compute unit price {price} exceeds {cap} micro-lamports")]
-    ComputeUnitPriceAboveCap { price: u64, cap: u64 },
     #[error("swap refused: simulation failed: {0}")]
     SimulationFailed(TransactionError),
     #[error("swap refused: simulation did not return every writable account")]
@@ -340,11 +294,14 @@ pub enum SwapRefusal {
     TokenOwnerChanged { account: Pubkey },
     #[error("swap refused: taker token account {account} gained or changed a delegate or close authority")]
     TokenAuthorityChanged { account: Pubkey },
-    #[error("swap refused: route passes the wallet to {program}, a program outside the allowlist")]
-    InnerProgramNotAllowed { program: Pubkey },
-    #[error("swap refused: route passes the wallet to {program} in a form a swap does not use")]
-    InnerInstructionNotAllowed { program: Pubkey },
-    #[error("swap refused: simulation returned an inner instruction that cannot be classified")]
+    #[error("swap refused: taker token account {account} changed its delegated amount or state")]
+    TokenDelegationChanged { account: Pubkey },
+    /// An instruction of Bubblegum, which can move the taker's compressed
+    /// NFTs, or of the lazy distributor, which can redirect their rewards,
+    /// names the taker.
+    #[error("swap refused: the transaction passes the wallet to {program}, which holds its hotspots or their rewards")]
+    HotspotProgramInstruction { program: Pubkey },
+    #[error("swap refused: simulation returned an inner instruction that cannot be read")]
     InnerInstructionUnreadable,
 }
 
@@ -536,8 +493,8 @@ pub(crate) async fn verify_unsigned<S: SwapChain>(
         chain.accounts(&table_keys, 0).await?
     };
     let resolved = resolve_accounts(&txn.message, &tables.accounts)?;
-    let budget = check_instructions(&txn.message, &resolved.keys, request)?;
-    let fee_bound = budget.fee_bound(txn.message.header().num_required_signatures);
+    let fee_bound = fee_bound(&txn.message, &resolved.keys)?;
+    check_route_minimum(&txn.message, &resolved.keys, request.min_output)?;
 
     let (blockhash, last_valid_block_height) = chain.latest_blockhash().await?;
     let mut message = txn.message;
@@ -567,21 +524,14 @@ pub(crate) async fn verify_unsigned<S: SwapChain>(
     let inner = simulation
         .inner_instructions
         .ok_or(SwapRefusal::SimulationIncomplete)?;
-    check_inner_instructions(
-        &unsigned.message,
-        &resolved,
-        &pre,
-        &simulation.accounts,
-        &inner,
-        &request.taker,
-    )?;
+    check_hotspot_programs(&unsigned.message, &resolved.keys, &inner, &request.taker)?;
 
     Ok((unsigned, last_valid_block_height))
 }
 
 /// Check the quote's terms against the request. Returns the quote's minimum
-/// output (`otherAmountThreshold`), which the route and the simulation must
-/// meet; it is at least `request.min_output`, so they meet that too.
+/// output (`otherAmountThreshold`), which the simulation must meet; it is at
+/// least `request.min_output`, so the simulation meets that too.
 pub(crate) fn check_quote(quote: &SwapQuote, request: &SwapTerms) -> Result<u64, SwapRefusal> {
     fn same(field: &'static str, expected: String, actual: &str) -> Result<(), SwapRefusal> {
         if actual == expected {
@@ -641,9 +591,8 @@ pub(crate) fn check_quote(quote: &SwapQuote, request: &SwapTerms) -> Result<u64,
     Ok(threshold)
 }
 
-/// What is left of `amount` once `bps` basis points are taken off it,
-/// rounded down, which is the lower of the two roundings: the least output a
-/// slippage allows on a quote, or what a fee leaves of an output.
+/// What is left of `amount` once `bps` basis points of slippage are taken
+/// off it, rounded down: the least output a slippage allows on a quote.
 fn min_out(amount: u64, bps: u16) -> u64 {
     let kept = 10_000u128.saturating_sub(u128::from(bps));
     (u128::from(amount) * kept / 10_000) as u64
@@ -738,223 +687,124 @@ impl ComputeBudget {
     }
 }
 
-/// Refuse any top-level instruction that is not one of the forms a Jupiter
-/// aggregator route emits. Returns the compute budget the message requests.
+/// The most SOL the transaction's fee can take from the taker, which pays
+/// it as the only signer: the base fee for each signature plus the priority
+/// fee at the message's compute unit price and limit. A message that does not
+/// set exactly one limit is refused, so the bound is what the runtime charges
+/// for that limit; the limit is clamped to [`MAX_COMPUTE_UNIT_LIMIT`], as the
+/// runtime clamps it. A price above [`MAX_COMPUTE_UNIT_PRICE`] is refused,
+/// since the bound is SOL the transaction may take. Signatures of
+/// precompile programs (Ed25519, Secp256k1) are not counted: the runtime
+/// charges for them, so a transaction carrying one can spend more than the
+/// bound and be refused by [`check_effects`], never accepted past it.
 ///
-/// Allowed:
-/// - Compute Budget: exactly one `SetComputeUnitLimit`, up to
-///   [`MAX_COMPUTE_UNIT_LIMIT`], so the fee bound is the fee charged;
-///   `SetComputeUnitPrice` up to [`MAX_COMPUTE_UNIT_PRICE`]; and
-///   `SetLoadedAccountsDataSizeLimit`, which only restricts the transaction.
-/// - Associated Token Account: `CreateIdempotent`, paid for by the taker,
-///   for an account the taker owns, under SPL Token or Token-2022.
-/// - System: `Transfer`s of exactly `amount` lamports each, from the taker
-///   to the taker's wrapped-SOL account, and only when the input is SOL.
-/// - SPL Token: `SyncNative` of the taker's wrapped-SOL account, and
-///   `CloseAccount` of it back to the taker, by the taker.
-/// - Exactly one Jupiter aggregator `route_v2` or `shared_accounts_route_v2`,
-///   spending exactly `amount`, whose own minimum output less its platform
-///   fee is at least `request.min_output`, whose platform fee is at most
-///   [`MAX_PLATFORM_FEE_BPS`], that takes no positive slippage, and that
-///   delivers to the taker's associated token account of the output mint
-///   (`route_v2`'s optional destination left empty). What the route does
-///   through other programs is checked by simulation.
-///
-/// The taker is the fee payer by [`check_signer`], which runs first.
-pub(crate) fn check_instructions(
-    message: &VersionedMessage,
-    keys: &[Pubkey],
-    request: &SwapTerms,
-) -> Result<ComputeBudget, SwapRefusal> {
-    let taker = request.taker;
-    let wrapped_sol = get_associated_token_address(&taker, &native_mint::ID);
-    let output_accounts = [
-        get_associated_token_address(&taker, &request.output_mint),
-        get_associated_token_address_with_program_id(&taker, &request.output_mint, &TOKEN_2022),
-    ];
-    let mut limits = Vec::new();
-    let mut price = 0;
-    let mut routes = 0;
-
-    for (index, ix) in message.instructions().iter().enumerate() {
-        let key = |position: u8| {
-            keys.get(usize::from(position))
-                .copied()
-                .ok_or(SwapRefusal::AccountIndexOutOfRange { index })
-        };
-        let account = |n: usize| -> Result<Pubkey, SwapRefusal> {
-            key(*ix
-                .accounts
-                .get(n)
-                .ok_or(SwapRefusal::AccountIndexOutOfRange { index })?)
-        };
-        let program = key(ix.program_id_index)?;
-        let not_allowed = SwapRefusal::InstructionNotAllowed { index, program };
-        let data = ix.data.as_slice();
-
-        if program == compute_budget::ID {
-            match data.split_first() {
-                Some((&COMPUTE_UNIT_LIMIT_TAG, value)) => {
-                    let limit = u32::from_le_bytes(value.try_into().map_err(|_| not_allowed)?);
-                    if limit > MAX_COMPUTE_UNIT_LIMIT {
-                        return Err(SwapRefusal::ComputeUnitLimitAboveCap {
-                            limit,
-                            cap: MAX_COMPUTE_UNIT_LIMIT,
-                        });
-                    }
-                    limits.push(limit);
-                }
-                Some((&COMPUTE_UNIT_PRICE_TAG, value)) => {
-                    let value_price =
-                        u64::from_le_bytes(value.try_into().map_err(|_| not_allowed)?);
-                    if value_price > MAX_COMPUTE_UNIT_PRICE {
-                        return Err(SwapRefusal::ComputeUnitPriceAboveCap {
-                            price: value_price,
-                            cap: MAX_COMPUTE_UNIT_PRICE,
-                        });
-                    }
-                    price = value_price;
-                }
-                Some((&LOADED_ACCOUNTS_DATA_SIZE_TAG, value)) if value.len() == 4 => {}
-                _ => return Err(not_allowed),
-            }
-        } else if program == spl_associated_token_account::ID {
-            // Accounts: payer, associated account, wallet, mint, system
-            // program, token program. The program itself derives the
-            // associated account from the rest.
-            let token_program = account(5)?;
-            let allowed = data == ATA_CREATE_IDEMPOTENT
-                && account(0)? == taker
-                && account(2)? == taker
-                && (token_program == spl_token::ID || token_program == TOKEN_2022);
-            if !allowed {
-                return Err(not_allowed);
-            }
-        } else if program == system_program::ID {
-            let mut transfer = SYSTEM_TRANSFER_TAG.to_vec();
-            transfer.extend_from_slice(&request.amount.to_le_bytes());
-            let allowed = request.input_mint == native_mint::ID
-                && data == transfer.as_slice()
-                && account(0)? == taker
-                && account(1)? == wrapped_sol;
-            if !allowed {
-                return Err(not_allowed);
-            }
-        } else if program == spl_token::ID {
-            let allowed = if data == TOKEN_SYNC_NATIVE {
-                account(0)? == wrapped_sol
-            } else if data == TOKEN_CLOSE_ACCOUNT {
-                account(0)? == wrapped_sol && account(1)? == taker && account(2)? == taker
-            } else {
-                false
-            };
-            if !allowed {
-                return Err(not_allowed);
-            }
-        } else if program == JUPITER_AGGREGATOR_V6 {
-            let (terms, destination) = match data.split_at_checked(ROUTE_V2.len()) {
-                Some((discriminator, args)) if discriminator == ROUTE_V2 => {
-                    let placeholder = account(ROUTE_V2_DESTINATION)?;
-                    if placeholder != JUPITER_AGGREGATOR_V6 {
-                        return Err(SwapRefusal::RouteDestination {
-                            index,
-                            account: placeholder,
-                        });
-                    }
-                    (Some(args), account(ROUTE_V2_USER_DESTINATION)?)
-                }
-                Some((discriminator, args)) if discriminator == SHARED_ACCOUNTS_ROUTE_V2 => (
-                    args.get(1..),
-                    account(SHARED_ACCOUNTS_ROUTE_V2_DESTINATION)?,
-                ),
-                _ => return Err(not_allowed),
-            };
-            let terms = terms.and_then(RouteTerms::read).ok_or(not_allowed)?;
-            routes += 1;
-            if !output_accounts.contains(&destination) {
-                return Err(SwapRefusal::RouteDestination {
-                    index,
-                    account: destination,
-                });
-            }
-            if terms.platform_fee_bps > MAX_PLATFORM_FEE_BPS {
-                return Err(SwapRefusal::PlatformFeeAboveCap {
-                    index,
-                    fee_bps: terms.platform_fee_bps,
-                    cap: MAX_PLATFORM_FEE_BPS,
-                });
-            }
-            if terms.positive_slippage_bps != 0 {
-                return Err(SwapRefusal::RoutePositiveSlippage {
-                    index,
-                    positive_slippage_bps: terms.positive_slippage_bps,
-                });
-            }
-            if terms.in_amount != request.amount {
-                return Err(SwapRefusal::RouteInAmount {
-                    index,
-                    in_amount: terms.in_amount,
-                    expected: request.amount,
-                });
-            }
-            // The route's quoted output less its slippage, rounded down: the
-            // least the program can enforce from these terms whichever way it
-            // rounds. The quote's own threshold can sit one unit above it, as
-            // the quote rounds up, so the route is held to the caller's
-            // minimum and the simulation to the quote's.
-            //
-            // The IDL does not say whether the program compares that minimum
-            // with the output before or after the platform fee is taken from
-            // it, so the minimum is assumed to bind the output before the
-            // fee, and the fee is taken off it too, rounded down. A route
-            // whose minimum meets the caller's only before the fee is
-            // refused.
-            let route_minimum = min_out(
-                min_out(terms.quoted_out_amount, terms.slippage_bps),
-                terms.platform_fee_bps,
-            );
-            if route_minimum < request.min_output {
-                return Err(SwapRefusal::RouteMinimumBelowRequest {
-                    index,
-                    route_minimum,
-                    min_output: request.min_output,
-                });
-            }
-        } else {
-            return Err(SwapRefusal::ProgramNotAllowed { index, program });
+/// The limit and price are read by [`compute_budget_settings`], which also
+/// serves [`crate::verify::assert_priority_fee_within`].
+pub(crate) fn fee_bound(message: &VersionedMessage, keys: &[Pubkey]) -> Result<u64, SwapRefusal> {
+    if let Some(index) = message
+        .instructions()
+        .iter()
+        .position(|ix| keys.get(usize::from(ix.program_id_index)).is_none())
+    {
+        return Err(SwapRefusal::AccountIndexOutOfRange { index });
+    }
+    let settings = compute_budget_settings(keys, message.instructions());
+    let limit = match settings.limit {
+        Some(limit) if settings.limit_count == 1 => limit,
+        _ => {
+            return Err(SwapRefusal::ComputeUnitLimitCount {
+                count: settings.limit_count,
+            })
         }
+    };
+    if settings.price > MAX_COMPUTE_UNIT_PRICE {
+        return Err(SwapRefusal::ComputeUnitPriceAboveCap {
+            price: settings.price,
+            cap: MAX_COMPUTE_UNIT_PRICE,
+        });
     }
-    if routes != 1 {
-        return Err(SwapRefusal::RouteCount { count: routes });
-    }
-    match limits.as_slice() {
-        [limit] => Ok(ComputeBudget {
-            limit: *limit,
-            price,
-        }),
-        _ => Err(SwapRefusal::ComputeUnitLimitCount {
-            count: limits.len(),
-        }),
-    }
+    let budget = ComputeBudget {
+        limit: limit.min(MAX_COMPUTE_UNIT_LIMIT),
+        price: settings.price,
+    };
+    Ok(budget.fee_bound(message.header().num_required_signatures))
 }
 
-/// The leading arguments of a Jupiter v2 route, in the IDL's order.
+/// Refuse a transaction with a top-level Jupiter route whose own minimum
+/// output is below `min_output`, the caller's floor. A route's minimum is the
+/// quote it carries less its slippage, so a builder that quotes the caller
+/// honestly but sets the route's slippage wide would let the landed swap
+/// deliver less than the caller asked for, which the simulation cannot show.
+///
+/// Only a top-level instruction of the Jupiter aggregator whose data starts
+/// with the `route_v2` or `shared_accounts_route_v2` discriminator and holds
+/// the arguments that decide the minimum is read. Every other instruction,
+/// other data, a recognised discriminator with too few bytes, and Jupiter
+/// reached by a call from another program, pass.
+pub(crate) fn check_route_minimum(
+    message: &VersionedMessage,
+    keys: &[Pubkey],
+    min_output: u64,
+) -> Result<(), SwapRefusal> {
+    for (index, ix) in message.instructions().iter().enumerate() {
+        if keys.get(usize::from(ix.program_id_index)) != Some(&JUPITER_AGGREGATOR_V6) {
+            continue;
+        }
+        let Some((discriminator, rest)) = ix.data.split_at_checked(ROUTE_V2.len()) else {
+            continue;
+        };
+        let args = if discriminator == ROUTE_V2 {
+            rest
+        } else if discriminator == SHARED_ACCOUNTS_ROUTE_V2 {
+            // The route's `id: u8` comes first.
+            rest.get(1..).unwrap_or_default()
+        } else {
+            continue;
+        };
+        let Some(terms) = RouteTerms::read(args) else {
+            continue;
+        };
+        // The route's quoted output less its slippage, rounded down: the
+        // least the program can enforce from these terms whichever way it
+        // rounds. The quote's own threshold can sit one unit above it, as the
+        // quote rounds up, so the route is held to the caller's minimum, not
+        // to the quote's.
+        //
+        // The program's IDL does not say whether the program compares that
+        // minimum with the output before or after the platform fee is taken
+        // from it, so the minimum is assumed to bind the output before the
+        // fee, and the fee is taken off it too, rounded down. A route whose
+        // minimum meets the caller's only before the fee is refused.
+        let route_minimum = min_out(
+            min_out(terms.quoted_out_amount, terms.slippage_bps),
+            terms.platform_fee_bps,
+        );
+        if route_minimum < min_output {
+            return Err(SwapRefusal::RouteMinimumBelowRequest {
+                index,
+                route_minimum,
+                min_output,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The arguments of a Jupiter v2 route that decide its minimum output, in the
+/// IDL's order after `in_amount`.
 struct RouteTerms {
-    in_amount: u64,
     quoted_out_amount: u64,
     slippage_bps: u16,
     platform_fee_bps: u16,
-    positive_slippage_bps: u16,
 }
 
 impl RouteTerms {
+    /// Read the terms from `args`, which begin at `in_amount`.
     fn read(args: &[u8]) -> Option<Self> {
         Some(Self {
-            in_amount: u64::from_le_bytes(args.get(0..8)?.try_into().ok()?),
             quoted_out_amount: u64::from_le_bytes(args.get(8..16)?.try_into().ok()?),
             slippage_bps: u16::from_le_bytes(args.get(16..18)?.try_into().ok()?),
             platform_fee_bps: u16::from_le_bytes(args.get(18..20)?.try_into().ok()?),
-            positive_slippage_bps: u16::from_le_bytes(args.get(20..22)?.try_into().ok()?),
         })
     }
 }
@@ -1021,7 +871,10 @@ fn token_account(account: &Account) -> Option<TokenAccount> {
 }
 
 /// Compare the writable accounts before (`pre`) and after (`post`) the
-/// simulated swap against what `expected` allows.
+/// simulated swap against what `expected` allows. Only the taker's own
+/// account and the token accounts the taker owns count; where the output
+/// lands is judged by the taker's balance of the output mint, and any fee a
+/// route takes by the output that is left.
 pub(crate) fn check_effects(
     expected: &ExpectedEffects,
     writable: &[Pubkey],
@@ -1061,6 +914,10 @@ pub(crate) fn check_effects(
                     || after.close_authority != before.close_authority
                 {
                     return Err(SwapRefusal::TokenAuthorityChanged { account: *address });
+                }
+                if after.delegated_amount != before.delegated_amount || after.state != before.state
+                {
+                    return Err(SwapRefusal::TokenDelegationChanged { account: *address });
                 }
             }
             (None, Some(after))
@@ -1146,110 +1003,68 @@ pub(crate) fn check_effects(
     Ok(())
 }
 
-/// Refuse a simulation in which an instruction beneath the top level names
-/// `taker` in any form outside a fixed allowlist. `pre` and `post` are the
-/// states of `resolved.writable` before and after the simulation, `inner`
-/// the simulation's inner instructions.
-///
-/// An inner instruction names the taker when the taker's address is among
-/// its accounts or anywhere in the node's parsed form of it. Allowed when
-/// it does:
-/// - SPL Token or Token-2022 `transfer` and `transferChecked` with the taker
-///   as the single authority, and `closeAccount` with the taker as owner
-///   paying its lamports to the taker, each of an account the taker owns
-///   before the swap, or that is absent
-///   before it and the taker's after (an account the route creates).
-/// - Associated Token Account `create` and `createIdempotent` whose
-///   `tokenProgram` is SPL Token or Token-2022, together with the
-///   instructions it runs beneath itself, which belong to that program. The
-///   program calls into the token program it is handed, so a create handed
-///   any other program is refused; from it the taker reaches only System. A
-///   top-level create, already limited by [`check_instructions`], covers its
-///   whole group the same way. An instruction with no stack height is never
-///   covered.
-/// - System `transfer` and `createAccount`.
-///
-/// A compiled (undecoded) inner instruction, or one whose program id does not
-/// parse, is refused whether or not it names the taker, since it cannot be
-/// classified.
-///
-/// This bounds which programs receive the taker and in which forms. It must
-/// run together with [`check_effects`], which bounds what the allowed forms
-/// move.
-pub(crate) fn check_inner_instructions(
+/// Refuse a transaction in which any instruction of the Bubblegum program
+/// or the lazy distributor program, at the top level or among `inner` (the
+/// simulation's inner instructions) at any depth, names `taker`. A top-level
+/// instruction names the taker when one of its accounts, resolved through
+/// `keys`, is the taker; an inner one when its accounts list the taker or,
+/// for an instruction the node parsed, when the taker's address appears
+/// anywhere in the parsed form. A top-level instruction whose program index
+/// lies outside `keys` is refused, as is an inner one in compiled form whose
+/// program or account index does.
+pub(crate) fn check_hotspot_programs(
     message: &VersionedMessage,
-    resolved: &ResolvedAccounts,
-    pre: &[Option<Account>],
-    post: &[Option<Account>],
+    keys: &[Pubkey],
     inner: &[UiInnerInstructions],
     taker: &Pubkey,
 ) -> Result<(), SwapRefusal> {
-    let takers = |account: &Option<Account>| {
-        account
-            .as_ref()
-            .and_then(token_account)
-            .is_some_and(|token| token.owner == *taker)
-    };
-    let owned: HashSet<Pubkey> = resolved
-        .writable
-        .iter()
-        .zip(pre.iter().zip(post))
-        .filter(|(_, (before, after))| takers(before) || (before.is_none() && takers(after)))
-        .map(|(address, _)| *address)
-        .collect();
-    let taker_text = taker.to_string();
-    let undecoded = Value::Null;
+    let guarded = [programs::bubblegum::ID, programs::lazy_distributor::ID];
+    let refused = |program: Pubkey| SwapRefusal::HotspotProgramInstruction { program };
+    let key = |index: &u8| keys.get(usize::from(*index));
+    for (index, ix) in message.instructions().iter().enumerate() {
+        let program =
+            key(&ix.program_id_index).ok_or(SwapRefusal::AccountIndexOutOfRange { index })?;
+        if guarded.contains(program)
+            && ix
+                .accounts
+                .iter()
+                .any(|account| key(account) == Some(taker))
+        {
+            return Err(refused(*program));
+        }
+    }
 
-    for group in inner {
-        let top = message
-            .instructions()
-            .get(usize::from(group.index))
-            .and_then(|ix| resolved.keys.get(usize::from(ix.program_id_index)))
-            .ok_or(SwapRefusal::InnerInstructionUnreadable)?;
-        // The stack height at and below which instructions are no longer
-        // run by an allowed Associated Token Account create.
-        let mut covered_above = (*top == spl_associated_token_account::ID).then_some(1);
-        for ix in &group.instructions {
-            let UiInstruction::Parsed(ix) = ix else {
-                return Err(SwapRefusal::InnerInstructionUnreadable);
-            };
-            let (program, height) = match ix {
-                UiParsedInstruction::Parsed(ix) => (&ix.program_id, ix.stack_height),
-                UiParsedInstruction::PartiallyDecoded(ix) => (&ix.program_id, ix.stack_height),
-            };
-            if let (Some(covered), Some(height)) = (covered_above, height) {
-                if height > covered {
-                    continue;
-                }
+    let taker_text = taker.to_string();
+    let guarded_text = |program_id: &str| {
+        guarded
+            .iter()
+            .find(|program| program.to_string() == program_id)
+            .copied()
+    };
+    for ix in inner.iter().flat_map(|group| &group.instructions) {
+        let hit = match ix {
+            UiInstruction::Compiled(ix) => {
+                let program =
+                    key(&ix.program_id_index).ok_or(SwapRefusal::InnerInstructionUnreadable)?;
+                let accounts = ix
+                    .accounts
+                    .iter()
+                    .map(|account| key(account).ok_or(SwapRefusal::InnerInstructionUnreadable))
+                    .collect::<Result<Vec<_>, _>>()?;
+                (guarded.contains(program) && accounts.contains(&taker)).then_some(*program)
             }
-            covered_above = None;
-            let program =
-                Pubkey::from_str(program).map_err(|_| SwapRefusal::InnerInstructionUnreadable)?;
-            let (names_taker, parsed) = match ix {
-                UiParsedInstruction::PartiallyDecoded(ix) => {
-                    (ix.accounts.contains(&taker_text), &undecoded)
-                }
-                UiParsedInstruction::Parsed(ix) => (names(&ix.parsed, &taker_text), &ix.parsed),
-            };
-            if ata_create(&program, parsed) {
-                covered_above = height;
+            UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(ix)) => {
+                guarded_text(&ix.program_id).filter(|_| ix.accounts.contains(&taker_text))
             }
-            if !names_taker {
-                continue;
+            UiInstruction::Parsed(UiParsedInstruction::Parsed(ix)) => {
+                guarded_text(&ix.program_id).filter(|_| names(&ix.parsed, &taker_text))
             }
-            match inner_form(&program, parsed, &taker_text, &owned) {
-                Some(true) => {}
-                Some(false) => return Err(SwapRefusal::InnerInstructionNotAllowed { program }),
-                None => return Err(SwapRefusal::InnerProgramNotAllowed { program }),
-            }
+        };
+        if let Some(program) = hit {
+            return Err(refused(program));
         }
     }
     Ok(())
-}
-
-/// The `type` of a node-parsed instruction.
-fn inner_kind(parsed: &Value) -> Option<&str> {
-    parsed.get("type").and_then(Value::as_str)
 }
 
 /// Whether `value` holds the string `text` anywhere within it.
@@ -1259,62 +1074,6 @@ fn names(value: &Value, text: &str) -> bool {
         Value::Array(items) => items.iter().any(|item| names(item, text)),
         Value::Object(fields) => fields.values().any(|field| names(field, text)),
         _ => false,
-    }
-}
-
-/// Whether a node-parsed instruction is an Associated Token Account create
-/// handed a token program the taker may reach through it.
-fn ata_create(program: &Pubkey, parsed: &Value) -> bool {
-    let token_program = parsed
-        .get("info")
-        .and_then(|info| info.get("tokenProgram"))
-        .and_then(Value::as_str)
-        .and_then(|key| Pubkey::from_str(key).ok());
-    *program == spl_associated_token_account::ID
-        && matches!(inner_kind(parsed), Some("create" | "createIdempotent"))
-        && token_program.is_some_and(|key| key == spl_token::ID || key == TOKEN_2022)
-}
-
-/// How [`check_inner_instructions`] treats a node-parsed instruction of
-/// `program` that names `taker`: `None` when the program is not on its
-/// allowlist, otherwise whether this form of it is allowed. `owned` holds the
-/// token accounts the taker may spend from.
-fn inner_form(
-    program: &Pubkey,
-    parsed: &Value,
-    taker: &str,
-    owned: &HashSet<Pubkey>,
-) -> Option<bool> {
-    let info = |field: &str| {
-        parsed
-            .get("info")
-            .and_then(|info| info.get(field))
-            .and_then(Value::as_str)
-    };
-    let owned_account = |field: &str| {
-        info(field)
-            .and_then(|account| Pubkey::from_str(account).ok())
-            .is_some_and(|account| owned.contains(&account))
-    };
-    let kind = inner_kind(parsed);
-    if *program == spl_token::ID || *program == TOKEN_2022 {
-        Some(match kind {
-            Some("transfer" | "transferChecked") => {
-                info("authority") == Some(taker) && owned_account("source")
-            }
-            Some("closeAccount") => {
-                info("owner") == Some(taker)
-                    && info("destination") == Some(taker)
-                    && owned_account("account")
-            }
-            _ => false,
-        })
-    } else if *program == system_program::ID {
-        Some(matches!(kind, Some("transfer" | "createAccount")))
-    } else if *program == spl_associated_token_account::ID {
-        Some(ata_create(program, parsed))
-    } else {
-        None
     }
 }
 
@@ -1328,13 +1087,14 @@ pub(crate) mod tests {
         rpc_sender::{RpcSender, RpcTransportStats},
     };
     use crate::solana_sdk::{
-        address_lookup_table::AddressLookupTableAccount,
         instruction::{AccountMeta, Instruction},
-        message::{v0, Message},
+        message::Message,
         program_option::COption,
         signature::NullSigner,
         signer::Signer,
     };
+    use crate::verify::COMPUTE_UNIT_PRICE_TAG;
+    use anchor_spl::token::spl_token::state::AccountState;
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use serde::Deserialize;
     use serde_json::{json, Value};
@@ -1550,7 +1310,7 @@ pub(crate) mod tests {
             amount: quote.in_amount.parse().expect("fixture inAmount"),
             // The most the recorded route still guarantees once its platform
             // fee is taken off the quote's minimum, which must pass.
-            min_output: min_out(threshold, recorded_route(&transaction).platform_fee_bps),
+            min_output: min_out(threshold, recorded_route_fee_bps(&transaction)),
             slippage_bps: quote.slippage_bps.try_into().expect("fixture slippageBps"),
             taker,
         };
@@ -1570,8 +1330,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// The terms of the one route instruction in a recorded transaction.
-    fn recorded_route(transaction: &VersionedTransaction) -> RouteTerms {
+    /// The platform fee, in basis points, of the one Jupiter route
+    /// instruction in a recorded transaction.
+    fn recorded_route_fee_bps(transaction: &VersionedTransaction) -> u16 {
         let data = transaction
             .message
             .instructions()
@@ -1584,7 +1345,9 @@ pub(crate) mod tests {
         } else {
             &data[SHARED_ACCOUNTS_ROUTE_V2.len() + 1..]
         };
-        RouteTerms::read(args).expect("fixture route terms")
+        RouteTerms::read(args)
+            .expect("fixture route terms")
+            .platform_fee_bps
     }
 
     /// A signer that counts the messages it signs.
@@ -1710,11 +1473,7 @@ pub(crate) mod tests {
         }
 
         fn fee_bound(&self) -> u64 {
-            let message = self.message();
-            check_quote(&self.quote, &self.request).expect("fixture quote passes");
-            check_instructions(&message, &self.resolved().keys, &self.request)
-                .expect("fixture instructions pass")
-                .fee_bound(message.header().num_required_signatures)
+            fee_bound(&self.message(), &self.resolved().keys).expect("fixture fee bound")
         }
     }
 
@@ -1757,20 +1516,15 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn recorded_sol_to_usdc_route_passing_the_wallet_to_amms_is_refused() {
+    async fn recorded_sol_to_usdc_route_passing_the_wallet_to_amms_is_signed() {
         // This `route_v2` hands the taker to Tessera, Raydium CLMM, Manifest
-        // and AlphaQ swap instructions; the first of them is refused.
+        // and AlphaQ swap instructions, each of which runs taker-signed token
+        // transfers beneath it.
         let case = case(SOL_USDC);
         let (result, signed) = case.run_counting().await;
-        assert!(
-            matches!(
-                &result,
-                Err(SwapRouteError::Refused(SwapRefusal::InnerProgramNotAllowed { program }))
-                    if *program == pubkey!("TessVdML9pBGgG9yGks7o4HewRaXVAMuoVj4x83GLQH")
-            ),
-            "{result:?}"
-        );
-        assert_eq!(signed, 0);
+        let (txn, _) = result.expect("signed");
+        assert_eq!(signed, 1);
+        assert_eq!(txn.signatures.len(), 1);
     }
 
     #[test]
@@ -1849,10 +1603,14 @@ pub(crate) mod tests {
 
     #[test]
     fn quote_threshold_must_honour_the_slippage() {
-        // 360711 at 100 bps rounds down to 357103.
+        // 360711 at 100 bps rounds down to 357103. The caller's own minimum
+        // sits below it, so only the slippage refuses.
         let Case {
-            mut quote, request, ..
+            mut quote,
+            mut request,
+            ..
         } = case(HNT_USDC);
+        request.min_output = 1;
         assert_eq!(quote.other_amount_threshold, "357103");
         assert_eq!(
             check_quote(&quote, &request).expect("at the floor"),
@@ -1929,7 +1687,7 @@ pub(crate) mod tests {
         ));
     }
 
-    // ---- instructions ----
+    // ---- fee bound ----
 
     #[tokio::test]
     async fn recorded_transaction_with_its_price_raised_past_the_cap_is_refused() {
@@ -1947,491 +1705,81 @@ pub(crate) mod tests {
         case.set_message(message);
         assert!(matches!(
             case.refusal().await,
-            SwapRefusal::ComputeUnitPriceAboveCap { .. }
+            SwapRefusal::ComputeUnitPriceAboveCap {
+                price: 2_500_001,
+                cap: 2_500_000
+            }
         ));
     }
 
-    fn sol_request() -> SwapTerms {
-        SwapTerms {
-            input_mint: native_mint::ID,
-            output_mint: USDC,
-            amount: 10_000_000,
-            min_output: MIN_OUTPUT,
-            slippage_bps: 100,
-            taker: Pubkey::new_unique(),
-        }
-    }
-
-    fn hnt_request() -> SwapTerms {
-        SwapTerms {
-            input_mint: HNT,
-            ..sol_request()
-        }
-    }
-
-    fn price(micro_lamports: u64) -> Instruction {
-        compute_budget::ComputeBudgetInstruction::set_compute_unit_price(micro_lamports)
-    }
-
-    fn limit(units: u32) -> Instruction {
-        compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(units)
-    }
-
-    fn create_ata(payer: &Pubkey, wallet: &Pubkey, mint: &Pubkey) -> Instruction {
-        spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-            payer,
-            wallet,
-            mint,
-            &spl_token::ID,
-        )
-    }
-
-    /// The quote the synthetic routes carry, and the minimum 100 bps of
-    /// slippage leaves of it, which the synthetic requests ask for.
-    const QUOTED_OUT: u64 = 1_000_000;
-    const MIN_OUTPUT: u64 = 990_000;
-
-    /// `route_v2` data: discriminator, `in_amount`, `quoted_out_amount`,
-    /// `slippage_bps`, `platform_fee_bps`, `positive_slippage_bps`, and an
-    /// empty route plan.
-    fn route_data(in_amount: u64, quoted_out: u64, slippage_bps: u16) -> Vec<u8> {
-        let mut data = ROUTE_V2.to_vec();
-        data.extend_from_slice(&in_amount.to_le_bytes());
-        data.extend_from_slice(&quoted_out.to_le_bytes());
-        data.extend_from_slice(&slippage_bps.to_le_bytes());
-        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0]);
-        data
-    }
-
-    /// `data` with its platform fee set to `fee_bps`.
-    fn with_platform_fee(mut data: Vec<u8>, fee_bps: u16) -> Vec<u8> {
-        data[26..28].copy_from_slice(&fee_bps.to_le_bytes());
-        data
-    }
-
-    /// A `route_v2` instruction in the recorded account layout: authority,
-    /// source, user destination, source and destination mints, their token
-    /// programs, the optional destination (empty), event authority, program.
-    fn route(taker: &Pubkey, data: Vec<u8>) -> Instruction {
-        Instruction::new_with_bytes(
-            JUPITER_AGGREGATOR_V6,
-            &data,
-            vec![
-                AccountMeta::new(*taker, true),
-                AccountMeta::new(get_associated_token_address(taker, &HNT), false),
-                AccountMeta::new(get_associated_token_address(taker, &USDC), false),
-                AccountMeta::new_readonly(HNT, false),
-                AccountMeta::new_readonly(USDC, false),
-                AccountMeta::new_readonly(spl_token::ID, false),
-                AccountMeta::new_readonly(spl_token::ID, false),
-                AccountMeta::new_readonly(JUPITER_AGGREGATOR_V6, false),
-                AccountMeta::new_readonly(Pubkey::new_unique(), false),
-                AccountMeta::new_readonly(JUPITER_AGGREGATOR_V6, false),
-            ],
-        )
-    }
-
-    fn wrapped_sol(taker: &Pubkey) -> Pubkey {
-        get_associated_token_address(taker, &native_mint::ID)
-    }
-
-    fn wrap(request: &SwapTerms, lamports: u64, to: &Pubkey) -> Instruction {
-        solana_system_interface::instruction::transfer(&request.taker, to, lamports)
-    }
-
-    /// The top-level shape of the recorded SOL-input swap: budget, wrap the
-    /// input, create the output account, route, unwrap.
-    fn swap_instructions(request: &SwapTerms) -> Vec<Instruction> {
-        let taker = &request.taker;
-        let wsol = wrapped_sol(taker);
-        vec![
-            limit(274_672),
-            price(199_967),
-            create_ata(taker, taker, &native_mint::ID),
-            wrap(request, request.amount, &wsol),
-            spl_token::instruction::sync_native(&spl_token::ID, &wsol).expect("sync"),
-            create_ata(taker, taker, &USDC),
-            route(taker, route_data(request.amount, QUOTED_OUT, 100)),
-            spl_token::instruction::close_account(&spl_token::ID, &wsol, taker, taker, &[])
-                .expect("close"),
-        ]
-    }
-
-    fn check(
-        request: &SwapTerms,
-        instructions: &[Instruction],
-    ) -> Result<ComputeBudget, SwapRefusal> {
-        let message = VersionedMessage::Legacy(Message::new(instructions, Some(&request.taker)));
-        let keys = message.static_account_keys().to_vec();
-        check_instructions(&message, &keys, request)
-    }
-
-    /// The baseline passes, then `extra` appended to it is refused.
-    fn refused_with(request: &SwapTerms, extra: Instruction) -> SwapRefusal {
-        let mut instructions = swap_instructions(request);
-        check(request, &instructions).expect("baseline passes");
-        instructions.push(extra);
-        check(request, &instructions).expect_err("refused")
-    }
-
-    fn assert_not_allowed(refusal: SwapRefusal, expected_program: Pubkey) {
-        match refusal {
-            SwapRefusal::InstructionNotAllowed { program, .. } => {
-                assert_eq!(program, expected_program)
-            }
-            other => panic!("expected InstructionNotAllowed, got {other:?}"),
-        }
+    /// The fee bound of a legacy message for `taker` holding
+    /// `instructions`.
+    fn fee_bound_of(taker: &Pubkey, instructions: &[Instruction]) -> Result<u64, SwapRefusal> {
+        let message = VersionedMessage::Legacy(Message::new(instructions, Some(taker)));
+        fee_bound(&message, message.static_account_keys())
     }
 
     #[test]
-    fn swap_shape_passes_and_reports_its_budget() {
-        let request = sol_request();
+    fn fee_bound_prices_the_limit_the_runtime_charges_for() {
+        use solana_compute_budget_interface::ComputeBudgetInstruction;
+        let taker = Pubkey::new_unique();
+        let limit = ComputeBudgetInstruction::set_compute_unit_limit;
+        let price = ComputeBudgetInstruction::set_compute_unit_price;
+        // 1,000 µL × 300,000 CU = 300 lamports.
         assert_eq!(
-            check(&request, &swap_instructions(&request)).expect("passes"),
-            ComputeBudget {
-                limit: 274_672,
-                price: 199_967,
-            }
+            fee_bound_of(&taker, &[limit(300_000), price(1_000)]).ok(),
+            Some(5_300)
         );
-    }
-
-    #[test]
-    fn token_transfer_out_of_the_takers_account_is_refused() {
-        let request = sol_request();
-        let taker = request.taker;
-        let transfer = spl_token::instruction::transfer(
-            &spl_token::ID,
-            &get_associated_token_address(&taker, &USDC),
-            &get_associated_token_address(&Pubkey::new_unique(), &USDC),
-            &taker,
-            &[],
-            1,
-        )
-        .expect("transfer");
-        assert_not_allowed(refused_with(&request, transfer), spl_token::ID);
-    }
-
-    #[test]
-    fn set_authority_on_the_takers_account_is_refused() {
-        let request = sol_request();
-        let taker = request.taker;
-        let set_authority = spl_token::instruction::set_authority(
-            &spl_token::ID,
-            &get_associated_token_address(&taker, &USDC),
-            Some(&Pubkey::new_unique()),
-            spl_token::instruction::AuthorityType::AccountOwner,
-            &taker,
-            &[],
-        )
-        .expect("set_authority");
-        assert_not_allowed(refused_with(&request, set_authority), spl_token::ID);
-    }
-
-    #[test]
-    fn approve_on_the_takers_account_is_refused() {
-        let request = sol_request();
-        let taker = request.taker;
-        let approve = spl_token::instruction::approve(
-            &spl_token::ID,
-            &get_associated_token_address(&taker, &USDC),
-            &Pubkey::new_unique(),
-            &taker,
-            &[],
-            u64::MAX,
-        )
-        .expect("approve");
-        assert_not_allowed(refused_with(&request, approve), spl_token::ID);
-    }
-
-    #[test]
-    fn system_transfer_to_another_account_is_refused() {
-        let request = sol_request();
-        let transfer = wrap(&request, request.amount, &Pubkey::new_unique());
-        assert_not_allowed(refused_with(&request, transfer), system_program::ID);
-    }
-
-    #[test]
-    fn wrapping_more_than_the_amount_is_refused() {
-        let request = sol_request();
-        let transfer = wrap(&request, request.amount + 1, &wrapped_sol(&request.taker));
-        assert_not_allowed(refused_with(&request, transfer), system_program::ID);
-    }
-
-    #[test]
-    fn wrapping_sol_for_a_token_input_is_refused() {
-        let request = hnt_request();
-        let mut instructions = swap_instructions(&request);
-        instructions.remove(3);
-        check(&request, &instructions).expect("baseline without the wrap passes");
-        instructions.push(wrap(&request, request.amount, &wrapped_sol(&request.taker)));
-        assert_not_allowed(
-            check(&request, &instructions).expect_err("refused"),
-            system_program::ID,
+        // A limit past the runtime's maximum is clamped to it.
+        assert_eq!(
+            fee_bound_of(&taker, &[limit(5_000_000), price(1_000)]).ok(),
+            Some(6_400)
         );
-    }
-
-    #[test]
-    fn wrapping_from_another_payer_is_refused() {
-        let request = sol_request();
-        let other = Pubkey::new_unique();
-        let transfer = solana_system_interface::instruction::transfer(
-            &other,
-            &wrapped_sol(&request.taker),
-            request.amount,
-        );
-        assert_not_allowed(refused_with(&request, transfer), system_program::ID);
-    }
-
-    #[test]
-    fn compute_unit_price_is_capped() {
-        let request = sol_request();
-        let mut instructions = swap_instructions(&request);
-        instructions[1] = price(MAX_COMPUTE_UNIT_PRICE);
-        check(&request, &instructions).expect("at the cap");
-        instructions[1] = price(MAX_COMPUTE_UNIT_PRICE + 1);
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::ComputeUnitPriceAboveCap { .. })
-        ));
-    }
-
-    #[test]
-    fn compute_unit_limit_is_capped() {
-        let request = sol_request();
-        let mut instructions = swap_instructions(&request);
-        instructions[0] = limit(MAX_COMPUTE_UNIT_LIMIT);
-        check(&request, &instructions).expect("at the cap");
-        instructions[0] = limit(MAX_COMPUTE_UNIT_LIMIT + 1);
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::ComputeUnitLimitAboveCap { .. })
-        ));
-    }
-
-    #[test]
-    fn other_compute_budget_instructions_are_refused() {
-        let request = sol_request();
-        let mut instructions = swap_instructions(&request);
-        instructions.push(
-            compute_budget::ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(65_536),
-        );
-        check(&request, &instructions).expect("a data size limit only restricts the transaction");
-        let mut short_size =
-            compute_budget::ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(65_536);
-        short_size.data.pop();
-        assert_not_allowed(refused_with(&request, short_size), compute_budget::ID);
-        let heap = compute_budget::ComputeBudgetInstruction::request_heap_frame(64 * 1024);
-        assert_not_allowed(refused_with(&request, heap), compute_budget::ID);
-        let mut short_price = price(1);
-        short_price.data.pop();
-        assert_not_allowed(refused_with(&request, short_price), compute_budget::ID);
-        let mut short_limit = limit(1);
-        short_limit.data.pop();
-        assert_not_allowed(refused_with(&request, short_limit), compute_budget::ID);
-    }
-
-    #[test]
-    fn associated_account_forms_are_limited() {
-        let request = sol_request();
-        let taker = request.taker;
-        let other = Pubkey::new_unique();
-        // Another wallet's account, paid for by the taker.
-        assert_not_allowed(
-            refused_with(&request, create_ata(&taker, &other, &MOBILE)),
-            spl_associated_token_account::ID,
-        );
-        // The taker's account, paid for by someone else.
-        assert_not_allowed(
-            refused_with(&request, create_ata(&other, &taker, &MOBILE)),
-            spl_associated_token_account::ID,
-        );
-        // The non-idempotent create.
-        let mut create = create_ata(&taker, &taker, &MOBILE);
-        create.data = vec![0];
-        assert_not_allowed(
-            refused_with(&request, create),
-            spl_associated_token_account::ID,
-        );
-        // Under a token program that is neither SPL Token nor Token-2022.
-        let mut create = create_ata(&taker, &taker, &MOBILE);
-        create.accounts[5].pubkey = Pubkey::new_unique();
-        assert_not_allowed(
-            refused_with(&request, create),
-            spl_associated_token_account::ID,
-        );
-        // Token-2022 is allowed.
-        let mut instructions = swap_instructions(&request);
-        instructions.push(
-            spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-                &taker,
-                &taker,
-                &MOBILE,
-                &TOKEN_2022,
-            ),
-        );
-        check(&request, &instructions).expect("Token-2022 account");
-    }
-
-    #[test]
-    fn token_instructions_are_limited_to_the_takers_wrapped_sol() {
-        let request = sol_request();
-        let taker = request.taker;
-        let usdc = get_associated_token_address(&taker, &USDC);
-        let other = Pubkey::new_unique();
-        let sync = spl_token::instruction::sync_native(&spl_token::ID, &usdc).expect("sync");
-        assert_not_allowed(refused_with(&request, sync), spl_token::ID);
-        let close = |account: &Pubkey, destination: &Pubkey, owner: &Pubkey| {
-            spl_token::instruction::close_account(&spl_token::ID, account, destination, owner, &[])
-                .expect("close")
-        };
-        let wsol = wrapped_sol(&taker);
-        assert_not_allowed(
-            refused_with(&request, close(&usdc, &taker, &taker)),
-            spl_token::ID,
-        );
-        assert_not_allowed(
-            refused_with(&request, close(&wsol, &other, &taker)),
-            spl_token::ID,
-        );
-        assert_not_allowed(
-            refused_with(&request, close(&wsol, &taker, &other)),
-            spl_token::ID,
-        );
-    }
-
-    #[test]
-    fn unknown_programs_are_refused() {
-        let request = sol_request();
-        let memo = Instruction::new_with_bytes(MEMO, b"hi", vec![]);
-        assert!(matches!(
-            refused_with(&request, memo),
-            SwapRefusal::ProgramNotAllowed { program, .. } if program == MEMO
-        ));
-        let token_2022_transfer = Instruction::new_with_bytes(
-            TOKEN_2022,
-            &[3],
-            vec![AccountMeta::new(request.taker, true)],
+        // A repeated price is priced at the highest, in either order.
+        for prices in [[price(2_000), price(1_000)], [price(1_000), price(2_000)]] {
+            assert_eq!(
+                fee_bound_of(&taker, &[vec![limit(300_000)], prices.to_vec()].concat()).ok(),
+                Some(5_600)
+            );
+        }
+        // No price: the base fee alone.
+        assert_eq!(fee_bound_of(&taker, &[limit(300_000)]).ok(), Some(5_000));
+        // The price cap: 2,500,000 µL × 1,400,000 CU = 3,500,000 lamports.
+        assert_eq!(
+            fee_bound_of(&taker, &[limit(1_400_000), price(2_500_000)]).ok(),
+            Some(3_505_000)
         );
         assert!(matches!(
-            refused_with(&request, token_2022_transfer),
-            SwapRefusal::ProgramNotAllowed { program, .. } if program == TOKEN_2022
-        ));
-    }
-
-    /// The baseline with its route replaced by one carrying `data`.
-    fn with_route(request: &SwapTerms, data: Vec<u8>) -> Result<ComputeBudget, SwapRefusal> {
-        let mut instructions = swap_instructions(request);
-        check(request, &instructions).expect("baseline passes");
-        instructions[6] = route(&request.taker, data);
-        check(request, &instructions)
-    }
-
-    #[test]
-    fn route_must_spend_the_amount() {
-        let request = sol_request();
-        assert!(matches!(
-            with_route(&request, route_data(request.amount + 1, QUOTED_OUT, 100)),
-            Err(SwapRefusal::RouteInAmount { in_amount, .. }) if in_amount == request.amount + 1
-        ));
-    }
-
-    #[test]
-    fn route_minimum_must_reach_the_callers_minimum() {
-        let request = sol_request();
-        // 1,000,000 less 100 bps is exactly the caller's minimum.
-        with_route(&request, route_data(request.amount, QUOTED_OUT, 100)).expect("at the minimum");
-        assert!(matches!(
-            with_route(&request, route_data(request.amount, QUOTED_OUT, 101)),
-            Err(SwapRefusal::RouteMinimumBelowRequest {
-                route_minimum: 989_900,
-                min_output: MIN_OUTPUT,
-                ..
-            })
-        ));
-        assert!(matches!(
-            with_route(&request, route_data(request.amount, QUOTED_OUT - 1, 100)),
-            Err(SwapRefusal::RouteMinimumBelowRequest {
-                route_minimum: 989_999,
-                ..
+            fee_bound_of(&taker, &[limit(1_400_000), price(2_500_001)]),
+            Err(SwapRefusal::ComputeUnitPriceAboveCap {
+                price: 2_500_001,
+                cap: 2_500_000
             })
         ));
     }
 
     #[test]
-    fn shared_accounts_route_reads_past_its_id() {
-        let request = sol_request();
-        let taker = request.taker;
-        let mut data = SHARED_ACCOUNTS_ROUTE_V2.to_vec();
-        data.push(15);
-        data.extend_from_slice(&route_data(request.amount, QUOTED_OUT, 100)[8..]);
-        // The recorded layout: program authority, authority, source, the
-        // program's source and destination, destination, then the rest.
-        let shared = |data: &[u8], destination: Pubkey| {
-            let mut ix = route(&taker, data.to_vec());
-            ix.accounts[SHARED_ACCOUNTS_ROUTE_V2_DESTINATION].pubkey = destination;
-            ix
-        };
-        let usdc = get_associated_token_address(&taker, &USDC);
-        let mut instructions = swap_instructions(&request);
-        instructions[6] = shared(&data, usdc);
-        check(&request, &instructions).expect("shared accounts route");
-        // Its optional-destination slot is not `route_v2`'s.
-        instructions[6].accounts[ROUTE_V2_DESTINATION].pubkey = Pubkey::new_unique();
-        check(&request, &instructions).expect("slot 7 is not a destination here");
-        let other = Pubkey::new_unique();
-        instructions[6] = shared(&data, other);
+    fn exactly_one_compute_unit_limit_is_required() {
+        use solana_compute_budget_interface::ComputeBudgetInstruction;
+        let taker = Pubkey::new_unique();
+        let limit = ComputeBudgetInstruction::set_compute_unit_limit;
+        let price = ComputeBudgetInstruction::set_compute_unit_price;
+        let memo = Instruction::new_with_bytes(MEMO, &[], vec![]);
         assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::RouteDestination { account, .. }) if account == other
+            fee_bound_of(&taker, &[price(1_000), memo.clone()]),
+            Err(SwapRefusal::ComputeUnitLimitCount { count: 0 })
         ));
-        data[9..17].copy_from_slice(&(request.amount - 1).to_le_bytes());
-        instructions[6] = shared(&data, usdc);
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::RouteInAmount { .. })
-        ));
-    }
-
-    #[test]
-    fn other_jupiter_instructions_are_refused() {
-        let request = sol_request();
-        // `route`, whose arguments follow a variable-length route plan.
-        let mut v1 = vec![0xe5, 0x17, 0xcb, 0x97, 0x7a, 0xe3, 0xad, 0x2a];
-        v1.extend_from_slice(&route_data(request.amount, QUOTED_OUT, 100)[8..]);
-        assert_not_allowed(
-            with_route(&request, v1).expect_err("refused"),
-            JUPITER_AGGREGATOR_V6,
-        );
-        let mut short = route_data(request.amount, QUOTED_OUT, 100);
-        short.truncate(ROUTE_V2.len() + 17);
-        assert_not_allowed(
-            with_route(&request, short).expect_err("refused"),
-            JUPITER_AGGREGATOR_V6,
-        );
-    }
-
-    #[tokio::test]
-    async fn recorded_route_with_its_slippage_widened_is_refused() {
-        let mut case = case(HNT_USDC);
-        let mut message = case.message();
-        let VersionedMessage::V0(v0) = &mut message else {
-            panic!("fixture is v0");
-        };
-        let route = v0
-            .instructions
-            .iter_mut()
-            .find(|ix| ix.data.starts_with(&SHARED_ACCOUNTS_ROUTE_V2))
-            .expect("route instruction");
-        // id, in_amount, quoted_out_amount, then slippage_bps.
-        route.data[25..27].copy_from_slice(&10_000u16.to_le_bytes());
-        case.set_message(message);
-        assert!(matches!(
-            case.refusal().await,
-            SwapRefusal::RouteMinimumBelowRequest {
-                route_minimum: 0,
-                ..
-            }
-        ));
+        // The higher limit is not the last, so neither ordering reads one.
+        for limits in [
+            [limit(300_000), limit(100_000)],
+            [limit(100_000), limit(300_000)],
+        ] {
+            assert!(matches!(
+                fee_bound_of(&taker, &[vec![price(1_000)], limits.to_vec()].concat()),
+                Err(SwapRefusal::ComputeUnitLimitCount { count: 2 })
+            ));
+        }
+        fee_bound_of(&taker, &[limit(300_000), memo]).expect("one limit");
     }
 
     #[test]
@@ -2443,86 +1791,6 @@ pub(crate) mod tests {
         assert!(matches!(
             check_signer(&message, &taker),
             Err(SwapRefusal::FeePayerNotTaker)
-        ));
-    }
-
-    #[test]
-    fn exactly_one_route_is_required() {
-        let request = sol_request();
-        let mut instructions = swap_instructions(&request);
-        check(&request, &instructions).expect("one route");
-        let route = instructions[6].clone();
-        instructions.insert(6, route);
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::RouteCount { count: 2 })
-        ));
-        instructions.drain(6..8);
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::RouteCount { count: 0 })
-        ));
-    }
-
-    #[test]
-    fn route_positive_slippage_is_refused() {
-        let request = sol_request();
-        let data = route_data(request.amount, QUOTED_OUT, 100);
-        with_route(&request, data.clone()).expect("no positive slippage");
-        let mut taking = data;
-        taking[28..30].copy_from_slice(&1u16.to_le_bytes());
-        assert!(matches!(
-            with_route(&request, taking),
-            Err(SwapRefusal::RoutePositiveSlippage {
-                positive_slippage_bps: 1,
-                ..
-            })
-        ));
-    }
-
-    #[test]
-    fn route_minimum_must_reach_the_callers_minimum_after_its_platform_fee() {
-        // 1,000,000 less 100 bps of slippage is 990,000, and 10 bps of fee
-        // leaves 989,010 of that.
-        let request = SwapTerms {
-            min_output: 989_010,
-            ..sol_request()
-        };
-        let data = with_platform_fee(route_data(request.amount, QUOTED_OUT, 100), 10);
-        with_route(&request, data.clone()).expect("at the minimum after the fee");
-        let request = SwapTerms {
-            min_output: 989_011,
-            ..request
-        };
-        assert!(matches!(
-            with_route(&request, data.clone()),
-            Err(SwapRefusal::RouteMinimumBelowRequest {
-                route_minimum: 989_010,
-                min_output: 989_011,
-                ..
-            })
-        ));
-        // The same route without its fee meets that minimum.
-        with_route(&request, with_platform_fee(data, 0)).expect("no fee");
-    }
-
-    #[test]
-    fn instruction_indexes_outside_the_keys_are_refused() {
-        let request = sol_request();
-        let mut message = Message::new(&swap_instructions(&request), Some(&request.taker));
-        message.instructions[6].accounts.push(200);
-        check_instructions(
-            &VersionedMessage::Legacy(message.clone()),
-            &message.account_keys,
-            &request,
-        )
-        .expect("the route's accounts are not inspected");
-        // A wrap transfer whose destination is past the keys.
-        message.instructions[3].accounts[1] = 200;
-        let keys = message.account_keys.clone();
-        assert!(matches!(
-            check_instructions(&VersionedMessage::Legacy(message), &keys, &request,),
-            Err(SwapRefusal::AccountIndexOutOfRange { index: 3 })
         ));
     }
 
@@ -2579,33 +1847,45 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn input_spent_other_than_the_amount_is_refused() {
-        for change in [-1i64, 1] {
+        // One unit more of HNT leaves, then one unit less.
+        for (change, spent) in [(-1i64, 100_000_001), (1, 99_999_999)] {
             let mut case = case(HNT_USDC);
             let hnt = case.token_account_of(&HNT);
             let post = case.token_amount(&case.chain.post, &hnt);
             case.edit_post_token(&hnt, |token| {
                 token.amount = post.checked_add_signed(change).expect("amount")
             });
-            assert!(matches!(
-                case.refusal().await,
-                SwapRefusal::InputSpent {
-                    expected: 100_000_000,
-                    ..
-                }
-            ));
+            let refusal = case.refusal().await;
+            assert!(
+                matches!(
+                    refusal,
+                    SwapRefusal::InputSpent {
+                        expected: 100_000_000,
+                        actual,
+                    } if actual == spent
+                ),
+                "{refusal:?}"
+            );
         }
     }
 
     #[tokio::test]
     async fn lamports_beyond_the_fee_bound_are_refused() {
-        for fixture in [HNT_USDC, SOL_USDC] {
+        // The fee bound, plus the input amount when the input is SOL; each
+        // recorded swap spends exactly that, so one lamport more is refused.
+        for (fixture, bound) in [(HNT_USDC, 6_119), (SOL_USDC, 10_059_926)] {
             let mut case = case(fixture);
             let taker = case.request.taker;
             case.chain.post.get_mut(&taker).expect("taker").lamports -= 1;
-            assert!(matches!(
-                case.refusal().await,
-                SwapRefusal::LamportsOverBound { .. }
-            ));
+            let refusal = case.refusal().await;
+            assert!(
+                matches!(
+                    refusal,
+                    SwapRefusal::LamportsOverBound { spent, bound: refused }
+                        if refused == bound && spent == bound + 1
+                ),
+                "{refusal:?}"
+            );
         }
     }
 
@@ -2843,6 +2123,29 @@ pub(crate) mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn recorded_route_passing_the_wallet_to_amms_still_refuses_another_token_loss() {
+        let mut case = case(SOL_USDC);
+        let address = untouched_writable(&case);
+        let taker = case.request.taker;
+        case.chain
+            .pre
+            .insert(address, token_account_state(MOBILE, taker, 10));
+        case.chain
+            .post
+            .insert(address, token_account_state(MOBILE, taker, 9));
+        let (result, signed) = case.run_counting().await;
+        assert!(
+            matches!(
+                &result,
+                Err(SwapRouteError::Refused(SwapRefusal::OtherTokenDecreased { mint }))
+                    if *mint == pubkey!("mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6")
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signed, 0);
+    }
+
     #[test]
     fn sol_output_must_reach_the_threshold_net_of_fees() {
         let taker = Pubkey::new_unique();
@@ -2998,220 +2301,6 @@ pub(crate) mod tests {
         assert_eq!(signed, 0);
     }
 
-    // ---- compute unit limit ----
-
-    #[test]
-    fn exactly_one_compute_unit_limit_is_required() {
-        let request = sol_request();
-        let mut instructions = swap_instructions(&request);
-        instructions.remove(0);
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::ComputeUnitLimitCount { count: 0 })
-        ));
-        let mut instructions = swap_instructions(&request);
-        instructions.insert(0, limit(1));
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::ComputeUnitLimitCount { count: 2 })
-        ));
-    }
-
-    // ---- route destination and platform fee ----
-
-    #[test]
-    fn route_must_deliver_to_the_takers_output_account() {
-        let request = sol_request();
-        let data = route_data(request.amount, QUOTED_OUT, 100);
-        let mut instructions = swap_instructions(&request);
-        let other = Pubkey::new_unique();
-        instructions[6].accounts[ROUTE_V2_USER_DESTINATION].pubkey = other;
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::RouteDestination { index: 6, account }) if account == other
-        ));
-        // The taker's own account of another mint is not the output account.
-        let mut instructions = swap_instructions(&request);
-        let hnt = get_associated_token_address(&request.taker, &HNT);
-        instructions[6].accounts[ROUTE_V2_USER_DESTINATION].pubkey = hnt;
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::RouteDestination { account, .. }) if account == hnt
-        ));
-        // The optional destination must be left empty.
-        let mut instructions = swap_instructions(&request);
-        let usdc = get_associated_token_address(&request.taker, &USDC);
-        instructions[6].accounts[ROUTE_V2_DESTINATION].pubkey = usdc;
-        assert!(matches!(
-            check(&request, &instructions),
-            Err(SwapRefusal::RouteDestination { account, .. }) if account == usdc
-        ));
-        // The taker's Token-2022 account of the output mint is accepted.
-        let mut instructions = swap_instructions(&request);
-        instructions[6] = route(&request.taker, data);
-        instructions[6].accounts[ROUTE_V2_USER_DESTINATION].pubkey =
-            get_associated_token_address_with_program_id(&request.taker, &USDC, &TOKEN_2022);
-        check(&request, &instructions).expect("Token-2022 output account");
-    }
-
-    #[tokio::test]
-    async fn recorded_routes_redirected_elsewhere_are_refused() {
-        // route_v2 (SOL fixture): the user destination, then the optional one.
-        for (fixture, discriminator, slot) in [
-            (SOL_USDC, ROUTE_V2, ROUTE_V2_USER_DESTINATION),
-            (SOL_USDC, ROUTE_V2, ROUTE_V2_DESTINATION),
-            (
-                HNT_USDC,
-                SHARED_ACCOUNTS_ROUTE_V2,
-                SHARED_ACCOUNTS_ROUTE_V2_DESTINATION,
-            ),
-        ] {
-            let mut case = case(fixture);
-            let mut message = case.message();
-            let VersionedMessage::V0(v0) = &mut message else {
-                panic!("fixture is v0");
-            };
-            let route = v0
-                .instructions
-                .iter_mut()
-                .find(|ix| ix.data.starts_with(&discriminator))
-                .expect("route instruction");
-            // Point the slot at the route's source account.
-            let source = if discriminator == ROUTE_V2 { 1 } else { 2 };
-            route.accounts[slot] = route.accounts[source];
-            case.set_message(message);
-            let (result, signed) = case.run_counting().await;
-            assert!(
-                matches!(
-                    result,
-                    Err(SwapRouteError::Refused(
-                        SwapRefusal::RouteDestination { .. }
-                    ))
-                ),
-                "{result:?}"
-            );
-            assert_eq!(signed, 0);
-        }
-    }
-
-    #[test]
-    fn route_platform_fee_is_capped() {
-        let request = SwapTerms {
-            min_output: min_out(MIN_OUTPUT, MAX_PLATFORM_FEE_BPS),
-            ..sol_request()
-        };
-        let data = route_data(request.amount, QUOTED_OUT, 100);
-        with_route(
-            &request,
-            with_platform_fee(data.clone(), MAX_PLATFORM_FEE_BPS),
-        )
-        .expect("at the cap");
-        assert!(matches!(
-            with_route(&request, with_platform_fee(data, MAX_PLATFORM_FEE_BPS + 1)),
-            Err(SwapRefusal::PlatformFeeAboveCap {
-                fee_bps: 51,
-                cap: 50,
-                ..
-            })
-        ));
-    }
-
-    #[tokio::test]
-    async fn recorded_shared_route_with_its_fee_raised_is_refused() {
-        let mut case = case(HNT_USDC);
-        let mut message = case.message();
-        let VersionedMessage::V0(v0) = &mut message else {
-            panic!("fixture is v0");
-        };
-        let route = v0
-            .instructions
-            .iter_mut()
-            .find(|ix| ix.data.starts_with(&SHARED_ACCOUNTS_ROUTE_V2))
-            .expect("route instruction");
-        // id, in_amount, quoted_out_amount, slippage_bps, then the fee.
-        assert_eq!(route.data[27..29], 10u16.to_le_bytes());
-        route.data[27..29].copy_from_slice(&(MAX_PLATFORM_FEE_BPS + 1).to_le_bytes());
-        case.set_message(message);
-        assert!(matches!(
-            case.refusal().await,
-            SwapRefusal::PlatformFeeAboveCap { fee_bps: 51, .. }
-        ));
-    }
-
-    // ---- accounts reached through lookup tables ----
-
-    /// `instructions` compiled against one lookup table holding `addresses`,
-    /// then checked with the table resolved as `verify_unsigned` resolves it.
-    fn check_v0(
-        request: &SwapTerms,
-        instructions: &[Instruction],
-        addresses: Vec<Pubkey>,
-    ) -> Result<ComputeBudget, SwapRefusal> {
-        let table = Pubkey::new_unique();
-        let entries = addresses
-            .iter()
-            .enumerate()
-            .map(|(index, address)| (index.to_string(), address.to_string()))
-            .collect();
-        let message = VersionedMessage::V0(
-            v0::Message::try_compile(
-                &request.taker,
-                instructions,
-                &[AddressLookupTableAccount {
-                    key: table,
-                    addresses,
-                }],
-                Hash::default(),
-            )
-            .expect("compile"),
-        );
-        let lookups = message.address_table_lookups().expect("v0");
-        assert_eq!(lookups.len(), 1, "the table is used");
-        let resolved =
-            resolve_accounts(&message, &[Some(lookup_table(&entries))]).expect("resolve");
-        check_instructions(&message, &resolved.keys, request)
-    }
-
-    #[test]
-    fn guarded_accounts_reached_through_lookup_tables_are_checked() {
-        let request = sol_request();
-        let taker = request.taker;
-        let wsol = wrapped_sol(&taker);
-        let other = Pubkey::new_unique();
-        // The taker's wrapped SOL (loaded writable) and the mints (loaded
-        // readonly) resolve to themselves, so the baseline passes; resolving
-        // loaded readonly before loaded writable would misplace them.
-        let table = vec![wsol, USDC, native_mint::ID, other];
-        check_v0(&request, &swap_instructions(&request), table.clone())
-            .expect("baseline through the table passes");
-
-        // A CloseAccount destination reached as a loaded writable account.
-        let mut instructions = swap_instructions(&request);
-        instructions[7] =
-            spl_token::instruction::close_account(&spl_token::ID, &wsol, &other, &taker, &[])
-                .expect("close");
-        assert_not_allowed(
-            check_v0(&request, &instructions, table.clone()).expect_err("refused"),
-            spl_token::ID,
-        );
-
-        // A System transfer target reached as a loaded writable account.
-        let mut instructions = swap_instructions(&request);
-        instructions[3] = wrap(&request, request.amount, &other);
-        assert_not_allowed(
-            check_v0(&request, &instructions, table.clone()).expect_err("refused"),
-            system_program::ID,
-        );
-
-        // An associated account's wallet reached as a loaded readonly account.
-        let mut instructions = swap_instructions(&request);
-        instructions[5] = create_ata(&taker, &other, &USDC);
-        assert_not_allowed(
-            check_v0(&request, &instructions, table).expect_err("refused"),
-            spl_associated_token_account::ID,
-        );
-    }
-
     // ---- RPC errors ----
 
     #[tokio::test]
@@ -3235,123 +2324,225 @@ pub(crate) mod tests {
         assert!(!text.contains("api-key"), "{text}");
     }
 
-    // ---- inner instructions ----
+    // ---- Bubblegum ----
 
-    /// The HNT route's top-level index in its transaction.
-    const HNT_ROUTE_INDEX: u8 = 2;
-    const WHIRLPOOL: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
-
-    fn check_inner(case: &Case, inner: Value) -> Result<(), SwapRefusal> {
-        let message = case.message();
-        let resolved = case.resolved();
-        let state = |accounts: &HashMap<Pubkey, Account>| -> Vec<Option<Account>> {
-            resolved
-                .writable
-                .iter()
-                .map(|address| accounts.get(address).cloned())
-                .collect()
-        };
-        let inner: Vec<UiInnerInstructions> =
-            serde_json::from_value(inner).expect("inner instructions");
-        check_inner_instructions(
-            &message,
-            &resolved,
-            &state(&case.chain.pre),
-            &state(&case.chain.post),
-            &inner,
-            &case.request.taker,
-        )
-    }
-
-    fn route_group(instructions: Value) -> Value {
-        json!([{ "index": HNT_ROUTE_INDEX, "instructions": instructions }])
-    }
-
-    fn token_transfer(authority: &Pubkey, source: &Pubkey, height: u32) -> Value {
-        json!({
-            "parsed": {
-                "info": {
-                    "amount": "1",
-                    "authority": authority.to_string(),
-                    "destination": Pubkey::new_unique().to_string(),
-                    "source": source.to_string(),
-                },
-                "type": "transfer",
-            },
-            "program": "spl-token",
-            "programId": spl_token::ID.to_string(),
-            "stackHeight": height,
-        })
-    }
-
-    fn amm_swap(accounts: &[Pubkey], height: u32) -> Value {
+    /// A partially decoded instruction of `program` listing `accounts`, as
+    /// the node returns one it has no parser for.
+    fn program_call(program: &Pubkey, accounts: &[Pubkey], height: u32) -> Value {
         json!({
             "accounts": accounts.iter().map(ToString::to_string).collect::<Vec<_>>(),
             "data": "3Rg2bKuTGTyGGVTrjBjM",
-            "programId": WHIRLPOOL,
+            "programId": program.to_string(),
             "stackHeight": height,
         })
     }
 
-    /// A writable account of the HNT transaction that the recorded state
-    /// does not hold before the swap.
-    fn absent_writable(case: &Case) -> Pubkey {
-        *case
-            .resolved()
-            .writable
-            .iter()
-            .find(|address| !case.chain.pre.contains_key(address))
-            .expect("a writable account absent before the swap")
+    /// The SOL fixture's inner instructions with `extra` inserted beneath
+    /// Tessera's swap, the first instruction of the route's group, which the
+    /// route hands the taker.
+    fn beneath_the_first_amm(case: &mut Case, extra: Value) {
+        let mut inner = serde_json::to_value(case.chain.inner.take().expect("fixture inner"))
+            .expect("serialize inner instructions");
+        let route = inner[1]["instructions"]
+            .as_array_mut()
+            .expect("route group instructions");
+        assert_eq!(
+            route[0]["programId"],
+            "TessVdML9pBGgG9yGks7o4HewRaXVAMuoVj4x83GLQH"
+        );
+        assert_eq!(route[0]["stackHeight"], 2);
+        route.insert(1, extra);
+        case.chain.inner = Some(serde_json::from_value(inner).expect("inner instructions"));
     }
 
-    #[test]
-    fn a_program_outside_the_allowlist_given_the_wallet_is_refused() {
-        let case = case(HNT_USDC);
+    #[tokio::test]
+    async fn recorded_route_with_a_compressed_nft_transfer_beneath_an_amm_is_refused() {
+        // A Bubblegum `transfer` whose leaf owner is the taker would move one
+        // of the taker's compressed NFTs, which no token balance shows.
+        let mut case = case(SOL_USDC);
         let taker = case.request.taker;
+        // tree authority, leaf owner, leaf delegate, new leaf owner, merkle
+        // tree, log wrapper, compression program, System.
+        let transfer = program_call(
+            &pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"),
+            &[
+                Pubkey::new_unique(),
+                taker,
+                taker,
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                pubkey!("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"),
+                pubkey!("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"),
+                pubkey!("11111111111111111111111111111111"),
+            ],
+            3,
+        );
+        beneath_the_first_amm(&mut case, transfer);
+        let (result, signed) = case.run_counting().await;
+        assert!(
+            matches!(
+                result,
+                Err(SwapRouteError::Refused(
+                    SwapRefusal::HotspotProgramInstruction { .. }
+                ))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signed, 0);
+    }
+
+    #[tokio::test]
+    async fn recorded_route_with_an_unknown_program_given_the_wallet_beneath_an_amm_is_signed() {
+        // A program no swap is known to call, handed the taker below the
+        // AMM the route invokes, with the recorded effects unchanged.
+        let mut case = case(SOL_USDC);
+        let taker = case.request.taker;
+        beneath_the_first_amm(
+            &mut case,
+            program_call(&MEMO, &[taker, Pubkey::new_unique()], 3),
+        );
+        let (result, signed) = case.run_counting().await;
+        result.expect("signed");
+        assert_eq!(signed, 1);
+    }
+
+    /// A legacy message for `taker` with one top-level instruction of
+    /// `program` listing `accounts`, and its keys.
+    fn top_level(taker: &Pubkey, program: Pubkey, accounts: &[Pubkey]) -> VersionedMessage {
+        let metas = accounts
+            .iter()
+            .map(|account| AccountMeta::new_readonly(*account, false))
+            .collect();
+        let ix = Instruction::new_with_bytes(program, &[], metas);
+        VersionedMessage::Legacy(Message::new(&[ix], Some(taker)))
+    }
+
+    fn hotspot_check(
+        message: &VersionedMessage,
+        inner: Value,
+        taker: &Pubkey,
+    ) -> Result<(), SwapRefusal> {
+        let inner: Vec<UiInnerInstructions> =
+            serde_json::from_value(inner).expect("inner instructions");
+        check_hotspot_programs(message, message.static_account_keys(), &inner, taker)
+    }
+
+    #[test]
+    fn a_top_level_bubblegum_instruction_naming_the_wallet_is_refused() {
+        let taker = Pubkey::new_unique();
         let other = Pubkey::new_unique();
-        check_inner(&case, route_group(json!([amm_swap(&[other], 2)])))
-            .expect("an AMM not given the wallet passes");
+        let bubblegum = programs::bubblegum::ID;
+        hotspot_check(&top_level(&taker, bubblegum, &[other]), json!([]), &taker)
+            .expect("a Bubblegum instruction not naming the wallet passes");
         assert!(matches!(
-            check_inner(&case, route_group(json!([amm_swap(&[other, taker], 2)]))),
-            Err(SwapRefusal::InnerProgramNotAllowed { program }) if program == key(WHIRLPOOL)
+            hotspot_check(
+                &top_level(&taker, bubblegum, &[other, taker]),
+                json!([]),
+                &taker
+            ),
+            Err(SwapRefusal::HotspotProgramInstruction { .. })
         ));
-        // A parsed instruction of a program outside the allowlist naming
-        // the wallet is refused too.
-        let memo = json!({
-            "parsed": taker.to_string(),
-            "program": "spl-memo",
-            "programId": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
-            "stackHeight": 2,
+        hotspot_check(&top_level(&taker, MEMO, &[taker]), json!([]), &taker)
+            .expect("another program naming the wallet passes");
+    }
+
+    #[test]
+    fn an_inner_bubblegum_instruction_naming_the_wallet_is_refused_at_any_depth() {
+        let taker = Pubkey::new_unique();
+        let bubblegum = programs::bubblegum::ID;
+        let message = top_level(&taker, MEMO, &[]);
+        let group = |ix: Value| json!([{ "index": 0, "instructions": [ix] }]);
+        for height in [2, 3, 5] {
+            assert!(
+                matches!(
+                    hotspot_check(
+                        &message,
+                        group(program_call(&bubblegum, &[taker], height)),
+                        &taker
+                    ),
+                    Err(SwapRefusal::HotspotProgramInstruction { .. })
+                ),
+                "height {height}"
+            );
+        }
+        let mut no_height = program_call(&bubblegum, &[taker], 2);
+        no_height
+            .as_object_mut()
+            .expect("instruction object")
+            .remove("stackHeight");
+        assert!(matches!(
+            hotspot_check(&message, group(no_height), &taker),
+            Err(SwapRefusal::HotspotProgramInstruction { .. })
+        ));
+        // A parsed form naming the wallet anywhere within it.
+        let parsed = json!({
+            "parsed": { "info": { "leafOwner": taker.to_string() }, "type": "transfer" },
+            "program": "bubblegum",
+            "programId": bubblegum.to_string(),
+            "stackHeight": 3,
         });
         assert!(matches!(
-            check_inner(&case, route_group(json!([memo]))),
-            Err(SwapRefusal::InnerProgramNotAllowed { .. })
+            hotspot_check(&message, group(parsed), &taker),
+            Err(SwapRefusal::HotspotProgramInstruction { .. })
+        ));
+        hotspot_check(
+            &message,
+            group(program_call(&bubblegum, &[Pubkey::new_unique()], 3)),
+            &taker,
+        )
+        .expect("a Bubblegum instruction not naming the wallet passes");
+        hotspot_check(&message, group(program_call(&MEMO, &[taker], 4)), &taker)
+            .expect("another program naming the wallet passes");
+    }
+
+    #[test]
+    fn a_compiled_inner_bubblegum_instruction_naming_the_wallet_is_refused() {
+        let taker = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        // Keys: the taker, `other`, then Bubblegum.
+        let message = top_level(&taker, programs::bubblegum::ID, &[other]);
+        let keys = message.static_account_keys();
+        assert_eq!(keys, [taker, other, programs::bubblegum::ID]);
+        let compiled = |program: u8, account: u8| {
+            json!([{ "index": 0, "instructions": [{
+                "programIdIndex": program,
+                "accounts": [account],
+                "data": "3Rg2bKuTGTyGGVTrjBjM",
+                "stackHeight": 2,
+            }] }])
+        };
+        hotspot_check(&message, compiled(2, 1), &taker).expect("not naming the wallet");
+        assert!(matches!(
+            hotspot_check(&message, compiled(2, 0), &taker),
+            Err(SwapRefusal::HotspotProgramInstruction { .. })
+        ));
+        assert!(matches!(
+            hotspot_check(&message, compiled(3, 0), &taker),
+            Err(SwapRefusal::InnerInstructionUnreadable)
+        ));
+        // An account index outside the keys is unreadable too, rather than
+        // read as not naming the wallet.
+        assert!(matches!(
+            hotspot_check(&message, compiled(2, 3), &taker),
+            Err(SwapRefusal::InnerInstructionUnreadable)
         ));
     }
 
     #[test]
-    fn unclassifiable_inner_instructions_are_refused() {
-        let case = case(HNT_USDC);
-        let compiled = json!({
-            "programIdIndex": 0,
-            "accounts": [1],
-            "data": "3Rg2bKuTGTyGGVTrjBjM",
-            "stackHeight": 2,
-        });
+    fn a_top_level_program_index_outside_the_keys_is_refused() {
+        let taker = Pubkey::new_unique();
+        let VersionedMessage::Legacy(mut message) = top_level(&taker, MEMO, &[]) else {
+            panic!("legacy message");
+        };
+        message.instructions[0].program_id_index = 9;
+        let message = VersionedMessage::Legacy(message);
         assert!(matches!(
-            check_inner(&case, route_group(json!([compiled]))),
-            Err(SwapRefusal::InnerInstructionUnreadable)
+            hotspot_check(&message, json!([]), &taker),
+            Err(SwapRefusal::AccountIndexOutOfRange { index: 0 })
         ));
-        let mut bad_program = amm_swap(&[], 2);
-        bad_program["programId"] = "not a key".into();
         assert!(matches!(
-            check_inner(&case, route_group(json!([bad_program]))),
-            Err(SwapRefusal::InnerInstructionUnreadable)
-        ));
-        // A group for a top-level instruction the transaction lacks.
-        assert!(matches!(
-            check_inner(&case, json!([{ "index": 200, "instructions": [] }])),
-            Err(SwapRefusal::InnerInstructionUnreadable)
+            fee_bound(&message, message.static_account_keys()),
+            Err(SwapRefusal::AccountIndexOutOfRange { index: 0 })
         ));
     }
 
@@ -3365,337 +2556,6 @@ pub(crate) mod tests {
             Err(SwapRouteError::Refused(SwapRefusal::SimulationIncomplete))
         ));
         assert_eq!(signed, 0);
-    }
-
-    #[test]
-    fn token_forms_naming_the_wallet_are_limited() {
-        let case = case(HNT_USDC);
-        let taker = case.request.taker;
-        let held = case.token_account_of(&HNT);
-        check_inner(
-            &case,
-            route_group(json!([token_transfer(&taker, &held, 2)])),
-        )
-        .expect("a transfer from the taker's account");
-
-        let refused = |instruction: Value| {
-            matches!(
-                check_inner(&case, route_group(json!([instruction]))),
-                Err(SwapRefusal::InnerInstructionNotAllowed { program }) if program == spl_token::ID
-            )
-        };
-        // From an account the taker does not own (here, as its delegate).
-        assert!(refused(token_transfer(&taker, &Pubkey::new_unique(), 2)));
-        // Another form of the token program.
-        let mut approve = token_transfer(&taker, &held, 2);
-        approve["parsed"]["type"] = "approve".into();
-        assert!(refused(approve));
-        // A multisig authority that lists the taker among its signers.
-        let mut multisig = token_transfer(&Pubkey::new_unique(), &held, 2);
-        multisig["parsed"]["info"]["signers"] = json!([taker.to_string()]);
-        assert!(refused(multisig));
-        // Closing an account the taker owns, by the taker, passes; closing
-        // another's does not.
-        let close = |account: &Pubkey, owner: &Pubkey| {
-            json!({
-                "parsed": {
-                    "info": {
-                        "account": account.to_string(),
-                        "destination": taker.to_string(),
-                        "owner": owner.to_string(),
-                    },
-                    "type": "closeAccount",
-                },
-                "program": "spl-token",
-                "programId": spl_token::ID.to_string(),
-                "stackHeight": 2,
-            })
-        };
-        check_inner(&case, route_group(json!([close(&held, &taker)])))
-            .expect("closing the taker's account");
-        assert!(refused(close(&Pubkey::new_unique(), &taker)));
-        // Naming the taker only as the destination, with another owner
-        // signing, is not the taker's close.
-        assert!(refused(close(&held, &Pubkey::new_unique())));
-        // The taker's close paying its lamports to another account.
-        let mut elsewhere = close(&held, &taker);
-        elsewhere["parsed"]["info"]["destination"] = Pubkey::new_unique().to_string().into();
-        assert!(refused(elsewhere));
-    }
-
-    #[test]
-    fn an_account_the_route_creates_for_the_taker_may_be_spent_from() {
-        let mut case = case(HNT_USDC);
-        let taker = case.request.taker;
-        let created = absent_writable(&case);
-        let transfer = route_group(json!([token_transfer(&taker, &created, 3)]));
-        // Absent before and not the taker's after: refused.
-        assert!(matches!(
-            check_inner(&case, transfer.clone()),
-            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
-        ));
-        case.chain
-            .post
-            .insert(created, token_account_state(USDC, taker, 0));
-        check_inner(&case, transfer.clone()).expect("an account created for the taker");
-        // An account that existed before as someone else's stays refused,
-        // whoever holds it after.
-        case.chain
-            .pre
-            .insert(created, token_account_state(USDC, Pubkey::new_unique(), 0));
-        assert!(matches!(
-            check_inner(&case, transfer),
-            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
-        ));
-    }
-
-    #[test]
-    fn an_associated_account_create_covers_only_what_it_runs() {
-        let case = case(HNT_USDC);
-        let taker = case.request.taker;
-        let create = json!({
-            "parsed": {
-                "info": {
-                    "account": Pubkey::new_unique().to_string(),
-                    "mint": USDC.to_string(),
-                    "source": taker.to_string(),
-                    "systemProgram": system_program::ID.to_string(),
-                    "tokenProgram": spl_token::ID.to_string(),
-                    "wallet": taker.to_string(),
-                },
-                "type": "createIdempotent",
-            },
-            "program": "spl-associated-token-account",
-            "programId": spl_associated_token_account::ID.to_string(),
-            "stackHeight": 2,
-        });
-        let initialize = |owner: &Pubkey, height: u32| {
-            json!({
-                "parsed": {
-                    "info": {
-                        "account": Pubkey::new_unique().to_string(),
-                        "mint": USDC.to_string(),
-                        "owner": owner.to_string(),
-                    },
-                    "type": "initializeAccount3",
-                },
-                "program": "spl-token",
-                "programId": spl_token::ID.to_string(),
-                "stackHeight": height,
-            })
-        };
-        check_inner(
-            &case,
-            route_group(json!([create.clone(), initialize(&taker, 3)])),
-        )
-        .expect("the create's own instructions");
-        // Once the create returns, deeper instructions are the route's own
-        // again.
-        assert!(matches!(
-            check_inner(
-                &case,
-                route_group(json!([
-                    create.clone(),
-                    amm_swap(&[], 2),
-                    amm_swap(&[taker], 3)
-                ]))
-            ),
-            Err(SwapRefusal::InnerProgramNotAllowed { .. })
-        ));
-        // The same instruction after the create returns is the route's own.
-        assert!(matches!(
-            check_inner(&case, route_group(json!([create, initialize(&taker, 2)]))),
-            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
-        ));
-        assert!(matches!(
-            check_inner(&case, route_group(json!([initialize(&taker, 3)]))),
-            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
-        ));
-        // A top-level create covers its whole group, and nothing else does.
-        let sol = self::case(SOL_USDC);
-        let sol_taker = sol.request.taker;
-        let top_create =
-            |index: u8| json!([{ "index": index, "instructions": [initialize(&sol_taker, 2)] }]);
-        check_inner(&sol, top_create(4)).expect("a top-level create's group");
-        assert!(matches!(
-            check_inner(&sol, top_create(5)),
-            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
-        ));
-    }
-
-    fn associated_create(taker: &Pubkey, token_program: &Pubkey, height: u32) -> Value {
-        json!({
-            "parsed": {
-                "info": {
-                    "account": Pubkey::new_unique().to_string(),
-                    "mint": USDC.to_string(),
-                    "source": taker.to_string(),
-                    "systemProgram": system_program::ID.to_string(),
-                    "tokenProgram": token_program.to_string(),
-                    "wallet": taker.to_string(),
-                },
-                "type": "createIdempotent",
-            },
-            "program": "spl-associated-token-account",
-            "programId": spl_associated_token_account::ID.to_string(),
-            "stackHeight": height,
-        })
-    }
-
-    #[test]
-    fn an_associated_account_create_must_hand_the_wallet_to_a_token_program() {
-        let case = case(HNT_USDC);
-        let taker = case.request.taker;
-        for token_program in [spl_token::ID, TOKEN_2022] {
-            for kind in ["create", "createIdempotent"] {
-                let mut create = associated_create(&taker, &token_program, 2);
-                create["parsed"]["type"] = kind.into();
-                check_inner(&case, route_group(json!([create])))
-                    .expect("a create handed a token program");
-            }
-        }
-        let mut recover = associated_create(&taker, &spl_token::ID, 2);
-        recover["parsed"]["type"] = "recoverNested".into();
-        assert!(matches!(
-            check_inner(&case, route_group(json!([recover]))),
-            Err(SwapRefusal::InnerInstructionNotAllowed { program })
-                if program == spl_associated_token_account::ID
-        ));
-        assert!(matches!(
-            check_inner(
-                &case,
-                route_group(json!([associated_create(&taker, &key(WHIRLPOOL), 2)]))
-            ),
-            Err(SwapRefusal::InnerInstructionNotAllowed { program })
-                if program == spl_associated_token_account::ID
-        ));
-    }
-
-    #[test]
-    fn token_2022_transfers_from_the_wallets_account_are_allowed() {
-        let case = case(HNT_USDC);
-        let taker = case.request.taker;
-        let held = case.token_account_of(&HNT);
-        let mut transfer = token_transfer(&taker, &held, 2);
-        transfer["programId"] = TOKEN_2022.to_string().into();
-        check_inner(&case, route_group(json!([transfer.clone()])))
-            .expect("a Token-2022 transfer from the taker's account");
-        transfer["parsed"]["info"]["source"] = Pubkey::new_unique().to_string().into();
-        assert!(matches!(
-            check_inner(&case, route_group(json!([transfer]))),
-            Err(SwapRefusal::InnerInstructionNotAllowed { program }) if program == TOKEN_2022
-        ));
-    }
-
-    #[test]
-    fn a_create_without_a_stack_height_covers_nothing() {
-        let case = case(HNT_USDC);
-        let taker = case.request.taker;
-        let mut create = associated_create(&taker, &spl_token::ID, 2);
-        create
-            .as_object_mut()
-            .expect("an object")
-            .remove("stackHeight");
-        let initialize = json!({
-            "parsed": {
-                "info": {
-                    "account": Pubkey::new_unique().to_string(),
-                    "mint": USDC.to_string(),
-                    "owner": taker.to_string(),
-                },
-                "type": "initializeAccount3",
-            },
-            "program": "spl-token",
-            "programId": spl_token::ID.to_string(),
-            "stackHeight": 3,
-        });
-        assert!(matches!(
-            check_inner(&case, route_group(json!([create, initialize]))),
-            Err(SwapRefusal::InnerInstructionNotAllowed { program }) if program == spl_token::ID
-        ));
-    }
-
-    #[test]
-    fn system_forms_naming_the_wallet_are_limited() {
-        let case = case(HNT_USDC);
-        let taker = case.request.taker;
-        let other = Pubkey::new_unique().to_string();
-        let system = |kind: &str, info: Value| {
-            json!({
-                "parsed": { "info": info, "type": kind },
-                "program": "system",
-                "programId": system_program::ID.to_string(),
-                "stackHeight": 2,
-            })
-        };
-        let refused = |instruction: Value| {
-            matches!(
-                check_inner(&case, route_group(json!([instruction]))),
-                Err(SwapRefusal::InnerInstructionNotAllowed { program }) if program == system_program::ID
-            )
-        };
-        let taker_text = taker.to_string();
-        assert!(refused(system(
-            "withdrawFromNonce",
-            json!({
-                "nonceAccount": other,
-                "destination": other,
-                "recentBlockhashesSysvar": other,
-                "rentSysvar": other,
-                "nonceAuthority": taker_text,
-                "lamports": 1,
-            })
-        )));
-        assert!(refused(system(
-            "authorizeNonce",
-            json!({
-                "nonceAccount": other,
-                "nonceAuthority": taker_text,
-                "newAuthorized": other,
-            })
-        )));
-        assert!(refused(system(
-            "assign",
-            json!({ "account": taker_text, "owner": other })
-        )));
-        // The allowed forms still pass.
-        check_inner(
-            &case,
-            route_group(json!([system(
-                "transfer",
-                json!({ "source": taker_text, "destination": other, "lamports": 1 })
-            )])),
-        )
-        .expect("a transfer from the wallet");
-    }
-
-    #[test]
-    fn an_instruction_without_a_stack_height_is_not_covered_by_a_create() {
-        let sol = case(SOL_USDC);
-        let taker = sol.request.taker;
-        let mut initialize = json!({
-            "parsed": {
-                "info": {
-                    "account": Pubkey::new_unique().to_string(),
-                    "mint": USDC.to_string(),
-                    "owner": taker.to_string(),
-                },
-                "type": "initializeAccount3",
-            },
-            "program": "spl-token",
-            "programId": spl_token::ID.to_string(),
-            "stackHeight": 2,
-        });
-        let group = |instruction: &Value| json!([{ "index": 4, "instructions": [instruction] }]);
-        check_inner(&sol, group(&initialize)).expect("covered with its height");
-        initialize
-            .as_object_mut()
-            .expect("an object")
-            .remove("stackHeight");
-        assert!(matches!(
-            check_inner(&sol, group(&initialize)),
-            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
-        ));
     }
 
     fn legacy_message(num_required_signatures: u8, keys: Vec<Pubkey>) -> VersionedMessage {
@@ -3814,6 +2674,332 @@ pub(crate) mod tests {
         assert!(matches!(
             check_signer(&msg, &taker),
             Err(SwapRefusal::SignerCount { num_signers: 0, .. })
+        ));
+    }
+
+    // ---- route minimum ----
+
+    /// Arguments from `in_amount` on: `in_amount`, `quoted_out_amount`,
+    /// `slippage_bps`, `platform_fee_bps`, `positive_slippage_bps`, and an
+    /// empty route plan.
+    fn route_args(
+        in_amount: u64,
+        quoted_out: u64,
+        slippage_bps: u16,
+        platform_fee_bps: u16,
+    ) -> Vec<u8> {
+        let mut args = in_amount.to_le_bytes().to_vec();
+        args.extend_from_slice(&quoted_out.to_le_bytes());
+        args.extend_from_slice(&slippage_bps.to_le_bytes());
+        args.extend_from_slice(&platform_fee_bps.to_le_bytes());
+        args.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0]);
+        args
+    }
+
+    fn route_v2_data(args: &[u8]) -> Vec<u8> {
+        [ROUTE_V2.as_slice(), args].concat()
+    }
+
+    /// `shared_accounts_route_v2` data, whose `id: u8` precedes the
+    /// arguments.
+    fn shared_route_data(args: &[u8]) -> Vec<u8> {
+        [SHARED_ACCOUNTS_ROUTE_V2.as_slice(), &[7], args].concat()
+    }
+
+    fn route_minimum_check(
+        program: Pubkey,
+        data: &[u8],
+        min_output: u64,
+    ) -> Result<(), SwapRefusal> {
+        let taker = Pubkey::new_unique();
+        let ix = Instruction::new_with_bytes(program, data, vec![]);
+        let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&taker)));
+        check_route_minimum(&message, message.static_account_keys(), min_output)
+    }
+
+    #[test]
+    fn jupiter_program_id_and_route_discriminators_are_the_published_ones() {
+        assert_eq!(
+            JUPITER_AGGREGATOR_V6,
+            pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4")
+        );
+        assert_eq!(hex(&ROUTE_V2), "bb64facc31c4af14");
+        assert_eq!(hex(&SHARED_ACCOUNTS_ROUTE_V2), "d19853937cfed8e9");
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
+    #[test]
+    fn a_route_minimum_below_the_request_is_refused_in_each_form() {
+        // 1,000,000 quoted less 100 bps slippage is 990,000, less a 10 bps
+        // platform fee is 989,010.
+        let args = route_args(5_000_000, 1_000_000, 100, 10);
+        for data in [route_v2_data(&args), shared_route_data(&args)] {
+            route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 989_010)
+                .expect("a minimum at the floor passes");
+            assert!(matches!(
+                route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 989_011),
+                Err(SwapRefusal::RouteMinimumBelowRequest {
+                    index: 0,
+                    route_minimum: 989_010,
+                    min_output: 989_011
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn the_route_minimum_is_the_quote_less_slippage_then_the_platform_fee() {
+        // No platform fee: 990,000.
+        let data = route_v2_data(&route_args(5_000_000, 1_000_000, 100, 0));
+        route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 990_000).expect("floor");
+        assert!(route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 990_001).is_err());
+        // Full slippage leaves nothing.
+        let data = shared_route_data(&route_args(5_000_000, 1_000_000, 10_000, 0));
+        assert!(matches!(
+            route_minimum_check(JUPITER_AGGREGATOR_V6, &data, 1),
+            Err(SwapRefusal::RouteMinimumBelowRequest {
+                route_minimum: 0,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn an_unrecognised_jupiter_form_or_another_program_is_not_read() {
+        let args = route_args(5_000, 1_000, 10_000, 0);
+        // Terms that would be refused, behind a discriminator that is not a
+        // v2 route.
+        let unknown = [[0u8; 8].as_slice(), &args].concat();
+        route_minimum_check(JUPITER_AGGREGATOR_V6, &unknown, 990_000).expect("unknown form");
+        // The v2 form's discriminator on a program that is not Jupiter.
+        route_minimum_check(MEMO, &route_v2_data(&args), 990_000).expect("another program");
+        route_minimum_check(MEMO, &shared_route_data(&args), 990_000).expect("another program");
+        // A recognised discriminator without the arguments, or no data.
+        route_minimum_check(JUPITER_AGGREGATOR_V6, &route_v2_data(&args[..19]), 990_000)
+            .expect("too short");
+        route_minimum_check(
+            JUPITER_AGGREGATOR_V6,
+            &shared_route_data(&args[..19]),
+            990_000,
+        )
+        .expect("too short");
+        route_minimum_check(JUPITER_AGGREGATOR_V6, &[], 990_000).expect("no data");
+    }
+
+    /// Set the slippage of the one Jupiter route in the recorded
+    /// transaction.
+    fn set_recorded_slippage(case: &mut Case, slippage_bps: u16) {
+        let mut message = case.message();
+        let ix = message
+            .instructions()
+            .iter()
+            .position(|ix| {
+                ix.data.starts_with(&ROUTE_V2) || ix.data.starts_with(&SHARED_ACCOUNTS_ROUTE_V2)
+            })
+            .expect("fixture route instruction");
+        let shared = message.instructions()[ix]
+            .data
+            .starts_with(&SHARED_ACCOUNTS_ROUTE_V2);
+        // Discriminator, `id` for the shared form, `in_amount`, then
+        // `quoted_out_amount`.
+        let offset = 8 + usize::from(shared) + 16;
+        match &mut message {
+            VersionedMessage::V0(message) => message.instructions[ix].data[offset..offset + 2]
+                .copy_from_slice(&slippage_bps.to_le_bytes()),
+            VersionedMessage::Legacy(message) => message.instructions[ix].data[offset..offset + 2]
+                .copy_from_slice(&slippage_bps.to_le_bytes()),
+        }
+        case.set_message(message);
+    }
+
+    #[tokio::test]
+    async fn a_recorded_route_with_slippage_set_wide_is_refused() {
+        for fixture in [HNT_USDC, SOL_USDC] {
+            let mut case = case(fixture);
+            set_recorded_slippage(&mut case, 10_000);
+            assert!(
+                matches!(
+                    case.refusal().await,
+                    SwapRefusal::RouteMinimumBelowRequest { .. }
+                ),
+                "{fixture:.20}"
+            );
+        }
+    }
+
+    // ---- lazy distributor ----
+
+    const LAZY_DISTRIBUTOR: Pubkey = pubkey!("1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w");
+    const BUBBLEGUM: Pubkey = pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY");
+
+    #[test]
+    fn a_lazy_distributor_instruction_naming_the_wallet_is_refused_at_the_top_level() {
+        let taker = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        assert_eq!(programs::lazy_distributor::ID, LAZY_DISTRIBUTOR);
+        hotspot_check(
+            &top_level(&taker, LAZY_DISTRIBUTOR, &[other]),
+            json!([]),
+            &taker,
+        )
+        .expect("a lazy distributor instruction not naming the wallet passes");
+        assert!(matches!(
+            hotspot_check(
+                &top_level(&taker, LAZY_DISTRIBUTOR, &[other, taker]),
+                json!([]),
+                &taker
+            ),
+            Err(SwapRefusal::HotspotProgramInstruction { program }) if program == LAZY_DISTRIBUTOR
+        ));
+        assert!(matches!(
+            hotspot_check(
+                &top_level(&taker, BUBBLEGUM, &[taker]),
+                json!([]),
+                &taker
+            ),
+            Err(SwapRefusal::HotspotProgramInstruction { program }) if program == BUBBLEGUM
+        ));
+    }
+
+    #[test]
+    fn an_inner_lazy_distributor_instruction_naming_the_wallet_is_refused() {
+        let taker = Pubkey::new_unique();
+        let message = top_level(&taker, MEMO, &[]);
+        let group = |ix: Value| json!([{ "index": 0, "instructions": [ix] }]);
+        for height in [2, 4] {
+            assert!(
+                matches!(
+                    hotspot_check(
+                        &message,
+                        group(program_call(&LAZY_DISTRIBUTOR, &[taker], height)),
+                        &taker
+                    ),
+                    Err(SwapRefusal::HotspotProgramInstruction { program })
+                        if program == LAZY_DISTRIBUTOR
+                ),
+                "height {height}"
+            );
+        }
+        let parsed = json!({
+            "parsed": { "info": { "owner": taker.to_string() }, "type": "update" },
+            "program": "lazy-distributor",
+            "programId": LAZY_DISTRIBUTOR.to_string(),
+            "stackHeight": 3,
+        });
+        assert!(matches!(
+            hotspot_check(&message, group(parsed), &taker),
+            Err(SwapRefusal::HotspotProgramInstruction { program }) if program == LAZY_DISTRIBUTOR
+        ));
+        hotspot_check(
+            &message,
+            group(program_call(&LAZY_DISTRIBUTOR, &[Pubkey::new_unique()], 3)),
+            &taker,
+        )
+        .expect("a lazy distributor instruction not naming the wallet passes");
+    }
+
+    #[test]
+    fn a_parsed_instruction_naming_the_wallet_in_an_array_is_refused() {
+        let taker = Pubkey::new_unique();
+        let message = top_level(&taker, MEMO, &[]);
+        let parsed = |names: Vec<String>| {
+            json!([{ "index": 0, "instructions": [{
+                "parsed": { "info": { "signers": names }, "type": "transfer" },
+                "program": "bubblegum",
+                "programId": BUBBLEGUM.to_string(),
+                "stackHeight": 3,
+            }] }])
+        };
+        assert!(matches!(
+            hotspot_check(
+                &message,
+                parsed(vec![Pubkey::new_unique().to_string(), taker.to_string()]),
+                &taker
+            ),
+            Err(SwapRefusal::HotspotProgramInstruction { .. })
+        ));
+        hotspot_check(
+            &message,
+            parsed(vec![Pubkey::new_unique().to_string()]),
+            &taker,
+        )
+        .expect("an array not naming the wallet passes");
+    }
+
+    #[test]
+    fn a_compiled_inner_instruction_reads_accounts_from_lookup_tables_in_order() {
+        use crate::solana_sdk::message::{
+            v0::{self, MessageAddressTableLookup},
+            MessageHeader,
+        };
+        let taker = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let table = Pubkey::new_unique();
+        // The table holds `other` then Bubblegum; `other` is loaded writable
+        // and Bubblegum read-only, so the keys run: static (the taker and
+        // Memo), then the writable entry, then the read-only one.
+        let entries = BTreeMap::from([
+            ("0".to_string(), other.to_string()),
+            ("1".to_string(), BUBBLEGUM.to_string()),
+        ]);
+        let message = VersionedMessage::V0(v0::Message {
+            header: MessageHeader {
+                num_required_signatures: 1,
+                num_readonly_signed_accounts: 0,
+                num_readonly_unsigned_accounts: 1,
+            },
+            account_keys: vec![taker, MEMO],
+            recent_blockhash: Hash::default(),
+            instructions: vec![],
+            address_table_lookups: vec![MessageAddressTableLookup {
+                account_key: table,
+                writable_indexes: vec![0],
+                readonly_indexes: vec![1],
+            }],
+        });
+        let resolved =
+            resolve_accounts(&message, &[Some(lookup_table(&entries))]).expect("resolve");
+        assert_eq!(resolved.keys, [taker, MEMO, other, BUBBLEGUM]);
+        let compiled = |program: u8, account: u8| {
+            serde_json::from_value::<Vec<UiInnerInstructions>>(json!([{
+                "index": 0,
+                "instructions": [{
+                    "programIdIndex": program,
+                    "accounts": [account],
+                    "data": "3Rg2bKuTGTyGGVTrjBjM",
+                    "stackHeight": 2,
+                }],
+            }]))
+            .expect("inner instructions")
+        };
+        assert!(matches!(
+            check_hotspot_programs(&message, &resolved.keys, &compiled(3, 0), &taker),
+            Err(SwapRefusal::HotspotProgramInstruction { program }) if program == BUBBLEGUM
+        ));
+        check_hotspot_programs(&message, &resolved.keys, &compiled(2, 0), &taker)
+            .expect("the writable entry is not Bubblegum");
+    }
+
+    // ---- token account delegation ----
+
+    #[tokio::test]
+    async fn token_account_delegated_amount_or_state_change_is_refused() {
+        let mut case_amount = case(HNT_USDC);
+        let hnt = case_amount.token_account_of(&HNT);
+        case_amount.edit_post_token(&hnt, |token| token.delegated_amount = 5);
+        assert!(matches!(
+            case_amount.refusal().await,
+            SwapRefusal::TokenDelegationChanged { account } if account == hnt
+        ));
+
+        let mut case_state = case(HNT_USDC);
+        case_state.edit_post_token(&hnt, |token| token.state = AccountState::Frozen);
+        assert!(matches!(
+            case_state.refusal().await,
+            SwapRefusal::TokenDelegationChanged { account } if account == hnt
         ));
     }
 }

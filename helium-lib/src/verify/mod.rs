@@ -148,38 +148,72 @@ pub fn instruction_account(
         .ok_or(VerifyError::LookupTable { what: "an account" })
 }
 
+/// Compute Budget `SetComputeUnitLimit` and `SetComputeUnitPrice` tags.
+pub(crate) const COMPUTE_UNIT_LIMIT_TAG: u8 = 2;
+pub(crate) const COMPUTE_UNIT_PRICE_TAG: u8 = 3;
+
+/// What a message's Compute Budget instructions set.
+///
+/// The runtime reads only the leading bytes of a limit or price and fails a
+/// transaction that repeats either. A repeat is therefore not something a
+/// landed transaction can carry; it is read here as the highest value, so
+/// that what is priced is never less than what any one of them asks for. A
+/// limit or price whose data is too short to read is not counted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct ComputeBudgetSettings {
+    /// The highest limit set; `None` when none is.
+    pub limit: Option<u32>,
+    /// How many limits are set.
+    pub limit_count: usize,
+    /// The highest price set, in micro-lamports; zero when none is.
+    pub price: u64,
+}
+
+/// Read the Compute Budget instructions among `instructions`, whose program
+/// indices resolve through `keys`. An instruction whose program index lies
+/// outside `keys` is not a Compute Budget one.
+pub(crate) fn compute_budget_settings(
+    keys: &[Pubkey],
+    instructions: &[CompiledInstruction],
+) -> ComputeBudgetSettings {
+    let compute_budget = KnownProgram::ComputeBudget.id();
+    let mut settings = ComputeBudgetSettings::default();
+    for ix in instructions {
+        if keys.get(usize::from(ix.program_id_index)) != Some(&compute_budget) {
+            continue;
+        }
+        match ix.data.split_first() {
+            Some((&COMPUTE_UNIT_LIMIT_TAG, rest)) => {
+                if let Some(limit) = rest.first_chunk::<4>() {
+                    let limit = u32::from_le_bytes(*limit);
+                    settings.limit = settings.limit.max(Some(limit));
+                    settings.limit_count += 1;
+                }
+            }
+            Some((&COMPUTE_UNIT_PRICE_TAG, rest)) => {
+                if let Some(price) = rest.first_chunk::<8>() {
+                    settings.price = settings.price.max(u64::from_le_bytes(*price));
+                }
+            }
+            _ => {}
+        }
+    }
+    settings
+}
+
 /// Worst-case prioritization fee in lamports.
 ///
 /// Solana charges `limit x price / 1e6`, rounded up. An absent limit means the
 /// runtime default, which the fee is still charged against, so it is priced
 /// too.
 fn max_prioritization_fee(tx: &VersionedTransaction) -> u64 {
-    let compute_budget = KnownProgram::ComputeBudget.id();
-    let keys = tx.message.static_account_keys();
-    let (mut price, mut limit) = (0u64, None);
-    for ix in tx.message.instructions() {
-        if keys.get(ix.program_id_index as usize) != Some(&compute_budget) {
-            continue;
-        }
-        match ix.data.split_first() {
-            // SetComputeUnitLimit(u32)
-            Some((2, rest)) if rest.len() >= 4 => {
-                limit = Some(u64::from(u32::from_le_bytes(
-                    rest[..4].try_into().expect("4 bytes"),
-                )));
-            }
-            // SetComputeUnitPrice(u64)
-            Some((3, rest)) if rest.len() >= 8 => {
-                price = u64::from_le_bytes(rest[..8].try_into().expect("8 bytes"));
-            }
-            _ => {}
-        }
-    }
-    let limit = limit.unwrap_or_else(|| {
+    let settings =
+        compute_budget_settings(tx.message.static_account_keys(), tx.message.instructions());
+    let limit = settings.limit.map(u64::from).unwrap_or_else(|| {
         (tx.message.instructions().len() as u64 * DEFAULT_COMPUTE_UNITS_PER_IX)
             .min(u64::from(MAX_COMPUTE_UNIT_LIMIT))
     });
-    limit.saturating_mul(price).div_ceil(1_000_000)
+    limit.saturating_mul(settings.price).div_ceil(1_000_000)
 }
 
 /// The single transaction a builder returned, held to what any caller is
@@ -592,6 +626,91 @@ mod tests {
         assert_eq!(
             max_prioritization_fee(&tx(Pubkey::new_unique(), 1, &[(cb, p)])),
             200_000
+        );
+    }
+
+    #[test]
+    fn a_repeated_price_is_read_as_the_highest_in_either_order() {
+        let cb = KnownProgram::ComputeBudget.id();
+        let price = |value: u64| {
+            let mut data = vec![3u8];
+            data.extend_from_slice(&value.to_le_bytes());
+            (cb, data)
+        };
+        let mut limit = vec![2u8];
+        limit.extend_from_slice(&1_000_000u32.to_le_bytes());
+        for prices in [
+            [price(3_000_000), price(1_000_000)],
+            [price(1_000_000), price(3_000_000)],
+        ] {
+            let mut ixs = vec![(cb, limit.clone())];
+            ixs.extend(prices);
+            // 1,000,000 CU at 3 lamports per CU.
+            assert_eq!(
+                max_prioritization_fee(&tx(Pubkey::new_unique(), 1, &ixs)),
+                3_000_000
+            );
+        }
+    }
+
+    #[test]
+    fn a_repeated_limit_is_read_as_the_highest_in_either_order() {
+        let cb = KnownProgram::ComputeBudget.id();
+        let limit = |value: u32| {
+            let mut data = vec![2u8];
+            data.extend_from_slice(&value.to_le_bytes());
+            (cb, data)
+        };
+        let mut price = vec![3u8];
+        price.extend_from_slice(&1_000_000u64.to_le_bytes());
+        for limits in [
+            [limit(2_000_000), limit(1_000_000)],
+            [limit(1_000_000), limit(2_000_000)],
+        ] {
+            let mut ixs = vec![(cb, price.clone())];
+            ixs.extend(limits);
+            // 2,000,000 CU at 1 lamport per CU.
+            assert_eq!(
+                max_prioritization_fee(&tx(Pubkey::new_unique(), 1, &ixs)),
+                2_000_000
+            );
+        }
+    }
+
+    #[test]
+    fn compute_budget_settings_count_limits_and_ignore_short_data() {
+        let cb = KnownProgram::ComputeBudget.id();
+        let keys = [Pubkey::new_unique(), cb];
+        let ix = |data: &[u8]| CompiledInstruction::new_from_raw_parts(1, data.to_vec(), vec![]);
+        // The highest limit is read whichever order the limits come in.
+        for limits in [
+            [[2u8, 1, 0, 0, 0], [2, 9, 0, 0, 0]],
+            [[2, 9, 0, 0, 0], [2, 1, 0, 0, 0]],
+        ] {
+            let settings = compute_budget_settings(
+                &keys,
+                &[
+                    ix(&limits[0]),
+                    ix(&limits[1]),
+                    ix(&[2, 1, 0, 0]),
+                    ix(&[3, 5, 0, 0, 0, 0, 0, 0, 0]),
+                    ix(&[3, 5, 0, 0, 0, 0, 0, 0]),
+                ],
+            );
+            assert_eq!(
+                settings,
+                ComputeBudgetSettings {
+                    limit: Some(9),
+                    limit_count: 2,
+                    price: 5
+                }
+            );
+        }
+        // An instruction of another program is not a Compute Budget one.
+        let other = CompiledInstruction::new_from_raw_parts(0, vec![2, 1, 0, 0, 0], vec![]);
+        assert_eq!(
+            compute_budget_settings(&keys, &[other]),
+            ComputeBudgetSettings::default()
         );
     }
 

@@ -17,8 +17,12 @@ pub struct Cmd {
     /// Amount to swap (human-readable, e.g. 1.5 for 1.5 HNT)
     amount: f64,
     /// Least output to accept (human-readable, in the output token). The
-    /// swap is refused unless the quote and the transaction guarantee at
-    /// least this much.
+    /// swap is refused unless the quote's minimum, the simulated output and
+    /// the route's own minimum reach at least this much. For a top-level
+    /// Jupiter v2 route (shared-accounts or not) the landed swap is held to
+    /// the route's own minimum, which the checks require to be at least this
+    /// much; other route forms, and Jupiter reached through another program,
+    /// are not read.
     #[arg(long)]
     min_output: f64,
     /// Slippage tolerance in basis points (100 = 1%)

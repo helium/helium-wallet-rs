@@ -42,7 +42,9 @@ pub struct SwapRequest {
 /// The build request carries the same set because a builder that routes
 /// again at build time does not inherit the quote's exclusions. Kipseli's
 /// instruction lists the taker even in a `shared_accounts_route_v2` route,
-/// so `check_inner_instructions` refuses the routes through it.
+/// so leaving it out keeps the taker away from one more program. The checks
+/// in [`crate::verify::swap_route`] do not depend on the exclusion: they
+/// judge the swap's outcome, whichever programs the route calls.
 ///
 /// Jupiter matches each label against its own name for a DEX and ignores a
 /// label it does not know, so a renamed label silently excludes nothing.
@@ -127,6 +129,22 @@ pub struct SignedSwap {
 /// [`crate::verify::swap_route`]). The simulation that check relies on runs
 /// on `client`'s RPC node. Nothing is signed; [`PreparedSwap::sign`] does
 /// that.
+///
+/// A shared-accounts route gives the AMMs Jupiter's accounts instead of the
+/// taker, so fewer programs receive the taker when the builder honours the
+/// request. A builder may return a non-shared `route_v2` regardless (Jupiter
+/// builds single-hop routes that way), or any other route form; each is
+/// accepted when it passes the same checks. Those checks bound what one
+/// simulation of the transaction does to the taker's own account, its token
+/// accounts and its SOL, refuse any Bubblegum or lazy distributor
+/// instruction naming the taker, and require a Jupiter v2 route's own
+/// minimum output to reach the request's. They guard against a builder that
+/// is buggy or misconfigured, not a hostile one: a program that behaves
+/// differently when the transaction lands than it did in the simulation is
+/// not caught. They do not inspect the route's shape, and do not compare
+/// state other programs keep for the taker, so a program the route hands the
+/// taker's signature is trusted with that state (see
+/// [`crate::verify::swap_route`]).
 ///
 /// A request with a zero amount or minimum output, or the same mint on both
 /// sides, is refused before any request is made.
@@ -226,12 +244,12 @@ pub(crate) async fn prepare_with<A: SwapApi, S: SwapChain>(
     })
 }
 
-/// Ask for the route instructions whose terms the checks read at a fixed
-/// offset: `instructionVersion` V2, with each route-plan step's share in
+/// Ask for Jupiter's v2 route instructions: `instructionVersion` V2, with
+/// each route-plan step's share in
 /// basis points, which those instructions carry in place of a percentage.
 /// Only fields outside [`check_quote`]'s are changed, so the quote sent is
-/// the quote checked. A builder that ignores the request returns an older
-/// route form, which the instruction check refuses.
+/// the quote checked. The checks do not depend on the route form a builder
+/// returns.
 fn request_v2_route(quote: &mut SwapQuote) {
     let Value::Object(fields) = &mut quote.extra else {
         return;

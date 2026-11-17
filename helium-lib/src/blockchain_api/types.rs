@@ -501,13 +501,11 @@ pub struct SwapInstructionsRequest {
     pub destination_token_account: Option<String>,
     /// `Some(true)` asks for the route through Jupiter's shared program
     /// accounts, which give the AMMs Jupiter's accounts instead of the taker.
-    /// `None` leaves the choice to Jupiter, which builds some routes,
-    /// single-hop and multi-hop, as non-shared `route_v2`. `Some(false)`
-    /// forces non-shared routes. A non-shared route's AMMs receive the taker,
-    /// which `check_inner_instructions` refuses. An AMM that lists the taker
-    /// itself is refused too; [`crate::swap::prepare`] asks both the quote
-    /// and this build to leave such AMMs out (see
-    /// [`crate::swap::EXCLUDED_DEXES`]).
+    /// `None` leaves the choice to Jupiter, and `Some(false)` asks for a
+    /// non-shared `route_v2`, whose AMMs receive the taker. Jupiter builds
+    /// single-hop routes as non-shared `route_v2` whatever this asks. The
+    /// swap checks accept either form: they judge the simulated outcome, not
+    /// the route's shape (see [`crate::verify::swap_route`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_shared_accounts: Option<bool>,
     /// The comma-separated Jupiter DEX labels the builder leaves out of the

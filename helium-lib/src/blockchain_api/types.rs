@@ -499,10 +499,13 @@ pub struct SwapInstructionsRequest {
     pub user_public_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination_token_account: Option<String>,
-    /// Build the route through Jupiter's shared program accounts, so the
-    /// taker appears only in SPL Token transfers. Without it Jupiter builds
-    /// some single-hop routes as non-shared `route_v2`, whose AMM receives the
-    /// taker and which `check_inner_instructions` refuses.
+    /// Build the route through Jupiter's shared program accounts, which give
+    /// the AMMs Jupiter's accounts instead of the taker. Without it Jupiter
+    /// builds some routes, single-hop and multi-hop, as non-shared
+    /// `route_v2`, whose AMMs receive the taker and which
+    /// `check_inner_instructions` refuses. An AMM that lists the taker itself
+    /// is still refused; the quote leaves such AMMs out (see
+    /// [`crate::swap::EXCLUDED_DEXES`]).
     pub use_shared_accounts: bool,
 }
 

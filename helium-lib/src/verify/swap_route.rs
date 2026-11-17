@@ -34,14 +34,20 @@
 //!    that pays the taker, an Associated Token Account create, or a System
 //!    transfer or account creation. These are the calls through which the
 //!    taker's signature moves or hands over what the taker holds, whichever
-//!    program makes them.
+//!    program makes them. A taker token account is one the taker owns
+//!    before the swap, or one absent before it that the transaction opens
+//!    for the taker (the intermediate account of a multi-hop route, which
+//!    the route closes again). No native administration program (Stake,
+//!    Vote, the BPF loaders, Address Lookup Table, Config) may receive the
+//!    taker.
 //!
 //! The AMMs on the route are trusted. A non-shared `route_v2` hands the taker
 //! to each AMM's own swap instruction, and an AMM may list the taker in its
-//! own instruction even in a shared-accounts route; any program may receive
-//! the taker, and is trusted to do on chain what the simulation showed. What
-//! the taker's signature does beneath those programs is bounded by point 4,
-//! and what the transaction does to the taker's accounts by point 3.
+//! own instruction even in a shared-accounts route; any program outside the
+//! native administration programs may receive the taker, and is trusted to
+//! do on chain what the simulation showed. What the taker's signature does
+//! beneath those programs is bounded by point 4, and what the transaction
+//! does to the taker's accounts by point 3.
 //! [`crate::swap::prepare`] asks for shared-accounts routes and leaves
 //! [`crate::swap::EXCLUDED_DEXES`] out of the quote and the build, so fewer
 //! programs receive the taker where the builder honours both.
@@ -66,6 +72,7 @@ use crate::{
         },
     },
     solana_sdk::{
+        self,
         account::Account,
         hash::Hash,
         message::VersionedMessage,
@@ -121,6 +128,23 @@ const TOKEN_SYNC_NATIVE: &[u8] = &[17];
 const TOKEN_CLOSE_ACCOUNT: &[u8] = &[9];
 /// System program `Transfer`, the bincode tag before its `u64` lamports.
 const SYSTEM_TRANSFER_TAG: [u8; 4] = [2, 0, 0, 0];
+/// Native programs that may not receive the taker beneath the top level:
+/// Stake, Vote, the BPF loaders (Upgradeable, 2, the deprecated loader and
+/// Loader v4), Address Lookup Table and Config. Their instructions act on
+/// stake, vote, program, lookup table and config accounts and on the
+/// authorities over them, none of which [`check_effects`] compares, so a
+/// taker-signed instruction of one can hand over something the taker controls
+/// without any effect the checks see. No swap route calls them with the taker.
+const NATIVE_ADMIN_PROGRAMS: [Pubkey; 8] = [
+    solana_sdk::stake::program::ID,
+    solana_sdk::vote::program::ID,
+    solana_sdk::bpf_loader_upgradeable::ID,
+    solana_sdk::bpf_loader::ID,
+    solana_sdk::bpf_loader_deprecated::ID,
+    solana_sdk::loader_v4::ID,
+    address_lookup_table::ID,
+    solana_sdk::config::program::ID,
+];
 /// Jupiter aggregator `route_v2` and `shared_accounts_route_v2`, the
 /// exact-in routes built when the quote asks for `instructionVersion` V2.
 /// The program's published Anchor IDL gives both the arguments
@@ -1152,7 +1176,8 @@ pub(crate) fn check_effects(
 
 /// Refuse a simulation in which an instruction of SPL Token, Token-2022,
 /// System or the Associated Token Account program beneath the top level
-/// names `taker` in a form a swap does not use. `pre` and `post` are the
+/// names `taker` in a form a swap does not use, or in which a native
+/// administration program names `taker` at all. `pre` and `post` are the
 /// states of `resolved.writable` before and after the simulation, `inner`
 /// the simulation's inner instructions.
 ///
@@ -1162,8 +1187,9 @@ pub(crate) fn check_effects(
 /// - SPL Token or Token-2022 `transfer` and `transferChecked` with the taker
 ///   as the single authority, and `closeAccount` with the taker as owner
 ///   paying its lamports to the taker, each of an account the taker owns
-///   before the swap, or that is absent
-///   before it and the taker's after (an account the route creates).
+///   before the swap, or that is absent before it and either the taker's
+///   after or opened for the taker during the transaction (see
+///   [`opened_for_taker`]): an account the route creates.
 /// - Associated Token Account `create` and `createIdempotent` whose
 ///   `tokenProgram` is SPL Token or Token-2022, together with the
 ///   instructions it runs beneath itself, which belong to that program. The
@@ -1173,11 +1199,11 @@ pub(crate) fn check_effects(
 ///   whole group the same way. An instruction with no stack height is never
 ///   covered.
 /// - System `transfer` and `createAccount`.
-/// - Any instruction of any other program, such as an AMM's own swap
-///   instruction in a non-shared route. The AMMs on the route are trusted
-///   with the taker; the token, Associated Token Account and System
-///   instructions they run with the taker's signature are each checked here
-///   in turn.
+/// - Any instruction of a program outside those and
+///   [`NATIVE_ADMIN_PROGRAMS`], such as an AMM's own swap instruction in a
+///   non-shared route. The AMMs on the route are trusted with the taker; the
+///   token, Associated Token Account and System instructions they run with
+///   the taker's signature are each checked here in turn.
 ///
 /// A compiled (undecoded) inner instruction, or one whose program id does not
 /// parse, is refused whether or not it names the taker, since it cannot be
@@ -1185,7 +1211,8 @@ pub(crate) fn check_effects(
 /// parser for) carries its accounts and program id, and is classified.
 ///
 /// This bounds the forms in which the taker's signature reaches the token
-/// and System programs. It must run together with [`check_effects`], which
+/// and System programs, and keeps it from the native administration
+/// programs. It must run together with [`check_effects`], which
 /// bounds what the transaction moves.
 pub(crate) fn check_inner_instructions(
     message: &VersionedMessage,
@@ -1201,14 +1228,17 @@ pub(crate) fn check_inner_instructions(
             .and_then(token_account)
             .is_some_and(|token| token.owner == *taker)
     };
+    let taker_text = taker.to_string();
+    let opened = opened_for_taker(message, resolved, inner, taker);
     let owned: HashSet<Pubkey> = resolved
         .writable
         .iter()
         .zip(pre.iter().zip(post))
-        .filter(|(_, (before, after))| takers(before) || (before.is_none() && takers(after)))
+        .filter(|(address, (before, after))| {
+            takers(before) || (before.is_none() && (takers(after) || opened.contains(address)))
+        })
         .map(|(address, _)| *address)
         .collect();
-    let taker_text = taker.to_string();
     let undecoded = Value::Null;
 
     for group in inner {
@@ -1256,6 +1286,61 @@ pub(crate) fn check_inner_instructions(
     Ok(())
 }
 
+/// The accounts the transaction opens for `taker`: the associated account of
+/// each top-level Associated Token Account create whose wallet is the taker,
+/// the `account` of each inner create or `createIdempotent` whose `wallet` is
+/// the taker, and the `account` of each inner `initializeAccount`,
+/// `initializeAccount2` or `initializeAccount3` of SPL Token or Token-2022
+/// whose `owner` is the taker. [`check_inner_instructions`] counts one as the
+/// taker's only when it is also absent before the swap, so everything in it
+/// arrived during the transaction; such an account holds the intermediate
+/// tokens of a non-shared multi-hop route between its create and its close.
+fn opened_for_taker(
+    message: &VersionedMessage,
+    resolved: &ResolvedAccounts,
+    inner: &[UiInnerInstructions],
+    taker: &Pubkey,
+) -> HashSet<Pubkey> {
+    let taker_text = taker.to_string();
+    let key_at =
+        |index: Option<&u8>| index.and_then(|index| resolved.keys.get(usize::from(*index)));
+    let top_level = message.instructions().iter().filter_map(|ix| {
+        let program = resolved.keys.get(usize::from(ix.program_id_index))?;
+        let wallet = key_at(ix.accounts.get(2))?;
+        (*program == spl_associated_token_account::ID && wallet == taker)
+            .then(|| key_at(ix.accounts.get(1)).copied())
+            .flatten()
+    });
+    let parsed = inner
+        .iter()
+        .flat_map(|group| &group.instructions)
+        .filter_map(|ix| match ix {
+            UiInstruction::Parsed(UiParsedInstruction::Parsed(ix)) => {
+                let program = Pubkey::from_str(&ix.program_id).ok()?;
+                let info = ix.parsed.get("info")?;
+                let field = |name: &str| info.get(name).and_then(Value::as_str);
+                let holder = match inner_kind(&ix.parsed)? {
+                    "create" | "createIdempotent"
+                        if program == spl_associated_token_account::ID =>
+                    {
+                        field("wallet")
+                    }
+                    "initializeAccount" | "initializeAccount2" | "initializeAccount3"
+                        if program == spl_token::ID || program == TOKEN_2022 =>
+                    {
+                        field("owner")
+                    }
+                    _ => None,
+                };
+                (holder == Some(taker_text.as_str()))
+                    .then(|| field("account").and_then(|account| Pubkey::from_str(account).ok()))
+                    .flatten()
+            }
+            _ => None,
+        });
+    top_level.chain(parsed).collect()
+}
+
 /// The `type` of a node-parsed instruction.
 fn inner_kind(parsed: &Value) -> Option<&str> {
     parsed.get("type").and_then(Value::as_str)
@@ -1287,8 +1372,9 @@ fn ata_create(program: &Pubkey, parsed: &Value) -> bool {
 /// Whether [`check_inner_instructions`] allows a node-parsed instruction of
 /// `program` that names `taker`. An instruction of SPL Token, Token-2022,
 /// System or Associated Token Account is allowed only in the forms a swap
-/// uses; an instruction of any other program (an AMM on the route) is
-/// allowed. `owned` holds the token accounts the taker may spend from.
+/// uses, and one of [`NATIVE_ADMIN_PROGRAMS`] never; an instruction of any
+/// other program (an AMM on the route) is allowed. `owned` holds the token
+/// accounts the taker may spend from.
 fn inner_form(program: &Pubkey, parsed: &Value, taker: &str, owned: &HashSet<Pubkey>) -> bool {
     let info = |field: &str| {
         parsed
@@ -1319,7 +1405,7 @@ fn inner_form(program: &Pubkey, parsed: &Value, taker: &str, owned: &HashSet<Pub
     } else if *program == spl_associated_token_account::ID {
         ata_create(program, parsed)
     } else {
-        true
+        !NATIVE_ADMIN_PROGRAMS.contains(program)
     }
 }
 
@@ -1334,7 +1420,7 @@ pub(crate) mod tests {
     };
     use crate::solana_sdk::{
         address_lookup_table::AddressLookupTableAccount,
-        instruction::{AccountMeta, Instruction},
+        instruction::{AccountMeta, CompiledInstruction, Instruction},
         message::{v0, Message},
         program_option::COption,
         signature::NullSigner,
@@ -3545,6 +3631,266 @@ pub(crate) mod tests {
         assert!(matches!(
             check_inner(&case, transfer),
             Err(SwapRefusal::InnerInstructionNotAllowed { .. })
+        ));
+    }
+
+    fn initialize_account(account: &Pubkey, owner: &Pubkey, height: u32) -> Value {
+        json!({
+            "parsed": {
+                "info": {
+                    "account": account.to_string(),
+                    "mint": "So11111111111111111111111111111111111111112",
+                    "owner": owner.to_string(),
+                },
+                "type": "initializeAccount3",
+            },
+            "program": "spl-token",
+            "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "stackHeight": height,
+        })
+    }
+
+    fn create_associated(account: &Pubkey, wallet: &Pubkey, payer: &Pubkey, height: u32) -> Value {
+        json!({
+            "parsed": {
+                "info": {
+                    "account": account.to_string(),
+                    "mint": "So11111111111111111111111111111111111111112",
+                    "source": payer.to_string(),
+                    "systemProgram": "11111111111111111111111111111111",
+                    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                    "wallet": wallet.to_string(),
+                },
+                "type": "createIdempotent",
+            },
+            "program": "spl-associated-token-account",
+            "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+            "stackHeight": height,
+        })
+    }
+
+    fn close_account(account: &Pubkey, taker: &Pubkey, height: u32) -> Value {
+        json!({
+            "parsed": {
+                "info": {
+                    "account": account.to_string(),
+                    "destination": taker.to_string(),
+                    "owner": taker.to_string(),
+                },
+                "type": "closeAccount",
+            },
+            "program": "spl-token",
+            "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "stackHeight": height,
+        })
+    }
+
+    /// A non-shared two-hop route through an intermediate account the route
+    /// opens with `open`, spends through a second AMM and closes to the
+    /// taker. The intermediate account is absent before and after the swap.
+    fn transient_route(case: &Case, intermediate: &Pubkey, open: &[Value]) -> Value {
+        let taker = case.request.taker;
+        let input = case.token_account_of(&HNT);
+        let mut instructions = open.to_vec();
+        instructions.extend([
+            amm_swap(&[taker, input, *intermediate], 2),
+            token_transfer(&taker, &input, 3),
+            amm_swap(&[taker, *intermediate], 2),
+            token_transfer(&taker, intermediate, 3),
+            close_account(intermediate, &taker, 2),
+        ]);
+        route_group(Value::Array(instructions))
+    }
+
+    #[test]
+    fn an_intermediate_account_the_route_opens_for_the_taker_may_be_spent_from() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let intermediate = untouched_writable(&case);
+        // An associated account create for the taker.
+        let associated = [create_associated(&intermediate, &taker, &taker, 2)];
+        check_inner(&case, transient_route(&case, &intermediate, &associated))
+            .expect("an associated account opened for the taker");
+        // The token account initialisation a create runs beneath itself,
+        // with the create's own form naming no wallet.
+        let mut walletless = create_associated(&intermediate, &taker, &taker, 2);
+        walletless["parsed"]["info"]
+            .as_object_mut()
+            .expect("create info")
+            .remove("wallet");
+        let initialized = [
+            walletless.clone(),
+            initialize_account(&intermediate, &taker, 3),
+        ];
+        check_inner(&case, transient_route(&case, &intermediate, &initialized))
+            .expect("an account initialised for the taker");
+        // Nothing opens it for the taker: refused.
+        assert!(matches!(
+            check_inner(&case, transient_route(&case, &intermediate, &[walletless])),
+            Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                if program == pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        ));
+    }
+
+    #[test]
+    fn an_account_opened_for_another_owner_may_not_be_spent_by_the_taker() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let intermediate = untouched_writable(&case);
+        let other = Pubkey::new_unique();
+        let refused = |open: &[Value]| {
+            matches!(
+                check_inner(&case, transient_route(&case, &intermediate, open)),
+                Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                    if program == pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            )
+        };
+        assert!(refused(&[create_associated(
+            &intermediate,
+            &other,
+            &taker,
+            2
+        )]));
+        let mut walletless = create_associated(&intermediate, &other, &taker, 2);
+        walletless["parsed"]["info"]
+            .as_object_mut()
+            .expect("create info")
+            .remove("wallet");
+        assert!(refused(&[
+            walletless,
+            initialize_account(&intermediate, &other, 3)
+        ]));
+    }
+
+    #[test]
+    fn an_account_present_before_the_swap_is_not_opened_by_initialising_it() {
+        let mut case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let intermediate = untouched_writable(&case);
+        case.chain.pre.insert(
+            intermediate,
+            token_account_state(USDC, Pubkey::new_unique(), 0),
+        );
+        let open = [
+            create_associated(&intermediate, &taker, &taker, 2),
+            initialize_account(&intermediate, &taker, 3),
+        ];
+        assert!(matches!(
+            check_inner(&case, transient_route(&case, &intermediate, &open)),
+            Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                if program == pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        ));
+    }
+
+    #[test]
+    fn a_top_level_create_opens_its_account_for_the_taker() {
+        // The SOL transaction's top-level instruction 4 creates an
+        // associated account for the taker. Closed again (absent before and
+        // after), it may still be spent from, with no inner instruction
+        // naming it as opened.
+        let mut sol = case(SOL_USDC);
+        let taker = sol.request.taker;
+        let message = sol.message();
+        let resolved = sol.resolved();
+        let create = &message.instructions()[4];
+        assert_eq!(
+            resolved.keys[usize::from(create.program_id_index)],
+            pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
+        );
+        let opened = resolved.keys[usize::from(create.accounts[1])];
+        sol.chain.pre.remove(&opened);
+        sol.chain.post.remove(&opened);
+        let spend = |source: &Pubkey| json!([{ "index": 5, "instructions": [token_transfer(&taker, source, 3)] }]);
+        check_inner(&sol, spend(&opened)).expect("the top-level create's account");
+        assert!(matches!(
+            check_inner(&sol, spend(&untouched_writable(&sol))),
+            Err(SwapRefusal::InnerInstructionNotAllowed { .. })
+        ));
+        // The same create for another wallet, or the same accounts handed
+        // to another program, opens nothing for the taker.
+        let original = sol.message();
+        let edits: [fn(&mut CompiledInstruction, u8); 2] = [
+            |create, _| create.accounts[2] = create.accounts[1],
+            |create, route_program| create.program_id_index = route_program,
+        ];
+        for edit in edits {
+            let mut message = original.clone();
+            let VersionedMessage::V0(v0) = &mut message else {
+                panic!("the SOL fixture is a v0 message");
+            };
+            let route_program = v0.instructions[5].program_id_index;
+            edit(&mut v0.instructions[4], route_program);
+            sol.set_message(message);
+            assert!(matches!(
+                check_inner(&sol, spend(&opened)),
+                Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                    if program == pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            ));
+        }
+    }
+
+    #[test]
+    fn only_the_associated_account_and_token_programs_open_an_account() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let intermediate = untouched_writable(&case);
+        let mut create = create_associated(&intermediate, &taker, &taker, 2);
+        create["programId"] = WHIRLPOOL.into();
+        let mut initialize = initialize_account(&intermediate, &taker, 2);
+        initialize["programId"] = WHIRLPOOL.into();
+        for open in [create, initialize] {
+            assert!(matches!(
+                check_inner(&case, transient_route(&case, &intermediate, &[open])),
+                Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                    if program == pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            ));
+        }
+    }
+
+    #[test]
+    fn native_administration_programs_may_not_be_given_the_wallet() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let authorize = json!({
+            "parsed": {
+                "info": {
+                    "authority": taker.to_string(),
+                    "authorityType": "Withdrawer",
+                    "clock": "SysvarC1ock11111111111111111111111111111111",
+                    "newAuthority": Pubkey::new_unique().to_string(),
+                    "stakeAccount": Pubkey::new_unique().to_string(),
+                },
+                "type": "authorize",
+            },
+            "program": "stake",
+            "programId": "Stake11111111111111111111111111111111111111",
+            "stackHeight": 3,
+        });
+        assert!(matches!(
+            check_inner(&case, route_group(json!([amm_swap(&[taker], 2), authorize]))),
+            Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                if program == pubkey!("Stake11111111111111111111111111111111111111")
+        ));
+        let set_authority = json!({
+            "parsed": {
+                "info": {
+                    "account": Pubkey::new_unique().to_string(),
+                    "authority": taker.to_string(),
+                    "newAuthority": Pubkey::new_unique().to_string(),
+                },
+                "type": "setAuthority",
+            },
+            "program": "bpf-upgradeable-loader",
+            "programId": "BPFLoaderUpgradeab1e11111111111111111111111",
+            "stackHeight": 3,
+        });
+        assert!(matches!(
+            check_inner(
+                &case,
+                route_group(json!([amm_swap(&[taker], 2), set_authority]))
+            ),
+            Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                if program == pubkey!("BPFLoaderUpgradeab1e11111111111111111111111")
         ));
     }
 

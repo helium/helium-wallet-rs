@@ -39,8 +39,8 @@ pub struct SwapRequest {
 
 /// The Jupiter DEX labels [`prepare`] asks the quote and the build to leave
 /// out, comma-separated as the `excludeDexes` of both requests takes them.
-/// The builder routes again when it builds, so each request carries the set.
-/// Kipseli's
+/// The build request carries the same set because a builder that routes
+/// again at build time does not inherit the quote's exclusions. Kipseli's
 /// instruction lists the taker even in a `shared_accounts_route_v2` route,
 /// so `check_inner_instructions` refuses the routes through it.
 ///
@@ -120,8 +120,9 @@ pub struct SignedSwap {
 
 /// Quote `request` through `api`, asking for [`EXCLUDED_DEXES`] to be left
 /// out of the route, ask it to build the swap for `taker` as a route through
-/// Jupiter's shared accounts, again without [`EXCLUDED_DEXES`], and return the unsigned transaction only if the quote names
-/// exactly the request and its transaction does nothing beyond swapping
+/// Jupiter's shared accounts, leaving [`EXCLUDED_DEXES`] out of that build
+/// too, and return the unsigned transaction only if the quote names exactly
+/// the request and its transaction does nothing beyond swapping
 /// `request.amount` into at least `request.min_output` for that wallet (see
 /// [`crate::verify::swap_route`]). The simulation that check relies on runs
 /// on `client`'s RPC node. Nothing is signed; [`PreparedSwap::sign`] does
@@ -620,6 +621,10 @@ mod tests {
             let mut content_length = 0usize;
             loop {
                 let mut header = String::new();
+                assert!(
+                    Instant::now() < deadline,
+                    "request not read by the deadline"
+                );
                 reader.read_line(&mut header).expect("read header");
                 let header = header.trim_end();
                 if header.is_empty() {
@@ -632,6 +637,10 @@ mod tests {
                 }
             }
             let mut body = vec![0u8; content_length];
+            assert!(
+                Instant::now() < deadline,
+                "request not read by the deadline"
+            );
             reader.read_exact(&mut body).expect("read body");
             (&stream)
                 .write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")

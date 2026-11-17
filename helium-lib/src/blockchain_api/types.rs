@@ -511,9 +511,9 @@ pub struct SwapInstructionsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_shared_accounts: Option<bool>,
     /// The comma-separated Jupiter DEX labels the builder leaves out of the
-    /// route it builds, sent as `excludeDexes`. The builder routes again when
-    /// it builds, so the quote's exclusions do not carry over. `None` sends
-    /// nothing.
+    /// route it builds, sent as `excludeDexes`. It is sent because a builder
+    /// that routes again at build time does not inherit the quote's
+    /// exclusions. `None` sends nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exclude_dexes: Option<String>,
 }

@@ -44,7 +44,8 @@ pub struct SwapRequest {
 /// instruction lists the taker even in a `shared_accounts_route_v2` route,
 /// so leaving it out keeps the taker away from one more program. The checks
 /// in [`crate::verify::swap_route`] do not depend on the exclusion: they
-/// trust whichever AMMs the route names.
+/// trust the programs the Jupiter route invokes directly, apart from the
+/// native administration and wallet-state programs, which they refuse.
 ///
 /// Jupiter matches each label against its own name for a DEX and ignores a
 /// label it does not know, so a renamed label silently excludes nothing.
@@ -134,8 +135,10 @@ pub struct SignedSwap {
 /// taker, so fewer programs receive the taker when the builder honours the
 /// request. A builder may return a non-shared `route_v2` regardless (Jupiter
 /// builds single-hop routes that way); its AMMs receive the taker, and the
-/// transaction is accepted when it passes the same checks. The AMMs on the
-/// route are trusted to do on chain what the simulation showed.
+/// transaction is accepted when it passes the same checks. The programs the
+/// route invokes directly (its AMMs) are trusted to do on chain what the
+/// simulation showed; a program they call in turn receives the taker only in
+/// the token, Associated Token Account and System forms a swap uses.
 ///
 /// A request with a zero amount or minimum output, or the same mint on both
 /// sides, is refused before any request is made.

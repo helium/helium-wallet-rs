@@ -23,31 +23,35 @@
 //!    taker spending exactly `amount` of the input mint, receiving at least
 //!    the quote's minimum output, losing no other token, paying no more SOL
 //!    than the transaction's own fee, and every taker token account keeping
-//!    its owner, delegate and close authority. A transaction can only modify
-//!    accounts it lists as writable, so comparing every writable account
-//!    before and after covers what the Jupiter program does through
-//!    cross-program invocations, which no static check can see.
-//! 4. [`check_inner_instructions`]: every instruction of SPL Token,
-//!    Token-2022, the Associated Token Account program or System that the
-//!    simulation ran beneath the top level and that names the taker is a
-//!    plain transfer of a taker token account by the taker, a close of one
-//!    that pays the taker, an Associated Token Account create, or a System
-//!    transfer or account creation. These are the calls through which the
-//!    taker's signature moves or hands over what the taker holds, whichever
-//!    program makes them. A taker token account is one the taker owns
-//!    before the swap, or one absent before it that the transaction opens
-//!    for the taker (the intermediate account of a multi-hop route, which
-//!    the route closes again). No native administration program (Stake,
-//!    Vote, the BPF loaders, Address Lookup Table, Config) may receive the
-//!    taker.
+//!    its owner, delegate and close authority. It compares the taker's own
+//!    account (owner and data), the taker's token accounts and the taker's
+//!    SOL. It does not compare state that other programs keep for the taker,
+//!    such as compressed NFT leaves, metadata or asset authorities, rewards
+//!    recipients, staked positions or multisig membership; point 4 keeps the
+//!    taker away from the programs that hold it.
+//! 4. [`check_inner_instructions`]: every instruction that the simulation
+//!    ran beneath the top level and that names the taker is one of:
+//!    - an instruction of SPL Token, Token-2022, the Associated Token
+//!      Account program or System in a form a swap uses: a plain transfer of
+//!      a taker token account by the taker, a close of one that pays the
+//!      taker, an Associated Token Account create, or a System transfer or
+//!      account creation. A taker token account is one the taker owns
+//!      before the swap, or one absent before it that the transaction opens
+//!      for the taker (the intermediate account of a multi-hop route, which
+//!      the route closes again);
+//!    - an instruction at stack height 2, invoked directly by a top-level
+//!      instruction (the Jupiter route invoking an AMM), of a program outside
+//!      the native administration programs ([`NATIVE_ADMIN_PROGRAMS`]) and
+//!      the programs that hold wallet state ([`WALLET_STATE_PROGRAMS`]).
 //!
-//! The AMMs on the route are trusted. A non-shared `route_v2` hands the taker
-//! to each AMM's own swap instruction, and an AMM may list the taker in its
-//! own instruction even in a shared-accounts route; any program outside the
-//! native administration programs may receive the taker, and is trusted to
-//! do on chain what the simulation showed. What the taker's signature does
-//! beneath those programs is bounded by point 4, and what the transaction
-//! does to the taker's accounts by point 3.
+//! The programs the Jupiter route invokes directly are trusted. A non-shared
+//! `route_v2` hands the taker to each AMM's own swap instruction, and an AMM
+//! may list the taker in its own instruction even in a shared-accounts
+//! route; such a program may receive the taker, and is trusted to do on chain
+//! what the simulation showed. A program those programs call in turn
+//! receives the taker only in the token and System forms of point 4. What
+//! the transaction does to the taker's token accounts and SOL is bounded by
+//! point 3.
 //! [`crate::swap::prepare`] asks for shared-accounts routes and leaves
 //! [`crate::swap::EXCLUDED_DEXES`] out of the quote and the build, so fewer
 //! programs receive the taker where the builder honours both.
@@ -64,6 +68,7 @@ use crate::{
     error::DecodeError,
     keypair::Pubkey,
     priority_fee::MAX_PRIORITY_FEE,
+    programs,
     solana_client::{
         client_error::{ClientError, ClientErrorKind},
         rpc_config::{
@@ -130,12 +135,13 @@ const TOKEN_CLOSE_ACCOUNT: &[u8] = &[9];
 const SYSTEM_TRANSFER_TAG: [u8; 4] = [2, 0, 0, 0];
 /// Native programs that may not receive the taker beneath the top level:
 /// Stake, Vote, the BPF loaders (Upgradeable, 2, the deprecated loader and
-/// Loader v4), Address Lookup Table and Config. Their instructions act on
-/// stake, vote, program, lookup table and config accounts and on the
-/// authorities over them, none of which [`check_effects`] compares, so a
-/// taker-signed instruction of one can hand over something the taker controls
-/// without any effect the checks see. No swap route calls them with the taker.
-const NATIVE_ADMIN_PROGRAMS: [Pubkey; 8] = [
+/// Loader v4), Address Lookup Table, Config and the ZK ElGamal proof program.
+/// Their instructions act on stake, vote, program, lookup table, config and
+/// proof context accounts and on the authorities over them, none of which
+/// [`check_effects`] compares, so a taker-signed instruction of one can hand
+/// over something the taker controls without any effect the checks see. None
+/// of the recorded swap routes calls them with the taker.
+const NATIVE_ADMIN_PROGRAMS: [Pubkey; 9] = [
     solana_sdk::stake::program::ID,
     solana_sdk::vote::program::ID,
     solana_sdk::bpf_loader_upgradeable::ID,
@@ -144,7 +150,40 @@ const NATIVE_ADMIN_PROGRAMS: [Pubkey; 8] = [
     solana_sdk::loader_v4::ID,
     address_lookup_table::ID,
     solana_sdk::config::program::ID,
+    ZK_ELGAMAL_PROOF,
 ];
+/// The ZK ElGamal proof program, whose `CloseContextState` the context
+/// state's authority signs.
+const ZK_ELGAMAL_PROOF: Pubkey = pubkey!("ZkE1Gama1Proof11111111111111111111111111111");
+/// Programs that keep state for a wallet and act on it under the wallet's
+/// signature, and that may not receive the taker beneath the top level at
+/// any stack height: Bubblegum, SPL account compression and
+/// mpl-account-compression (compressed NFTs, which hold hotspots), Token
+/// Metadata and MPL Core (asset authorities), the Helium lazy distributor,
+/// entity manager, voter stake registry and sub-DAOs programs (rewards
+/// recipients, hotspot entries, staked positions and delegations), and
+/// Squads v3 and v4 (multisig membership). [`check_effects`] compares none of
+/// that state.
+const WALLET_STATE_PROGRAMS: [Pubkey; 11] = [
+    programs::bubblegum::ID,
+    programs::spl_account_compression::ID,
+    MPL_ACCOUNT_COMPRESSION,
+    programs::TOKEN_METADATA_PROGRAM_ID,
+    MPL_CORE,
+    programs::lazy_distributor::ID,
+    programs::helium_entity_manager::ID,
+    programs::voter_stake_registry::ID,
+    programs::helium_sub_daos::ID,
+    programs::squads_mpl::ID,
+    squads_multisig_program::ID,
+];
+/// Metaplex's mpl-account-compression program.
+const MPL_ACCOUNT_COMPRESSION: Pubkey = pubkey!("mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW");
+/// The Metaplex Core asset program.
+const MPL_CORE: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
+/// The stack height of an instruction a top-level instruction invokes
+/// directly: the Jupiter route runs at 1, and the AMMs it calls at 2.
+const ROUTE_CALLEE_STACK_HEIGHT: u32 = 2;
 /// Jupiter aggregator `route_v2` and `shared_accounts_route_v2`, the
 /// exact-in routes built when the quote asks for `instructionVersion` V2.
 /// The program's published Anchor IDL gives both the arguments
@@ -372,6 +411,14 @@ pub enum SwapRefusal {
     TokenAuthorityChanged { account: Pubkey },
     #[error("swap refused: route passes the wallet to {program} in a form a swap does not use")]
     InnerInstructionNotAllowed { program: Pubkey },
+    /// A program the route instruction does not invoke directly was handed
+    /// the wallet.
+    #[error("swap refused: route passes the wallet to {program} at stack height {height}, below the programs the route invokes directly")]
+    InnerProgramTooDeep { program: Pubkey, height: u32 },
+    /// A program that keeps wallet state the checks do not compare was
+    /// handed the wallet.
+    #[error("swap refused: route passes the wallet to {program}, which keeps wallet state the checks do not compare")]
+    WalletStateProgram { program: Pubkey },
     #[error("swap refused: simulation returned an inner instruction that cannot be classified")]
     InnerInstructionUnreadable,
 }
@@ -1176,8 +1223,10 @@ pub(crate) fn check_effects(
 
 /// Refuse a simulation in which an instruction of SPL Token, Token-2022,
 /// System or the Associated Token Account program beneath the top level
-/// names `taker` in a form a swap does not use, or in which a native
-/// administration program names `taker` at all. `pre` and `post` are the
+/// names `taker` in a form a swap does not use, in which a native
+/// administration program or a wallet-state program names `taker` at all,
+/// or in which any other program names `taker` below the programs the
+/// top level invokes directly. `pre` and `post` are the
 /// states of `resolved.writable` before and after the simulation, `inner`
 /// the simulation's inner instructions.
 ///
@@ -1199,11 +1248,13 @@ pub(crate) fn check_effects(
 ///   whole group the same way. An instruction with no stack height is never
 ///   covered.
 /// - System `transfer` and `createAccount`.
-/// - Any instruction of a program outside those and
-///   [`NATIVE_ADMIN_PROGRAMS`], such as an AMM's own swap instruction in a
-///   non-shared route. The AMMs on the route are trusted with the taker; the
-///   token, Associated Token Account and System instructions they run with
-///   the taker's signature are each checked here in turn.
+/// - An instruction at stack height 2 of a program outside those,
+///   [`NATIVE_ADMIN_PROGRAMS`] and [`WALLET_STATE_PROGRAMS`], such as an
+///   AMM's own swap instruction in a non-shared route. The programs the
+///   route invokes directly are trusted with the taker; the token,
+///   Associated Token Account and System instructions they run with the
+///   taker's signature are each checked here in turn. Deeper, or with no
+///   stack height, such an instruction is refused.
 ///
 /// A compiled (undecoded) inner instruction, or one whose program id does not
 /// parse, is refused whether or not it names the taker, since it cannot be
@@ -1211,8 +1262,9 @@ pub(crate) fn check_effects(
 /// parser for) carries its accounts and program id, and is classified.
 ///
 /// This bounds the forms in which the taker's signature reaches the token
-/// and System programs, and keeps it from the native administration
-/// programs. It must run together with [`check_effects`], which
+/// and System programs, keeps it from the native administration and
+/// wallet-state programs, and keeps any other program from receiving it
+/// unless the top level invokes that program directly. It must run together with [`check_effects`], which
 /// bounds what the transaction moves.
 pub(crate) fn check_inner_instructions(
     message: &VersionedMessage,
@@ -1278,9 +1330,7 @@ pub(crate) fn check_inner_instructions(
             if !names_taker {
                 continue;
             }
-            if !inner_form(&program, parsed, &taker_text, &owned) {
-                return Err(SwapRefusal::InnerInstructionNotAllowed { program });
-            }
+            inner_form(&program, height, parsed, &taker_text, &owned)?;
         }
     }
     Ok(())
@@ -1370,12 +1420,25 @@ fn ata_create(program: &Pubkey, parsed: &Value) -> bool {
 }
 
 /// Whether [`check_inner_instructions`] allows a node-parsed instruction of
-/// `program` that names `taker`. An instruction of SPL Token, Token-2022,
-/// System or Associated Token Account is allowed only in the forms a swap
-/// uses, and one of [`NATIVE_ADMIN_PROGRAMS`] never; an instruction of any
-/// other program (an AMM on the route) is allowed. `owned` holds the token
-/// accounts the taker may spend from.
-fn inner_form(program: &Pubkey, parsed: &Value, taker: &str, owned: &HashSet<Pubkey>) -> bool {
+/// `program` at stack `height` that names `taker`. An instruction of SPL
+/// Token, Token-2022, System or Associated Token Account is allowed only in
+/// the forms a swap uses, and one of [`NATIVE_ADMIN_PROGRAMS`] or
+/// [`WALLET_STATE_PROGRAMS`] never; an instruction of any other program is
+/// allowed only at [`ROUTE_CALLEE_STACK_HEIGHT`] (an AMM the route invokes).
+/// `owned` holds the token accounts the taker may spend from.
+fn inner_form(
+    program: &Pubkey,
+    height: Option<u32>,
+    parsed: &Value,
+    taker: &str,
+    owned: &HashSet<Pubkey>,
+) -> Result<(), SwapRefusal> {
+    let program = *program;
+    let form = |allowed: bool| {
+        allowed
+            .then_some(())
+            .ok_or(SwapRefusal::InnerInstructionNotAllowed { program })
+    };
     let info = |field: &str| {
         parsed
             .get("info")
@@ -1388,8 +1451,8 @@ fn inner_form(program: &Pubkey, parsed: &Value, taker: &str, owned: &HashSet<Pub
             .is_some_and(|account| owned.contains(&account))
     };
     let kind = inner_kind(parsed);
-    if *program == spl_token::ID || *program == TOKEN_2022 {
-        match kind {
+    if program == spl_token::ID || program == TOKEN_2022 {
+        form(match kind {
             Some("transfer" | "transferChecked") => {
                 info("authority") == Some(taker) && owned_account("source")
             }
@@ -1399,13 +1462,21 @@ fn inner_form(program: &Pubkey, parsed: &Value, taker: &str, owned: &HashSet<Pub
                     && owned_account("account")
             }
             _ => false,
-        }
-    } else if *program == system_program::ID {
-        matches!(kind, Some("transfer" | "createAccount"))
-    } else if *program == spl_associated_token_account::ID {
-        ata_create(program, parsed)
+        })
+    } else if program == system_program::ID {
+        form(matches!(kind, Some("transfer" | "createAccount")))
+    } else if program == spl_associated_token_account::ID {
+        form(ata_create(&program, parsed))
+    } else if NATIVE_ADMIN_PROGRAMS.contains(&program) {
+        form(false)
+    } else if WALLET_STATE_PROGRAMS.contains(&program) {
+        Err(SwapRefusal::WalletStateProgram { program })
     } else {
-        !NATIVE_ADMIN_PROGRAMS.contains(program)
+        match height {
+            Some(ROUTE_CALLEE_STACK_HEIGHT) => Ok(()),
+            Some(height) => Err(SwapRefusal::InnerProgramTooDeep { program, height }),
+            None => Err(SwapRefusal::InnerInstructionUnreadable),
+        }
     }
 }
 
@@ -3892,6 +3963,179 @@ pub(crate) mod tests {
             Err(SwapRefusal::InnerInstructionNotAllowed { program })
                 if program == pubkey!("BPFLoaderUpgradeab1e11111111111111111111111")
         ));
+    }
+
+    /// A partially decoded instruction of `program` listing `accounts`, as
+    /// the node returns one it has no parser for.
+    fn program_call(program: &Pubkey, accounts: &[Pubkey], height: u32) -> Value {
+        json!({
+            "accounts": accounts.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "data": "3Rg2bKuTGTyGGVTrjBjM",
+            "programId": program.to_string(),
+            "stackHeight": height,
+        })
+    }
+
+    #[test]
+    fn every_native_administration_program_is_refused_the_wallet() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let expected = [
+            pubkey!("Stake11111111111111111111111111111111111111"),
+            pubkey!("Vote111111111111111111111111111111111111111"),
+            pubkey!("BPFLoaderUpgradeab1e11111111111111111111111"),
+            pubkey!("BPFLoader2111111111111111111111111111111111"),
+            pubkey!("BPFLoader1111111111111111111111111111111111"),
+            pubkey!("LoaderV411111111111111111111111111111111111"),
+            pubkey!("AddressLookupTab1e1111111111111111111111111"),
+            pubkey!("Config1111111111111111111111111111111111111"),
+            pubkey!("ZkE1Gama1Proof11111111111111111111111111111"),
+        ];
+        assert_eq!(
+            NATIVE_ADMIN_PROGRAMS.iter().collect::<HashSet<_>>(),
+            expected.iter().collect::<HashSet<_>>()
+        );
+        for expected_program in expected {
+            // At the height of a program the route invokes directly, so only
+            // the program's membership refuses it.
+            let result = check_inner(
+                &case,
+                route_group(json!([program_call(&expected_program, &[taker], 2)])),
+            );
+            assert!(
+                matches!(
+                    result,
+                    Err(SwapRefusal::InnerInstructionNotAllowed { program })
+                        if program == expected_program
+                ),
+                "{expected_program}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_wallet_state_program_is_refused_the_wallet() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let expected = [
+            // Bubblegum
+            pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"),
+            // SPL account compression
+            pubkey!("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"),
+            // mpl-account-compression
+            pubkey!("mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW"),
+            // Token Metadata
+            pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"),
+            // MPL Core
+            pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"),
+            // Helium lazy distributor
+            pubkey!("1azyuavdMyvsivtNxPoz6SucD18eDHeXzFCUPq5XU7w"),
+            // Helium entity manager
+            pubkey!("hemjuPXBpNvggtaUnN1MwT3wrdhttKEfosTcc2P9Pg8"),
+            // Voter stake registry
+            pubkey!("hvsrNC3NKbcryqDs2DocYHZ9yPKEVzdSjQG6RVtK1s8"),
+            // Helium sub-DAOs
+            pubkey!("hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR"),
+            // Squads v3
+            pubkey!("SMPLecH534NA9acpos4G6x7uf3LWbCAwZQE9e8ZekMu"),
+            // Squads v4
+            pubkey!("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf"),
+        ];
+        assert_eq!(
+            WALLET_STATE_PROGRAMS.iter().collect::<HashSet<_>>(),
+            expected.iter().collect::<HashSet<_>>()
+        );
+        for expected_program in expected {
+            // At the height of a program the route invokes directly, where
+            // any other program may receive the wallet.
+            let result = check_inner(
+                &case,
+                route_group(json!([program_call(&expected_program, &[taker], 2)])),
+            );
+            assert!(
+                matches!(
+                    result,
+                    Err(SwapRefusal::WalletStateProgram { program })
+                        if program == expected_program
+                ),
+                "{expected_program}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_program_the_route_invokes_directly_may_be_given_the_wallet() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        check_inner(&case, route_group(json!([amm_swap(&[taker], 2)])))
+            .expect("an AMM the route invokes, given the wallet");
+        assert!(matches!(
+            check_inner(&case, route_group(json!([amm_swap(&[taker], 3)]))),
+            Err(SwapRefusal::InnerProgramTooDeep { program, height: 3 })
+                if program == pubkey!("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc")
+        ));
+    }
+
+    #[test]
+    fn a_program_given_the_wallet_without_a_stack_height_is_refused() {
+        let case = case(HNT_USDC);
+        let taker = case.request.taker;
+        let mut call = amm_swap(&[taker], 2);
+        call.as_object_mut()
+            .expect("instruction object")
+            .remove("stackHeight");
+        assert!(matches!(
+            check_inner(&case, route_group(json!([call]))),
+            Err(SwapRefusal::InnerInstructionUnreadable)
+        ));
+    }
+
+    #[tokio::test]
+    async fn recorded_route_with_a_compressed_nft_transfer_beneath_an_amm_is_refused() {
+        let mut case = case(SOL_USDC);
+        let taker = case.request.taker;
+        let mut inner = serde_json::to_value(case.chain.inner.take().expect("fixture inner"))
+            .expect("serialize inner instructions");
+        // Group 5 is the route; its first instruction is Tessera's swap,
+        // handed the taker. Beneath it, a Bubblegum `transfer` whose leaf
+        // owner is the taker would move one of the taker's compressed NFTs,
+        // which no token balance shows.
+        let route = inner[1]["instructions"]
+            .as_array_mut()
+            .expect("route group instructions");
+        assert_eq!(
+            route[0]["programId"],
+            "TessVdML9pBGgG9yGks7o4HewRaXVAMuoVj4x83GLQH"
+        );
+        let bubblegum = pubkey!("BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY");
+        // tree authority, leaf owner, leaf delegate, new leaf owner, merkle
+        // tree, log wrapper, compression program, System.
+        let transfer = program_call(
+            &bubblegum,
+            &[
+                Pubkey::new_unique(),
+                taker,
+                taker,
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                pubkey!("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"),
+                pubkey!("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK"),
+                pubkey!("11111111111111111111111111111111"),
+            ],
+            3,
+        );
+        route.insert(1, transfer);
+        case.chain.inner = Some(serde_json::from_value(inner).expect("inner instructions"));
+        let (result, signed) = case.run_counting().await;
+        assert!(
+            matches!(
+                &result,
+                Err(SwapRouteError::Refused(SwapRefusal::WalletStateProgram { program }))
+                    if *program == bubblegum
+            ),
+            "{result:?}"
+        );
+        assert_eq!(signed, 0);
     }
 
     #[test]

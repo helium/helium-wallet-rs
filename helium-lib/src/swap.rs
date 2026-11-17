@@ -37,8 +37,10 @@ pub struct SwapRequest {
     pub slippage_bps: u16,
 }
 
-/// The Jupiter DEX labels [`prepare`] asks the quote to leave out,
-/// comma-separated as the quote's `excludeDexes` takes them. Kipseli's
+/// The Jupiter DEX labels [`prepare`] asks the quote and the build to leave
+/// out, comma-separated as the `excludeDexes` of both requests takes them.
+/// The builder routes again when it builds, so each request carries the set.
+/// Kipseli's
 /// instruction lists the taker even in a `shared_accounts_route_v2` route,
 /// so `check_inner_instructions` refuses the routes through it.
 ///
@@ -118,7 +120,7 @@ pub struct SignedSwap {
 
 /// Quote `request` through `api`, asking for [`EXCLUDED_DEXES`] to be left
 /// out of the route, ask it to build the swap for `taker` as a route through
-/// Jupiter's shared accounts, and return the unsigned transaction only if the quote names
+/// Jupiter's shared accounts, again without [`EXCLUDED_DEXES`], and return the unsigned transaction only if the quote names
 /// exactly the request and its transaction does nothing beyond swapping
 /// `request.amount` into at least `request.min_output` for that wallet (see
 /// [`crate::verify::swap_route`]). The simulation that check relies on runs
@@ -194,6 +196,7 @@ pub(crate) async fn prepare_with<A: SwapApi, S: SwapChain>(
             user_public_key: taker.to_string(),
             destination_token_account: None,
             use_shared_accounts: Some(true),
+            exclude_dexes: Some(EXCLUDED_DEXES.to_string()),
         })
         .await
         .map_err(SwapRouteError::api)?;
@@ -380,6 +383,7 @@ mod tests {
         assert_eq!(built[0].user_public_key, case.request.taker.to_string());
         assert_eq!(built[0].quote_response.extra["instructionVersion"], "V2");
         assert_eq!(built[0].use_shared_accounts, Some(true));
+        assert_eq!(built[0].exclude_dexes.as_deref(), Some("Kipseli"));
         // The terms the checks read are sent as they were checked.
         assert_eq!(built[0].quote_response.in_amount, case.quote.in_amount);
         assert_eq!(
@@ -632,6 +636,96 @@ mod tests {
                 && request_line.contains("&excludeDexes=Kipseli"),
             "{request_line}"
         );
+    }
+
+    #[tokio::test]
+    async fn the_client_sends_the_excluded_dexes_in_the_build_request_body() {
+        use futures::future::{select, Either};
+        use futures_timer::Delay;
+        use std::{
+            io::{BufRead, BufReader, Read, Write},
+            time::{Duration, Instant},
+        };
+
+        const DEADLINE: Duration = Duration::from_secs(10);
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking listener");
+        let addr = listener.local_addr().expect("local addr");
+        // Reads the request line, headers and body, then answers 500 so the
+        // client's parse fails without needing a transaction body. Gives up
+        // at the deadline, so the blocking task never outlives the test.
+        let server = tokio::task::spawn_blocking(move || {
+            let deadline = Instant::now() + DEADLINE;
+            let stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "no request before the deadline");
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(e) => panic!("accept: {e}"),
+                }
+            };
+            stream.set_nonblocking(false).expect("blocking stream");
+            stream
+                .set_read_timeout(Some(DEADLINE))
+                .expect("read timeout");
+            let mut reader = BufReader::new(&stream);
+            let mut request_line = String::new();
+            reader
+                .read_line(&mut request_line)
+                .expect("read request line");
+            let mut content_length = 0usize;
+            loop {
+                let mut header = String::new();
+                reader.read_line(&mut header).expect("read header");
+                let header = header.trim_end();
+                if header.is_empty() {
+                    break;
+                }
+                if let Some((name, value)) = header.split_once(':') {
+                    if name.eq_ignore_ascii_case("content-length") {
+                        content_length = value.trim().parse().expect("content-length");
+                    }
+                }
+            }
+            let mut body = vec![0u8; content_length];
+            reader.read_exact(&mut body).expect("read body");
+            (&stream)
+                .write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                .expect("write response");
+            (request_line, body)
+        });
+        let api = Client::new(format!("http://{addr}"));
+        let case = case(HNT_USDC);
+        let built = SwapInstructionsRequest {
+            quote_response: case.quote.clone(),
+            user_public_key: case.request.taker.to_string(),
+            destination_token_account: None,
+            use_shared_accounts: Some(true),
+            exclude_dexes: Some(EXCLUDED_DEXES.to_string()),
+        };
+        let exchange = async {
+            let result = SwapApi::instructions(&api, &built).await;
+            let sent = server.await.expect("server task");
+            (result, sent)
+        };
+        let (result, (request_line, body)) =
+            match select(Box::pin(exchange), Delay::new(DEADLINE)).await {
+                Either::Left((done, _)) => done,
+                Either::Right(_) => panic!("the exchange did not finish before the deadline"),
+            };
+        assert!(result.is_err(), "the stub answers 500");
+        assert!(
+            request_line.starts_with("POST /swap/instructions "),
+            "{request_line}"
+        );
+        let body: Value = serde_json::from_slice(&body).expect("json body");
+        assert_eq!(body["excludeDexes"], "Kipseli", "{body}");
+        assert_eq!(body["useSharedAccounts"], true, "{body}");
     }
 
     #[tokio::test]

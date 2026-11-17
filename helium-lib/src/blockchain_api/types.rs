@@ -505,10 +505,17 @@ pub struct SwapInstructionsRequest {
     /// single-hop and multi-hop, as non-shared `route_v2`. `Some(false)`
     /// forces non-shared routes. A non-shared route's AMMs receive the taker,
     /// which `check_inner_instructions` refuses. An AMM that lists the taker
-    /// itself is refused too; [`crate::swap::prepare`] asks the quote to
-    /// leave such AMMs out (see [`crate::swap::EXCLUDED_DEXES`]).
+    /// itself is refused too; [`crate::swap::prepare`] asks both the quote
+    /// and this build to leave such AMMs out (see
+    /// [`crate::swap::EXCLUDED_DEXES`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_shared_accounts: Option<bool>,
+    /// The comma-separated Jupiter DEX labels the builder leaves out of the
+    /// route it builds, sent as `excludeDexes`. The builder routes again when
+    /// it builds, so the quote's exclusions do not carry over. `None` sends
+    /// nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude_dexes: Option<String>,
 }
 
 /// `POST /tokens/burn` — burn SPL tokens from the wallet's account.
@@ -971,12 +978,40 @@ mod tests {
             user_public_key: "wallet".to_string(),
             destination_token_account: None,
             use_shared_accounts: Some(true),
+            exclude_dexes: None,
         };
         let v = serde_json::to_value(&req).expect("serialize request");
         assert_eq!(v["useSharedAccounts"], true);
         req.use_shared_accounts = None;
         let v = serde_json::to_value(&req).expect("serialize request");
         assert!(v.get("useSharedAccounts").is_none(), "{v}");
+    }
+
+    #[test]
+    fn swap_instructions_request_sends_exclude_dexes_only_when_set() {
+        let quote: SwapQuote = serde_json::from_value(serde_json::json!({
+            "inputMint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
+            "inAmount": "100000000",
+            "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "outAmount": "450000",
+            "otherAmountThreshold": "445500",
+            "swapMode": "ExactIn",
+            "slippageBps": 100,
+            "priceImpactPct": "0.01"
+        }))
+        .expect("deserialize swap quote");
+        let mut req = SwapInstructionsRequest {
+            quote_response: quote,
+            user_public_key: "wallet".to_string(),
+            destination_token_account: None,
+            use_shared_accounts: None,
+            exclude_dexes: Some("A,B".to_string()),
+        };
+        let v = serde_json::to_value(&req).expect("serialize request");
+        assert_eq!(v["excludeDexes"], "A,B");
+        req.exclude_dexes = None;
+        let v = serde_json::to_value(&req).expect("serialize request");
+        assert!(v.get("excludeDexes").is_none(), "{v}");
     }
 
     #[test]

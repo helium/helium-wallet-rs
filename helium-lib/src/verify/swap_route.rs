@@ -37,8 +37,8 @@
 //!    reads. [`crate::swap::prepare`] asks for shared-accounts routes, which
 //!    give the AMMs Jupiter's accounts instead of the taker; a non-shared
 //!    route whose AMMs receive the taker is refused here, as is an AMM that
-//!    lists the taker itself, which the quote leaves out
-//!    ([`crate::swap::EXCLUDED_DEXES`]).
+//!    lists the taker itself, which [`crate::swap::prepare`] asks the quote
+//!    to leave out ([`crate::swap::EXCLUDED_DEXES`]).
 //!
 //! The simulation runs on the caller's own RPC node, not on the service that
 //! built the transaction. The taker signs only after all four pass, so a

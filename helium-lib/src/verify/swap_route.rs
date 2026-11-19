@@ -35,7 +35,11 @@
 //!    enforces the route's own minimum, which the builder sets. Every other
 //!    instruction form, and Jupiter reached through another program, is not
 //!    read.
-//! 5. [`check_effects`]: a simulation of the unsigned transaction shows the
+//! 5. [`check_size`]: the unsigned transaction fits in one packet,
+//!    [`PACKET_DATA_SIZE`] bytes. A larger one cannot be sent, and the RPC
+//!    node rejects it when asked to simulate it, an error a caller cannot
+//!    tell from an outage, so it is refused first with its own variant.
+//! 6. [`check_effects`]: a simulation of the unsigned transaction shows the
 //!    taker spending exactly `amount` of the input mint, receiving at least
 //!    the quote's minimum output into its own token accounts, losing no
 //!    other token, and losing no more SOL (its own lamports plus those of its
@@ -44,7 +48,7 @@
 //!    token account keeps its owner, delegate, delegated amount, close
 //!    authority and state, and a token account the taker gains has neither
 //!    a delegate nor a close authority.
-//! 6. [`check_hotspot_programs`]: no instruction of the Bubblegum or
+//! 7. [`check_hotspot_programs`]: no instruction of the Bubblegum or
 //!    lazy distributor program, at the top level or beneath it at any
 //!    depth, names the taker among its accounts. Bubblegum holds the
 //!    wallet's compressed NFTs, which hold its hotspots, and the lazy
@@ -84,6 +88,7 @@ use crate::{
         account::Account,
         hash::Hash,
         message::VersionedMessage,
+        packet::PACKET_DATA_SIZE,
         program_pack::Pack,
         pubkey,
         signature::Signature,
@@ -258,6 +263,12 @@ pub enum SwapRefusal {
     },
     #[error("swap refused: the transaction's fee payer is not the taker")]
     FeePayerNotTaker,
+    /// `size` is the unsigned transaction's serialized length in bytes and
+    /// `limit` the largest a transaction may be, one packet. A route with
+    /// many hops can exceed it; asking the builder again may return a
+    /// smaller one.
+    #[error("swap refused: the transaction is {size} bytes, over the {limit} byte limit")]
+    TransactionTooLarge { size: u64, limit: u64 },
     #[error("swap refused: lookup table {table} could not be resolved")]
     LookupTableUnresolved { table: Pubkey },
     #[error(
@@ -507,6 +518,8 @@ pub(crate) async fn verify_unsigned<S: SwapChain>(
         message,
     };
 
+    check_size(&unsigned)?;
+
     let AccountsRead {
         slot,
         accounts: pre,
@@ -527,6 +540,20 @@ pub(crate) async fn verify_unsigned<S: SwapChain>(
     check_hotspot_programs(&unsigned.message, &resolved.keys, &inner, &request.taker)?;
 
     Ok((unsigned, last_valid_block_height))
+}
+
+/// Refuse a transaction whose serialized length is over [`PACKET_DATA_SIZE`].
+/// The RPC node refuses to simulate one that large, with an error that reads
+/// as a failed request, so the size is judged here, where it names the
+/// cause.
+pub(crate) fn check_size(txn: &VersionedTransaction) -> Result<(), SwapRouteError> {
+    let size = bincode::serialized_size(txn)
+        .map_err(|err| SwapRouteError::TransactionDecode(err.into()))?;
+    let limit = PACKET_DATA_SIZE as u64;
+    if size > limit {
+        return Err(SwapRefusal::TransactionTooLarge { size, limit }.into());
+    }
+    Ok(())
 }
 
 /// Check the quote's terms against the request. Returns the quote's minimum
@@ -2058,6 +2085,92 @@ pub(crate) mod tests {
             "{result:?}"
         );
         assert_eq!(signed, 0);
+    }
+
+    /// The size `check_size` judges: the serialized length of `case`'s
+    /// transaction once its signature slots are empty, as `verify_unsigned`
+    /// builds it.
+    fn unsigned_size(case: &Case) -> u64 {
+        let message = case.message();
+        let unsigned = VersionedTransaction {
+            signatures: vec![
+                Signature::default();
+                usize::from(message.header().num_required_signatures)
+            ],
+            message,
+        };
+        bincode::serialized_size(&unsigned).expect("size the transaction")
+    }
+
+    /// Pad the data of `case`'s longest instruction until its unsigned
+    /// transaction is exactly `target` bytes, changing nothing else. The
+    /// data's length prefix grows by a byte when the data reaches 128 bytes,
+    /// so one byte fewer of padding is tried when the first overshoots.
+    fn pad_to(case: &mut Case, target: u64) {
+        let base = case.message();
+        let need = target
+            .checked_sub(unsigned_size(case))
+            .expect("fixture fits the target") as usize;
+        for pad in [need, need.saturating_sub(1)] {
+            let mut message = base.clone();
+            let VersionedMessage::V0(v0) = &mut message else {
+                panic!("fixture is v0");
+            };
+            let data = &mut v0
+                .instructions
+                .iter_mut()
+                .max_by_key(|ix| ix.data.len())
+                .expect("an instruction")
+                .data;
+            data.resize(data.len() + pad, 0);
+            case.set_message(message);
+            if unsigned_size(case) == target {
+                return;
+            }
+        }
+        panic!("no padding reaches {target} bytes");
+    }
+
+    #[tokio::test]
+    async fn transaction_at_the_packet_limit_is_signed_and_one_byte_over_is_refused() {
+        let limit = PACKET_DATA_SIZE as u64;
+        let mut case = case(HNT_USDC);
+        pad_to(&mut case, limit);
+        case.run()
+            .await
+            .expect("a transaction at the limit is signed");
+
+        pad_to(&mut case, limit + 1);
+        match case.refusal().await {
+            SwapRefusal::TransactionTooLarge { size, limit: shown } => {
+                assert_eq!((size, shown), (limit + 1, limit));
+            }
+            other => panic!("expected TransactionTooLarge, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn oversize_transaction_is_refused_before_it_is_simulated() {
+        let mut case = case(HNT_USDC);
+        pad_to(&mut case, PACKET_DATA_SIZE as u64 + 1);
+        case.refusal().await;
+        let reads = case.chain.reads.lock().expect("lock").clone();
+        assert!(
+            reads.iter().all(|read| read.answered.is_some()),
+            "{reads:?}"
+        );
+    }
+
+    #[test]
+    fn transaction_too_large_names_its_size_and_the_limit() {
+        let refusal = SwapRefusal::TransactionTooLarge {
+            size: 1266,
+            limit: 1232,
+        };
+        assert_eq!(
+            refusal.to_string(),
+            "swap refused: the transaction is 1266 bytes, over the 1232 byte limit"
+        );
     }
 
     #[tokio::test]

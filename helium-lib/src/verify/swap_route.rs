@@ -2153,7 +2153,11 @@ pub(crate) mod tests {
     async fn oversize_transaction_is_refused_before_it_is_simulated() {
         let mut case = case(HNT_USDC);
         pad_to(&mut case, PACKET_DATA_SIZE as u64 + 1);
-        case.refusal().await;
+        let refusal = case.refusal().await;
+        assert!(
+            matches!(refusal, SwapRefusal::TransactionTooLarge { .. }),
+            "{refusal:?}"
+        );
         let reads = case.chain.reads.lock().expect("lock").clone();
         assert!(
             reads.iter().all(|read| read.answered.is_some()),
